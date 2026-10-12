@@ -1,0 +1,522 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --bg-canvas: #f5f5f7;
+    --bg-surface: #ffffff;
+    --border-hairline: #e5e5ea;
+    --text-primary: #1d1d1f;
+    --text-secondary: #86868b;
+  }
+
+  html.dark,
+  [data-theme="dark"],
+  .dark {
+    --bg-canvas: #000000;
+    --bg-surface: #1c1c1e;
+    --border-hairline: #2c2c2e;
+    --text-primary: #f5f5f7;
+    --text-secondary: #98989d;
+    color-scheme: dark;
+  }
+
+  html, body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  html.dark body,
+  [data-theme="dark"] body,
+  .dark body {
+    background-color: #0b0c10;
+    color: #f5f5f7;
+  }
+}
+
+/* ============================================================
+   APPLE HIG DARK THEME COMPREHENSIVE GLOBAL OVERRIDES
+   Guarantees all headings, text, cards, tables, modals and forms
+   have perfect contrast and never blend into dark backgrounds.
+   ============================================================ */
+
+/* 1. All Headings and Title Elements in Dark Mode */
+html.dark h1, html.dark h1 *,
+html.dark h2, html.dark h2 *,
+html.dark h3, html.dark h3 *,
+html.dark h4, html.dark h4 *,
+html.dark h5, html.dark h5 *,
+html.dark h6, html.dark h6 *,
+[data-theme="dark"] h1, [data-theme="dark"] h1 *,
+[data-theme="dark"] h2, [data-theme="dark"] h2 *,
+[data-theme="dark"] h3, [data-theme="dark"] h3 *,
+[data-theme="dark"] h4, [data-theme="dark"] h4 *,
+[data-theme="dark"] h5, [data-theme="dark"] h5 *,
+[data-theme="dark"] h6, [data-theme="dark"] h6 *,
+.dark h1, .dark h1 *,
+.dark h2, .dark h2 *,
+.dark h3, .dark h3 *,
+.dark h4, .dark h4 *,
+.dark h5, .dark h5 *,
+.dark h6, .dark h6 * {
+  color: #f5f5f7 !important;
+}
+
+/* 2. Primary High-Contrast Text in Dark Mode */
+.dark .text-gray-950,
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-slate-950,
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-zinc-950,
+.dark .text-zinc-900,
+.dark .text-zinc-800,
+.dark .text-neutral-950,
+.dark .text-neutral-900,
+.dark .text-neutral-800,
+.dark .text-stone-950,
+.dark .text-stone-900,
+.dark .text-stone-800,
+.dark .text-black,
+.dark [class*="text-[#1d1d1f]"],
+.dark [class*="text-[#111827]"],
+.dark [class*="text-[#1e293b]"],
+.dark [class*="text-[#0f172a]"] {
+  color: #f5f5f7 !important;
+}
+
+/* 3. Secondary Text (Subheadings, body content) */
+.dark .text-gray-700,
+.dark .text-gray-600,
+.dark .text-slate-700,
+.dark .text-slate-600,
+.dark .text-zinc-700,
+.dark .text-zinc-600,
+.dark .text-neutral-700,
+.dark .text-neutral-600 {
+  color: #e5e5ea !important;
+}
+
+/* 4. Tertiary / Caption / Meta Text */
+.dark .text-gray-500,
+.dark .text-gray-400,
+.dark .text-slate-500,
+.dark .text-slate-400,
+.dark .text-zinc-500,
+.dark .text-zinc-400,
+.dark .text-neutral-500,
+.dark .text-neutral-400,
+.dark [class*="text-[#86868b]"],
+.dark [class*="text-[#636366]"] {
+  color: #98989d !important;
+}
+
+/* 5. Deep Colored Text Contrast Correction */
+.dark .text-blue-900, .dark .text-blue-800, .dark .text-blue-700 {
+  color: #60a5fa !important;
+}
+.dark .text-indigo-950, .dark .text-indigo-900, .dark .text-indigo-800, .dark .text-indigo-700 {
+  color: #a5b4fc !important;
+}
+.dark .text-emerald-900, .dark .text-emerald-800, .dark .text-emerald-700 {
+  color: #34d399 !important;
+}
+.dark .text-green-900, .dark .text-green-800, .dark .text-green-700 {
+  color: #4ade80 !important;
+}
+.dark .text-amber-900, .dark .text-amber-800, .dark .text-amber-700 {
+  color: #fbbf24 !important;
+}
+.dark .text-yellow-900, .dark .text-yellow-800, .dark .text-yellow-700 {
+  color: #fde047 !important;
+}
+.dark .text-orange-900, .dark .text-orange-800, .dark .text-orange-700 {
+  color: #fb923c !important;
+}
+.dark .text-purple-900, .dark .text-purple-800, .dark .text-purple-700 {
+  color: #c084fc !important;
+}
+.dark .text-red-900, .dark .text-red-800, .dark .text-red-700 {
+  color: #f87171 !important;
+}
+.dark .text-cyan-900, .dark .text-cyan-800, .dark .text-cyan-700 {
+  color: #38bdf8 !important;
+}
+
+/* 6. Card Containers & Surfaces in Dark Mode */
+.dark .bg-white:not(.keep-light) {
+  background-color: #1c1c1e !important;
+  color: #f5f5f7;
+}
+
+.dark .bg-gray-50:not(.keep-light),
+.dark .bg-slate-50:not(.keep-light) {
+  background-color: #121214 !important;
+}
+
+.dark .bg-gray-100:not(.keep-light),
+.dark .bg-slate-100:not(.keep-light),
+.dark [class*="bg-[#efeff4]"]:not(.keep-light) {
+  background-color: #2c2c2e !important;
+}
+
+.dark .bg-gray-200:not(.keep-light),
+.dark .bg-slate-200:not(.keep-light),
+.dark [class*="bg-[#e5e5ea]"]:not(.keep-light) {
+  background-color: #38383a !important;
+}
+
+/* 7. Pastel Chips & Backgrounds in Dark Mode */
+.dark .bg-blue-50, .dark .bg-blue-100 {
+  background-color: rgba(0, 113, 227, 0.16) !important;
+  color: #60a5fa !important;
+  border-color: rgba(0, 113, 227, 0.35) !important;
+}
+.dark .bg-indigo-50, .dark .bg-indigo-100 {
+  background-color: rgba(99, 102, 241, 0.16) !important;
+  color: #a5b4fc !important;
+  border-color: rgba(99, 102, 241, 0.35) !important;
+}
+.dark .bg-emerald-50, .dark .bg-emerald-100, .dark .bg-green-50, .dark .bg-green-100 {
+  background-color: rgba(52, 199, 89, 0.16) !important;
+  color: #34d399 !important;
+  border-color: rgba(52, 199, 89, 0.35) !important;
+}
+.dark .bg-amber-50, .dark .bg-amber-100, .dark .bg-yellow-50, .dark .bg-yellow-100 {
+  background-color: rgba(255, 149, 0, 0.16) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(255, 149, 0, 0.35) !important;
+}
+.dark .bg-orange-50, .dark .bg-orange-100 {
+  background-color: rgba(249, 115, 22, 0.16) !important;
+  color: #fb923c !important;
+  border-color: rgba(249, 115, 22, 0.35) !important;
+}
+.dark .bg-purple-50, .dark .bg-purple-100 {
+  background-color: rgba(175, 82, 222, 0.16) !important;
+  color: #c084fc !important;
+  border-color: rgba(175, 82, 222, 0.35) !important;
+}
+.dark .bg-red-50, .dark .bg-red-100, .dark .bg-rose-50, .dark .bg-rose-100 {
+  background-color: rgba(255, 59, 48, 0.16) !important;
+  color: #f87171 !important;
+  border-color: rgba(255, 59, 48, 0.35) !important;
+}
+.dark .bg-cyan-50, .dark .bg-cyan-100, .dark .bg-sky-50, .dark .bg-sky-100, .dark .bg-teal-50, .dark .bg-teal-100 {
+  background-color: rgba(6, 182, 212, 0.16) !important;
+  color: #38bdf8 !important;
+  border-color: rgba(6, 182, 212, 0.35) !important;
+}
+
+/* 8. Hairline Borders in Dark Mode */
+.dark .border-gray-50,
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark [class*="border-[#e5e5ea]"],
+.dark [class*="border-[#f2f2f7]"],
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #2c2c2e !important;
+}
+
+.dark .border-gray-300,
+.dark .border-slate-300,
+.dark [class*="border-[#d1d1d6]"] {
+  border-color: #38383a !important;
+}
+
+/* 9. Inputs, Selects, and Textareas in Dark Mode */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+.dark select,
+.dark textarea {
+  background-color: #2c2c2e !important;
+  color: #f5f5f7 !important;
+  border-color: #38383a !important;
+}
+
+.dark select option {
+  background-color: #1c1c1e !important;
+  color: #f5f5f7 !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #636366 !important;
+}
+
+/* 10. Tables in Dark Mode */
+.dark table {
+  color: #f5f5f7 !important;
+}
+
+.dark table thead,
+.dark table thead tr,
+.dark table th {
+  background-color: #161618 !important;
+  color: #98989d !important;
+  border-color: #2c2c2e !important;
+}
+
+.dark table td {
+  border-color: #2c2c2e !important;
+  color: #e5e5ea !important;
+}
+
+.dark table tbody tr:hover td {
+  background-color: #252528 !important;
+}
+
+/* 11. Hover list item backgrounds in Dark Mode */
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-\[\#f5f5f7\]:hover {
+  background-color: #2c2c2e !important;
+}
+
+/* 12. Preserve Solid Colored CTA Action Buttons */
+.dark .text-white,
+.dark .btn-primary,
+.dark [class*="bg-blue-600"],
+.dark [class*="bg-indigo-600"],
+.dark [class*="bg-emerald-600"],
+.dark [class*="bg-green-600"],
+.dark [class*="bg-red-600"],
+.dark [class*="bg-purple-600"],
+.dark [class*="bg-amber-600"],
+.dark [class*="bg-gradient-to"] {
+  color: #ffffff !important;
+}
+
+/* Modern minimal scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.7);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ============================================================
+   MULTI-OPERATING SYSTEM DESIGN THEMES
+   1. Apple Solid (Default)
+   2. Apple Glass (Liquid Glass / Frosted Translucent)
+   3. Google Pixel (Material You / M3 Tonal Pills)
+   4. OnePlus (OxygenOS Crimson Carbon)
+   5. Samsung (One UI 6 Ergonomic Squircles)
+   ============================================================ */
+
+/* 🪟 1. APPLE GLASS (Frosted Translucent / Specular Glow) */
+html[data-style="apple-glass"]:not(.dark) body {
+  background: linear-gradient(145deg, #f0f4fd 0%, #eef2f7 40%, #f6eff9 100%) !important;
+  background-attachment: fixed !important;
+}
+
+html[data-style="apple-glass"].dark body {
+  background: linear-gradient(145deg, #08090f 0%, #0d0e17 40%, #130f1b 100%) !important;
+  background-attachment: fixed !important;
+}
+
+/* Glass Shell & Card Surfaces */
+html[data-style="apple-glass"]:not(.dark) .bg-white,
+html[data-style="apple-glass"]:not(.dark) header,
+html[data-style="apple-glass"]:not(.dark) .sidebar-panel,
+html[data-style="apple-glass"]:not(.dark) [class*="bg-[#f5f5f7]"],
+html[data-style="apple-glass"]:not(.dark) .card {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-color: rgba(255, 255, 255, 0.65) !important;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+}
+
+html[data-style="apple-glass"].dark .bg-white,
+html[data-style="apple-glass"].dark header,
+html[data-style="apple-glass"].dark .sidebar-panel,
+html[data-style="apple-glass"].dark [class*="bg-[#1c1c1e]"],
+html[data-style="apple-glass"].dark [class*="bg-[#1f1f23]"],
+html[data-style="apple-glass"].dark .card {
+  background: rgba(28, 28, 32, 0.72) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 🤖 2. GOOGLE PIXEL (Material You / M3 Tonal Pills) */
+html[data-style="pixel"]:not(.dark) body {
+  background-color: #f2f5fa !important;
+}
+html[data-style="pixel"].dark body {
+  background-color: #111318 !important;
+}
+
+/* Organic M3 Corner Radii */
+html[data-style="pixel"] .rounded-xl,
+html[data-style="pixel"] .rounded-2xl,
+html[data-style="pixel"] [class*="rounded-[16px]"],
+html[data-style="pixel"] [class*="rounded-[18px]"],
+html[data-style="pixel"] [class*="rounded-[20px]"] {
+  border-radius: 24px !important;
+}
+
+html[data-style="pixel"] button:not(.rounded-full),
+html[data-style="pixel"] input,
+html[data-style="pixel"] select {
+  border-radius: 9999px !important;
+}
+
+html[data-style="pixel"]:not(.dark) .bg-white {
+  background-color: #ffffff !important;
+  border-color: #dbe4f0 !important;
+  box-shadow: 0 2px 6px rgba(45, 85, 125, 0.06) !important;
+}
+html[data-style="pixel"].dark .bg-white {
+  background-color: #1a1c23 !important;
+  border-color: #2e313c !important;
+}
+html[data-style="pixel"]:not(.dark) .sidebar-panel {
+  background-color: #f2f5fa !important;
+  border-right-color: #dbe4f0 !important;
+}
+html[data-style="pixel"].dark .sidebar-panel {
+  background-color: #14161d !important;
+  border-right-color: #282a34 !important;
+}
+
+/* Pixel Active Accent */
+html[data-style="pixel"] .bg-blue-600 {
+  background-color: #0b57d0 !important;
+}
+
+/* ⚡ 3. ONEPLUS (OxygenOS Crimson Carbon) */
+html[data-style="oneplus"]:not(.dark) body {
+  background-color: #f6f6f9 !important;
+}
+html[data-style="oneplus"].dark body {
+  background-color: #0c0c0e !important;
+}
+
+/* Sharp Industrial Corner Radii */
+html[data-style="oneplus"] .rounded-xl,
+html[data-style="oneplus"] .rounded-2xl,
+html[data-style="oneplus"] [class*="rounded-[16px]"],
+html[data-style="oneplus"] [class*="rounded-[18px]"],
+html[data-style="oneplus"] [class*="rounded-[20px]"] {
+  border-radius: 12px !important;
+}
+
+html[data-style="oneplus"] button,
+html[data-style="oneplus"] input,
+html[data-style="oneplus"] select {
+  border-radius: 8px !important;
+}
+
+/* OnePlus Crimson Red Accents */
+html[data-style="oneplus"] .bg-blue-600,
+html[data-style="oneplus"] [data-sound="create"] {
+  background-color: #eb0028 !important;
+  border-color: #eb0028 !important;
+  color: #ffffff !important;
+}
+
+html[data-style="oneplus"] .text-blue-600 {
+  color: #eb0028 !important;
+}
+
+html[data-style="oneplus"] .border-blue-600 {
+  border-color: #eb0028 !important;
+}
+
+html[data-style="oneplus"]:not(.dark) .bg-white {
+  background-color: #ffffff !important;
+  border-color: #e4e6ea !important;
+}
+html[data-style="oneplus"].dark .bg-white {
+  background-color: #141416 !important;
+  border-color: #242428 !important;
+}
+html[data-style="oneplus"]:not(.dark) .sidebar-panel {
+  background-color: #f6f6f9 !important;
+  border-right-color: #e4e6ea !important;
+}
+html[data-style="oneplus"].dark .sidebar-panel {
+  background-color: #0c0c0e !important;
+  border-right-color: #242428 !important;
+}
+
+/* 📱 4. SAMSUNG (Galaxy One UI 6 Ergonomic Squircles) */
+html[data-style="samsung"]:not(.dark) body {
+  background-color: #f1f3f7 !important;
+}
+html[data-style="samsung"].dark body {
+  background-color: #101116 !important;
+}
+
+/* Generous Comfort Squircles */
+html[data-style="samsung"] .rounded-xl,
+html[data-style="samsung"] .rounded-2xl,
+html[data-style="samsung"] [class*="rounded-[16px]"],
+html[data-style="samsung"] [class*="rounded-[18px]"] {
+  border-radius: 20px !important;
+}
+
+html[data-style="samsung"] button:not(.rounded-full),
+html[data-style="samsung"] input,
+html[data-style="samsung"] select {
+  border-radius: 14px !important;
+}
+
+/* Samsung Galaxy Blue Accents */
+html[data-style="samsung"] .bg-blue-600 {
+  background-color: #0381fe !important;
+}
+
+html[data-style="samsung"] .text-blue-600 {
+  color: #0381fe !important;
+}
+
+html[data-style="samsung"]:not(.dark) .bg-white {
+  background-color: #ffffff !important;
+  border-color: #dfe3ec !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03) !important;
+}
+html[data-style="samsung"].dark .bg-white {
+  background-color: #1a1b22 !important;
+  border-color: #282a34 !important;
+}
+html[data-style="samsung"]:not(.dark) .sidebar-panel {
+  background-color: #f1f3f7 !important;
+  border-right-color: #dfe3ec !important;
+}
+html[data-style="samsung"].dark .sidebar-panel {
+  background-color: #101116 !important;
+  border-right-color: #282a34 !important;
+}

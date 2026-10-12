@@ -1,0 +1,1632 @@
+import { useEffect, useState } from 'react'
+import { supabase } from '../services/supabase'
+import { useAuth } from '../context/AuthContext'
+import { db, addToSyncQueue } from '../services/db'
+import PasswordModal from '../components/PasswordModal'
+import * as XLSX from 'xlsx'
+import { buildSalesReportHTML, buildBillHTML } from '../utils/billTemplates'
+import { hasFeature } from '../utils/featureGate'
+import { printHTML } from '../utils/printUtils'
+import { syncOfflineData } from '../services/syncService'
+import { Tag, Receipt, ShieldCheck, Smartphone, Landmark, Plus, CheckCircle2 } from 'lucide-react'
+import { useTheme, THEME_STYLES } from '../context/ThemeContext'
+import { getBankAccounts } from '../services/bankService'
+import BankAccountModal from '../components/BankAccountModal'
+
+function Settings() {
+  const { user } = useAuth()
+  const { isDark, toggleTheme, themeStyle, setThemeStyle } = useTheme()
+  const [shop, setShop] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState(() => {
+    const sid = user?.shop_id
+    const saved = sid ? localStorage.getItem(`shop_settings_${sid}`) : null
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch (e) { /* fallback */ }
+    }
+    return {
+      name: (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX POS',
+      phone: '',
+      address: '',
+      logo_url: (sid ? localStorage.getItem(`shop_logo_${sid}`) : null) || '',
+      invoice_footer: 'Thank you! Visit again',
+      quotation_footer: 'This is an estimate only',
+      print_size: 'thermal',
+      print_mode: 'manual',
+      wa_reminder_template: 'Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!',
+      wa_bill_template: 'Hello [Name], thank you for shopping at [Shop Name]! Your bill summary for Invoice #[ID] is Rs. [Amount].\n📱 Model: [Model]\n📅 Date: [Date]\nThank you for your business!',
+      wa_reorder_template: 'Assalam-o-Alaikum *[Supplier Name]*! 🙏\n\n*[Shop Name]* se order:\n\n[Items]\n\nMeharbani farma kar jald supply karein. Shukriya!',
+      invoice_prefix: '',
+      business_preset: 'general',
+      pricing_mode: 'hidden',
+      custom_price_label: '',
+      tax_number: '',
+      pos_layout: 'two_stage'
+    }
+  })
+  // Logo is managed completely separately from the rest of form state
+  // LOGO_KEY is stable once user.shop_id is known
+  const LOGO_KEY = `shop_logo_${user?.shop_id}`
+  const [logoUrl, setLogoUrl] = useState(() => {
+    const sid = user?.shop_id
+    return (sid ? localStorage.getItem(`shop_logo_${sid}`) : null) || ''
+  })
+
+  // Re-read logo from localStorage whenever user.shop_id becomes available
+  // (handles any edge case where it wasn't ready on first render)
+  useEffect(() => {
+    if (!user?.shop_id) return
+    const saved = localStorage.getItem(`shop_logo_${user.shop_id}`)
+    if (saved) setLogoUrl(saved)
+  }, [user?.shop_id])
+
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [planInfo, setPlanInfo] = useState(null)
+  const [printTemplate, setPrintTemplate] = useState(() => {
+    const sid = user?.shop_id
+    return (sid ? localStorage.getItem(`print_template_${sid}`) : null) || localStorage.getItem('print_template') || '2'
+  })
+  const [reportPeriod, setReportPeriod] = useState('today')
+  const [reportLoading, setReportLoading] = useState(false)
+  const [previewTemplateId, setPreviewTemplateId] = useState(null)
+  const [previewSize, setPreviewSize] = useState('thermal')
+
+  // Bank Accounts Management State
+  const [bankAccounts, setBankAccounts] = useState([])
+  const [loadingBanks, setLoadingBanks] = useState(false)
+  const [showBankModal, setShowBankModal] = useState(false)
+
+  const loadBankAccounts = async () => {
+    if (!user?.shop_id) return
+    setLoadingBanks(true)
+    try {
+      const list = await getBankAccounts(user.shop_id)
+      setBankAccounts(list)
+    } catch (e) {
+      console.warn('Settings loadBankAccounts error:', e)
+    } finally {
+      setLoadingBanks(false)
+    }
+  }
+
+  useEffect(() => {
+    if (user?.shop_id) {
+      loadBankAccounts()
+    }
+  }, [user?.shop_id])
+
+  const getDummyItems = (presetId) => {
+    switch (presetId) {
+      case 'grocery':
+        return [
+          { name: 'Nestlé Milk 1L TetraPak', brand: 'Nestlé', qty: 3, custom_price: 290, sku: 'GROC-MLK-1L' },
+          { name: 'Super Basmati Rice 5kg', brand: 'Guard', qty: 1, custom_price: 1850, sku: 'GROC-RICE-5K' },
+          { name: 'Cooking Oil 1L Pouch', brand: 'Dalda', qty: 2, custom_price: 540, sku: 'GROC-OIL-1L' }
+        ]
+      case 'apparel':
+        return [
+          { name: 'Cotton Polo T-Shirt Navy (L)', brand: 'Polo', qty: 1, custom_price: 2450, sku: 'APP-POLO-NV-L' },
+          { name: 'Slim Fit Denim Jeans 32', brand: "Levi's", qty: 1, custom_price: 3800, sku: 'APP-JNS-BLU-32' },
+          { name: 'Casual Sports Socks (Pair)', brand: 'Nike', qty: 3, custom_price: 250, sku: 'APP-SOX-01' }
+        ]
+      case 'pharmacy':
+        return [
+          { name: 'Panadol Extra 500mg (Strip)', brand: 'GSK', qty: 5, custom_price: 45, sku: 'MED-PAN-EXT' },
+          { name: 'Augmentin 625mg Tablets', brand: 'GSK', qty: 1, custom_price: 340, sku: 'MED-AUG-625' },
+          { name: 'Surgical Face Mask (Pack 50)', brand: 'Pharmatec', qty: 1, custom_price: 450, sku: 'MED-MSK-50' }
+        ]
+      case 'electronics':
+        return [
+          { name: 'Fast Charger 65W GaN Type-C', brand: 'Anker', qty: 1, custom_price: 3200, sku: 'ELEC-CHG-65W' },
+          { name: 'True Wireless Earbuds Pro', brand: 'Xiaomi', qty: 1, custom_price: 4500, sku: 'ELEC-TWS-PRO' },
+          { name: 'Braided USB-C Cable 2m', brand: 'Baseus', qty: 2, custom_price: 650, sku: 'ELEC-CAB-2M' }
+        ]
+      case 'hardware':
+        return [
+          { name: 'Single Lever Basin Mixer', brand: 'Master', qty: 1, custom_price: 6500, sku: 'SAN-MIX-01' },
+          { name: 'PPRC Elbow 25mm Brass', brand: 'Popular', qty: 6, custom_price: 220, sku: 'PIP-ELB-25' },
+          { name: 'CP Waste Coupling 1.25" Brass', brand: 'Local', qty: 2, custom_price: 450, sku: 'CP-WST-125' }
+        ]
+      default: // general
+        return [
+          { name: 'Wireless Optical Mouse 2.4G', brand: 'Logitech', qty: 1, custom_price: 1850, sku: 'RET-MOU-01' },
+          { name: 'Executive Hardcover Notebook A5', brand: 'Deli', qty: 2, custom_price: 450, sku: 'RET-NTB-A5' },
+          { name: 'Ballpoint Pen Box (Pack of 10)', brand: 'Piano', qty: 1, custom_price: 300, sku: 'RET-PEN-10' }
+        ]
+    }
+  }
+
+  const dummyItems = getDummyItems(form.business_preset)
+  const dummySubtotal = dummyItems.reduce((acc, i) => acc + (i.custom_price * i.qty), 0)
+  const dummyDiscount = 200
+  const dummyTotal = dummySubtotal - dummyDiscount
+
+  const dummyInvoiceData = {
+    sale: {
+      id: 87654321,
+      created_at: new Date().toISOString(),
+      created_by: user?.username || 'Staff Cashier',
+      payment_type: 'cash',
+      paid_amount: dummyTotal,
+    },
+    items: dummyItems,
+    customer: {
+      name: 'Ahmed Tariq',
+      phone: '0300-1234567'
+    },
+    total: dummyTotal,
+    subtotal: dummySubtotal,
+    totalDiscount: dummyDiscount,
+    change: 0
+  }
+
+  const getPreviewHTML = (templateId, size) => {
+    const tempSettings = {
+      name: form.name || 'EdgeX POS Demo',
+      address: form.address || '123 Main Bazaar, EdgeX Market',
+      phone: form.phone || '0301-2616367',
+      logo_url: form.logo_url || '',
+      invoice_footer: form.invoice_footer || 'Thank you! Visit again',
+      quotation_footer: form.quotation_footer || 'This is an estimate only',
+      invoice_prefix: form.invoice_prefix || 'INV',
+      print_size: size,
+      print_template: templateId,
+      shop_id: user?.shop_id
+    }
+    
+    let html = buildBillHTML(dummyInvoiceData, false, tempSettings)
+    
+    // Strip print scripts to prevent triggering browser print dialog in preview iframe
+    html = html.replace(/<script>[\s\S]*?<\/script>/gi, '')
+    
+    return html
+  }
+
+  useEffect(() => {
+    fetchShop()
+    fetchPlanInfo()
+  }, [])
+
+  const fetchShop = async () => {
+    try {
+      if (!navigator.onLine) throw new Error('Offline')
+      // Ensure shop_id is a number for the query
+      const sid = Number(user.shop_id)
+      const fetchPromise = supabase.from('shops').select('*').eq('id', sid).maybeSingle()
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
+      if (error) throw error
+
+      if (data) {
+        setShop(data)
+        setSettingsForm(data)
+        // Store in local DB for offline access
+        await db.shops.put(JSON.parse(JSON.stringify(data)))
+      }
+    } catch (e) {
+      console.log('Settings: Loading from local DB (Offline)')
+      try {
+        const sid = Number(user.shop_id)
+        const localData = await db.shops.get(sid)
+        if (localData) {
+          setShop(localData)
+          setSettingsForm(localData)
+        }
+      } catch (err) { console.error('Local Shop Fetch Error:', err) }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const setSettingsForm = (data) => {
+    // Read the full saved settings from localStorage — this is what the user last saved.
+    let saved = {}
+    const sid = user?.shop_id
+    try { saved = JSON.parse((sid ? localStorage.getItem(`shop_settings_${sid}`) : null) || '{}') } catch (_) {}
+
+    setForm(prev => {
+      const updated = {
+        name:                 data.name                 || saved.name                 || prev.name                 || 'EdgeX POS',
+        phone:                data.phone                || saved.phone                || prev.phone                || '',
+        address:              data.address              || saved.address              || prev.address              || '',
+        logo_url:             data.logo_url             || saved.logo_url             || prev.logo_url             || '',
+        invoice_footer:       data.invoice_footer       || saved.invoice_footer       || prev.invoice_footer       || 'Thank you! Visit again',
+        quotation_footer:     data.quotation_footer     || saved.quotation_footer     || prev.quotation_footer     || 'This is an estimate only',
+        print_size:           data.print_size           || saved.print_size           || prev.print_size           || 'thermal',
+        print_mode:           data.print_mode           || saved.print_mode           || prev.print_mode           || 'manual',
+        wa_reminder_template: data.wa_reminder_template || saved.wa_reminder_template || prev.wa_reminder_template || '',
+        wa_bill_template:     data.wa_bill_template     || saved.wa_bill_template     || prev.wa_bill_template     || '',
+        wa_reorder_template:  data.wa_reorder_template  || saved.wa_reorder_template  || prev.wa_reorder_template  || '',
+        invoice_prefix:       data.invoice_prefix       || saved.invoice_prefix       || prev.invoice_prefix       || '',
+        business_preset:      data.business_preset      || saved.business_preset      || prev.business_preset      || 'general',
+        pricing_mode:         data.pricing_mode         || saved.pricing_mode         || prev.pricing_mode         || 'hidden',
+        custom_price_label:   data.custom_price_label   || saved.custom_price_label   || prev.custom_price_label   || '',
+        tax_number:           data.tax_number           || saved.tax_number           || prev.tax_number           || '',
+      }
+
+      // Sync immediately to localStorage to ensure consistent branding/printing across pages
+      if (sid) {
+        const fullSettings = { ...updated, print_template: data.print_template || saved.print_template || localStorage.getItem(`print_template_${sid}`) || '2' }
+        localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(fullSettings))
+        localStorage.setItem(`shop_name_${sid}`, updated.name)
+        if (updated.logo_url) {
+          localStorage.setItem(`shop_logo_${sid}`, updated.logo_url)
+        }
+      }
+      return updated
+    })
+
+    const tmpl = data.print_template || saved.print_template || (sid ? localStorage.getItem(`print_template_${sid}`) : null) || '2'
+    setPrintTemplate(tmpl)
+    if (sid) {
+      localStorage.setItem(`print_template_${sid}`, tmpl)
+    }
+
+    const logo = data.logo_url || saved.logo_url || (sid ? localStorage.getItem(`shop_logo_${sid}`) : null) || ''
+    setLogoUrl(logo)
+    if (sid && logo) {
+      localStorage.setItem(`shop_logo_${sid}`, logo)
+    }
+  }
+
+  const fetchPlanInfo = async () => {
+    const sid = user?.shop_id
+    // Try localStorage first for instant info
+    const cached = sid ? localStorage.getItem(`plan_limits_${sid}`) : null
+    if (cached) {
+      try {
+        setPlanInfo(JSON.parse(cached))
+      } catch (e) { /* ignore */ }
+    }
+
+    if (!navigator.onLine || !sid) return
+    try {
+      const { data, error } = await supabase.rpc('get_shop_config', { p_shop_id: sid })
+      if (!error && data) {
+        setPlanInfo(data)
+        localStorage.setItem(`plan_limits_${sid}`, JSON.stringify(data))
+        if (data.features) {
+          localStorage.setItem(`plan_features_${sid}`, JSON.stringify(data.features))
+        }
+      }
+    } catch (e) {
+      console.error('Settings Plan Fetch Error', e)
+    }
+  }
+
+  const handleUpdate = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+
+    const sid = Number(user.shop_id)
+
+    // Merge latest logo and print template into full settings for localStorage / bill printing
+    const fullSettings = { ...form, logo_url: logoUrl, print_template: printTemplate }
+
+    // Save everything to localStorage immediately — this is the source of truth
+    // for print preferences, WA templates, footers, print size etc.
+    localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(fullSettings))
+    localStorage.setItem(`shop_name_${sid}`, form.name || 'EdgeX POS')
+
+    // Send all columns that exist in the shops table to Supabase.
+    const supabasePayload = {
+      name: form.name,
+      phone: form.phone,
+      address: form.address,
+      invoice_footer: form.invoice_footer,
+      quotation_footer: form.quotation_footer,
+      print_size: form.print_size,
+      print_mode: form.print_mode,
+      print_template: printTemplate,
+      wa_reminder_template: form.wa_reminder_template,
+      wa_bill_template: form.wa_bill_template,
+      wa_reorder_template: form.wa_reorder_template,
+      invoice_prefix: form.invoice_prefix,
+    }
+
+    try {
+      if (!navigator.onLine) throw new TypeError('Failed to fetch')
+
+      // Use RPC to bypass RLS (direct table UPDATE is silently blocked)
+      const { data: rpcResult, error } = await supabase.rpc('update_shop_settings', {
+        p_shop_id: sid,
+        p_name: form.name,
+        p_phone: form.phone,
+        p_address: form.address,
+        p_invoice_footer: form.invoice_footer,
+        p_quotation_footer: form.quotation_footer,
+        p_print_size: form.print_size,
+        p_print_mode: form.print_mode,
+        p_print_template: printTemplate,
+        p_wa_reminder_template: form.wa_reminder_template,
+        p_wa_bill_template: form.wa_bill_template,
+        p_wa_reorder_template: form.wa_reorder_template,
+        p_invoice_prefix: form.invoice_prefix,
+      })
+      if (error) throw error
+      if (rpcResult && !rpcResult.success) throw new Error(rpcResult.error || 'Update failed')
+
+      // Also persist full settings to Dexie for offline reads
+      await db.shops.put({ ...fullSettings, id: sid })
+
+      window.dispatchEvent(new Event('storage'))
+      alert('Settings saved successfully! ✅')
+    } catch (err) {
+      const errMsg = err?.message || String(err)
+      if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
+        await db.shops.put({ ...fullSettings, id: sid })
+        await addToSyncQueue('shops', 'UPDATE', { id: sid, ...supabasePayload })
+        window.dispatchEvent(new Event('storage'))
+        alert('Offline mode: Settings saved to device. Will sync when online. 🔄')
+      } else {
+        alert('Save failed: ' + errMsg)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Compress image using canvas — reduces a 2MB photo to ~15-30KB
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      const objectUrl = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl)
+        const MAX = 300
+        let w = img.width
+        let h = img.height
+        // Scale down proportionally
+        if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX }
+        else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX }
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        // JPEG at 75% quality — typically 10-30KB for a logo
+        resolve(canvas.toDataURL('image/jpeg', 0.75))
+      }
+      img.onerror = () => {
+        // Fallback: read as-is if canvas fails
+        const reader = new FileReader()
+        reader.onload = evt => resolve(evt.target.result)
+        reader.readAsDataURL(file)
+      }
+      img.src = objectUrl
+    })
+  }
+
+  const handleLogoUpload = async (e) => {
+    const sid = Number(user.shop_id)
+    const file = e.target.files[0]
+    if (!file) return
+
+    setSaving(true)
+    try {
+      const compressed = await compressImage(file)
+
+      // 1. Update dedicated logo state immediately — this is the single source of truth
+      setLogoUrl(compressed)
+      localStorage.setItem(`shop_logo_${sid}`, compressed)   // shop-specific key
+
+      // 2. Keep form.logo_url in sync so bill printing works
+      // Use functional updater but write localStorage AFTER setForm to avoid race
+      const updatedForm = { ...form, logo_url: compressed }
+      setForm(updatedForm)
+      localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(updatedForm))
+
+      // 3. Save to Dexie
+      try { await db.shops.update(sid, { logo_url: compressed }) } catch (_) { /* ignore */ }
+
+      // 4. Notify Layout (and any other listener) to refresh logo immediately
+      window.dispatchEvent(new Event('storage'))
+
+      // 5. Save to Supabase via RPC — required so logo shows on other devices
+      if (navigator.onLine) {
+        const { data: rpcResult, error } = await supabase.rpc('update_shop_settings', {
+          p_shop_id: sid,
+          p_logo_url: compressed,
+        })
+        if (error || (rpcResult && !rpcResult.success)) {
+          const msg = error?.message || rpcResult?.error || 'Unknown error'
+          console.warn('Logo Supabase save failed:', msg)
+          alert('Logo saved on this device ✅\n⚠️ Could not sync to server: ' + msg + '\nLogo will not show on other devices until synced.')
+        } else {
+          alert('Logo saved & synced to server ✅')
+        }
+      } else {
+        alert('Logo saved on this device ✅\n(Offline — will sync when connected)')
+      }
+    } catch (err) {
+      console.error('Logo upload error:', err)
+      alert('Logo upload failed: ' + (err?.message || String(err)))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const printSalesReport = async () => {
+    setReportLoading(true)
+    try {
+      const now = new Date()
+      let fromDate
+      if (reportPeriod === 'today') {
+        fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+      } else if (reportPeriod === 'week') {
+        const d = new Date(now); d.setDate(d.getDate() - 6); d.setHours(0,0,0,0)
+        fromDate = d.toISOString()
+      } else {
+        const d = new Date(now.getFullYear(), now.getMonth(), 1)
+        fromDate = d.toISOString()
+      }
+
+      let sales = [], saleItems = []
+      if (navigator.onLine) {
+        const { data: s } = await supabase.from('sales').select('*').eq('shop_id', user.shop_id).gte('created_at', fromDate).order('created_at', { ascending: false })
+        sales = s || []
+        if (sales.length > 0) {
+          const ids = sales.map(s => s.id)
+          const { data: si } = await supabase.from('sale_items').select('*').in('sale_id', ids)
+          saleItems = si || []
+        }
+      } else {
+        sales = await db.sales.where('shop_id').equals(user.shop_id).filter(s => s.created_at >= fromDate).toArray()
+        const ids = sales.map(s => s.id)
+        saleItems = await db.sale_items.where('sale_id').anyOf(ids).toArray()
+      }
+
+      if (sales.length === 0) {
+        alert('No sales found for the selected period.')
+        return
+      }
+
+      const shopSettings = { ...form, print_template: printTemplate }
+      printHTML(buildSalesReportHTML(sales, saleItems, reportPeriod, shopSettings))
+    } catch (err) {
+      alert('Report failed: ' + err.message)
+    } finally {
+      setReportLoading(false)
+    }
+  }
+
+  if (loading) return <div className="p-8">Loading settings...</div>
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="flex items-center gap-3 mb-2">
+        <h1 className="text-2xl font-bold text-gray-800">⚙️ Settings</h1>
+        <span className="px-2 py-1 bg-gray-100 text-gray-400 text-[10px] font-bold uppercase rounded tracking-widest italic tracking-tighter">Shop ID: {user.shop_id}</span>
+      </div>
+
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-gray-50 px-6 py-4 border-b">
+          <h2 className="font-bold text-gray-700">Shop Profile</h2>
+          <p className="text-xs text-gray-400">This information will appear on your prints and invoices</p>
+        </div>
+
+        <form onSubmit={handleUpdate} className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-bold text-gray-600 mb-1">Store / Shop Name</label>
+              <input
+                type="text"
+                required
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-lg font-medium"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-bold text-gray-600 mb-1">Store Logo</label>
+              <div className="flex gap-4 items-center">
+                {/* Preview — reads from logoUrl state, never from form */}
+                <div className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {logoUrl
+                    ? <img src={logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                    : <span className="text-2xl">🏪</span>
+                  }
+                </div>
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="file"
+                    id="logo-upload"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleLogoUpload}
+                  />
+                  <label
+                    htmlFor="logo-upload"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer transition shadow-sm"
+                  >
+                    {saving ? '⏳ Saving...' : '📁 Upload New Logo'}
+                  </label>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const sid = Number(user.shop_id)
+                        setLogoUrl('')
+                        localStorage.removeItem(`shop_logo_${sid}`)
+                        const updatedForm = { ...form, logo_url: '' }
+                        setForm(updatedForm)
+                        localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(updatedForm))
+                        window.dispatchEvent(new Event('storage'))
+                        try { await db.shops.update(sid, { logo_url: '' }) } catch (_) { /* ignore */ }
+                        if (navigator.onLine) {
+                          supabase.rpc('update_shop_settings', { p_shop_id: sid, p_logo_url: '' }).then(() => {})
+                        }
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700 font-bold text-left"
+                    >
+                      ✕ Remove Logo
+                    </button>
+                  )}
+                  <p className="text-[10px] text-gray-400 leading-relaxed">JPG, PNG, or SVG. Saved automatically on select.</p>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-600 mb-1">Contact Phone</label>
+              <input
+                type="text"
+                value={form.phone}
+                onChange={e => setForm({ ...form, phone: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="e.g. 0300-1234567"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-600 mb-1">Location / City</label>
+              <input
+                type="text"
+                value={form.address}
+                onChange={e => setForm({ ...form, address: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="e.g. Lahore, Pakistan"
+              />
+            </div>
+          </div>
+
+
+
+          {/* Mobile OS Theme System */}
+          <div className="pt-5 border-t">
+            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Smartphone size={18} className="text-blue-600" />
+                <h3 className="text-sm font-black text-gray-800 dark:text-gray-100 uppercase tracking-wider">Mobile OS Theme & System Aesthetics</h3>
+              </div>
+              <button
+                type="button"
+                onClick={toggleTheme}
+                data-sound="toggle"
+                className="px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-xs font-bold bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-1.5 transition"
+              >
+                <span>{isDark ? '🌙 Dark Mode' : '☀️ Light Mode'}</span>
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Switch the visual design language between 5 premier mobile device systems (Apple Clean, Apple Glass, Google Pixel, OnePlus OxygenOS, Samsung One UI).
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+              {THEME_STYLES.map(theme => {
+                const isSelected = themeStyle === theme.id
+                return (
+                  <div
+                    key={theme.id}
+                    onClick={() => setThemeStyle(theme.id)}
+                    data-sound="toggle"
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex flex-col justify-between ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 shadow-sm'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-black text-sm text-gray-800 dark:text-gray-100 flex items-center gap-1.5">
+                          <span className="text-base">{theme.icon}</span>
+                          <span>{theme.name}</span>
+                        </span>
+                        {isSelected && <span className="text-xs text-blue-600 dark:text-blue-400 font-black">✓ Active</span>}
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">{theme.description}</p>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{theme.category}</span>
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-white shadow-xs"
+                        style={{ backgroundColor: theme.accentColor }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Pricing Model & Terminology Configuration */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-5 border-t">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Tag size={16} className="text-blue-600" />
+                <label className="block text-sm font-bold text-gray-700">Secondary / Catalog Price Field</label>
+              </div>
+              <select
+                value={form.pricing_mode}
+                onChange={e => setForm({ ...form, pricing_mode: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold text-sm"
+              >
+                <option value="hidden">Standard Retail (Only Cost & Sale Price)</option>
+                <option value="mrp">MRP / Printed List Price (Recommended for Grocery / Pharmacy / Mart)</option>
+                <option value="c_rate">Company Rate (C.Rate) with Discount Matrix (Hardware / Sanitary)</option>
+                <option value="custom">Custom Tag / Wholesale Price Label</option>
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Controls whether a catalog rate/MRP column is visible in Products, Inventory, and POS.
+              </p>
+            </div>
+
+            {form.pricing_mode === 'custom' && (
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Custom Price Label Name</label>
+                <input
+                  type="text"
+                  value={form.custom_price_label}
+                  onChange={e => setForm({ ...form, custom_price_label: e.target.value })}
+                  placeholder="e.g. Tag Price / MSRP / Distributor Price"
+                  className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+              </div>
+            )}
+
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Receipt size={16} className="text-blue-600" />
+                <label className="block text-sm font-bold text-gray-700">Tax / NTN / STRN No. (Optional)</label>
+              </div>
+              <input
+                type="text"
+                value={form.tax_number}
+                onChange={e => setForm({ ...form, tax_number: e.target.value })}
+                placeholder="e.g. NTN: 1234567-8 or STRN / GST No."
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">Printed at the top of customer receipts & invoices</p>
+            </div>
+          </div>
+
+          {/* POS Layout Preference */}
+          <div className="pt-5 border-t">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-lg">🖥️</span>
+              <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider">POS Screen & Checkout Layout</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Choose how the product cart and checkout controls are arranged on your POS register screen.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div
+                onClick={() => setForm(prev => ({ ...prev, pos_layout: 'two_stage' }))}
+                className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex flex-col justify-between ${
+                  (form.pos_layout || 'two_stage') === 'two_stage'
+                    ? 'border-blue-600 bg-blue-50/50 shadow-sm'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-black text-sm text-gray-800">⚡ Two-Stage Flow</span>
+                    {(form.pos_layout || 'two_stage') === 'two_stage' && (
+                      <span className="text-xs text-blue-600 font-black">✓ Active</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-500 leading-snug">
+                    <strong className="text-gray-700">Shopify / Square style:</strong> Maximum vertical space for cart list (~15 items visible). Tapping "Charge (F4)" opens a slide-up tender sheet with quick cash note chips and online wallets.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                onClick={() => setForm(prev => ({ ...prev, pos_layout: 'bottom_dock' }))}
+                className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex flex-col justify-between ${
+                  form.pos_layout === 'bottom_dock'
+                    ? 'border-blue-600 bg-blue-50/50 shadow-sm'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-black text-sm text-gray-800">🖥️ Global Bottom Dock</span>
+                    {form.pos_layout === 'bottom_dock' && (
+                      <span className="text-xs text-blue-600 font-black">✓ Active</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-500 leading-snug">
+                    <strong className="text-gray-700">Supermarket / Register style:</strong> Tendered input, cash chips, and payment buttons span horizontally at the bottom of the screen. Right cart list is 100% full height.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                onClick={() => setForm(prev => ({ ...prev, pos_layout: 'compact_dock' }))}
+                className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex flex-col justify-between ${
+                  form.pos_layout === 'compact_dock'
+                    ? 'border-blue-600 bg-blue-50/50 shadow-sm'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-black text-sm text-gray-800">📱 Compact Sidebar</span>
+                    {form.pos_layout === 'compact_dock' && (
+                      <span className="text-xs text-blue-600 font-black">✓ Active</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-500 leading-snug">
+                    <strong className="text-gray-700">All-in-one Sidebar:</strong> All payment buttons, quick cash notes, and tender inputs stay inside the right sidebar below the cart.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+            <div>
+              <label className="block text-sm font-bold text-gray-600 mb-1">Invoice Footer (Urdu/Eng)</label>
+              <input
+                type="text"
+                value={form.invoice_footer}
+                onChange={e => setForm({ ...form, invoice_footer: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="e.g. Thank you! Visit again"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-600 mb-1">Quotation Footer Note</label>
+              <input
+                type="text"
+                value={form.quotation_footer}
+                onChange={e => setForm({ ...form, quotation_footer: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="e.g. This is an estimate only"
+              />
+            </div>
+          </div>
+
+          <div className="pt-4 border-t">
+            <div className="max-w-xs">
+              <label className="block text-sm font-bold text-gray-600 mb-1">Invoice Number Prefix</label>
+              <input
+                type="text"
+                value={form.invoice_prefix}
+                onChange={e => setForm({ ...form, invoice_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9\-]/g, '').slice(0, 10) })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                placeholder="e.g. MALIK or INV"
+                maxLength={10}
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Invoices will appear as: <span className="font-mono font-bold text-blue-600">{form.invoice_prefix || 'INV'}-00001234</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+            <div>
+              <label className="block text-sm font-bold text-gray-600 mb-1">Print Size</label>
+              <select
+                value={form.print_size}
+                onChange={e => setForm({ ...form, print_size: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold"
+              >
+                <option value="thermal">Thermal (80mm)</option>
+                <option value="a4">A4 (Full Page)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-600 mb-1">Print Flow</label>
+              <select
+                value={form.print_mode}
+                onChange={e => setForm({ ...form, print_mode: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold"
+              >
+                <option value="manual">Manual (Show Dialog)</option>
+                <option value="auto">Auto (Print Direct)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+            <div className="md:col-span-2">
+              <h3 className="text-sm font-black text-blue-600 uppercase tracking-wider mb-3">WhatsApp Messaging Templates</h3>
+              <p className="text-[10px] text-gray-400 mb-4">
+                Customer templates: <code className="bg-gray-100 px-1 rounded">[Name]</code> <code className="bg-gray-100 px-1 rounded">[Amount]</code> <code className="bg-gray-100 px-1 rounded">[Shop Name]</code> <code className="bg-gray-100 px-1 rounded">[ID]</code>
+                &nbsp;·&nbsp; Reorder template: <code className="bg-gray-100 px-1 rounded">[Supplier Name]</code> <code className="bg-gray-100 px-1 rounded">[Shop Name]</code> <code className="bg-gray-100 px-1 rounded">[Items]</code>
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-bold text-gray-600 mb-1">💬 Debt Reminder Template</label>
+              <textarea
+                value={form.wa_reminder_template}
+                onChange={e => setForm({ ...form, wa_reminder_template: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm h-20"
+                placeholder="Hello [Name], your balance is Rs. [Amount]..."
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-bold text-gray-600 mb-1">🧾 New Bill / Sale Template</label>
+              <textarea
+                value={form.wa_bill_template}
+                onChange={e => setForm({ ...form, wa_bill_template: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm h-20"
+                placeholder="Hello [Name], thank you for shopping! Bill #[ID] for Rs. [Amount]..."
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-bold text-gray-600 mb-1">📦 Low Stock Reorder Template (Inventory → Reorder WA)</label>
+              <textarea
+                value={form.wa_reorder_template}
+                onChange={e => setForm({ ...form, wa_reorder_template: e.target.value })}
+                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm h-24"
+                placeholder="Assalam-o-Alaikum *[Supplier Name]*!&#10;&#10;*[Shop Name]* se order:&#10;&#10;[Items]&#10;&#10;Meharbani farma kar supply karein."
+              />
+              <p className="text-[10px] text-gray-400 mt-1">
+                <code className="bg-gray-100 px-1 rounded">[Items]</code> is auto-filled with low stock product names, current stock and suggested reorder quantity.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t flex items-center justify-between">
+            <div className="text-[10px] text-gray-400 font-medium max-w-[300px]">
+              Note: Changing the shop name will affect all future invoices and quotations immediately.
+            </div>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition shadow-lg shadow-blue-100 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Update Profile'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* ── Business Bank Accounts & Balances ── */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-slate-700 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+              <Landmark className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800 dark:text-white text-base">Business Bank Accounts & Balances</h3>
+              <p className="text-xs text-gray-400 dark:text-slate-400 mt-0.5">
+                Manage shop settlement accounts, bank balances, and automatic purchase deductions.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowBankModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" /> Add Bank Account
+          </button>
+        </div>
+
+        {/* Bank Accounts Grid */}
+        {loadingBanks ? (
+          <div className="text-center py-8 text-gray-400 text-xs">Loading accounts...</div>
+        ) : bankAccounts.length === 0 ? (
+          <div className="text-center py-8 px-4 border border-dashed border-gray-200 dark:border-slate-700 rounded-2xl bg-gray-50/50 dark:bg-slate-900/30">
+            <Landmark className="w-8 h-8 mx-auto text-gray-300 dark:text-slate-600 mb-2" />
+            <p className="font-bold text-gray-700 dark:text-slate-300 text-sm">No Bank Accounts Configured</p>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 max-w-sm mx-auto">
+              Add a bank account with your current balance. Purchases settled from that account will deduct automatically.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowBankModal(true)}
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400 font-bold text-xs rounded-lg hover:bg-blue-100 transition"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Your First Account
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {bankAccounts.map(account => (
+              <div
+                key={account.id}
+                className="p-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50/60 dark:bg-slate-900/40 hover:border-blue-300 dark:hover:border-blue-700 transition flex flex-col justify-between space-y-3"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 pr-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h4 className="font-bold text-gray-900 dark:text-white text-sm truncate">
+                        {account.account_name}
+                      </h4>
+                      {account.is_default && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300">
+                          Default
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 mt-0.5">
+                      {account.bank_name || 'Bank / Institution'}
+                    </p>
+                    {account.account_number && (
+                      <p className="text-[11px] font-mono text-gray-400 dark:text-slate-500 mt-0.5 truncate">
+                        {account.account_number}
+                      </p>
+                    )}
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400 shrink-0">
+                    Active
+                  </span>
+                </div>
+
+                <div className="pt-2 border-t border-gray-200/80 dark:border-slate-700/80 flex items-baseline justify-between">
+                  <span className="text-[11px] text-gray-500 dark:text-slate-400 font-medium">Available Balance</span>
+                  <span className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">
+                    Rs. {Number(account.current_balance || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+          <div>
+            <h3 className="font-bold text-gray-800">Data Management & Backup</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Import, export or reset your local store data.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {hasFeature('offline_sync') && <button
+              onClick={async () => {
+                if (!navigator.onLine) {
+                  alert('Aap abhi offline hain! Pehle internet se connect karein.');
+                  return;
+                }
+                setSaving(true);
+                try {
+                  const shopEq = 'shop_id';
+                  const [p, c, cu, su, sa, pu, ex, us] = await Promise.all([
+                    supabase.from('products').select('*').eq(shopEq, user.shop_id),
+                    supabase.from('categories').select('*').eq(shopEq, user.shop_id),
+                    supabase.from('customers').select('*').eq(shopEq, user.shop_id),
+                    supabase.from('suppliers').select('*').eq(shopEq, user.shop_id),
+                    supabase.from('sales').select('*').eq(shopEq, user.shop_id),
+                    supabase.from('purchases').select('*').eq(shopEq, user.shop_id),
+                    supabase.from('expenses').select('*').eq(shopEq, user.shop_id),
+                    supabase.from('users').select('*').eq(shopEq, user.shop_id)
+                  ]);
+
+                  const saleIds = sa.data ? sa.data.map(s => s.id) : [];
+                  let siReq = { data: [] };
+                  if (saleIds.length > 0) {
+                    siReq = await supabase.from('sale_items').select('*').in('sale_id', saleIds);
+                  }
+
+                  const purchaseIds = pu.data ? pu.data.map(p => p.id) : [];
+                  let piReq = { data: [] };
+                  if (purchaseIds.length > 0) {
+                    piReq = await supabase.from('purchase_items').select('*').in('purchase_id', purchaseIds);
+                  }
+
+                  const safePut = async (table, reqData) => {
+                    if (reqData && reqData.length > 0) {
+                      await db[table].clear();
+                      await db[table].bulkPut(JSON.parse(JSON.stringify(reqData)));
+                    }
+                  };
+
+                  await safePut('products', p.data);
+                  await safePut('categories', c.data);
+                  await safePut('customers', cu.data);
+                  await safePut('suppliers', su.data);
+                  await safePut('sales', sa.data);
+                  await safePut('purchases', pu.data);
+                  await safePut('expenses', ex.data);
+                  await safePut('users', us.data);
+                  await safePut('sale_items', siReq.data);
+                  await safePut('purchase_items', piReq.data);
+
+                  alert('Sari online data successfully local device mein save ho gayi hai! Ab aap offline aram se kaam kar sakte hain. ✅');
+                } catch (e) {
+                  alert('Sync failed: ' + e.message);
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              disabled={saving}
+              className="px-4 py-2 border border-green-200 bg-green-50 hover:bg-green-100 text-green-700 rounded-xl transition font-bold text-sm shadow-sm disabled:opacity-50"
+            >
+              {saving ? '⏳ Downloading...' : '⬇️ Download All for Offline'}
+            </button>}
+            <button
+              onClick={async () => {
+                if (confirm('Local cache clear krne se data re-fetch hoga. Continue?')) {
+                  await db.products.clear()
+                  await db.categories.clear()
+                  await db.customers.clear()
+                  await db.suppliers.clear()
+                  await db.sales.clear()
+                  await db.sale_items.clear()
+                  await db.purchases.clear()
+                  await db.purchase_items.clear()
+                  await db.expenses.clear()
+                  await db.users.clear()
+                  alert('All local cache cleared! Page refresh karein.')
+                  alert('Cache reset instructions complete.')
+                }
+              }}
+              className="px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl transition font-bold text-sm shadow-sm"
+            >
+              🧹 Clear All Cache
+            </button>
+            {hasFeature('offline_sync') && <button
+              onClick={async () => {
+                await syncOfflineData()
+                alert('Sync process triggered! Check status in header.')
+                fetchShop()
+              }}
+              className="px-4 py-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl transition font-bold text-sm shadow-sm"
+            >
+              🔄 Sync Now
+            </button>}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {hasFeature('data_export') ? (
+          <div className="p-4 bg-green-50/50 rounded-2xl border border-green-100 flex flex-col gap-3">
+            <div>
+              <p className="font-bold text-green-800 text-sm">Export All Data</p>
+              <p className="text-[10px] text-green-600">Save a complete backup of all products, customers, and suppliers.</p>
+            </div>
+            <button
+              onClick={async () => {
+                try {
+                  const data = {
+                    products: await db.products.toArray(),
+                    categories: await db.categories.toArray(),
+                    brands: await db.brands.toArray(),
+                    customers: await db.customers.toArray(),
+                    suppliers: await db.suppliers.toArray(),
+                    sales: await db.sales.toArray(),
+                    sale_items: await db.sale_items.toArray(),
+                    purchases: await db.purchases.toArray(),
+                    purchase_items: await db.purchase_items.toArray(),
+                    expenses: await db.expenses.toArray(),
+                    users: await db.users.toArray(),
+                    sync_queue: await db.sync_queue.toArray(),
+                    exported_at: new Date().toISOString(),
+                    shop_id: user.shop_id,
+                    version: '3.0'
+                  }
+                  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `EdgeXPOS_FullBackup_${new Date().toISOString().slice(0, 10)}.json`
+                  document.body.appendChild(a)
+                  a.click()
+                  document.body.removeChild(a)
+                  URL.revokeObjectURL(url)
+                  alert('Full backup downloaded! 💾 Is file ko safe rakhein.')
+                } catch (err) {
+                  alert('Backup failed: ' + err.message)
+                }
+              }}
+              className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-bold text-xs shadow-md"
+            >
+              📥 Download System Backup (.json)
+            </button>
+
+            <button
+              onClick={async () => {
+                try {
+                  const data = {
+                    Products: await db.products.toArray(),
+                    Customers: await db.customers.toArray(),
+                    Suppliers: await db.suppliers.toArray(),
+                    Sales: await db.sales.toArray(),
+                    SaleItems: await db.sale_items.toArray(),
+                    Purchases: await db.purchases.toArray(),
+                    Expenses: await db.expenses.toArray()
+                  }
+
+                  const workbook = XLSX.utils.book_new()
+
+                  // Convert each table to a worksheet and append
+                  for (const [sheetName, rows] of Object.entries(data)) {
+                    // Only add sheet if there is data
+                    if (rows.length > 0) {
+                      const worksheet = XLSX.utils.json_to_sheet(rows)
+                      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+                    } else {
+                      // Add empty sheet so user knows it exported but was empty
+                      const worksheet = XLSX.utils.json_to_sheet([{ Message: 'No data exists' }])
+                      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+                    }
+                  }
+
+                  const fileName = `EdgeXPOS_ExcelReports_${new Date().toISOString().slice(0, 10)}.xlsx`
+                  XLSX.writeFile(workbook, fileName)
+                  alert('Excel reports generated and downloaded successfully! 📊')
+                } catch (err) {
+                  alert('Excel Export failed: ' + err.message)
+                }
+              }}
+              className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition font-bold text-xs shadow-md"
+            >
+              📊 Export to Excel
+            </button>
+          </div>
+          ) : (
+          <div className="p-4 bg-gray-50/50 rounded-2xl border border-gray-200 flex flex-col gap-3 opacity-60">
+            <div>
+              <p className="font-bold text-gray-500 text-sm flex items-center gap-2">Export All Data <span className="text-xs">🔒</span></p>
+              <p className="text-[10px] text-gray-400">Upgrade your plan to enable data export and backup.</p>
+            </div>
+          </div>
+          )}
+
+          <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 flex flex-col gap-3">
+            <div>
+              <p className="font-bold text-blue-800 text-sm">Import / Restore Data</p>
+              <p className="text-[10px] text-blue-600">Restore your database from a previous backup file.</p>
+            </div>
+            <div className="relative">
+              <input
+                type="file"
+                accept=".json"
+                id="import-backup"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files[0]
+                  if (!file) return
+
+                  if (!confirm('Warning: Is se apka mojooda local data replace ho jayega. Continue?')) return
+
+                  const reader = new FileReader()
+                  reader.onload = async (event) => {
+                    try {
+                      const data = JSON.parse(event.target.result)
+
+                      // Basic Validation
+                      if (!data.products || !data.customers) {
+                        throw new Error('Invalid backup file format.')
+                      }
+
+                      // Restore tables
+                      await db.transaction('rw',
+                        db.products, db.categories, db.brands, db.customers, db.suppliers,
+                        db.sales, db.sale_items, db.purchases, db.purchase_items,
+                        db.expenses, db.users, async () => {
+
+                          await db.products.clear()
+                          await db.categories.clear()
+                          await db.brands.clear()
+                          await db.customers.clear()
+                          await db.suppliers.clear()
+                          await db.sales.clear()
+                          await db.sale_items.clear()
+                          await db.purchases.clear()
+                          await db.purchase_items.clear()
+                          await db.expenses.clear()
+                          await db.users.clear()
+
+                          if (data.products?.length) await db.products.bulkAdd(data.products)
+                          if (data.categories?.length) await db.categories.bulkAdd(data.categories)
+                          if (data.brands?.length) await db.brands.bulkAdd(data.brands)
+                          if (data.customers?.length) await db.customers.bulkAdd(data.customers)
+                          if (data.suppliers?.length) await db.suppliers.bulkAdd(data.suppliers)
+                          if (data.sales?.length) await db.sales.bulkAdd(data.sales)
+                          if (data.sale_items?.length) await db.sale_items.bulkAdd(data.sale_items)
+                          if (data.purchases?.length) await db.purchases.bulkAdd(data.purchases)
+                          if (data.purchase_items?.length) await db.purchase_items.bulkAdd(data.purchase_items)
+                          if (data.expenses?.length) await db.expenses.bulkAdd(data.expenses)
+                          if (data.users?.length) await db.users.bulkAdd(data.users)
+                        })
+
+                      alert('Data restored successfully! ✅ Page refresh ho raha hai.')
+                      window.location.reload()
+                    } catch (err) {
+                      alert('Import failed: ' + err.message)
+                    }
+                  }
+                  reader.readAsText(file)
+                }}
+              />
+              <label
+                htmlFor="import-backup"
+                className="flex items-center justify-center w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-bold text-xs cursor-pointer shadow-md"
+              >
+                📤 Upload & Restore
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      {/* ── Billing Template Selector ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-gray-50 px-6 py-4 border-b">
+          <h2 className="font-bold text-gray-700">Billing Template</h2>
+          <p className="text-xs text-gray-400">Choose how your receipts and invoices look when printed. Works for both 80mm thermal and A4.</p>
+        </div>
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
+          {[
+            { id: '1', name: 'Simple', desc: 'Minimal & clean. No logo area, compact spacing. Fast to print.', icon: '📄' },
+            { id: '2', name: 'Classic', desc: 'Standard receipt style with logo, dashed lines and item table. Recommended.', icon: '🧾' },
+            { id: '3', name: 'Professional', desc: 'Full invoice look — letterhead, invoice number box, PAID stamp, signature line.', icon: '📋' },
+            { id: '4', name: 'Modern', desc: 'Elegant & spacious. System sans-serif font, thin grey borders, cards for totals. (Premium)', icon: '✨' },
+          ].map(t => (
+            <div
+              key={t.id}
+              className={`flex flex-col justify-between p-4 rounded-xl border-2 transition ${printTemplate === t.id ? 'border-blue-500 bg-blue-50/30' : 'border-gray-200 hover:border-gray-300'}`}
+            >
+              <div>
+                <div className="text-2xl mb-2">{t.icon}</div>
+                <div className="font-bold text-gray-800 flex items-center gap-2">
+                  {t.name}
+                  {printTemplate === t.id && <span className="text-[10px] font-black bg-blue-500 text-white px-2 py-0.5 rounded-full uppercase">Active</span>}
+                </div>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed mb-4">{t.desc}</p>
+              </div>
+              
+              <div className="flex gap-2 mt-auto pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sid = user?.shop_id
+                    setPrintTemplate(t.id)
+                    localStorage.setItem(sid ? `print_template_${sid}` : 'print_template', t.id)
+                    if (sid) {
+                      let saved = {}
+                      try { saved = JSON.parse(localStorage.getItem(`shop_settings_${sid}`) || '{}') } catch (_) {}
+                      saved.print_template = t.id
+                      localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(saved))
+                      if (navigator.onLine) {
+                        supabase.rpc('update_shop_settings', {
+                          p_shop_id: Number(sid),
+                          p_print_template: t.id
+                        }).catch(err => console.warn('Could not sync print template choice:', err))
+                      }
+                    }
+                  }}
+                  className={`flex-1 text-center py-1.5 px-3 rounded-lg text-xs font-bold transition ${printTemplate === t.id ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}
+                >
+                  {printTemplate === t.id ? 'Selected' : 'Select'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewTemplateId(t.id)
+                    setPreviewSize(form.print_size || 'thermal')
+                  }}
+                  className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 px-2 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm"
+                  title="Quick View Template"
+                >
+                  👁️ Preview
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Sales Reports ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-gray-50 px-6 py-4 border-b">
+          <h2 className="font-bold text-gray-700">Print Sales Report</h2>
+          <p className="text-xs text-gray-400">Generate and print a daily, weekly, or monthly sales summary with revenue breakdown.</p>
+        </div>
+        <div className="p-6">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { id: 'today', label: "📅 Today" },
+                { id: 'week',  label: "📆 This Week" },
+                { id: 'month', label: "🗓️ This Month" },
+              ].map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setReportPeriod(p.id)}
+                  className={`px-4 py-2 rounded-xl border font-bold text-sm transition ${reportPeriod === p.id ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={printSalesReport}
+              disabled={reportLoading}
+              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition shadow-md shadow-indigo-100 disabled:opacity-50 text-sm whitespace-nowrap"
+            >
+              {reportLoading ? '⏳ Loading...' : '🖨️ Print Report'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-4">Report includes: total revenue, cash/card/credit breakdown, outstanding balance, discount given, and full transaction list.</p>
+        </div>
+      </div>
+
+      {/* Plan & Subscription */}
+      {planInfo && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-blue-50 px-6 py-4 border-b">
+            <h2 className="font-bold text-blue-800">Plan & Subscription</h2>
+            <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Your Current Service Tier</p>
+          </div>
+          <div className="p-6">
+            <div className="flex flex-col md:flex-row justify-between gap-6">
+              <div className="space-y-4 flex-1">
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Active Plan</label>
+                  <p className="text-xl font-black text-gray-800">{planInfo.plan_name} <span className="text-blue-600 italic">Tier</span></p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Product Limit</label>
+                    <p className="font-bold text-gray-800">{planInfo.product_limit} items</p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Users Limit</label>
+                    <p className="font-bold text-gray-800">{planInfo.user_limit} accounts</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="md:border-l md:pl-6 space-y-4">
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Next Billing Date</label>
+                  <p className="font-mono font-black text-gray-800 bg-gray-50 px-3 py-1 rounded-lg border">
+                    {planInfo.next_billing_date ? new Date(planInfo.next_billing_date).toLocaleDateString('en-PK', { dateStyle: 'long' }) : 'N/A'}
+                  </p>
+                </div>
+                <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                  <p className="text-[10px] text-blue-700 font-bold leading-tight">Need more capacity? Contact support to upgrade your plan.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-gray-800">Software Updates</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Your POS is currently running the latest version v2.1.0-Premium</p>
+        </div>
+        <div className="flex -space-x-2">
+          <span className="w-8 h-8 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-blue-600">AS</span>
+          <span className="w-8 h-8 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-indigo-600">SM</span>
+        </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-red-50 rounded-2xl shadow-sm border-2 border-red-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+            <span className="text-xl">⚠️</span>
+          </div>
+          <div>
+            <h3 className="font-bold text-red-800 text-lg">Danger Zone</h3>
+            <p className="text-xs text-red-500">Irreversible actions — proceed with extreme caution</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-4 border border-red-100">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <p className="font-bold text-gray-800">🗑️ Clear All Shop Data</p>
+              <p className="text-xs text-gray-500 mt-1">Permanently delete ALL products, suppliers, customers, sales, purchases, expenses, and payments for this shop. This cannot be undone!</p>
+            </div>
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              disabled={clearing}
+              className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition whitespace-nowrap shadow-lg shadow-red-200 disabled:opacity-50"
+            >
+              {clearing ? 'Clearing...' : '🔥 Clear All Data'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showPasswordModal && (
+        <PasswordModal
+          title="⚠️ Clear ALL Shop Data"
+          message="This will permanently delete ALL data. Enter your password to confirm."
+          onConfirm={async () => {
+            setShowPasswordModal(false)
+            // Second confirmation: type shop name
+            const shopName = form.name || 'My Shop'
+            const typed = prompt(`Type "${shopName}" to confirm permanent deletion of ALL data:`)
+            if (typed !== shopName) {
+              alert('Shop name does not match. Operation cancelled.')
+              return
+            }
+            setClearing(true)
+            try {
+              if (navigator.onLine) {
+                // Delete child items first (no shop_id column — must delete by parent IDs)
+                const { data: shopSales } = await supabase.from('sales').select('id').eq('shop_id', user.shop_id)
+                const saleIds = (shopSales || []).map(s => s.id)
+                if (saleIds.length) await supabase.from('sale_items').delete().in('sale_id', saleIds)
+
+                const { data: shopPurchases } = await supabase.from('purchases').select('id').eq('shop_id', user.shop_id)
+                const purchaseIds = (shopPurchases || []).map(p => p.id)
+                if (purchaseIds.length) await supabase.from('purchase_items').delete().in('purchase_id', purchaseIds)
+
+                // Now delete all shop_id-scoped tables
+                const shopIdTables = ['products', 'categories', 'brands', 'customers', 'suppliers', 'sales', 'purchases', 'expenses', 'customer_payments', 'supplier_payments', 'audit_logs']
+                for (const t of shopIdTables) {
+                  await supabase.from(t).delete().eq('shop_id', user.shop_id)
+                }
+              }
+              // Clear all local Dexie tables
+              const allTables = ['products', 'categories', 'brands', 'customers', 'suppliers', 'sales', 'sale_items', 'purchases', 'purchase_items', 'expenses', 'customer_payments', 'supplier_payments', 'audit_logs']
+              for (const t of allTables) {
+                if (db[t]) await db[t].clear()
+              }
+              await db.trash.clear()
+              await db.sync_queue.clear()
+              alert('✅ All shop data has been cleared successfully!')
+              window.location.reload()
+            } catch (err) {
+              alert('Error clearing data: ' + err.message)
+            } finally {
+              setClearing(false)
+            }
+          }}
+          onCancel={() => setShowPasswordModal(false)}
+        />
+      )}
+
+      {/* ── Billing Template Quick View Modal ── */}
+      {previewTemplateId && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+            {/* Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-extrabold text-lg flex items-center gap-2">
+                  <span>✨</span> Quick View Template Preview
+                </h3>
+                <p className="text-xs text-slate-400">See exactly how your invoice will print.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewTemplateId(null)}
+                className="text-slate-400 hover:text-white transition text-xl p-1 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+              {/* Left Control Column */}
+              <div className="w-full md:w-80 bg-slate-50 border-r border-slate-100 p-6 flex flex-col justify-between overflow-y-auto">
+                <div className="space-y-6">
+                  <div>
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block mb-2">Select Format Size</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewSize('thermal')}
+                        className={`py-2.5 px-3 rounded-xl font-bold text-xs border-2 transition ${previewSize === 'thermal' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                      >
+                        📟 Thermal (80mm)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewSize('a4')}
+                        className={`py-2.5 px-3 rounded-xl font-bold text-xs border-2 transition ${previewSize === 'a4' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                      >
+                        📄 A4 Page
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-slate-200/60 p-4 shadow-sm">
+                    <h4 className="font-extrabold text-slate-800 text-sm mb-2">Template Specs</h4>
+                    <ul className="text-xs text-slate-500 space-y-2">
+                      <li className="flex justify-between"><span className="text-slate-400">Option:</span> <span className="font-semibold text-slate-700">{previewTemplateId === '1' ? 'Simple' : previewTemplateId === '2' ? 'Classic' : previewTemplateId === '3' ? 'Professional' : 'Modern'}</span></li>
+                      <li className="flex justify-between"><span className="text-slate-400">Paper Width:</span> <span className="font-semibold text-slate-700">{previewSize === 'thermal' ? '80mm (Thermal)' : '210mm (A4)'}</span></li>
+                      <li className="flex justify-between"><span className="text-slate-400">Layout type:</span> <span className="font-semibold text-slate-700">{previewSize === 'thermal' ? 'Continuous Roll' : 'Portrait Sheet'}</span></li>
+                    </ul>
+                  </div>
+
+                  <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100/50 text-[11px] text-blue-700 leading-relaxed">
+                    💡 <strong>Tip:</strong> The printed layout is dynamic and will adjust perfectly according to the printer size defined in settings.
+                  </div>
+                </div>
+
+                <div className="mt-8 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sid = user?.shop_id
+                      setPrintTemplate(previewTemplateId)
+                      localStorage.setItem(sid ? `print_template_${sid}` : 'print_template', previewTemplateId)
+                      if (sid) {
+                        let saved = {}
+                        try { saved = JSON.parse(localStorage.getItem(`shop_settings_${sid}`) || '{}') } catch (_) {}
+                        saved.print_template = previewTemplateId
+                        localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(saved))
+                        if (navigator.onLine) {
+                          supabase.rpc('update_shop_settings', {
+                            p_shop_id: Number(sid),
+                            p_print_template: previewTemplateId
+                          }).catch(err => console.warn('Could not sync print template choice:', err))
+                        }
+                      }
+                      setPreviewTemplateId(null)
+                      alert('Template applied successfully!')
+                    }}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
+                  >
+                    <span>✓</span> Apply This Template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTemplateId(null)}
+                    className="w-full py-3 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Iframe Preview Area */}
+              <div className="flex-1 bg-slate-200 p-6 flex items-center justify-center overflow-y-auto">
+                <div 
+                  className="bg-white shadow-2xl transition-all duration-300 overflow-hidden border border-slate-300 rounded"
+                  style={{
+                    width: previewSize === 'thermal' ? '320px' : '650px',
+                    height: previewSize === 'thermal' ? '500px' : '750px',
+                    maxHeight: '100%'
+                  }}
+                >
+                  <iframe
+                    srcDoc={getPreviewHTML(previewTemplateId, previewSize)}
+                    className="w-full h-full border-none bg-white"
+                    title="Invoice Template Preview"
+                    sandbox="allow-same-origin"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bank Account Modal */}
+      {showBankModal && (
+        <BankAccountModal
+          isOpen={showBankModal}
+          onClose={() => setShowBankModal(false)}
+          shopId={user?.shop_id}
+          onSuccess={(newAcc) => {
+            setBankAccounts(prev => [newAcc, ...prev])
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+export default Settings
