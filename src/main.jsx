@@ -30,8 +30,10 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const VERSION_KEY = 'edgex_app_version'
 
+let systemConfigsAvailable = true
+
 async function checkForForceUpdate() {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !navigator.onLine) return
+  if (!systemConfigsAvailable || !SUPABASE_URL || !SUPABASE_ANON_KEY || !navigator.onLine) return
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/system_configs?key=eq.force_refresh_version&select=value`,
@@ -43,6 +45,10 @@ async function checkForForceUpdate() {
         signal: AbortSignal.timeout(5000),
       }
     )
+    if (res.status === 404) {
+      systemConfigsAvailable = false
+      return
+    }
     if (!res.ok) return
     const rows = await res.json()
     const remoteVersion = rows?.[0]?.value

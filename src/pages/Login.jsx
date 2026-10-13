@@ -146,18 +146,19 @@ function Login() {
       const hashedPassword = await hashPassword(password)
       const cleanUsername = username.trim().toLowerCase()
 
-      // Direct Superadmin authentication path for babarjoya@gmail.com
-      if (cleanUsername === 'babarjoya@gmail.com' || cleanUsername.includes('babarjoya')) {
-        if (supabaseAdmin) {
-          const { data: saUser, error: saError } = await supabaseAdmin
+      // Direct Superadmin authentication path (babarjoya@gmail.com and any superadmin user)
+      if (supabaseAdmin) {
+        try {
+          const { data: saUsers, error: saError } = await supabaseAdmin
             .from('users')
             .select('*')
             .or(`email.ilike.${cleanUsername},username.ilike.${cleanUsername}`)
             .eq('password', hashedPassword)
             .eq('role', 'superadmin')
             .eq('is_active', true)
-            .maybeSingle()
+            .limit(1)
 
+          const saUser = saUsers?.[0]
           if (!saError && saUser) {
             const sessionUser = {
               id: saUser.id,
@@ -170,9 +171,11 @@ function Login() {
             login(sessionUser)
             localStorage.setItem('user_pw_hash', hashedPassword)
             localStorage.setItem('superadmin_session', JSON.stringify(sessionUser))
-            window.location.href = '/superadmin'
+            window.location.href = '/admin'
             return
           }
+        } catch (saErr) {
+          console.warn('Superadmin check skipped:', saErr)
         }
       }
 
