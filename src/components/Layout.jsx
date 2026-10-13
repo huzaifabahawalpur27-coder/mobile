@@ -309,7 +309,7 @@ function Layout({ children }) {
             )}
             <NavItem to="/support" icon={<LifeBuoy size={18} />} label="Help & Support" active={location.pathname === '/support'} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             {user?.role === 'superadmin' && (
-              <NavItem to="/admin" icon={<ShieldCheck size={18} />} label="Superadmin Portal" active={location.pathname.startsWith('/admin')} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
+              <NavItem to="/superadmin" icon={<ShieldCheck size={18} />} label="Superadmin Portal" active={location.pathname.startsWith('/superadmin') || location.pathname.startsWith('/admin')} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             )}
           </ul>
         </nav>
@@ -578,7 +578,7 @@ function Layout({ children }) {
             <button
               onClick={() => {
                 stopImpersonating()
-                navigate('/admin/shops')
+                window.location.href = '/superadmin/shops'
               }}
               className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-black uppercase tracking-wider transition cursor-pointer"
             >

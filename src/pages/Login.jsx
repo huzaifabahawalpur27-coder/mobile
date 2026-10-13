@@ -152,16 +152,18 @@ function Login() {
             .maybeSingle()
 
           if (!saError && saUser) {
-            login({
+            const sessionUser = {
               id: saUser.id,
               username: saUser.username || 'Superadmin',
               email: saUser.email || cleanUsername,
               role: 'superadmin',
               shop_id: null,
               permissions: []
-            })
+            }
+            login(sessionUser)
             localStorage.setItem('user_pw_hash', hashedPassword)
-            navigate('/admin')
+            localStorage.setItem('superadmin_session', JSON.stringify(sessionUser))
+            window.location.href = '/superadmin'
             return
           }
         }
@@ -231,16 +233,18 @@ function Login() {
 
       // If user is a superadmin, immediately navigate to superadmin portal
       if (userData.role === 'superadmin' || cleanUsername === 'babarjoya@gmail.com') {
-        login({
+        const sessionUser = {
           id: userData.id,
-          username: userData.username,
-          email: userData.email || '',
+          username: userData.username || 'Superadmin',
+          email: userData.email || cleanUsername,
           role: 'superadmin',
           shop_id: null,
           permissions: []
-        })
+        }
+        login(sessionUser)
         localStorage.setItem('user_pw_hash', hashedPassword)
-        navigate('/admin')
+        localStorage.setItem('superadmin_session', JSON.stringify(sessionUser))
+        window.location.href = '/superadmin'
         return
       }
       if (userData.shop_id) {
