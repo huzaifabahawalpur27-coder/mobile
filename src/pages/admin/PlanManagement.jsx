@@ -60,7 +60,11 @@ export default function PlanManagement() {
                 .select('*')
                 .order('price', { ascending: true })
             if (error) throw error
-            setPlans(data)
+            const normalized = (data || []).map(p => ({
+                ...p,
+                billing_cycle: p.billing_cycle || p.billing_period || 'monthly'
+            }))
+            setPlans(normalized)
         } catch (err) {
             console.error('Failed to fetch plans:', err)
         } finally {
@@ -71,12 +75,30 @@ export default function PlanManagement() {
     const handleSubmit = async (e) => {
         e.preventDefault()
         try {
+            const cycle = form.billing_cycle || 'monthly'
+            const basePayload = {
+                name: form.name,
+                price: Number(form.price) || 0,
+                product_limit: Number(form.product_limit) || 100,
+                user_limit: Number(form.user_limit) || 3,
+                features: form.features || {},
+                is_active: true
+            }
+
             if (editingPlan) {
-                const { error } = await supabaseAdmin
+                // Try updating with billing_period first (matching schema), fallback to billing_cycle
+                let res = await supabaseAdmin
                     .from('subscription_plans')
-                    .update(form)
+                    .update({ ...basePayload, billing_period: cycle })
                     .eq('id', editingPlan.id)
-                if (error) throw error
+
+                if (res.error && res.error.message?.includes('billing_period')) {
+                    res = await supabaseAdmin
+                        .from('subscription_plans')
+                        .update({ ...basePayload, billing_cycle: cycle })
+                        .eq('id', editingPlan.id)
+                }
+                if (res.error) throw res.error
 
                 await logAction({
                     actor_id: adminUser?.id,
@@ -87,18 +109,39 @@ export default function PlanManagement() {
                     details: form
                 })
             } else {
-                const { data, error } = await supabaseAdmin
+                // Determine next safe ID if sequence is lagging
+                const maxId = plans.length > 0 ? Math.max(...plans.map(p => Number(p.id) || 0)) : 0
+                const nextId = maxId + 1
+
+                // Try inserting with billing_period first, fallback to billing_cycle
+                let res = await supabaseAdmin
                     .from('subscription_plans')
-                    .insert([form])
+                    .insert([{ ...basePayload, billing_period: cycle }])
                     .select()
-                if (error) throw error
+
+                if (res.error && res.error.message?.includes('billing_period')) {
+                    res = await supabaseAdmin
+                        .from('subscription_plans')
+                        .insert([{ ...basePayload, billing_cycle: cycle }])
+                        .select()
+                }
+
+                // If sequence collision happens, retry with explicit nextId
+                if (res.error && res.error.code === '23505') {
+                    res = await supabaseAdmin
+                        .from('subscription_plans')
+                        .insert([{ id: nextId, ...basePayload, billing_period: cycle }])
+                        .select()
+                }
+
+                if (res.error) throw res.error
 
                 await logAction({
                     actor_id: adminUser?.id,
                     actor_email: adminUser?.email || adminUser?.username,
                     action_type: 'CREATE_PLAN',
                     target_type: 'PLAN',
-                    target_id: data[0].id,
+                    target_id: res.data?.[0]?.id,
                     details: form
                 })
             }
@@ -120,7 +163,7 @@ export default function PlanManagement() {
         setForm({
             name: plan.name,
             price: plan.price,
-            billing_cycle: plan.billing_cycle,
+            billing_cycle: plan.billing_cycle || plan.billing_period || 'monthly',
             product_limit: plan.product_limit,
             user_limit: plan.user_limit,
             features: { ...DEFAULT_FEATURES, print_templates: 1, ...(plan.features || {}) }
