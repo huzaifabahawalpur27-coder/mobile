@@ -63,6 +63,10 @@ function App() {
             <Routes>
               <Route path="/" element={<Login />} />
               <Route path="/login" element={<Navigate to="/" replace />} />
+              <Route path="/app" element={<Navigate to="/" replace />} />
+              <Route path="/app/dashboard" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/app/pos" element={<Navigate to="/pos" replace />} />
+              <Route path="/app/*" element={<Navigate to="/" replace />} />
 
               {/* ── Superadmin Platform Portal (Role: superadmin only) ── */}
               <Route

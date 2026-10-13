@@ -249,7 +249,7 @@ export default function ManageUsersModal({ shop, onClose }) {
       username: u.username,
       password: passwordToShow,
       role: u.role,
-      loginUrl: import.meta.env.VITE_POS_URL || 'https://pos.edgexsuite.com'
+      loginUrl: import.meta.env.VITE_POS_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://pos.edgexsuite.com')
     })
     const url = buildWhatsAppUrl(shop.phone, msg)
     window.open(url, '_blank')

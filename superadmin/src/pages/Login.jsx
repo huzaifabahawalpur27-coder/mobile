@@ -5,7 +5,7 @@ import { KeyRound, Mail, AlertCircle, Eye, EyeOff, ShieldAlert, CheckCircle } fr
 import { supabase } from '../services/supabase'
 
 const SUPERADMIN_EMAIL = 'babarjoya@gmail.com'
-const SUPERADMIN_URL = import.meta.env.VITE_SUPERADMIN_URL || window.location.origin
+const SUPERADMIN_URL = import.meta.env.VITE_SUPERADMIN_URL || (typeof window !== 'undefined' ? `${window.location.origin}/superadmin` : '')
 
 export default function Login() {
   const { user, login } = useAuth()

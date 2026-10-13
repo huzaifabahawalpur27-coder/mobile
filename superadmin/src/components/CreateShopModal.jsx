@@ -144,7 +144,7 @@ export default function CreateShopModal({ onClose, onCreated }) {
         username: ownerUsername || ownerEmail.split('@')[0],
         password: ownerPassword,
         planName: activePlan?.name || 'Selected Plan',
-        loginUrl: import.meta.env.VITE_POS_URL || 'https://pos.edgexsuite.com'
+        loginUrl: import.meta.env.VITE_POS_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://pos.edgexsuite.com')
       })
 
       if (onCreated) onCreated()

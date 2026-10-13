@@ -234,7 +234,7 @@ export default function ShopsList() {
         logoUrl: shop.logo_url || '',
         sessionToken: token
       }).toString();
-      const posUrl = import.meta.env.VITE_POS_URL || 'https://pos.edgexsuite.com';
+      const posUrl = import.meta.env.VITE_POS_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://pos.edgexsuite.com');
       window.location.href = `${posUrl}/?${params}`;
     }
   }

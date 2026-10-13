@@ -21,8 +21,10 @@ const ProtectedRoute = ({ children }) => {
 }
 
 export default function App() {
+  const basename = typeof window !== 'undefined' && window.location.pathname.startsWith('/superadmin') ? '/superadmin' : ''
+
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
