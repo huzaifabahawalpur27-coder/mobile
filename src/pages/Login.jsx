@@ -6,7 +6,21 @@ import { supabaseAdmin } from '../services/supabaseAdmin'
 import { db as localDB } from '../services/db'
 import { hashPassword } from '../utils/authUtils'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShieldCheck, Zap, PhoneCall, Eye, EyeOff } from 'lucide-react'
+import { 
+  Smartphone, 
+  Zap, 
+  MessageSquare, 
+  ShieldCheck, 
+  Lock, 
+  User, 
+  Eye, 
+  EyeOff, 
+  ArrowRight, 
+  PhoneCall, 
+  CheckCircle2, 
+  Sparkles,
+  Layers
+} from 'lucide-react'
 
 function Login() {
   const [username, setUsername] = useState('')
@@ -25,12 +39,12 @@ function Login() {
   })
 
   useEffect(() => {
-    document.title = platformName ? `${platformName} - Login` : 'EdgeX POS'
+    document.title = platformName ? `${platformName} - Login` : 'EdgeX Mobile Shop POS'
   }, [platformName])
 
   const { login, impersonate } = useAuth()
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
 
   // Handle impersonation from superadmin
   useEffect(() => {
@@ -38,10 +52,9 @@ function Login() {
     if (!impId) return
 
     const shopName = searchParams.get('shopName') || 'Impersonated Shop'
-    const logoUrl  = searchParams.get('logoUrl')  || ''
+    const logoUrl = searchParams.get('logoUrl') || ''
     const sessionToken = searchParams.get('sessionToken') || ''
 
-    // Build the impersonated user object
     const impersonatedUser = {
       id: `impersonated-${impId}`,
       username: `Superadmin (${shopName})`,
@@ -50,12 +63,10 @@ function Login() {
       isImpersonating: true
     }
 
-    // Synchronously wipe any previous session so no stale shop bleeds through
     localStorage.removeItem('user')
     localStorage.removeItem('originalUser')
     if (sessionToken) localStorage.setItem('session_token', sessionToken)
 
-    // Write all new shop data before the page reload
     localStorage.setItem('user', JSON.stringify(impersonatedUser))
     localStorage.setItem(`shop_name_${impId}`, shopName)
     if (logoUrl) {
@@ -64,12 +75,9 @@ function Login() {
       localStorage.removeItem(`shop_logo_${impId}`)
     }
 
-    // Also update React context (best-effort — page will reload anyway)
     try { impersonate(impId, { name: shopName, logo_url: logoUrl }) } catch (_) {}
-
-    // Full reload so AuthContext re-initialises cleanly from the new localStorage state
     window.location.href = '/dashboard'
-  }, [searchParams])  // intentionally omit `impersonate` — we write localStorage directly above
+  }, [searchParams])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -105,7 +113,6 @@ function Login() {
           return
         }
 
-        // Restore branding from IndexedDB
         if (localUser.shop_id) {
           localStorage.setItem('last_shop_id', localUser.shop_id)
           try {
@@ -169,8 +176,7 @@ function Login() {
         }
       }
 
-      // Use secure_login RPC (handles auth + shop status check + RLS setup)
-      // Wrap in a 5s timeout so offline users don't wait forever
+      // Use secure_login RPC
       const rpcPromise = supabase.rpc('secure_login', {
         p_username: username.trim(),
         p_password_hash: hashedPassword
@@ -180,11 +186,8 @@ function Login() {
       )
       const { data: loginResult, error: loginError } = await Promise.race([rpcPromise, timeoutPromise])
 
-      // Handle RPC errors
       if (loginError) {
         console.error('Login RPC error:', loginError)
-
-        // Detect network/fetch errors and fall back to offline login
         const errMsg = (loginError.message || '').toLowerCase()
         const isNetworkError = errMsg.includes('fetch') ||
           errMsg.includes('network') ||
@@ -195,30 +198,24 @@ function Login() {
           !navigator.onLine
 
         if (isNetworkError) {
-          console.log('Network error detected, attempting offline login...')
-          // Fall through to offline fallback below
           throw new Error('Network unavailable — switching to offline login')
         }
 
-        setError('Login failed. Please try again or contact support.')
+        setError('Login failed. Please verify credentials or contact support.')
         setLoading(false)
         return
       }
 
-      // Handle login failure (invalid credentials, suspended account, etc.)
       if (!loginResult || !loginResult.success) {
         const errorMsg = loginResult?.error || 'Invalid username or password'
-
-        // User-friendly error messages
         if (errorMsg.includes('suspended')) {
-          const reasonStr = loginResult?.suspension_reason ? ` (Reason: ${loginResult.suspension_reason})` : ''
-          setError(`Your account has been suspended${reasonStr}. Please contact support: 0301-2616367`)
+          const reasonStr = loginResult?.suspension_reason ? ` (${loginResult.suspension_reason})` : ''
+          setError(`Account suspended${reasonStr}. Contact support: 0301-2616367`)
         } else if (errorMsg.includes('Multiple accounts')) {
-          setError('Multiple accounts found. Please use your email to login.')
+          setError('Multiple accounts found. Please use your email address.')
         } else {
           setError('Invalid username or password')
         }
-
         setLoading(false)
         return
       }
@@ -247,9 +244,9 @@ function Login() {
         window.location.href = '/superadmin'
         return
       }
+
       if (userData.shop_id) {
         localStorage.setItem('last_shop_id', userData.shop_id)
-        // Fetch and cache shop name/logo immediately to avoid lag or missing branding
         try {
           const { data: shopData } = await supabase
             .from('shops')
@@ -263,7 +260,6 @@ function Login() {
             if (shopData.logo_url) {
               localStorage.setItem(`shop_logo_${userData.shop_id}`, shopData.logo_url)
             }
-            // Save to IndexedDB shops table as well so offline operations are fully supported
             try {
               await localDB.shops.put({ id: userData.shop_id, name: shopData.name, logo_url: shopData.logo_url })
             } catch (dbErr) {
@@ -275,14 +271,12 @@ function Login() {
         }
       }
 
-      // Validate response data
       if (!userData.id || !userData.shop_id || !userData.role) {
         setError('Invalid login response. Please contact support.')
         setLoading(false)
         return
       }
 
-      // Store plan limits for client-side enforcement
       localStorage.setItem(`plan_limits_${userData.shop_id}`, JSON.stringify({
         product_limit: shopConfig?.product_limit || 100,
         user_limit: shopConfig?.user_limit || 3,
@@ -291,10 +285,8 @@ function Login() {
         next_billing_date: shopConfig?.next_billing_date || null,
         subscription_fee: shopConfig?.subscription_fee || 0
       }))
-      // Store feature flags for feature gating
       localStorage.setItem(`plan_features_${userData.shop_id}`, JSON.stringify(shopConfig?.features || {}))
 
-      // Save user to IndexedDB for offline access
       try {
         await localDB.users.put({
           id: userData.id,
@@ -309,21 +301,16 @@ function Login() {
         })
       } catch (dbError) {
         console.warn('Could not save to IndexedDB:', dbError)
-        // Don't fail login if offline storage fails
       }
 
-      // Cache hashed password in localStorage so PasswordModal can verify
-      // even when Supabase is unreachable and IndexedDB is empty
       localStorage.setItem('user_pw_hash', hashedPassword)
 
-      // Set RLS session claims (already done by secure_login, but ensure it's set)
       await rlsSession.setSession({
         id: userData.id,
         shop_id: userData.shop_id,
         role: userData.role
       })
 
-      // Update React context with multi-tenant and branch state
       login({
         id: userData.id,
         username: userData.username,
@@ -335,13 +322,10 @@ function Login() {
         permissions: userData.permissions || []
       }, loginResult.authorized_shops || [], loginResult.branches || [])
 
-      // Navigate to dashboard
       navigate('/dashboard')
 
     } catch (networkError) {
       console.error('Network error during login:', networkError)
-
-      // Offline fallback - try IndexedDB
       try {
         const hashedPassword = await hashPassword(password)
         const allUsers = await localDB.users.toArray()
@@ -350,30 +334,21 @@ function Login() {
         )
 
         if (!localUser) {
-          setError('⚠️ No offline data found. Please connect to internet and login once first to enable offline access.')
+          setError('⚠️ No offline credentials found. Please connect to internet to sign in once.')
           setLoading(false)
           return
         }
 
         if (localUser && localUser.password === hashedPassword && localUser.is_active !== false) {
-          // Offline login successful
-          console.log('✅ Offline login successful')
-
           if (localUser.shop_id) {
             localStorage.setItem('last_shop_id', localUser.shop_id)
             try {
               const localShop = await localDB.shops.get(localUser.shop_id)
               if (localShop) {
-                if (localShop.name) {
-                  localStorage.setItem(`shop_name_${localUser.shop_id}`, localShop.name)
-                }
-                if (localShop.logo_url) {
-                  localStorage.setItem(`shop_logo_${localUser.shop_id}`, localShop.logo_url)
-                }
+                if (localShop.name) localStorage.setItem(`shop_name_${localUser.shop_id}`, localShop.name)
+                if (localShop.logo_url) localStorage.setItem(`shop_logo_${localUser.shop_id}`, localShop.logo_url)
               }
-            } catch (dbErr) {
-              console.warn('Could not restore offline shop branding:', dbErr)
-            }
+            } catch (_) {}
           }
 
           login({
@@ -385,16 +360,12 @@ function Login() {
             permissions: localUser.permissions || []
           })
 
-          setError('✅ Logged in offline. Some features (sync, reports) require internet.')
-
-          setTimeout(() => {
-            navigate('/dashboard')
-          }, 1500)
+          setError('✅ Logged in offline. Some features require internet.')
+          setTimeout(() => navigate('/dashboard'), 1500)
         } else {
           setError('Offline mode: Incorrect password.')
         }
       } catch (offlineError) {
-        console.error('Offline login error:', offlineError)
         setError('Unable to login. Please check your internet connection.')
       }
     } finally {
@@ -403,186 +374,295 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex w-1/2 bg-[url('/inventory-bg.png')] bg-cover bg-left relative p-12 flex-col justify-between overflow-hidden">
-        <div className="absolute inset-0 bg-slate-900/60 z-0" />
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-emerald-600/20 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3" />
+    <div className="min-h-screen bg-[#08080a] text-white flex flex-col justify-between relative overflow-hidden font-sans select-none">
+      {/* Dynamic Apple-Style Ambient Aurora Glows */}
+      <div className="absolute top-[-10%] left-[-10%] w-[500px] sm:w-[700px] h-[500px] sm:h-[700px] bg-gradient-to-br from-blue-600/20 via-indigo-600/10 to-transparent rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute bottom-[-15%] right-[-10%] w-[550px] sm:w-[750px] h-[550px] sm:h-[750px] bg-gradient-to-tl from-emerald-600/15 via-teal-600/10 to-transparent rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute top-[40%] right-[30%] w-[350px] h-[350px] bg-violet-600/10 rounded-full blur-[120px] pointer-events-none" />
 
-        <div className="relative z-10">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="flex items-center gap-3 mb-16"
-          >
-            <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 p-2 shadow-xl flex items-center justify-center overflow-hidden">
-              <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain drop-shadow-md" />
+      {/* Top Navbar */}
+      <header className="relative z-20 px-6 sm:px-12 py-6 flex items-center justify-between border-b border-white/[0.06] backdrop-blur-md bg-[#08080a]/40">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#0071e3] to-[#2997ff] p-0.5 shadow-lg shadow-blue-500/20 flex items-center justify-center overflow-hidden">
+            <img src={logoUrl} alt={platformName} className="w-full h-full object-contain drop-shadow" />
+          </div>
+          <div>
+            <div className="text-base font-extrabold tracking-tight text-white flex items-center gap-2">
+              <span>{platformName}</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                Mobile POS
+              </span>
             </div>
-            <span className="text-2xl font-black text-white tracking-widest uppercase">{platformName}</span>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="max-w-xl"
-          >
-            <h1 className="text-5xl font-black text-white leading-tight mb-6">
-              Smart Retail Management
-              <span className="block text-blue-500">Simplified.</span>
-            </h1>
-            <p className="text-lg text-slate-400 mb-12">
-              Enterprise-grade POS system with bank-level security and multi-tenant isolation.
-            </p>
-
-            <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                  <Zap className="text-blue-400" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-semibold">Lightning Fast</h3>
-                  <p className="text-sm text-slate-400">Offline-first architecture</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <ShieldCheck className="text-emerald-400" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-semibold">Enterprise Security</h3>
-                  <p className="text-sm text-slate-400">Row-level security & data encryption</p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
+            <p className="text-[11px] text-[#86868b] hidden sm:block">Specialized Mobile Phone & Retail Point of Sale</p>
+          </div>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.6 }}
-          className="relative z-10"
-        >
-          <p className="text-sm text-slate-500 font-medium">
-            Developed with <span className="text-red-500">❤︎</span> by EdgeX Digital & Babar Joya
-          </p>
-          <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-slate-800/50 rounded-lg border border-slate-700/50">
-            <PhoneCall size={14} className="text-slate-400" />
-            <span className="font-mono text-sm text-slate-300">Support: 0301-2616367</span>
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-xs text-[#86868b]">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-emerald-400 font-medium text-[11px]">Cloud Synced</span>
+            <span className="text-white/20">•</span>
+            <span className="text-[11px]">Offline Engine Active</span>
           </div>
-        </motion.div>
-      </div>
+          <a
+            href="tel:03012616367"
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-xs font-semibold text-white transition-all cursor-pointer"
+          >
+            <PhoneCall size={13} className="text-blue-400" />
+            <span className="hidden md:inline">Support:</span>
+            <span className="font-mono text-blue-400">0301-2616367</span>
+          </a>
+        </div>
+      </header>
 
-      {/* Right Side - Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-slate-900 relative border-l border-slate-800">
-        <div className="absolute top-1/4 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-md relative z-10"
-        >
-          {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-10 flex flex-col items-center">
-            <div className="w-20 h-20 mb-4 rounded-xl border border-slate-700 p-1 bg-slate-800 shadow-sm flex items-center justify-center overflow-hidden">
-              <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain" />
-            </div>
-            <h1 className="text-2xl font-black text-white tracking-tight uppercase">{platformName}</h1>
-          </div>
-
-          {/* Desktop Logo */}
-          <div className="hidden lg:flex flex-col items-center mb-10">
-            <div className="w-28 h-28 mb-4 rounded-2xl border-2 border-slate-700 p-2 bg-slate-800/50 backdrop-blur-md shadow-2xl flex items-center justify-center overflow-hidden">
-              <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain drop-shadow-lg" />
-            </div>
-          </div>
-
-          <div className="mb-10 text-center lg:text-left">
-            <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
-            <p className="text-slate-400">Please sign in to your dashboard</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">Email or Username</label>
-              <input
-                type="text"
-                placeholder="Enter email or username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoComplete="username"
-                className="w-full px-5 py-4 bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-slate-800 transition-all shadow-inner"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                  className="w-full px-5 py-4 bg-slate-800/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-slate-800 transition-all shadow-inner"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            <AnimatePresence>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                  animate={{ opacity: 1, height: 'auto', marginBottom: 20 }}
-                  exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                  className="overflow-hidden"
-                >
-                  <p className="text-red-600 text-sm font-medium bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
-                    {error}
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-blue-600/30 active:scale-[0.98] flex justify-center items-center h-14"
+      {/* Main Container */}
+      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-12 flex items-center justify-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 w-full items-center">
+          
+          {/* Left Column: Mobile Shop Showcase */}
+          <div className="lg:col-span-7 space-y-8 text-center lg:text-left">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="space-y-4 max-w-xl mx-auto lg:mx-0"
             >
-              {loading ? (
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                  className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full"
-                />
-              ) : (
-                'Sign In to Dashboard'
-              )}
-            </button>
-          </form>
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-teal-500/10 border border-blue-500/20 text-xs font-semibold text-blue-300">
+                <Sparkles size={13} className="text-blue-400" />
+                <span>Next-Generation Retail OS for Phone Stores</span>
+              </div>
 
-          <div className="mt-10 lg:hidden text-center">
-            <div className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-slate-800/50 rounded-xl border border-slate-700">
-              <PhoneCall size={16} className="text-slate-400" />
-              <span className="font-mono font-bold text-slate-400">Support: 0301-2616367</span>
-            </div>
+              <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white leading-[1.12]">
+                Smart POS Engineered for{' '}
+                <span className="bg-gradient-to-r from-[#2997ff] via-[#5e5ce6] to-[#30d158] bg-clip-text text-transparent">
+                  Mobile Shops.
+                </span>
+              </h1>
+
+              <p className="text-sm sm:text-base text-[#86868b] leading-relaxed">
+                Streamline serialized device inventories, automate walk-in phone buy-backs, print instant thermal bills, and send WhatsApp invoices with 1 tap.
+              </p>
+            </motion.div>
+
+            {/* Feature Cards Grid (Apple Glass Style) */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.15 }}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-w-xl mx-auto lg:mx-0"
+            >
+              <div className="p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] backdrop-blur-xl transition group text-left">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+                  <Smartphone size={18} />
+                </div>
+                <h3 className="text-xs font-bold text-white mb-1">IMEI Tracking & Buy-Backs</h3>
+                <p className="text-[11px] text-[#86868b] leading-relaxed">
+                  15-digit IMEI scanning with instant auto-fetch for previously sold devices.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] backdrop-blur-xl transition group text-left">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+                  <MessageSquare size={18} />
+                </div>
+                <h3 className="text-xs font-bold text-white mb-1">WhatsApp Bill & Warranty</h3>
+                <p className="text-[11px] text-[#86868b] leading-relaxed">
+                  Automatic invoice summaries sent with phone model, date, and warranty note.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] backdrop-blur-xl transition group text-left">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+                  <Zap size={18} />
+                </div>
+                <h3 className="text-xs font-bold text-white mb-1">Offline-First Engine</h3>
+                <p className="text-[11px] text-[#86868b] leading-relaxed">
+                  Zero counter downtime. Keep billing during internet or power dropouts.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] backdrop-blur-xl transition group text-left">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+                  <Layers size={18} />
+                </div>
+                <h3 className="text-xs font-bold text-white mb-1">Store Asset Wealth</h3>
+                <p className="text-[11px] text-[#86868b] leading-relaxed">
+                  Real-time stock valuation separating phone inventory from accessories.
+                </p>
+              </div>
+            </motion.div>
+
+            {/* Micro Live Device Preview Card */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.25 }}
+              className="p-4 rounded-2xl bg-gradient-to-r from-white/[0.04] to-white/[0.02] border border-white/[0.08] backdrop-blur-xl max-w-xl mx-auto lg:mx-0 flex items-center justify-between gap-4"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-sm font-bold shrink-0 shadow-md">
+                  📱
+                </div>
+                <div className="min-w-0 text-left">
+                  <div className="text-xs font-bold text-white flex items-center gap-2 truncate">
+                    <span>iPhone 15 Pro Max 256GB</span>
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-bold">PTA APPROVED</span>
+                  </div>
+                  <div className="text-[10px] text-[#86868b] font-mono mt-0.5 truncate">
+                    IMEI: 354892109283741 • 7-Day Warranty
+                  </div>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-xs font-black text-white">Rs. 385,000</div>
+                <div className="text-[9px] text-emerald-400 font-bold flex items-center justify-end gap-1 mt-0.5">
+                  <CheckCircle2 size={10} />
+                  <span>WhatsApp Sent</span>
+                </div>
+              </div>
+            </motion.div>
           </div>
-        </motion.div>
-      </div>
+
+          {/* Right Column: Premium Apple-Glass Login Card */}
+          <div className="lg:col-span-5 flex justify-center">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="w-full max-w-md bg-[#161618]/80 backdrop-blur-2xl border border-white/[0.1] rounded-[32px] p-7 sm:p-9 shadow-2xl shadow-black/80 relative space-y-6"
+            >
+              {/* Card Header & Brand Icon */}
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-emerald-500 p-0.5 shadow-xl shadow-blue-500/20 flex items-center justify-center">
+                  <div className="w-full h-full bg-[#161618] rounded-[14px] p-2 flex items-center justify-center overflow-hidden">
+                    <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain drop-shadow" />
+                  </div>
+                </div>
+
+                <h2 className="text-2xl font-bold text-white tracking-tight pt-1">
+                  Welcome to EdgeX POS
+                </h2>
+                <p className="text-xs text-[#86868b]">
+                  Sign in with your cashier, manager, or owner account
+                </p>
+              </div>
+
+              {/* Login Form */}
+              <form onSubmit={handleLogin} className="space-y-4">
+                {/* Username Input */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-[#86868b] tracking-wide">
+                    Email or Username
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
+                      <User size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. admin or username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      autoComplete="username"
+                      className="w-full pl-10 pr-4 py-3 bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-blue-500/60 rounded-xl text-xs sm:text-sm text-white placeholder-[#86868b]/60 focus:outline-none focus:ring-4 focus:ring-blue-500/15 transition-all shadow-inner"
+                    />
+                  </div>
+                </div>
+
+                {/* Password Input */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-[#86868b] tracking-wide">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
+                      <Lock size={16} />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                      className="w-full pl-10 pr-11 py-3 bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-blue-500/60 rounded-xl text-xs sm:text-sm text-white placeholder-[#86868b]/60 focus:outline-none focus:ring-4 focus:ring-blue-500/15 transition-all shadow-inner"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#86868b] hover:text-white transition-colors cursor-pointer"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Error Banner */}
+                <AnimatePresence>
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 leading-relaxed font-medium flex items-start gap-2">
+                        <span className="shrink-0 mt-0.5">⚠️</span>
+                        <span>{error}</span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 via-[#0071e3] to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-lg shadow-blue-500/25 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer mt-2"
+                >
+                  {loading ? (
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full"
+                    />
+                  ) : (
+                    <>
+                      <span>Open Counter Terminal</span>
+                      <ArrowRight size={16} />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Card Footer Hints */}
+              <div className="pt-2 border-t border-white/[0.06] text-center space-y-2">
+                <p className="text-[11px] text-[#86868b]">
+                  Multi-Tenant Security • High-Speed Barcode Billing
+                </p>
+                <div className="inline-flex items-center gap-1.5 text-[10px] text-blue-400/80 font-mono bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">
+                  <ShieldCheck size={11} />
+                  <span>Superadmin: babarjoya@gmail.com logs into Platform Portal</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="relative z-10 px-6 py-4 border-t border-white/[0.06] backdrop-blur-md bg-[#08080a]/40 text-center text-[11px] text-[#86868b] flex flex-col sm:flex-row items-center justify-between gap-2 max-w-7xl mx-auto w-full">
+        <div>
+          Developed with <span className="text-red-500">❤︎</span> by EdgeX Digital & Babar Joya
+        </div>
+        <div className="flex items-center gap-3">
+          <span>Version 2.2 Mobile Edition</span>
+          <span>•</span>
+          <span>Offline PWA Ready</span>
+        </div>
+      </footer>
     </div>
   )
 }
