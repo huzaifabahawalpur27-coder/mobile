@@ -419,11 +419,140 @@ function Login() {
       </header>
 
       {/* Main Container */}
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-12 flex items-center justify-center">
+      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-6 sm:py-12 flex items-center justify-center">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 w-full items-center">
           
-          {/* Left Column: Mobile Shop Showcase */}
-          <div className="lg:col-span-7 space-y-8 text-center lg:text-left">
+          {/* Login Card (ORDER 1 ON MOBILE - APPEARS FIRST AT TOP) */}
+          <div className="order-1 lg:order-2 lg:col-span-5 flex justify-center w-full">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="w-full max-w-md bg-[#1c1c1e]/85 backdrop-blur-3xl border border-white/[0.14] rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8),inset_0_1px_0_0_rgba(255,255,255,0.12)] relative space-y-6"
+            >
+              {/* Card Header & Apple Squircle Brand Icon */}
+              <div className="text-center space-y-2.5">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-[22px] bg-gradient-to-b from-white/[0.16] to-white/[0.04] p-[1.5px] shadow-2xl shadow-blue-500/10 flex items-center justify-center">
+                  <div className="w-full h-full bg-gradient-to-b from-[#242426] to-[#161618] rounded-[20px] p-2.5 flex items-center justify-center overflow-hidden">
+                    <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain drop-shadow" />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <h2 className="text-2xl sm:text-[26px] font-semibold text-white tracking-[-0.03em]">
+                    Sign in to EdgeX
+                  </h2>
+                  <p className="text-xs sm:text-[13px] text-[#86868b] tracking-[-0.01em]">
+                    Point of Sale Terminal & Store Management
+                  </p>
+                </div>
+              </div>
+
+              {/* Login Form */}
+              <form onSubmit={handleLogin} className="space-y-4">
+                {/* Username / Email Input */}
+                <div className="space-y-1.5 text-left">
+                  <label className="block text-[11px] font-medium uppercase tracking-wider text-[#a1a1a6] ml-1">
+                    Email or Username
+                  </label>
+                  <div className="relative rounded-[16px] bg-[#2c2c2e]/60 hover:bg-[#2c2c2e]/80 focus-within:bg-[#2c2c2e] border border-white/[0.1] focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/20 transition-all duration-200">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
+                      <User size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="admin or user@domain.com"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      autoComplete="username"
+                      className="w-full bg-transparent pl-11 pr-4 py-3.5 text-sm text-white placeholder-[#86868b] focus:outline-none tracking-[-0.01em]"
+                    />
+                  </div>
+                </div>
+
+                {/* Password Input */}
+                <div className="space-y-1.5 text-left">
+                  <label className="block text-[11px] font-medium uppercase tracking-wider text-[#a1a1a6] ml-1">
+                    Password
+                  </label>
+                  <div className="relative rounded-[16px] bg-[#2c2c2e]/60 hover:bg-[#2c2c2e]/80 focus-within:bg-[#2c2c2e] border border-white/[0.1] focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/20 transition-all duration-200">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
+                      <Lock size={16} />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                      className="w-full bg-transparent pl-11 pr-11 py-3.5 text-sm text-white placeholder-[#86868b] focus:outline-none tracking-[-0.01em]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#86868b] hover:text-white transition-colors cursor-pointer"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Error Banner */}
+                <AnimatePresence>
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-[14px] text-xs text-red-400 leading-relaxed font-medium flex items-start gap-2">
+                        <span className="shrink-0 mt-0.5">⚠️</span>
+                        <span>{error}</span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Apple-Style Primary Action Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 px-6 bg-[#0071e3] hover:bg-[#0077ED] active:bg-[#0062c4] text-white font-medium text-sm rounded-[16px] transition-all duration-200 shadow-[0_1px_2px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.25)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer mt-3"
+                >
+                  {loading ? (
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full"
+                    />
+                  ) : (
+                    <>
+                      <span>Open Counter Terminal</span>
+                      <ArrowRight size={16} />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Card Footer Hints */}
+              <div className="pt-3 border-t border-white/[0.08] text-center space-y-2">
+                <p className="text-[11px] text-[#86868b] tracking-[-0.01em]">
+                  Multi-Tenant Security • High-Speed Barcode Billing
+                </p>
+                <div className="inline-flex items-center gap-1.5 text-[10px] text-blue-400 font-mono bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">
+                  <ShieldCheck size={11} />
+                  <span>Superadmin: babarjoya@gmail.com</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Left Column: Mobile Shop Showcase (ORDER 2 ON MOBILE - APPEARS BELOW LOGIN FORM) */}
+          <div className="order-2 lg:order-1 lg:col-span-7 space-y-8 text-center lg:text-left">
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
@@ -521,133 +650,6 @@ function Login() {
                 <div className="text-[9px] text-emerald-400 font-bold flex items-center justify-end gap-1 mt-0.5">
                   <CheckCircle2 size={10} />
                   <span>WhatsApp Sent</span>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-
-          {/* Right Column: Premium Apple-Glass Login Card */}
-          <div className="lg:col-span-5 flex justify-center">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="w-full max-w-md bg-[#161618]/80 backdrop-blur-2xl border border-white/[0.1] rounded-[32px] p-7 sm:p-9 shadow-2xl shadow-black/80 relative space-y-6"
-            >
-              {/* Card Header & Brand Icon */}
-              <div className="text-center space-y-2">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-emerald-500 p-0.5 shadow-xl shadow-blue-500/20 flex items-center justify-center">
-                  <div className="w-full h-full bg-[#161618] rounded-[14px] p-2 flex items-center justify-center overflow-hidden">
-                    <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain drop-shadow" />
-                  </div>
-                </div>
-
-                <h2 className="text-2xl font-bold text-white tracking-tight pt-1">
-                  Welcome to EdgeX POS
-                </h2>
-                <p className="text-xs text-[#86868b]">
-                  Sign in with your cashier, manager, or owner account
-                </p>
-              </div>
-
-              {/* Login Form */}
-              <form onSubmit={handleLogin} className="space-y-4">
-                {/* Username Input */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-[#86868b] tracking-wide">
-                    Email or Username
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
-                      <User size={16} />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. admin or username"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      required
-                      autoComplete="username"
-                      className="w-full pl-10 pr-4 py-3 bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-blue-500/60 rounded-xl text-xs sm:text-sm text-white placeholder-[#86868b]/60 focus:outline-none focus:ring-4 focus:ring-blue-500/15 transition-all shadow-inner"
-                    />
-                  </div>
-                </div>
-
-                {/* Password Input */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-[#86868b] tracking-wide">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
-                      <Lock size={16} />
-                    </div>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      autoComplete="current-password"
-                      className="w-full pl-10 pr-11 py-3 bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-blue-500/60 rounded-xl text-xs sm:text-sm text-white placeholder-[#86868b]/60 focus:outline-none focus:ring-4 focus:ring-blue-500/15 transition-all shadow-inner"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#86868b] hover:text-white transition-colors cursor-pointer"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Error Banner */}
-                <AnimatePresence>
-                  {error && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 leading-relaxed font-medium flex items-start gap-2">
-                        <span className="shrink-0 mt-0.5">⚠️</span>
-                        <span>{error}</span>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 via-[#0071e3] to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-lg shadow-blue-500/25 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer mt-2"
-                >
-                  {loading ? (
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                      className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full"
-                    />
-                  ) : (
-                    <>
-                      <span>Open Counter Terminal</span>
-                      <ArrowRight size={16} />
-                    </>
-                  )}
-                </button>
-              </form>
-
-              {/* Card Footer Hints */}
-              <div className="pt-2 border-t border-white/[0.06] text-center space-y-2">
-                <p className="text-[11px] text-[#86868b]">
-                  Multi-Tenant Security • High-Speed Barcode Billing
-                </p>
-                <div className="inline-flex items-center gap-1.5 text-[10px] text-blue-400/80 font-mono bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">
-                  <ShieldCheck size={11} />
-                  <span>Superadmin: babarjoya@gmail.com logs into Platform Portal</span>
                 </div>
               </div>
             </motion.div>
