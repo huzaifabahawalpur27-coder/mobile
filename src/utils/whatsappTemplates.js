@@ -53,6 +53,24 @@ Aapka staff account create/update kar diya gaya hai:
 Kisi bhi madad ke liye apne store admin se rabta karein.`
 }
 
+export function formatPasswordResetMessage({ shopName, username, email, newPassword, loginUrl = (typeof window !== 'undefined' ? window.location.origin : 'https://pos.edgexsuite.com') }) {
+  return `🔐 *EdgeX POS - Password Reset Notification*
+
+Assalam-o-Alaikum,
+Aapke store *${shopName}* ke primary account ka password reset kar diya gaya hai.
+
+🌐 *Login Portal:* ${loginUrl}
+👤 *Username:* ${username || email}
+🔑 *New Password:* ${newPassword}
+
+📌 *Hidayat:*
+• Browser mein portal open karein aur naye password se login karein.
+• Security ke liye login karne ke baad Settings se password tabdeel kar sakte hain.
+
+Kisi bhi maslay ki surat mein EdgeX Superadmin se rabta karein.
+Shukriya! 🛡️`
+}
+
 export function formatRenewalMessage({ shopName, planName, expiryDate, amount, bankDetails, isOverdue = false }) {
   const formattedDate = expiryDate ? new Date(expiryDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Soon'
   

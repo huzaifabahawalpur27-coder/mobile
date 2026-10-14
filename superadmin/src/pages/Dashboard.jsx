@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabaseAdmin } from '../services/supabase'
 import { Store, Users, Activity, TrendingUp, CreditCard, DollarSign, AlertCircle, Megaphone, Trash2, Plus, Clock, RefreshCw, CheckCircle, MessageSquare } from 'lucide-react'
 import { buildWhatsAppUrl, formatRenewalMessage } from '../utils/whatsappTemplates'
+import BroadcastBannerModal from '../components/BroadcastBannerModal'
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ shops: 0, users: 0, activeShops: 0, mrr: 0, totalRevenue: 0, overdue: 0, onTrial: 0, gmv: 0, activeToday: 0 })
@@ -14,6 +15,7 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [pushingUpdate, setPushingUpdate] = useState(false)
   const [lastPushTime, setLastPushTime] = useState(() => localStorage.getItem('last_push_update_time') || null)
+  const [bannerModalOpen, setBannerModalOpen] = useState(false)
 
   useEffect(() => {
     fetchStats()
@@ -223,6 +225,23 @@ export default function Dashboard() {
             </button>
           </div>
 
+          {/* Global Broadcast Announcement Banner */}
+          <div className="bg-gradient-to-br from-indigo-50/80 to-purple-50/80 border border-indigo-100 rounded-xl p-4 mb-4">
+            <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2 text-sm">
+              <Megaphone size={16} className="text-indigo-600" /> Global Announcement
+            </h3>
+            <p className="text-xs text-slate-500 mb-3">
+              Publish banners for maintenance, urgent alerts, or updates to all active shops.
+            </p>
+            <button
+              type="button"
+              onClick={() => setBannerModalOpen(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition shadow-md shadow-indigo-600/20 active:scale-95"
+            >
+              <Megaphone size={14} /> Manage Broadcast Banner
+            </button>
+          </div>
+
           <Link
             to="/analytics"
             className="mt-6 flex items-center justify-center gap-2 w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-black transition-all shadow-lg shadow-slate-200"
@@ -410,6 +429,12 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {bannerModalOpen && (
+        <BroadcastBannerModal
+          onClose={() => setBannerModalOpen(false)}
+        />
+      )}
     </div>
   )
 }

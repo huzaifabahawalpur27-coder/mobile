@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabaseAdmin } from '../services/supabase'
-import { Search, Plus, CheckCircle2, XCircle, AlertTriangle, ExternalLink, Edit, Users, FileText, Trash2, DatabaseBackup, Clock } from 'lucide-react'
+import { Search, Plus, CheckCircle2, XCircle, AlertTriangle, ExternalLink, Edit, Users, FileText, Trash2, DatabaseBackup, Clock, KeyRound, Sparkles } from 'lucide-react'
 import CreateShopModal from '../components/CreateShopModal'
 import EditShopModal from '../components/EditShopModal'
 import ManageUsersModal from '../components/ManageUsersModal'
 import ExtendSubscriptionModal from '../components/ExtendSubscriptionModal'
+import ResetShopPasswordModal from '../components/ResetShopPasswordModal'
 import { useAuth } from '../context/AuthContext'
 import { logAction } from '../services/auditService'
 import * as XLSX from 'xlsx'
@@ -12,6 +13,7 @@ import * as XLSX from 'xlsx'
 export default function ShopsList() {
   const { impersonate, user } = useAuth()
   const [shops, setShops] = useState([])
+  const [allPlans, setAllPlans] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
@@ -19,6 +21,8 @@ export default function ShopsList() {
   const [editingShop, setEditingShop] = useState(null)
   const [managingUsersShop, setManagingUsersShop] = useState(null)
   const [extendingShop, setExtendingShop] = useState(null)
+  const [resetPasswordShop, setResetPasswordShop] = useState(null)
+  const [switchingPlanShopId, setSwitchingPlanShopId] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [backingUp, setBackingUp] = useState({})
 
@@ -35,15 +39,22 @@ export default function ShopsList() {
 
     setLoading(true)
     try {
-      // 1. Fetch shops
+      // 1. Fetch shops with full plan details
       const { data: shopsData, error: shopsError } = await supabaseAdmin
         .from('shops')
-        .select('*, subscription_plans(name)')
+        .select('*, subscription_plans(id, name, price, max_products, max_users)')
         .order('created_at', { ascending: false })
 
       if (shopsError) throw shopsError
 
-      // 2. Fetch user counts per shop
+      // 2. Fetch all subscription plans for quick switching
+      const { data: plansData } = await supabaseAdmin
+        .from('subscription_plans')
+        .select('*')
+        .order('price', { ascending: true })
+      setAllPlans(plansData || [])
+
+      // 3. Fetch user counts per shop
       const { data: userCounts, error: countsError } = await supabaseAdmin
         .from('users')
         .select('shop_id')
@@ -57,9 +68,27 @@ export default function ShopsList() {
         }
       })
 
+      // 4. Fetch product counts per shop
+      const productCountsMap = {}
+      try {
+        const { data: prodCounts } = await supabaseAdmin
+          .from('products')
+          .select('shop_id')
+        if (prodCounts) {
+          prodCounts.forEach(p => {
+            if (p.shop_id) {
+              productCountsMap[p.shop_id] = (productCountsMap[p.shop_id] || 0) + 1
+            }
+          })
+        }
+      } catch (e) {
+        console.warn('Could not fetch product counts:', e)
+      }
+
       const finalShops = shopsData.map(shop => ({
         ...shop,
-        userCount: countsMap[shop.id] || 0
+        userCount: countsMap[shop.id] || 0,
+        productCount: productCountsMap[shop.id] || 0
       }))
 
       setShops(finalShops)
@@ -68,6 +97,51 @@ export default function ShopsList() {
       setErrorMsg('Failed to load shops. Check if subscription_plans table exists. Error: ' + error.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleQuickPlanChange = async (shop, newPlanId) => {
+    if (!supabaseAdmin || !newPlanId) return
+    const newPlan = allPlans.find(p => p.id === newPlanId)
+    if (!newPlan) return
+
+    const confirmMsg = `Switch "${shop.name}" to "${newPlan.name}" plan?\n\nNew Fee: Rs. ${Number(newPlan.price || 0).toLocaleString()}\nLimits: ${newPlan.max_products || 'Unlimited'} Products, ${newPlan.max_users || 'Unlimited'} Users`
+    if (!window.confirm(confirmMsg)) return
+
+    setSwitchingPlanShopId(shop.id)
+    try {
+      const updates = {
+        plan_id: newPlan.id,
+        subscription_plan: newPlan.name,
+        subscription_fee: newPlan.price || 0
+      }
+
+      const { error: updateErr } = await supabaseAdmin
+        .from('shops')
+        .update(updates)
+        .eq('id', shop.id)
+
+      if (updateErr) throw updateErr
+
+      await logAction({
+        actor_id: user?.id,
+        actor_email: user?.email || user?.username,
+        action_type: 'QUICK_SWITCH_SHOP_PLAN',
+        target_type: 'SHOP',
+        target_id: shop.id,
+        details: {
+          shopName: shop.name,
+          oldPlan: shop.subscription_plans?.name || shop.subscription_plan,
+          newPlan: newPlan.name,
+          newFee: newPlan.price
+        }
+      })
+
+      fetchShops()
+    } catch (err) {
+      alert('Failed to switch plan: ' + err.message)
+    } finally {
+      setSwitchingPlanShopId(null)
     }
   }
 
@@ -388,8 +462,7 @@ export default function ShopsList() {
               <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-bold">
                 <th className="p-4 pl-6">ID</th>
                 <th className="p-4">Business Detail</th>
-                <th className="p-4 hidden lg:table-cell">Location</th>
-                <th className="p-4 text-center">Users</th>
+                <th className="p-4">Plan & Quotas</th>
                 <th className="p-4 text-center">Status</th>
                 <th className="p-4 text-center">Subscription Expiry</th>
                 <th className="p-4 text-center hidden lg:table-cell">Joined</th>
@@ -399,9 +472,9 @@ export default function ShopsList() {
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
               {loading ? (
-                <tr><td colSpan="9" className="p-8 text-center text-slate-400">Loading tenants...</td></tr>
+                <tr><td colSpan="8" className="p-8 text-center text-slate-400">Loading tenants...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan="9" className="p-8 text-center text-slate-400">No shops found.</td></tr>
+                <tr><td colSpan="8" className="p-8 text-center text-slate-400">No shops found.</td></tr>
               ) : (
                 filtered.map(shop => (
                   <tr key={shop.id} className="hover:bg-slate-50/50 transition">
@@ -410,22 +483,58 @@ export default function ShopsList() {
                       <p className="font-bold text-slate-800">{shop.name}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{shop.phone || 'No phone'}</p>
                       <p className="text-[10px] text-blue-600 mt-0.5 font-mono truncate max-w-[150px]" title={shop.email}>{shop.email || 'No email'}</p>
-                      <div className="flex items-center gap-1 mt-1">
-                        {(shop.subscription_plans?.name || shop.subscription_plan) ? (
-                          <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-black uppercase tracking-widest border border-amber-200">
-                            {shop.subscription_plans?.name || shop.subscription_plan}
-                          </span>
-                        ) : (
-                          <span className="text-[9px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded font-black uppercase tracking-widest border border-red-200 flex items-center gap-1">
-                            <AlertTriangle size={9} /> No Plan
-                          </span>
-                        )}
-                      </div>
+                      {shop.address && <p className="text-[10px] text-slate-400 mt-0.5 truncate" title={shop.address}>📍 {shop.address}</p>}
                       {shop.notes && <p className="text-[10px] text-slate-400 mt-1 italic line-clamp-2" title={shop.notes}>📝 {shop.notes}</p>}
                     </td>
-                    <td className="p-4 text-slate-600 max-w-[180px] truncate hidden lg:table-cell" title={shop.address}>{shop.address || '-'}</td>
-                    <td className="p-4 text-center">
-                      <span className="bg-blue-50 text-blue-600 font-bold px-2.5 py-1 rounded-lg text-xs">{shop.userCount || 0}</span>
+                    <td className="p-4">
+                      <div className="space-y-1.5 min-w-[180px]">
+                        {/* Plan Switcher Dropdown */}
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={shop.plan_id || ''}
+                            disabled={switchingPlanShopId === shop.id}
+                            onChange={(e) => handleQuickPlanChange(shop, e.target.value)}
+                            className="text-[11px] font-bold bg-amber-50/80 text-amber-900 border border-amber-200/90 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer disabled:opacity-50"
+                            title="Quick switch subscription plan"
+                          >
+                            <option value="">No Plan</option>
+                            {allPlans.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} (Rs. {Number(p.price || 0).toLocaleString()})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Quotas: Products & Users */}
+                        <div className="text-[10px] space-y-1 text-slate-500 font-mono">
+                          <div>
+                            <div className="flex justify-between items-center text-[10px] mb-0.5">
+                              <span>Products:</span>
+                              <span className="font-bold text-slate-700">
+                                {shop.productCount || 0} / {shop.subscription_plans?.max_products || '∞'}
+                              </span>
+                            </div>
+                            {shop.subscription_plans?.max_products && (
+                              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${
+                                    (shop.productCount / shop.subscription_plans.max_products) > 0.9 ? 'bg-red-500' : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${Math.min(100, ((shop.productCount || 0) / shop.subscription_plans.max_products) * 100)}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span>Users:</span>
+                            <span className="font-bold text-slate-700">
+                              {shop.userCount || 0} / {shop.subscription_plans?.max_users || '∞'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </td>
                     <td className="p-4 text-center">
                       {shop.status === 'active' || !shop.status ? (
@@ -463,7 +572,7 @@ export default function ShopsList() {
                             <span className="text-xs font-mono font-bold text-amber-700">
                               {new Date(shop.next_billing_date).toLocaleDateString()}
                             </span>
-                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-300 mt-0.5 animate-pulse">
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 mt-0.5 animate-pulse">
                               {diff}d left
                             </span>
                           </div>
@@ -496,6 +605,13 @@ export default function ShopsList() {
                           title="Extend subscription expiry date"
                         >
                           <Clock size={13} className="text-amber-600" /> Extend
+                        </button>
+                        <button
+                          onClick={() => setResetPasswordShop(shop)}
+                          className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50/70 text-amber-800 hover:bg-amber-100 transition flex items-center gap-1 shadow-sm"
+                          title="Reset shop owner password & send via WhatsApp"
+                        >
+                          <KeyRound size={13} className="text-amber-600" /> Password
                         </button>
                         <button onClick={() => setManagingUsersShop(shop)} className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition flex items-center gap-1">
                           <Users size={13} /> Users
@@ -613,11 +729,43 @@ export default function ShopsList() {
                   </p>
                 )}
 
+                {/* Quick Plan & Quota section */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Plan:</span>
+                    <select
+                      value={shop.plan_id || ''}
+                      disabled={switchingPlanShopId === shop.id}
+                      onChange={(e) => handleQuickPlanChange(shop, e.target.value)}
+                      className="text-xs font-bold bg-white text-slate-800 border border-slate-200 rounded-lg px-2 py-1 outline-none"
+                    >
+                      <option value="">No Plan</option>
+                      {allPlans.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} (Rs. {Number(p.price || 0).toLocaleString()})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] font-mono border-t border-slate-200/70">
+                    <div className="text-slate-600">
+                      Products: <span className="font-bold text-slate-800">{shop.productCount || 0}/{shop.subscription_plans?.max_products || '∞'}</span>
+                    </div>
+                    <div className="text-slate-600 text-right">
+                      Staff: <span className="font-bold text-slate-800">{shop.userCount || 0}/{shop.subscription_plans?.max_users || '∞'}</span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Action buttons */}
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => setExtendingShop(shop)}
                     className="col-span-2 text-xs font-bold py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 active:scale-95 transition flex items-center justify-center gap-1.5 shadow-sm">
                     <Clock size={14} className="text-amber-600" /> Extend Subscription Date
+                  </button>
+                  <button onClick={() => setResetPasswordShop(shop)}
+                    className="text-xs font-bold py-2.5 rounded-xl border border-amber-200 bg-amber-50/70 text-amber-800 hover:bg-amber-100 active:scale-95 transition flex items-center justify-center gap-1.5 shadow-sm">
+                    <KeyRound size={14} className="text-amber-600" /> Reset Password
                   </button>
                   <button onClick={() => setManagingUsersShop(shop)}
                     className="text-xs font-bold py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:scale-95 transition flex items-center justify-center gap-1.5">
@@ -669,6 +817,9 @@ export default function ShopsList() {
       )}
       {extendingShop && (
         <ExtendSubscriptionModal shop={extendingShop} onClose={() => setExtendingShop(null)} onSuccess={fetchShops} />
+      )}
+      {resetPasswordShop && (
+        <ResetShopPasswordModal shop={resetPasswordShop} onClose={() => setResetPasswordShop(null)} onSuccess={fetchShops} />
       )}
     </div>
   )

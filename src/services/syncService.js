@@ -118,6 +118,42 @@ export const syncOfflineData = async () => {
                     err = retry.error;
                 }
 
+                // If categories table doesn't have description or low_stock_threshold columns yet, retry without them
+                if (err && item.table === 'categories' && (err.code === 'PGRST204' || err.code === '42703' || err.message?.includes('description') || err.message?.includes('low_stock_threshold') || err.message?.includes('schema cache'))) {
+                    console.warn('SyncService: Retrying categories insert without optional columns (description, low_stock_threshold)');
+                    const strippedPayload = isArray ? payload.map(d => {
+                        const copy = { ...d };
+                        delete copy.description;
+                        delete copy.low_stock_threshold;
+                        return copy;
+                    }) : (() => {
+                        const copy = { ...payload };
+                        delete copy.description;
+                        delete copy.low_stock_threshold;
+                        return copy;
+                    })();
+                    const retry = await supabase.from(item.table).insert(strippedPayload).select();
+                    resData = retry.data;
+                    err = retry.error;
+                }
+
+                // If suppliers table doesn't have brand, product_type, or other_details columns yet, retry without them
+                if (err && item.table === 'suppliers' && (err.code === 'PGRST204' || err.code === '42703' || err.message?.includes('brand') || err.message?.includes('product_type') || err.message?.includes('other_details') || err.message?.includes('outstanding_balance') || err.message?.includes('schema cache'))) {
+                    console.warn('SyncService: Retrying suppliers insert with core columns');
+                    const stripSup = (d) => {
+                        const copy = { ...d };
+                        delete copy.brand;
+                        delete copy.product_type;
+                        delete copy.other_details;
+                        delete copy.outstanding_balance;
+                        return copy;
+                    };
+                    const strippedPayload = isArray ? payload.map(stripSup) : stripSup(payload);
+                    const retry = await supabase.from(item.table).insert(strippedPayload).select();
+                    resData = retry.data;
+                    err = retry.error;
+                }
+
                 error = err;
                 returnedData = resData;
 
@@ -184,6 +220,14 @@ export const syncOfflineData = async () => {
                 const { id, ...updateData } = dataObj;
                 if (id) {
                     ({ error } = await supabase.from(item.table).update(updateData).eq('id', id));
+                    if (error && item.table === 'categories' && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('description') || error.message?.includes('low_stock_threshold') || error.message?.includes('schema cache'))) {
+                        const { description: _d, low_stock_threshold: _l, ...strippedUpdate } = updateData;
+                        ({ error } = await supabase.from(item.table).update(strippedUpdate).eq('id', id));
+                    }
+                    if (error && item.table === 'suppliers' && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('brand') || error.message?.includes('product_type') || error.message?.includes('other_details') || error.message?.includes('outstanding_balance') || error.message?.includes('schema cache'))) {
+                        const { brand: _b, product_type: _p, other_details: _o, outstanding_balance: _ob, ...strippedUpdate } = updateData;
+                        ({ error } = await supabase.from(item.table).update(strippedUpdate).eq('id', id));
+                    }
                 } else {
                     // Can't update without an ID, skip
                     await db.sync_queue.delete(item.id);
@@ -205,7 +249,7 @@ export const syncOfflineData = async () => {
                 console.error(`Sync error for ${item.table}:`, error);
                 const retries = (item.retry_count || 0) + 1;
                 // If table/column error or exceeded max 5 retries, remove to prevent queue stalls
-                if (retries >= 5 || ['PGRST205', '42P01', 'PGRST204', '22P02'].includes(error.code)) {
+                if (retries >= 5 || ['PGRST205', '42P01', 'PGRST204', '42703', '22P02'].includes(error.code)) {
                     console.warn(`Removing un-syncable item ${item.id} after ${retries} attempts.`);
                     await db.sync_queue.delete(item.id);
                 } else {

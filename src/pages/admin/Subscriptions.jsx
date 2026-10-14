@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabaseAdmin } from '../../services/supabaseAdmin'
 import { Search, CreditCard, Clock, CheckCircle2, AlertTriangle, FileText, User, MessageSquare } from 'lucide-react'
 import ExtendSubscriptionModal from '../../components/admin/ExtendSubscriptionModal'
+import BulkWhatsAppModal from '../../components/admin/BulkWhatsAppModal'
 import { logAction } from '../../services/auditService'
 import { useAuth } from '../../context/AuthContext'
 import { buildWhatsAppUrl, formatRenewalMessage } from '../../utils/whatsappTemplates'
@@ -21,6 +22,7 @@ export default function Subscriptions() {
     const [ledgerData, setLedgerData] = useState([])
     const [ledgerLoading, setLedgerLoading] = useState(false)
     const [extendModalOpen, setExtendModalOpen] = useState(false)
+    const [bulkWhatsAppOpen, setBulkWhatsAppOpen] = useState(false)
     const [subFilter, setSubFilter] = useState('all')
 
     // WhatsApp Reminder Modal
@@ -333,6 +335,14 @@ export default function Subscriptions() {
                     ))}
                 </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+                    <button
+                        onClick={() => setBulkWhatsAppOpen(true)}
+                        className="flex items-center justify-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md shadow-emerald-600/20 transition text-xs sm:text-sm"
+                        title="Send bulk WhatsApp renewal reminders to expiring shops"
+                    >
+                        <MessageSquare size={16} />
+                        Bulk WhatsApp
+                    </button>
                     <button
                         onClick={handleExportSubscriptions}
                         className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl shadow-sm hover:bg-slate-50 transition"
@@ -795,6 +805,14 @@ export default function Subscriptions() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Bulk WhatsApp Reminder Modal */}
+            {bulkWhatsAppOpen && (
+                <BulkWhatsAppModal
+                    shops={shops}
+                    onClose={() => setBulkWhatsAppOpen(false)}
+                />
             )}
         </div>
     )

@@ -109,13 +109,42 @@ function Categories() {
       if (!navigator.onLine) throw new TypeError('Failed to fetch')
 
       if (editingId) {
-        const { error } = await supabase.from('categories').update(payload).eq('id', editingId)
+        let { error } = await supabase.from('categories').update(payload).eq('id', editingId)
+        if (error && (error.message?.includes('description') || error.message?.includes('schema cache') || error.message?.includes('column'))) {
+          // Fallback: retry without optional description or threshold
+          const { description: _d, ...withoutDesc } = payload
+          const retryRes = await supabase.from('categories').update(withoutDesc).eq('id', editingId)
+          error = retryRes.error
+          if (error && (error.message?.includes('low_stock_threshold') || error.message?.includes('schema cache'))) {
+            const retryCore = await supabase.from('categories').update({ name: payload.name, shop_id: payload.shop_id }).eq('id', editingId)
+            error = retryCore.error
+          }
+        }
         if (error) throw error
         await db.categories.update(editingId, payload)
       } else {
-        const { data, error } = await supabase.from('categories').insert([payload]).select()
-        if (error) throw error
-        if (data?.[0]) await db.categories.put(data[0]).catch(() => {})
+        let res = await supabase.from('categories').insert([payload]).select()
+        let resError = res.error
+        let resData = res.data
+
+        if (resError && (resError.message?.includes('description') || resError.message?.includes('schema cache') || resError.message?.includes('column'))) {
+          console.warn('Categories: description column missing in Supabase schema, retrying with core columns...')
+          const { description: _d, ...withoutDesc } = payload
+          const retryRes = await supabase.from('categories').insert([withoutDesc]).select()
+          resError = retryRes.error
+          resData = retryRes.data
+
+          if (resError && (resError.message?.includes('low_stock_threshold') || resError.message?.includes('schema cache'))) {
+            const retryCore = await supabase.from('categories').insert([{ name: payload.name, shop_id: payload.shop_id }]).select()
+            resError = retryCore.error
+            resData = retryCore.data
+          }
+        }
+
+        if (resError) throw resError
+        if (resData?.[0]) {
+          await db.categories.put({ ...resData[0], description: payload.description, low_stock_threshold: payload.low_stock_threshold }).catch(() => {})
+        }
       }
       setEditingId(null)
       setForm({ name: '', description: '', low_stock_threshold: '' })
@@ -252,8 +281,12 @@ function Categories() {
         if (name) {
           const exists = categories.find(c => c.name.toLowerCase() === name.toLowerCase())
           if (!exists) {
-            await supabase.from('categories').insert([{ name, description, low_stock_threshold: lowStock, shop_id: user.shop_id }])
-            importedCount++
+            let { error: insErr } = await supabase.from('categories').insert([{ name, description, low_stock_threshold: lowStock, shop_id: user.shop_id }])
+            if (insErr && (insErr.message?.includes('description') || insErr.message?.includes('schema cache'))) {
+              const retry = await supabase.from('categories').insert([{ name, shop_id: user.shop_id }])
+              insErr = retry.error
+            }
+            if (!insErr) importedCount++
           }
         }
       }

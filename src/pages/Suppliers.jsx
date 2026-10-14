@@ -435,10 +435,33 @@ function Suppliers() {
       if (!navigator.onLine) throw new TypeError('Failed to fetch')
 
       if (editingId) {
-        const { error } = await supabase.from('suppliers').update(payload).eq('id', editingId)
+        let { error } = await supabase.from('suppliers').update(payload).eq('id', editingId)
+        if (error && (error.message?.includes('schema cache') || error.message?.includes('column'))) {
+          console.warn('Suppliers: Custom columns missing in Supabase schema, retrying update with core columns...')
+          const corePayload = {
+            name: payload.name,
+            phone: payload.phone || null,
+            address: payload.address || null,
+            shop_id: payload.shop_id
+          }
+          const retry = await supabase.from('suppliers').update(corePayload).eq('id', editingId)
+          error = retry.error
+        }
         if (error) throw error
       } else {
-        const { error } = await supabase.from('suppliers').insert([payload])
+        let { error } = await supabase.from('suppliers').insert([payload])
+        if (error && (error.message?.includes('schema cache') || error.message?.includes('column'))) {
+          console.warn('Suppliers: Custom columns missing in Supabase schema, retrying insert with core columns...')
+          const corePayload = {
+            name: payload.name,
+            phone: payload.phone || null,
+            address: payload.address || null,
+            balance: payload.balance || 0,
+            shop_id: payload.shop_id
+          }
+          const retry = await supabase.from('suppliers').insert([corePayload])
+          error = retry.error
+        }
         if (error) {
           throw new Error(error.message + '\nNote: Verify if brand, product_type, and other_details columns exist in your suppliers table.')
         }

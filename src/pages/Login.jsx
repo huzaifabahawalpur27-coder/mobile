@@ -18,9 +18,9 @@ import {
   ArrowRight, 
   PhoneCall, 
   CheckCircle2, 
-  Sparkles,
   Layers
 } from 'lucide-react'
+import BroadcastBanner from '../components/BroadcastBanner'
 
 function Login() {
   const [username, setUsername] = useState('')
@@ -417,6 +417,11 @@ function Login() {
           </a>
         </div>
       </header>
+
+      {/* Global Broadcast Announcement Banner */}
+      <div className="relative z-20">
+        <BroadcastBanner />
+      </div>
 
       {/* Main Container */}
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-6 sm:py-12 flex items-center justify-center">

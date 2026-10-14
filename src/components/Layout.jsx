@@ -11,6 +11,7 @@ import {
   Settings as SettingsIcon, Trash2, LifeBuoy, Lock, Store,
   Volume2, VolumeX, Sun, Moon, Palette, Check, Landmark
 } from 'lucide-react'
+import BroadcastBanner from './BroadcastBanner'
 
 let lastLayoutFetchTime = 0
 
@@ -614,6 +615,9 @@ function Layout({ children }) {
             ))}
           </div>
         )}
+
+        {/* Global SuperAdmin Broadcast Banner */}
+        <BroadcastBanner />
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 custom-scrollbar relative">
