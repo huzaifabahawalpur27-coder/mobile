@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabaseAdmin } from '../../services/supabaseAdmin'
 import { Search, CreditCard, Clock, CheckCircle2, AlertTriangle, FileText, User, MessageSquare } from 'lucide-react'
+import ExtendSubscriptionModal from '../../components/admin/ExtendSubscriptionModal'
 import { logAction } from '../../services/auditService'
 import { useAuth } from '../../context/AuthContext'
 import { buildWhatsAppUrl, formatRenewalMessage } from '../../utils/whatsappTemplates'
@@ -20,7 +21,6 @@ export default function Subscriptions() {
     const [ledgerData, setLedgerData] = useState([])
     const [ledgerLoading, setLedgerLoading] = useState(false)
     const [extendModalOpen, setExtendModalOpen] = useState(false)
-    const [extendDays, setExtendDays] = useState('7')
     const [subFilter, setSubFilter] = useState('all')
 
     // WhatsApp Reminder Modal
@@ -166,54 +166,8 @@ export default function Subscriptions() {
         }
     }
 
-    const handleExtendBilling = async (e) => {
-        e.preventDefault()
-        if (!supabaseAdmin || !selectedShop || !extendDays) return
-
-        setProcessing(true)
-        try {
-            let nextDate = new Date(selectedShop.next_billing_date || new Date())
-            const today = new Date()
-            if (nextDate < today) {
-                nextDate = today
-            }
-            nextDate.setDate(nextDate.getDate() + parseInt(extendDays))
-
-            const { error: updateError } = await supabaseAdmin
-                .from('shops')
-                .update({ 
-                    next_billing_date: nextDate.toISOString().split('T')[0],
-                    status: 'active',
-                    suspension_reason: null
-                })
-                .eq('id', selectedShop.id)
-
-            if (updateError) throw updateError
-
-            alert(`Billing date extended by ${extendDays} days. Shop status updated to active.`)
-
-            await logAction({
-                actor_id: user?.id,
-                actor_email: user?.email || user?.username,
-                action_type: 'EXTEND_BILLING_CYCLE',
-                target_type: 'SHOP',
-                target_id: selectedShop.id,
-                details: { extendDays, nextBillingDate: nextDate.toISOString().split('T')[0] }
-            })
-
-            setExtendModalOpen(false)
-            fetchSubscriptions()
-        } catch (err) {
-            console.error(err)
-            alert('Error extending billing: ' + err.message)
-        } finally {
-            setProcessing(false)
-        }
-    }
-
     const openExtendModal = (shop) => {
         setSelectedShop(shop)
-        setExtendDays('7')
         setExtendModalOpen(true)
     }
 
@@ -758,52 +712,11 @@ export default function Subscriptions() {
             )}
             {/* Extend Billing Modal */}
             {extendModalOpen && selectedShop && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                        <div className="p-6 border-b border-gray-100 bg-slate-50 flex justify-between items-center">
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-800">Extend Billing Cycle</h3>
-                                <p className="text-sm text-gray-500">For {selectedShop.name}</p>
-                            </div>
-                        </div>
-                        <form onSubmit={handleExtendBilling} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Days to Extend</label>
-                                <select
-                                    required
-                                    value={extendDays}
-                                    onChange={e => setExtendDays(e.target.value)}
-                                    className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 bg-white font-bold"
-                                >
-                                    <option value="3">3 Days (Quick grace)</option>
-                                    <option value="7">7 Days (Standard extension)</option>
-                                    <option value="15">15 Days (Half month)</option>
-                                    <option value="30">30 Days (Full month)</option>
-                                </select>
-                            </div>
-                            <div className="p-4 rounded-xl text-sm bg-blue-50 text-blue-800 flex items-start gap-2">
-                                <CheckCircle2 size={24} className="shrink-0 text-blue-500" />
-                                <p>This will extend the next billing date without recording a payment transaction, and automatically activate the shop if suspended.</p>
-                            </div>
-                            <div className="flex gap-3 pt-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setExtendModalOpen(false)}
-                                    className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={processing}
-                                    className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50"
-                                >
-                                    {processing ? 'Saving...' : 'Confirm Extension'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                <ExtendSubscriptionModal
+                    shop={selectedShop}
+                    onClose={() => setExtendModalOpen(false)}
+                    onSuccess={fetchSubscriptions}
+                />
             )}
 
             {/* WhatsApp Reminder Modal */}

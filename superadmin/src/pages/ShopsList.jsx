@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabaseAdmin } from '../services/supabase'
-import { Search, Plus, CheckCircle2, XCircle, AlertTriangle, ExternalLink, Edit, Users, FileText, Trash2, DatabaseBackup } from 'lucide-react'
+import { Search, Plus, CheckCircle2, XCircle, AlertTriangle, ExternalLink, Edit, Users, FileText, Trash2, DatabaseBackup, Clock } from 'lucide-react'
 import CreateShopModal from '../components/CreateShopModal'
 import EditShopModal from '../components/EditShopModal'
 import ManageUsersModal from '../components/ManageUsersModal'
+import ExtendSubscriptionModal from '../components/ExtendSubscriptionModal'
 import { useAuth } from '../context/AuthContext'
 import { logAction } from '../services/auditService'
 import * as XLSX from 'xlsx'
@@ -17,6 +18,7 @@ export default function ShopsList() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingShop, setEditingShop] = useState(null)
   const [managingUsersShop, setManagingUsersShop] = useState(null)
+  const [extendingShop, setExtendingShop] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [backingUp, setBackingUp] = useState({})
 
@@ -389,6 +391,7 @@ export default function ShopsList() {
                 <th className="p-4 hidden lg:table-cell">Location</th>
                 <th className="p-4 text-center">Users</th>
                 <th className="p-4 text-center">Status</th>
+                <th className="p-4 text-center">Subscription Expiry</th>
                 <th className="p-4 text-center hidden lg:table-cell">Joined</th>
                 <th className="p-4 text-center hidden xl:table-cell">Last Active</th>
                 <th className="p-4 text-right pr-6">Actions</th>
@@ -396,9 +399,9 @@ export default function ShopsList() {
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
               {loading ? (
-                <tr><td colSpan="8" className="p-8 text-center text-slate-400">Loading tenants...</td></tr>
+                <tr><td colSpan="9" className="p-8 text-center text-slate-400">Loading tenants...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan="8" className="p-8 text-center text-slate-400">No shops found.</td></tr>
+                <tr><td colSpan="9" className="p-8 text-center text-slate-400">No shops found.</td></tr>
               ) : (
                 filtered.map(shop => (
                   <tr key={shop.id} className="hover:bg-slate-50/50 transition">
@@ -442,6 +445,43 @@ export default function ShopsList() {
                         </div>
                       )}
                     </td>
+                    <td className="p-4 text-center">
+                      {shop.next_billing_date ? (() => {
+                        const diff = Math.ceil((new Date(shop.next_billing_date) - new Date()) / (1000 * 60 * 60 * 24))
+                        if (diff > 5) return (
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs font-mono font-bold text-slate-700">
+                              {new Date(shop.next_billing_date).toLocaleDateString()}
+                            </span>
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 mt-0.5">
+                              {diff}d left
+                            </span>
+                          </div>
+                        )
+                        if (diff >= 0) return (
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs font-mono font-bold text-amber-700">
+                              {new Date(shop.next_billing_date).toLocaleDateString()}
+                            </span>
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-300 mt-0.5 animate-pulse">
+                              {diff}d left
+                            </span>
+                          </div>
+                        )
+                        return (
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs font-mono font-bold text-red-600">
+                              {new Date(shop.next_billing_date).toLocaleDateString()}
+                            </span>
+                            <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 mt-0.5">
+                              Expired ({Math.abs(diff)}d ago)
+                            </span>
+                          </div>
+                        )
+                      })() : (
+                        <span className="text-[11px] text-slate-400 italic">No expiry set</span>
+                      )}
+                    </td>
                     <td className="p-4 text-center text-slate-500 text-xs hidden lg:table-cell">
                       {new Date(shop.created_at).toLocaleDateString()}
                     </td>
@@ -450,6 +490,13 @@ export default function ShopsList() {
                     </td>
                     <td className="p-4 pr-6 text-right">
                       <div className="flex justify-end gap-1.5 flex-wrap">
+                        <button
+                          onClick={() => setExtendingShop(shop)}
+                          className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition flex items-center gap-1 shadow-sm"
+                          title="Extend subscription expiry date"
+                        >
+                          <Clock size={13} className="text-amber-600" /> Extend
+                        </button>
                         <button onClick={() => setManagingUsersShop(shop)} className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition flex items-center gap-1">
                           <Users size={13} /> Users
                         </button>
@@ -568,6 +615,10 @@ export default function ShopsList() {
 
                 {/* Action buttons */}
                 <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setExtendingShop(shop)}
+                    className="col-span-2 text-xs font-bold py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 active:scale-95 transition flex items-center justify-center gap-1.5 shadow-sm">
+                    <Clock size={14} className="text-amber-600" /> Extend Subscription Date
+                  </button>
                   <button onClick={() => setManagingUsersShop(shop)}
                     className="text-xs font-bold py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:scale-95 transition flex items-center justify-center gap-1.5">
                     <Users size={14} /> Manage Users
@@ -597,8 +648,8 @@ export default function ShopsList() {
                     {isActive ? <><XCircle size={14} /> Suspend</> : <><CheckCircle2 size={14} /> Activate</>}
                   </button>
                   <button onClick={() => handleDeleteShop(shop)}
-                    className="col-span-2 text-xs font-bold py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition flex items-center justify-center gap-1.5">
-                    <Trash2 size={14} /> Delete Shop Permanently
+                    className="text-xs font-bold py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition flex items-center justify-center gap-1.5">
+                    <Trash2 size={14} /> Delete
                   </button>
                 </div>
               </div>
@@ -615,6 +666,9 @@ export default function ShopsList() {
       )}
       {managingUsersShop && (
         <ManageUsersModal shop={managingUsersShop} onClose={() => setManagingUsersShop(null)} />
+      )}
+      {extendingShop && (
+        <ExtendSubscriptionModal shop={extendingShop} onClose={() => setExtendingShop(null)} onSuccess={fetchShops} />
       )}
     </div>
   )
