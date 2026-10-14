@@ -596,7 +596,7 @@ function Login() {
                     />
                   ) : (
                     <>
-                      <span>Open Counter Terminal</span>
+                      <span>Login</span>
                       <ArrowRight size={16} />
                     </>
                   )}
