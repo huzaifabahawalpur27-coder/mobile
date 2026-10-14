@@ -29,9 +29,9 @@ export default function AdminDashboard() {
     }
 
     try {
-      let shopsRes = await supabaseAdmin.from('shops').select('id, name, phone, status, subscription_plan, next_billing_date, plan_id, subscription_plans(price)')
+      let shopsRes = await supabaseAdmin.from('shops').select('*, subscription_plans(price)')
       if (shopsRes.error) {
-        shopsRes = await supabaseAdmin.from('shops').select('id, name, phone, status, subscription_plan, next_billing_date, plan_id')
+        shopsRes = await supabaseAdmin.from('shops').select('*')
       }
 
       const [usersRes, paymentsRes, salesRes] = await Promise.all([

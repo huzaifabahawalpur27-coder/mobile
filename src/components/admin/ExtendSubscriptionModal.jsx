@@ -92,10 +92,17 @@ export default function ExtendSubscriptionModal({ shop, onClose, onSuccess }) {
         updates.suspension_reason = null
       }
 
-      const { error: updateErr } = await supabaseAdmin
+      let { error: updateErr } = await supabaseAdmin
         .from('shops')
         .update(updates)
         .eq('id', shop.id)
+
+      if (updateErr && updateErr.message?.includes('next_billing_date')) {
+        delete updates.next_billing_date
+        updates.notes = `${shop.notes ? shop.notes + ' | ' : ''}[Next Billing Date: ${selectedDate}]${notes ? ': ' + notes : ''}`
+        const retry = await supabaseAdmin.from('shops').update(updates).eq('id', shop.id)
+        updateErr = retry.error
+      }
 
       if (updateErr) throw updateErr
 

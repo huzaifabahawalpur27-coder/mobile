@@ -34,9 +34,9 @@ export default function Analytics() {
     const fetchAnalytics = async () => {
         setLoading(true)
         try {
-            let shopsRes = await supabaseAdmin.from('shops').select('id, name, created_at, subscription_plan, status, plan_id, subscription_plans(name, price)')
+            let shopsRes = await supabaseAdmin.from('shops').select('*, subscription_plans(name, price)')
             if (shopsRes.error) {
-                shopsRes = await supabaseAdmin.from('shops').select('id, name, created_at, subscription_plan, status, plan_id')
+                shopsRes = await supabaseAdmin.from('shops').select('*')
             }
 
             const [growthRes, topsRes, inactiveRes, paymentsRes] = await Promise.all([

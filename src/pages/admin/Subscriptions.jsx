@@ -81,18 +81,18 @@ export default function Subscriptions() {
                 console.warn('Could not fetch subscription_plans in Subscriptions:', pErr)
             }
 
-            // 2. Fetch shops with safe selection (do not directly query non-existent shops.subscription_fee)
+            // 2. Fetch shops with safe selection (do not explicitly query missing columns)
             let rawShops = []
             const res = await supabaseAdmin
                 .from('shops')
-                .select('id, name, phone, subscription_plan, next_billing_date, status, plan_id, subscription_plans(id, name, price)')
+                .select('*, subscription_plans(id, name, price)')
                 .order('name', { ascending: true })
 
             if (res.error) {
                 console.warn('Subscriptions query with join failed, falling back to plain select:', res.error)
                 const fallbackRes = await supabaseAdmin
                     .from('shops')
-                    .select('id, name, phone, subscription_plan, next_billing_date, status, plan_id')
+                    .select('*')
                     .order('name', { ascending: true })
                 if (fallbackRes.error) throw fallbackRes.error
                 rawShops = fallbackRes.data || []
@@ -110,7 +110,8 @@ export default function Subscriptions() {
                 return {
                     ...s,
                     subscription_plans: plan,
-                    subscription_fee: fee
+                    subscription_fee: fee,
+                    next_billing_date: s.next_billing_date || null
                 }
             })
 
@@ -180,10 +181,16 @@ export default function Subscriptions() {
             }
 
             if (Object.keys(shopUpdates).length > 0) {
-                const { error: updateError } = await supabaseAdmin
+                let { error: updateError } = await supabaseAdmin
                     .from('shops')
                     .update(shopUpdates)
                     .eq('id', selectedShop.id)
+
+                if (updateError && updateError.message?.includes('next_billing_date')) {
+                    delete shopUpdates.next_billing_date
+                    const retry = await supabaseAdmin.from('shops').update(shopUpdates).eq('id', selectedShop.id)
+                    updateError = retry.error
+                }
 
                 if (updateError) throw updateError
             }

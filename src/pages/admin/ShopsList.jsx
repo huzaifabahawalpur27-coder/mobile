@@ -128,9 +128,39 @@ export default function ShopsList() {
   }
 
   const handleQuickPlanChange = async (shop, newPlanId) => {
-    if (!supabaseAdmin || !newPlanId) return
-    const newPlan = allPlans.find(p => p.id === newPlanId)
-    if (!newPlan) return
+    if (!supabaseAdmin) return
+
+    // Unassign plan
+    if (!newPlanId) {
+      if (!window.confirm(`Remove plan assignment from "${shop.name}"?`)) return
+      setSwitchingPlanShopId(shop.id)
+      try {
+        let updates = { plan_id: null, subscription_plan: 'none' }
+        let { error } = await supabaseAdmin.from('shops').update(updates).eq('id', shop.id)
+        if (error && error.message?.includes('subscription_plan')) {
+          delete updates.subscription_plan
+          const retry = await supabaseAdmin.from('shops').update(updates).eq('id', shop.id)
+          error = retry.error
+        }
+        if (error && error.message?.includes('plan_id')) {
+          const retry = await supabaseAdmin.from('shops').update({ subscription_plan: 'none' }).eq('id', shop.id)
+          error = retry.error
+        }
+        if (error) throw error
+        fetchShops()
+      } catch (err) {
+        alert('Failed to remove plan: ' + err.message)
+      } finally {
+        setSwitchingPlanShopId(null)
+      }
+      return
+    }
+
+    const newPlan = allPlans.find(p => String(p.id) === String(newPlanId))
+    if (!newPlan) {
+      alert('Selected plan was not found in the plans list.')
+      return
+    }
 
     const maxProds = newPlan.max_products || newPlan.product_limit || 'Unlimited'
     const maxUsers = newPlan.max_users || newPlan.user_limit || 'Unlimited'
@@ -149,12 +179,22 @@ export default function ShopsList() {
         .update({ ...updates, subscription_fee: newPlan.price || 0 })
         .eq('id', shop.id)
 
-      if (updateErr && updateErr.message?.includes('subscription_fee')) {
-        const retry = await supabaseAdmin
-          .from('shops')
-          .update(updates)
-          .eq('id', shop.id)
-        updateErr = retry.error
+      if (updateErr) {
+        if (updateErr.message?.includes('subscription_fee')) {
+          const retry1 = await supabaseAdmin.from('shops').update(updates).eq('id', shop.id)
+          updateErr = retry1.error
+        }
+        if (updateErr && updateErr.message?.includes('subscription_plan')) {
+          delete updates.subscription_plan
+          const retry2 = await supabaseAdmin.from('shops').update(updates).eq('id', shop.id)
+          updateErr = retry2.error
+        }
+        if (updateErr && updateErr.message?.includes('plan_id')) {
+          delete updates.plan_id
+          updates.subscription_plan = newPlan.name
+          const retry3 = await supabaseAdmin.from('shops').update(updates).eq('id', shop.id)
+          updateErr = retry3.error
+        }
       }
 
       if (updateErr) throw updateErr
@@ -526,7 +566,7 @@ export default function ShopsList() {
                         {/* Plan Switcher Dropdown */}
                         <div className="flex items-center gap-1.5">
                           <select
-                            value={shop.plan_id || ''}
+                            value={shop.plan_id ? String(shop.plan_id) : (shop.subscription_plans?.id ? String(shop.subscription_plans.id) : (allPlans.find(p => p.name?.toLowerCase() === shop.subscription_plan?.toLowerCase())?.id ? String(allPlans.find(p => p.name?.toLowerCase() === shop.subscription_plan?.toLowerCase()).id) : ''))}
                             disabled={switchingPlanShopId === shop.id}
                             onChange={(e) => handleQuickPlanChange(shop, e.target.value)}
                             className="text-[11px] font-bold bg-amber-50/80 text-amber-900 border border-amber-200/90 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer disabled:opacity-50"
@@ -534,7 +574,7 @@ export default function ShopsList() {
                           >
                             <option value="">No Plan</option>
                             {allPlans.map(p => (
-                              <option key={p.id} value={p.id}>
+                              <option key={p.id} value={String(p.id)}>
                                 {p.name} (Rs. {Number(p.price || 0).toLocaleString()})
                               </option>
                             ))}
@@ -769,14 +809,14 @@ export default function ShopsList() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Plan:</span>
                     <select
-                      value={shop.plan_id || ''}
+                      value={shop.plan_id ? String(shop.plan_id) : (shop.subscription_plans?.id ? String(shop.subscription_plans.id) : (allPlans.find(p => p.name?.toLowerCase() === shop.subscription_plan?.toLowerCase())?.id ? String(allPlans.find(p => p.name?.toLowerCase() === shop.subscription_plan?.toLowerCase()).id) : ''))}
                       disabled={switchingPlanShopId === shop.id}
                       onChange={(e) => handleQuickPlanChange(shop, e.target.value)}
                       className="text-xs font-bold bg-white text-slate-800 border border-slate-200 rounded-lg px-2 py-1 outline-none"
                     >
                       <option value="">No Plan</option>
                       {allPlans.map(p => (
-                        <option key={p.id} value={p.id}>
+                        <option key={p.id} value={String(p.id)}>
                           {p.name} (Rs. {Number(p.price || 0).toLocaleString()})
                         </option>
                       ))}
