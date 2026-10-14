@@ -34,11 +34,15 @@ export default function Analytics() {
     const fetchAnalytics = async () => {
         setLoading(true)
         try {
-            const [growthRes, topsRes, inactiveRes, shopsRes, paymentsRes] = await Promise.all([
+            let shopsRes = await supabaseAdmin.from('shops').select('id, name, created_at, subscription_plan, status, plan_id, subscription_plans(name, price)')
+            if (shopsRes.error) {
+                shopsRes = await supabaseAdmin.from('shops').select('id, name, created_at, subscription_plan, status, plan_id')
+            }
+
+            const [growthRes, topsRes, inactiveRes, paymentsRes] = await Promise.all([
                 supabaseAdmin.rpc('get_global_growth_stats'),
                 supabaseAdmin.rpc('get_top_performing_shops'),
                 supabaseAdmin.rpc('get_inactive_shops'),
-                supabaseAdmin.from('shops').select('id, name, created_at, subscription_plan, subscription_fee, status, plan_id, subscription_plans(name)'),
                 supabaseAdmin.from('shop_payments').select('id, amount, payment_date, payment_type')
             ])
 
@@ -88,7 +92,7 @@ export default function Analytics() {
             const suspendedShopsCount = suspendedShopsList.length
             const totalShopsCount = rawShops.length
 
-            const mrr = activeShopsList.reduce((sum, s) => sum + Number(s.subscription_fee || 0), 0)
+            const mrr = activeShopsList.reduce((sum, s) => sum + Number(s.subscription_fee || s.subscription_plans?.price || 0), 0)
             const arr = mrr * 12
             const arpu = activeShopsCount > 0 ? mrr / activeShopsCount : 0
             const churnRate = totalShopsCount > 0 ? (suspendedShopsCount / totalShopsCount) * 100 : 0

@@ -39,20 +39,47 @@ export default function ShopsList() {
 
     setLoading(true)
     try {
-      // 1. Fetch shops with full plan details
-      const { data: shopsData, error: shopsError } = await supabaseAdmin
+      // 1. Fetch shops with full plan details (safely querying standard columns)
+      let shopsData = []
+      const { data: joinedShops, error: shopsError } = await supabaseAdmin
         .from('shops')
-        .select('*, subscription_plans(id, name, price, max_products, max_users)')
+        .select('*, subscription_plans(id, name, price)')
         .order('created_at', { ascending: false })
 
-      if (shopsError) throw shopsError
+      if (shopsError) {
+        console.warn('Shop query with join failed, falling back to plain select:', shopsError)
+        const { data: plainShops, error: plainErr } = await supabaseAdmin
+          .from('shops')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (plainErr) throw plainErr
+        shopsData = plainShops || []
+      } else {
+        shopsData = joinedShops || []
+      }
 
-      // 2. Fetch all subscription plans for quick switching
-      const { data: plansData } = await supabaseAdmin
-        .from('subscription_plans')
-        .select('*')
-        .order('price', { ascending: true })
-      setAllPlans(plansData || [])
+      // 2. Fetch all subscription plans for quick switching & fallback linking
+      let plansData = []
+      try {
+        const { data: pData } = await supabaseAdmin
+          .from('subscription_plans')
+          .select('*')
+          .order('price', { ascending: true })
+        plansData = pData || []
+        setAllPlans(plansData)
+      } catch (pErr) {
+        console.warn('Could not load subscription_plans:', pErr)
+      }
+
+      const plansMap = {}
+      plansData.forEach(p => { plansMap[p.id] = p })
+
+      // Ensure each shop has subscription_plans attached even if join failed
+      shopsData.forEach(shop => {
+        if (!shop.subscription_plans && shop.plan_id && plansMap[shop.plan_id]) {
+          shop.subscription_plans = plansMap[shop.plan_id]
+        }
+      })
 
       // 3. Fetch user counts per shop
       const { data: userCounts, error: countsError } = await supabaseAdmin
@@ -105,21 +132,30 @@ export default function ShopsList() {
     const newPlan = allPlans.find(p => p.id === newPlanId)
     if (!newPlan) return
 
-    const confirmMsg = `Switch "${shop.name}" to "${newPlan.name}" plan?\n\nNew Fee: Rs. ${Number(newPlan.price || 0).toLocaleString()}\nLimits: ${newPlan.max_products || 'Unlimited'} Products, ${newPlan.max_users || 'Unlimited'} Users`
+    const maxProds = newPlan.max_products || newPlan.product_limit || 'Unlimited'
+    const maxUsers = newPlan.max_users || newPlan.user_limit || 'Unlimited'
+    const confirmMsg = `Switch "${shop.name}" to "${newPlan.name}" plan?\n\nNew Fee: Rs. ${Number(newPlan.price || 0).toLocaleString()}\nLimits: ${maxProds} Products, ${maxUsers} Users`
     if (!window.confirm(confirmMsg)) return
 
     setSwitchingPlanShopId(shop.id)
     try {
       const updates = {
         plan_id: newPlan.id,
-        subscription_plan: newPlan.name,
-        subscription_fee: newPlan.price || 0
+        subscription_plan: newPlan.name
       }
 
-      const { error: updateErr } = await supabaseAdmin
+      let { error: updateErr } = await supabaseAdmin
         .from('shops')
-        .update(updates)
+        .update({ ...updates, subscription_fee: newPlan.price || 0 })
         .eq('id', shop.id)
+
+      if (updateErr && updateErr.message?.includes('subscription_fee')) {
+        const retry = await supabaseAdmin
+          .from('shops')
+          .update(updates)
+          .eq('id', shop.id)
+        updateErr = retry.error
+      }
 
       if (updateErr) throw updateErr
 
@@ -511,16 +547,16 @@ export default function ShopsList() {
                             <div className="flex justify-between items-center text-[10px] mb-0.5">
                               <span>Products:</span>
                               <span className="font-bold text-slate-700">
-                                {shop.productCount || 0} / {shop.subscription_plans?.max_products || '∞'}
+                                {shop.productCount || 0} / {shop.subscription_plans?.max_products || shop.subscription_plans?.product_limit || '∞'}
                               </span>
                             </div>
-                            {shop.subscription_plans?.max_products && (
+                            {(shop.subscription_plans?.max_products || shop.subscription_plans?.product_limit) && (
                               <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                                 <div
                                   className={`h-full ${
-                                    (shop.productCount / shop.subscription_plans.max_products) > 0.9 ? 'bg-red-500' : 'bg-emerald-500'
+                                    (shop.productCount / (shop.subscription_plans?.max_products || shop.subscription_plans?.product_limit)) > 0.9 ? 'bg-red-500' : 'bg-emerald-500'
                                   }`}
-                                  style={{ width: `${Math.min(100, ((shop.productCount || 0) / shop.subscription_plans.max_products) * 100)}%` }}
+                                  style={{ width: `${Math.min(100, ((shop.productCount || 0) / (shop.subscription_plans?.max_products || shop.subscription_plans?.product_limit)) * 100)}%` }}
                                 />
                               </div>
                             )}
@@ -529,7 +565,7 @@ export default function ShopsList() {
                           <div className="flex justify-between items-center text-[10px]">
                             <span>Users:</span>
                             <span className="font-bold text-slate-700">
-                              {shop.userCount || 0} / {shop.subscription_plans?.max_users || '∞'}
+                              {shop.userCount || 0} / {shop.subscription_plans?.max_users || shop.subscription_plans?.user_limit || '∞'}
                             </span>
                           </div>
                         </div>
@@ -748,10 +784,10 @@ export default function ShopsList() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] font-mono border-t border-slate-200/70">
                     <div className="text-slate-600">
-                      Products: <span className="font-bold text-slate-800">{shop.productCount || 0}/{shop.subscription_plans?.max_products || '∞'}</span>
+                      Products: <span className="font-bold text-slate-800">{shop.productCount || 0}/{shop.subscription_plans?.max_products || shop.subscription_plans?.product_limit || '∞'}</span>
                     </div>
                     <div className="text-slate-600 text-right">
-                      Staff: <span className="font-bold text-slate-800">{shop.userCount || 0}/{shop.subscription_plans?.max_users || '∞'}</span>
+                      Staff: <span className="font-bold text-slate-800">{shop.userCount || 0}/{shop.subscription_plans?.max_users || shop.subscription_plans?.user_limit || '∞'}</span>
                     </div>
                   </div>
                 </div>

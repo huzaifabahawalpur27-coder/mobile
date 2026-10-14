@@ -29,14 +29,21 @@ export default function Dashboard() {
     }
 
     try {
-      const [shopsRes, usersRes, paymentsRes, salesRes] = await Promise.all([
-        supabaseAdmin.from('shops').select('id, name, status, subscription_plan, subscription_fee, next_billing_date'),
+      let shopsRes = await supabaseAdmin.from('shops').select('id, name, phone, status, subscription_plan, next_billing_date, plan_id, subscription_plans(price)')
+      if (shopsRes.error) {
+        shopsRes = await supabaseAdmin.from('shops').select('id, name, phone, status, subscription_plan, next_billing_date, plan_id')
+      }
+
+      const [usersRes, paymentsRes, salesRes] = await Promise.all([
         supabaseAdmin.from('users').select('id', { count: 'exact' }),
         supabaseAdmin.from('shop_payments').select('amount'),
         supabaseAdmin.from('sales').select('total_amount, created_at, shop_id')
       ])
 
-      const shops = shopsRes.data || []
+      const shops = (shopsRes.data || []).map(s => ({
+        ...s,
+        subscription_fee: Number(s.subscription_fee || s.subscription_plans?.price || 0)
+      }))
       const totalShops = shops.length
       const activeShops = shops.filter(s => s.status === 'active').length
       const totalUsers = usersRes.count || usersRes.data?.length || 0
@@ -47,9 +54,10 @@ export default function Dashboard() {
       const today = new Date()
 
       shops.forEach(s => {
+        const fee = Number(s.subscription_fee || 0)
         if (s.status === 'active' && s.subscription_plan) {
-          if (s.subscription_plan === 'monthly') mrr += Number(s.subscription_fee || 0)
-          if (s.subscription_plan === 'annually') mrr += Number(s.subscription_fee || 0) / 12
+          if (s.subscription_plan === 'monthly') mrr += fee
+          if (s.subscription_plan === 'annually') mrr += fee / 12
           if (s.subscription_plan === 'trial') onTrial++
         }
 

@@ -67,13 +67,54 @@ export default function Subscriptions() {
 
         setLoading(true)
         try {
-            const { data, error } = await supabaseAdmin
+            // 1. Fetch plans first to provide fallback names and prices
+            const plansMap = {}
+            try {
+                const { data: plans } = await supabaseAdmin
+                    .from('subscription_plans')
+                    .select('id, name, price')
+                if (plans) {
+                    plans.forEach(p => { plansMap[p.id] = p })
+                    setAllPlans(plans)
+                }
+            } catch (pErr) {
+                console.warn('Could not fetch subscription_plans in Subscriptions:', pErr)
+            }
+
+            // 2. Fetch shops with safe selection (do not directly query non-existent shops.subscription_fee)
+            let rawShops = []
+            const res = await supabaseAdmin
                 .from('shops')
-                .select('id, name, phone, subscription_plan, subscription_fee, next_billing_date, status, plan_id, subscription_plans(name)')
+                .select('id, name, phone, subscription_plan, next_billing_date, status, plan_id, subscription_plans(id, name, price)')
                 .order('name', { ascending: true })
 
-            if (error) throw error
-            setShops(data)
+            if (res.error) {
+                console.warn('Subscriptions query with join failed, falling back to plain select:', res.error)
+                const fallbackRes = await supabaseAdmin
+                    .from('shops')
+                    .select('id, name, phone, subscription_plan, next_billing_date, status, plan_id')
+                    .order('name', { ascending: true })
+                if (fallbackRes.error) throw fallbackRes.error
+                rawShops = fallbackRes.data || []
+            } else {
+                rawShops = res.data || []
+            }
+
+            // 3. Normalize shops with derived fee
+            const normalized = rawShops.map(s => {
+                const plan = s.subscription_plans || plansMap[s.plan_id] || null
+                const fee = s.subscription_fee !== undefined && s.subscription_fee !== null
+                    ? Number(s.subscription_fee)
+                    : (plan?.price ? Number(plan.price) : 0)
+
+                return {
+                    ...s,
+                    subscription_plans: plan,
+                    subscription_fee: fee
+                }
+            })
+
+            setShops(normalized)
         } catch (error) {
             console.error('Fetch error:', error)
             setErrorMsg('Failed to load subscriptions: ' + error.message)
@@ -206,15 +247,24 @@ export default function Subscriptions() {
 
     const handleSavePlan = async (shopId) => {
         try {
+            const selectedPlan = allPlans.find(p => p.id === planForm.planId)
             let updates = {
                 plan_id: planForm.planId || null,
-                subscription_fee: parseFloat(planForm.fee)
+                subscription_plan: selectedPlan?.name || null
             }
 
-            const { error } = await supabaseAdmin
+            let { error } = await supabaseAdmin
                 .from('shops')
-                .update(updates)
+                .update({ ...updates, subscription_fee: parseFloat(planForm.fee) || 0 })
                 .eq('id', shopId)
+
+            if (error && error.message?.includes('subscription_fee')) {
+                const retry = await supabaseAdmin
+                    .from('shops')
+                    .update(updates)
+                    .eq('id', shopId)
+                error = retry.error
+            }
 
             if (error) throw error
 
