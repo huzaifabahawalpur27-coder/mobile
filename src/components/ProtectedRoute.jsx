@@ -33,17 +33,32 @@ function ProtectedRoute({ children, allowedRoles, requiredModule }) {
       if (!navigator.onLine) return
 
       try {
+        let status = null
         const { data, error } = await supabase
           .rpc('get_shop_status', { p_shop_id: user.shop_id })
 
-        if (error) throw error
+        if (!error && data) {
+          status = data
+        } else {
+          // Fallback directly to shops table if RPC is not installed
+          const { data: shopRow } = await supabase
+            .from('shops')
+            .select('status')
+            .eq('id', user.shop_id)
+            .maybeSingle()
+          if (shopRow?.status) {
+            status = shopRow.status
+          }
+        }
 
-        lastStatusCheckTime = Date.now()
-        cachedShopStatus = data
+        if (status) {
+          lastStatusCheckTime = Date.now()
+          cachedShopStatus = status
 
-        if (isMountedRef.current) {
-          if (!user.isImpersonating && data === 'suspended') {
-            setIsSuspended(true)
+          if (isMountedRef.current) {
+            if (!user.isImpersonating && status === 'suspended') {
+              setIsSuspended(true)
+            }
           }
         }
       } catch (_) {

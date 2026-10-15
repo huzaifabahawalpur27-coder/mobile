@@ -156,31 +156,53 @@ function Layout({ children }) {
 
   const fetchAnnouncements = async () => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('announcements')
         .select('*')
         .eq('is_active', true)
         .or(`shop_id.is.null,shop_id.eq.${user.shop_id}`)
         .order('created_at', { ascending: false })
 
-      if (data) setAnnouncements(data)
-    } catch (e) {
-      console.error('Failed to fetch announcements')
+      if (!error && data) setAnnouncements(data)
+    } catch (_) {
+      // announcements table optional
     }
   }
 
   const fetchPlanInfo = async () => {
     if (!user?.shop_id) return
     try {
+      let planData = null
       const { data, error } = await supabase.rpc('get_shop_config', { p_shop_id: user.shop_id })
       if (!error && data) {
-        setPlanInfo(data)
-        // Also fetch product count
-        const { count } = await supabase.from('products').select('*', { count: 'exact', head: true }).eq('shop_id', user.shop_id)
-        setProductCount(count || 0)
+        planData = data
+      } else {
+        const { data: shopData } = await supabase
+          .from('shops')
+          .select('status, subscription_plan, subscription_fee, next_billing_date')
+          .eq('id', user.shop_id)
+          .maybeSingle()
+        if (shopData) {
+          const localLimits = JSON.parse(localStorage.getItem(`plan_limits_${user.shop_id}`) || localStorage.getItem('plan_limits') || '{}')
+          planData = {
+            plan_name: shopData.subscription_plan || localLimits.plan_name || 'Business Pro',
+            product_limit: localLimits.product_limit || 500,
+            user_limit: localLimits.user_limit || 5,
+            status: shopData.status || 'active',
+            ...shopData
+          }
+        }
       }
-    } catch (e) {
-      console.error('Plan Fetch Error', e)
+
+      if (planData) {
+        setPlanInfo(planData)
+      }
+
+      // Also fetch product count
+      const { count } = await supabase.from('products').select('*', { count: 'exact', head: true }).eq('shop_id', user.shop_id)
+      setProductCount(count || 0)
+    } catch (_) {
+      // graceful fallback
     }
   }
 

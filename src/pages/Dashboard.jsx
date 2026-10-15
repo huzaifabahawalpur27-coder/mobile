@@ -126,7 +126,7 @@ function Dashboard() {
         // 1. Today's sales with items
         supabase
           .from('sales')
-          .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_name, customer_id, sale_items(product_name, cost_price, quantity, returned_qty, products(name))')
+          .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_id, sale_items(product_name, cost_price, quantity, returned_qty, products(name)), customers(name)')
           .eq('shop_id', user.shop_id)
           .eq('sale_type', 'sale')
           .gte('created_at', todayISO),
@@ -150,7 +150,7 @@ function Dashboard() {
         // 4. Recent sales (latest 6)
         supabase
           .from('sales')
-          .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_name, customers(name)')
+          .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_id, customers(name)')
           .eq('shop_id', user.shop_id)
           .eq('sale_type', 'sale')
           .order('created_at', { ascending: false })
@@ -174,8 +174,14 @@ function Dashboard() {
           .select('id, brand, model, storage, color, status, cost_price, sale_price')
           .eq('shop_id', user.shop_id),
 
-        // 8. Shop config
-        supabase.rpc('get_shop_config', { p_shop_id: user.shop_id })
+        // 8. Shop config (with graceful fallback if RPC is missing)
+        supabase
+          .rpc('get_shop_config', { p_shop_id: user.shop_id })
+          .then(r => (r?.error || !r?.data)
+            ? supabase.from('shops').select('status, subscription_plan, subscription_fee, next_billing_date').eq('id', user.shop_id).maybeSingle()
+            : r
+          )
+          .catch(() => ({ data: null }))
       ])
 
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4500))
@@ -184,7 +190,14 @@ function Dashboard() {
         timeoutPromise
       ])
 
-      const config = shopConfigRes.data || {}
+      const rawConfig = shopConfigRes?.data || {}
+      const config = {
+        plan_name: rawConfig.plan_name || rawConfig.subscription_plan || 'Business Pro',
+        product_limit: rawConfig.product_limit || 500,
+        user_limit: rawConfig.user_limit || 5,
+        status: rawConfig.status || 'active',
+        ...rawConfig
+      }
       if (config.status === 'suspended' && !user.isImpersonating) {
         alert('Your account has been suspended due to an unpaid subscription fee. Logging out.')
         logout()
