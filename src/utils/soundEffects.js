@@ -59,8 +59,14 @@ function unlockAudio() {
 
 if (typeof window !== 'undefined') {
   const unlockEvents = ['pointerdown', 'mousedown', 'touchstart', 'keydown', 'click']
-  const handleInteraction = () => {
+  const handleInteraction = (e) => {
+    if (e && e.isTrusted === false) return
     unlockAudio()
+    if (audioCtx && audioCtx.state === 'running') {
+      unlockEvents.forEach((evt) => {
+        window.removeEventListener(evt, handleInteraction, { capture: true })
+      })
+    }
   }
   unlockEvents.forEach((evt) => {
     window.addEventListener(evt, handleInteraction, { capture: true, passive: true })

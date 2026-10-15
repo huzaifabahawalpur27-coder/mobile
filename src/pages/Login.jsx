@@ -267,16 +267,30 @@ function Login() {
       const hashedPassword = await hashPassword(password)
 
       const { data: loginResult, error: rpcError } = await supabase.rpc('secure_login', {
-        p_identifier: username.trim(),
-        p_password: hashedPassword
+        p_username: username.trim(),
+        p_password_hash: hashedPassword
       })
 
       if (rpcError) {
-        throw new Error(rpcError.message || 'Login service unavailable')
+        const errMsg = (rpcError.message || '').toLowerCase()
+        const isNetworkError = errMsg.includes('fetch') ||
+          errMsg.includes('network') ||
+          errMsg.includes('failed to fetch') ||
+          errMsg.includes('load failed') ||
+          rpcError.code === 'NETWORK_ERROR' ||
+          !navigator.onLine
+
+        if (isNetworkError) {
+          throw new Error('Network unavailable — switching to offline login')
+        }
+
+        setError(rpcError.message || 'Login service unavailable. Please contact support.')
+        setLoading(false)
+        return
       }
 
       if (!loginResult || !loginResult.success) {
-        let msg = loginResult?.message || 'Invalid username or password'
+        let msg = loginResult?.error || loginResult?.message || 'Invalid username or password'
         if (msg.includes('multiple accounts') || msg.includes('Multiple accounts')) {
           msg = '⚠️ Multiple accounts share this username. Please sign in using your full email address.'
         }
