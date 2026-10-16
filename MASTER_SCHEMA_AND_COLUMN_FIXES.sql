@@ -507,6 +507,10 @@ $$;
 -- SECTION 4: BULLETPROOF record_phone_purchase RPC (7-Param & 6-Param)
 -- ----------------------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.record_phone_purchase(INTEGER, INTEGER, JSONB, NUMERIC, NUMERIC, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.record_phone_purchase(INTEGER, JSONB, NUMERIC, NUMERIC, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.record_phone_purchase(INTEGER, JSONB, NUMERIC, NUMERIC, TEXT);
+
 CREATE OR REPLACE FUNCTION public.record_phone_purchase(
     p_supplier_id INTEGER,
     p_branch_id INTEGER,
@@ -799,6 +803,11 @@ $$;
 -- SECTION 5: BULLETPROOF CUSTODY RPCS (issue_phone_custody & return_phone_custody)
 -- ----------------------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.issue_phone_custody(INTEGER, TEXT, TEXT, TEXT, TEXT, NUMERIC, DATE, TEXT);
+DROP FUNCTION IF EXISTS public.issue_phone_custody(INTEGER, TEXT, TEXT, TEXT, DATE, NUMERIC, TEXT);
+DROP FUNCTION IF EXISTS public.return_phone_custody(INTEGER, TEXT);
+DROP FUNCTION IF EXISTS public.return_phone_custody(INTEGER);
+
 CREATE OR REPLACE FUNCTION public.issue_phone_custody(
     p_phone_id INTEGER,
     p_issue_type TEXT,
@@ -911,10 +920,10 @@ CREATE OR REPLACE FUNCTION public.issue_phone_custody(
     p_phone_id INTEGER,
     p_issue_type TEXT,
     p_recipient_name TEXT,
-    p_recipient_phone TEXT,
-    p_recipient_cnic TEXT,
-    p_token_deposit NUMERIC,
-    p_expected_return_date DATE,
+    p_recipient_phone TEXT DEFAULT NULL,
+    p_recipient_cnic TEXT DEFAULT NULL,
+    p_token_deposit NUMERIC DEFAULT 0,
+    p_expected_return_date DATE DEFAULT NULL,
     p_notes TEXT DEFAULT NULL
 )
 RETURNS JSONB
@@ -1033,6 +1042,11 @@ $$;
 -- ----------------------------------------------------------------------------
 -- SECTION 6: BULLETPROOF CASH SESSION RPCS (open_cash_session & close_cash_session)
 -- ----------------------------------------------------------------------------
+
+DROP FUNCTION IF EXISTS public.open_cash_session(NUMERIC, TEXT);
+DROP FUNCTION IF EXISTS public.open_cash_session(NUMERIC);
+DROP FUNCTION IF EXISTS public.close_cash_session(INTEGER, NUMERIC, TEXT);
+DROP FUNCTION IF EXISTS public.close_cash_session(INTEGER, NUMERIC);
 
 CREATE OR REPLACE FUNCTION public.open_cash_session(
     p_opening_cash NUMERIC,
@@ -1174,6 +1188,9 @@ $$;
 -- ----------------------------------------------------------------------------
 -- SECTION 7: BULLETPROOF process_phone_sale RPC (13-Param & 9-Param)
 -- ----------------------------------------------------------------------------
+
+DROP FUNCTION IF EXISTS public.process_phone_sale(INTEGER, TEXT, TEXT, TEXT, INTEGER, JSONB, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, JSONB, TEXT);
+DROP FUNCTION IF EXISTS public.process_phone_sale(INTEGER, JSONB, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, JSONB, TEXT);
 
 CREATE OR REPLACE FUNCTION public.process_phone_sale(
     p_customer_id INTEGER DEFAULT NULL,
