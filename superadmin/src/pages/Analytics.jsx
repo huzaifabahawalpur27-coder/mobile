@@ -33,35 +33,131 @@ export default function Analytics() {
 
     const fetchAnalytics = async () => {
         setLoading(true)
+        setError('')
         try {
             let shopsRes = await supabaseAdmin.from('shops').select('*, subscription_plans(name, price)')
             if (shopsRes.error) {
                 shopsRes = await supabaseAdmin.from('shops').select('*')
             }
+            const rawShops = shopsRes.data || []
 
             const [growthRes, topsRes, inactiveRes, paymentsRes] = await Promise.all([
-                supabaseAdmin.rpc('get_global_growth_stats'),
-                supabaseAdmin.rpc('get_top_performing_shops'),
-                supabaseAdmin.rpc('get_inactive_shops'),
-                supabaseAdmin.from('shop_payments').select('id, amount, payment_date, payment_type')
+                supabaseAdmin.rpc('get_global_growth_stats').catch(e => ({ error: e, data: null })),
+                supabaseAdmin.rpc('get_top_performing_shops').catch(e => ({ error: e, data: null })),
+                supabaseAdmin.rpc('get_inactive_shops').catch(e => ({ error: e, data: null })),
+                supabaseAdmin.from('shop_payments').select('id, amount, payment_date, payment_type').catch(e => ({ error: e, data: [] }))
             ])
 
-            if (growthRes.error) throw growthRes.error
-            if (topsRes.error) throw topsRes.error
-            if (inactiveRes.error) throw inactiveRes.error
-            if (shopsRes.error) throw shopsRes.error
-            if (paymentsRes.error) throw paymentsRes.error
+            // 1. Resolve Global Growth Stats (RPC or direct sales table query)
+            let rawGrowth = (!growthRes.error && Array.isArray(growthRes.data)) ? growthRes.data : null
+            if (!rawGrowth) {
+                try {
+                    const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()
+                    const { data: salesGrowth } = await supabaseAdmin
+                        .from('sales')
+                        .select('id, total_amount, created_at')
+                        .gte('created_at', sixMonthsAgo)
+                        .order('created_at', { ascending: true })
 
-            const rawGrowth = growthRes.data || []
+                    const monthMap = {}
+                    ;(salesGrowth || []).forEach(s => {
+                        if (!s.created_at) return
+                        const d = new Date(s.created_at)
+                        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+                        if (!monthMap[monthKey]) {
+                            monthMap[monthKey] = { month: monthKey, gmv: 0, orders_count: 0 }
+                        }
+                        monthMap[monthKey].gmv += Number(s.total_amount || 0)
+                        monthMap[monthKey].orders_count += 1
+                    })
+                    rawGrowth = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month))
+                } catch (fallbackErr) {
+                    console.warn('Fallback sales growth query error:', fallbackErr)
+                    rawGrowth = []
+                }
+            }
+
             const formattedGrowth = rawGrowth.map(d => ({
                 name: new Date(d.month).toLocaleDateString('en-US', { month: 'short' }),
                 gmv: Number(d.gmv),
                 orders: d.orders_count
             }))
-
             setGrowthData(formattedGrowth)
-            setTopShops(topsRes.data || [])
-            setInactiveShops(inactiveRes.data || [])
+
+            // 2. Resolve Top Performing Shops (RPC or direct sales query)
+            let topShopsData = (!topsRes.error && Array.isArray(topsRes.data)) ? topsRes.data : null
+            if (!topShopsData) {
+                try {
+                    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+                    const { data: monthSales } = await supabaseAdmin
+                        .from('sales')
+                        .select('id, total_amount, shop_id')
+                        .gte('created_at', thirtyDaysAgo)
+
+                    const shopSalesMap = {}
+                    ;(monthSales || []).forEach(s => {
+                        if (!s.shop_id) return
+                        if (!shopSalesMap[s.shop_id]) {
+                            shopSalesMap[s.shop_id] = { gmv: 0, order_count: 0 }
+                        }
+                        shopSalesMap[s.shop_id].gmv += Number(s.total_amount || 0)
+                        shopSalesMap[s.shop_id].order_count += 1
+                    })
+
+                    topShopsData = rawShops
+                        .map(s => ({
+                            shop_id: s.id,
+                            shop_name: s.name,
+                            gmv: shopSalesMap[s.id]?.gmv || 0,
+                            order_count: shopSalesMap[s.id]?.order_count || 0
+                        }))
+                        .filter(s => s.gmv > 0)
+                        .sort((a, b) => b.gmv - a.gmv)
+                        .slice(0, 10)
+                } catch (fallbackErr) {
+                    console.warn('Fallback top shops error:', fallbackErr)
+                    topShopsData = []
+                }
+            }
+            setTopShops(topShopsData)
+
+            // 3. Resolve Inactive Shops (RPC or direct query)
+            let inactiveShopsData = (!inactiveRes.error && Array.isArray(inactiveRes.data)) ? inactiveRes.data : null
+            if (!inactiveShopsData) {
+                try {
+                    const { data: allSales } = await supabaseAdmin
+                        .from('sales')
+                        .select('shop_id, created_at')
+                        .order('created_at', { ascending: false })
+
+                    const lastSaleMap = {}
+                    ;(allSales || []).forEach(s => {
+                        if (!lastSaleMap[s.shop_id] && s.created_at) {
+                            lastSaleMap[s.shop_id] = s.created_at
+                        }
+                    })
+
+                    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+                    inactiveShopsData = rawShops
+                        .filter(s => s.status === 'active' || !s.status)
+                        .map(s => ({
+                            shop_id: s.id,
+                            shop_name: s.name,
+                            last_sale: lastSaleMap[s.id] || null,
+                            owner_phone: s.phone || 'N/A'
+                        }))
+                        .filter(s => !s.last_sale || new Date(s.last_sale) < fourteenDaysAgo)
+                        .sort((a, b) => {
+                            if (!a.last_sale) return -1
+                            if (!b.last_sale) return 1
+                            return new Date(a.last_sale) - new Date(b.last_sale)
+                        })
+                } catch (fallbackErr) {
+                    console.warn('Fallback inactive shops error:', fallbackErr)
+                    inactiveShopsData = []
+                }
+            }
+            setInactiveShops(inactiveShopsData)
 
             // Calculate basic stats
             const totalGMV = rawGrowth.reduce((sum, d) => sum + Number(d.gmv), 0)
@@ -83,8 +179,7 @@ export default function Analytics() {
             })
 
             // Calculate SaaS stats
-            const rawShops = shopsRes.data || []
-            const rawPayments = paymentsRes.data || []
+            const rawPayments = paymentsRes?.data || []
 
             const activeShopsList = rawShops.filter(s => s.status === 'active' || !s.status)
             const suspendedShopsList = rawShops.filter(s => s.status === 'suspended')

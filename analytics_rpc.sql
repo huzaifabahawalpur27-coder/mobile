@@ -1,18 +1,25 @@
--- Phase 5: Advanced Analytics RPCs (Final Robust Version)
+-- ==============================================================================
+-- Phase 5: Superadmin Advanced Analytics RPCs (Final Robust Version)
+-- Run this script in the Supabase SQL Editor.
+-- ==============================================================================
 
 -- 1. Ensure clean slate (using exact signatures)
 DROP FUNCTION IF EXISTS get_global_growth_stats();
 DROP FUNCTION IF EXISTS get_top_performing_shops();
 DROP FUNCTION IF EXISTS get_inactive_shops();
 
--- 1. Global GMV Trends
--- Uses total_amount and explicit casts
+-- 1. Global GMV Trends (Last 6 months)
 CREATE OR REPLACE FUNCTION get_global_growth_stats()
 RETURNS TABLE (
     month DATE,
     gmv NUMERIC,
     orders_count BIGINT
-) AS $$
+) 
+LANGUAGE sql 
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
     SELECT 
         (date_trunc('month', created_at))::DATE as month,
         COALESCE(SUM(total_amount), 0)::NUMERIC as gmv,
@@ -21,16 +28,23 @@ RETURNS TABLE (
     WHERE created_at > (NOW() - INTERVAL '6 months')
     GROUP BY 1
     ORDER BY 1 ASC;
-$$ LANGUAGE sql STABLE;
+$$;
 
--- 2. Top Performing Shops
+GRANT EXECUTE ON FUNCTION get_global_growth_stats() TO anon, authenticated, service_role;
+
+-- 2. Top Performing Shops (Last 30 days)
 CREATE OR REPLACE FUNCTION get_top_performing_shops()
 RETURNS TABLE (
     shop_id INTEGER,
     shop_name TEXT,
     gmv NUMERIC,
     order_count BIGINT
-) AS $$
+) 
+LANGUAGE sql 
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
     SELECT 
         s.id::INTEGER as shop_id,
         s.name::TEXT as shop_name,
@@ -42,16 +56,23 @@ RETURNS TABLE (
     GROUP BY s.id, s.name
     ORDER BY gmv DESC
     LIMIT 10;
-$$ LANGUAGE sql STABLE;
+$$;
 
--- 3. Inactive Shops
+GRANT EXECUTE ON FUNCTION get_top_performing_shops() TO anon, authenticated, service_role;
+
+-- 3. Inactive Shops (Over 14 days without sale)
 CREATE OR REPLACE FUNCTION get_inactive_shops()
 RETURNS TABLE (
     shop_id INTEGER,
     shop_name TEXT,
     last_sale TIMESTAMPTZ,
     owner_phone TEXT
-) AS $$
+) 
+LANGUAGE sql 
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
     SELECT 
         s.id::INTEGER as shop_id,
         s.name::TEXT as shop_name,
@@ -63,5 +84,9 @@ RETURNS TABLE (
     GROUP BY s.id, s.name, s.phone
     HAVING MAX(sa.created_at) IS NULL OR MAX(sa.created_at) < (NOW() - INTERVAL '14 days')
     ORDER BY last_sale ASC NULLS FIRST;
-$$ LANGUAGE sql STABLE;
+$$;
 
+GRANT EXECUTE ON FUNCTION get_inactive_shops() TO anon, authenticated, service_role;
+
+-- 4. Immediately reload PostgREST schema cache
+NOTIFY pgrst, 'reload schema';
