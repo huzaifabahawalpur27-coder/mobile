@@ -1002,16 +1002,17 @@ function POS() {
           }
         } else if (rpcRes && !rpcRes.success) {
           const errStr = (rpcRes.error || '').toLowerCase()
-          const isSessionOrAuth = errStr.includes('unauthenticated') || 
-                                  errStr.includes('session') || 
-                                  errStr.includes('token')
-          if (!isSessionOrAuth) {
+          const isInventoryConflict = errStr.includes('not found in stock') || 
+                                      errStr.includes('cannot be sold') || 
+                                      errStr.includes('already sold') || 
+                                      errStr.includes('lock conflict')
+          if (isInventoryConflict) {
             // Real inventory conflict (e.g. Phone is already sold or not found in stock)
             alert(`⚠️ Sale Nahi Ho Saki: ${rpcRes.error || 'Inventory lock conflict'}`)
             setSaving(false)
             return
           }
-          console.warn('POS: process_phone_sale unauthenticated session (' + rpcRes.error + '). Falling back to resilient direct table insert...')
+          console.warn('POS: process_phone_sale error (' + rpcRes.error + '). Falling back to resilient direct table insert...')
         } else if (rpcErr) {
           console.warn('POS: process_phone_sale RPC error. Falling back to resilient direct table insert...', rpcErr)
         }

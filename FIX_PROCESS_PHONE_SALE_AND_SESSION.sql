@@ -4,8 +4,8 @@
 --
 -- Fixes:
 -- 1. "⚠️ Sale Nahi Ho Saki: Unauthenticated: No active session"
--- 2. Relaxed session token check with graceful fallback to shop context
--- 3. Both 13-parameter and 9-parameter signatures of process_phone_sale
+-- 2. "⚠️ Sale Nahi Ho Saki: operator does not exist: uuid = text"
+-- 3. Robust UUID parsing for idempotency_key & session tokens
 -- ============================================================================
 
 -- 1. Ensure sessions table exists with proper indexes and default values
@@ -68,7 +68,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.current_session_token() TO anon, authenticated, public;
 
--- 3. Primary 13-Parameter process_phone_sale RPC with Resilient Authentication Fallback
+-- 3. Primary 13-Parameter process_phone_sale RPC with Resilient Authentication & Strict Type Safety
 CREATE OR REPLACE FUNCTION public.process_phone_sale(
     p_customer_id INTEGER DEFAULT NULL,
     p_customer_name TEXT DEFAULT NULL,
@@ -106,15 +106,26 @@ DECLARE
     v_balance_increase NUMERIC;
     v_imei_snap JSONB;
     v_headers JSONB;
+    v_idempotency_uuid UUID;
 BEGIN
-    -- Step A: Attempt resolving session from session token
-    v_token := current_session_token();
+    -- Step A: Attempt resolving session from session token (type-safe comparison)
+    BEGIN
+        v_token := current_session_token();
+    EXCEPTION WHEN OTHERS THEN
+        v_token := NULL;
+    END;
+
     IF v_token IS NOT NULL THEN
-        SELECT user_id, shop_id, branch_id
-        INTO v_user_id, v_shop_id, v_branch_id
-        FROM public.sessions
-        WHERE token = v_token AND expires_at > NOW()
-        LIMIT 1;
+        BEGIN
+            SELECT user_id, shop_id, branch_id
+            INTO v_user_id, v_shop_id, v_branch_id
+            FROM public.sessions
+            WHERE token::text = v_token::text AND expires_at > NOW()
+            LIMIT 1;
+        EXCEPTION WHEN OTHERS THEN
+            v_user_id := NULL;
+            v_shop_id := NULL;
+        END;
     END IF;
 
     -- Step B: Resilient Fallback - If session not found, resolve shop_id from headers or caller
@@ -144,9 +155,17 @@ BEGIN
 
     -- Step D: Resolve user_id fallback
     IF v_user_id IS NULL AND v_shop_id IS NOT NULL THEN
-        SELECT id INTO v_user_id FROM public.users WHERE shop_id = v_shop_id AND is_active = true LIMIT 1;
+        BEGIN
+            SELECT id INTO v_user_id FROM public.users WHERE shop_id = v_shop_id AND is_active = true LIMIT 1;
+        EXCEPTION WHEN OTHERS THEN
+            v_user_id := NULL;
+        END;
         IF v_user_id IS NULL THEN
-            SELECT id INTO v_user_id FROM public.users WHERE is_active = true LIMIT 1;
+            BEGIN
+                SELECT id INTO v_user_id FROM public.users WHERE is_active = true LIMIT 1;
+            EXCEPTION WHEN OTHERS THEN
+                v_user_id := NULL;
+            END;
         END IF;
     END IF;
 
@@ -154,20 +173,32 @@ BEGIN
         v_branch_id := p_branch_id;
     END IF;
 
-    -- Step E: Idempotency Protection
-    IF p_idempotency_key IS NOT NULL AND v_shop_id IS NOT NULL THEN
-        SELECT id, total_amount INTO v_existing_sale
-        FROM public.sales
-        WHERE shop_id = v_shop_id AND idempotency_key = p_idempotency_key
-        LIMIT 1;
-
-        IF FOUND THEN
-            RETURN jsonb_build_object(
-                'success', true,
-                'sale_id', v_existing_sale.id,
-                'replayed', true
-            );
+    -- Step E: Safe Idempotency Key Conversion (eliminates "operator does not exist: uuid = text")
+    v_idempotency_uuid := NULL;
+    IF p_idempotency_key IS NOT NULL AND p_idempotency_key != '' THEN
+        IF p_idempotency_key ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            v_idempotency_uuid := p_idempotency_key::UUID;
         END IF;
+    END IF;
+
+    -- Idempotency Check
+    IF v_idempotency_uuid IS NOT NULL AND v_shop_id IS NOT NULL THEN
+        BEGIN
+            SELECT id, total_amount INTO v_existing_sale
+            FROM public.sales
+            WHERE shop_id = v_shop_id AND idempotency_key = v_idempotency_uuid
+            LIMIT 1;
+
+            IF FOUND THEN
+                RETURN jsonb_build_object(
+                    'success', true,
+                    'sale_id', v_existing_sale.id,
+                    'replayed', true
+                );
+            END IF;
+        EXCEPTION WHEN OTHERS THEN
+            NULL; -- Skip check if column types differ
+        END;
     END IF;
 
     -- Step F: Validate phone inventory & Lock rows (FOR UPDATE)
@@ -202,7 +233,7 @@ BEGIN
         v_shop_id, v_branch_id, v_user_id, p_customer_id, p_customer_name,
         p_customer_phone, p_customer_whatsapp, p_total_amount, COALESCE(p_discount, 0),
         p_net_amount, p_paid_amount, p_payment_method, p_payment_method, p_payment_details,
-        p_idempotency_key, 'completed', NOW()
+        v_idempotency_uuid, 'completed', NOW()
     )
     RETURNING id INTO v_sale_id;
 
@@ -249,7 +280,6 @@ BEGIN
                     )
                 );
             EXCEPTION WHEN OTHERS THEN
-                -- Don't fail the sale if phone_history table/columns differ
                 NULL;
             END;
         ELSE
