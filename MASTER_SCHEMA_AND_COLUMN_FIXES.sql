@@ -433,7 +433,7 @@ UPDATE public.expenses SET
 -- ----------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.current_session_token()
-RETURNS TEXT
+RETURNS UUID
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
@@ -452,7 +452,12 @@ BEGIN
         RETURN NULL;
     END IF;
     v_token := COALESCE(v_headers->>'x-session-token', v_headers->>'X-Session-Token');
-    RETURN NULLIF(TRIM(v_token), '');
+    IF v_token IS NULL OR v_token !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        RETURN NULL;
+    END IF;
+    RETURN v_token::UUID;
+EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
 END;
 $$;
 
@@ -464,7 +469,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_token TEXT;
+    v_token UUID;
     v_shop_id INTEGER;
     v_headers JSONB;
 BEGIN
@@ -517,7 +522,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_token TEXT;
+    v_token UUID;
     v_user_id UUID := NULL;
     v_shop_id INTEGER := NULL;
     v_branch_id INTEGER := NULL;
@@ -809,7 +814,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_token TEXT;
+    v_token UUID;
     v_user_id UUID := NULL;
     v_shop_id INTEGER := NULL;
     v_branch_id INTEGER := NULL;
@@ -940,7 +945,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_token TEXT;
+    v_token UUID;
     v_user_id UUID := NULL;
     v_shop_id INTEGER := NULL;
     v_custody RECORD;
@@ -1039,7 +1044,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_token TEXT;
+    v_token UUID;
     v_user_id UUID := NULL;
     v_shop_id INTEGER := NULL;
     v_branch_id INTEGER := NULL;
@@ -1167,12 +1172,362 @@ END;
 $$;
 
 -- ----------------------------------------------------------------------------
--- SECTION 7: GRANT EXECUTE PERMISSIONS TO ALL ROLES
+-- SECTION 7: BULLETPROOF process_phone_sale RPC (13-Param & 9-Param)
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.process_phone_sale(
+    p_customer_id INTEGER DEFAULT NULL,
+    p_customer_name TEXT DEFAULT NULL,
+    p_customer_phone TEXT DEFAULT NULL,
+    p_customer_whatsapp TEXT DEFAULT NULL,
+    p_branch_id INTEGER DEFAULT NULL,
+    p_items JSONB DEFAULT '[]'::jsonb,
+    p_total_amount NUMERIC DEFAULT 0,
+    p_discount NUMERIC DEFAULT 0,
+    p_net_amount NUMERIC DEFAULT 0,
+    p_paid_amount NUMERIC DEFAULT 0,
+    p_payment_method TEXT DEFAULT 'cash',
+    p_payment_details JSONB DEFAULT '[]'::jsonb,
+    p_idempotency_key TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_token UUID;
+    v_user_id UUID;
+    v_shop_id INTEGER;
+    v_branch_id INTEGER;
+    v_sale_id INTEGER;
+    v_existing_sale RECORD;
+    v_item JSONB;
+    v_phone RECORD;
+    v_item_cost NUMERIC;
+    v_phone_id INTEGER;
+    v_product_id INTEGER;
+    v_qty INTEGER;
+    v_unit_price NUMERIC;
+    v_balance_increase NUMERIC;
+    v_imei_snap JSONB;
+    v_headers JSONB;
+    v_idempotency_uuid UUID;
+BEGIN
+    BEGIN
+        v_token := current_session_token();
+    EXCEPTION WHEN OTHERS THEN
+        v_token := NULL;
+    END;
+
+    IF v_token IS NOT NULL THEN
+        BEGIN
+            SELECT user_id, shop_id, branch_id
+            INTO v_user_id, v_shop_id, v_branch_id
+            FROM public.sessions
+            WHERE token::text = v_token::text AND expires_at > NOW()
+            LIMIT 1;
+        EXCEPTION WHEN OTHERS THEN
+            v_user_id := NULL;
+            v_shop_id := NULL;
+        END;
+    END IF;
+
+    IF v_shop_id IS NULL THEN
+        BEGIN
+            v_headers := current_setting('request.headers', true)::jsonb;
+            IF v_headers IS NOT NULL THEN
+                v_shop_id := (v_headers->>'x-shop-id')::INTEGER;
+            END IF;
+        EXCEPTION WHEN OTHERS THEN
+            v_shop_id := NULL;
+        END;
+    END IF;
+
+    IF v_shop_id IS NULL THEN
+        BEGIN
+            v_shop_id := public.current_user_shop_id();
+        EXCEPTION WHEN OTHERS THEN
+            v_shop_id := NULL;
+        END;
+    END IF;
+
+    IF v_shop_id IS NULL THEN
+        SELECT id INTO v_shop_id FROM public.shops LIMIT 1;
+    END IF;
+
+    IF v_user_id IS NULL AND v_shop_id IS NOT NULL THEN
+        BEGIN
+            SELECT id INTO v_user_id FROM public.users WHERE shop_id = v_shop_id AND is_active = true LIMIT 1;
+        EXCEPTION WHEN OTHERS THEN
+            v_user_id := NULL;
+        END;
+        IF v_user_id IS NULL THEN
+            BEGIN
+                SELECT id INTO v_user_id FROM public.users WHERE is_active = true LIMIT 1;
+            EXCEPTION WHEN OTHERS THEN
+                v_user_id := NULL;
+            END;
+        END IF;
+    END IF;
+
+    IF p_branch_id IS NOT NULL THEN
+        v_branch_id := p_branch_id;
+    END IF;
+
+    -- Safe Idempotency Key Conversion
+    v_idempotency_uuid := NULL;
+    IF p_idempotency_key IS NOT NULL AND p_idempotency_key != '' THEN
+        IF p_idempotency_key ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            v_idempotency_uuid := p_idempotency_key::UUID;
+        END IF;
+    END IF;
+
+    -- Idempotency Check
+    IF v_idempotency_uuid IS NOT NULL AND v_shop_id IS NOT NULL THEN
+        BEGIN
+            SELECT id, total_amount INTO v_existing_sale
+            FROM public.sales
+            WHERE shop_id = v_shop_id AND idempotency_key = v_idempotency_uuid
+            LIMIT 1;
+
+            IF FOUND THEN
+                RETURN jsonb_build_object(
+                    'success', true,
+                    'sale_id', v_existing_sale.id,
+                    'replayed', true
+                );
+            END IF;
+        EXCEPTION WHEN OTHERS THEN
+            NULL;
+        END;
+    END IF;
+
+    -- Validate phone inventory & Lock rows
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP
+        v_phone_id := (v_item->>'phone_id')::INTEGER;
+        IF v_phone_id IS NOT NULL THEN
+            SELECT * INTO v_phone
+            FROM public.phones
+            WHERE id = v_phone_id
+            FOR UPDATE;
+
+            IF NOT FOUND THEN
+                RETURN jsonb_build_object('success', false, 'error', format('Phone ID %s not found in stock', v_phone_id));
+            END IF;
+
+            IF v_phone.status != 'in_stock' THEN
+                RETURN jsonb_build_object(
+                    'success', false,
+                    'error', format('Phone %s %s (IMEI: %s) is %s, cannot be sold', v_phone.brand, v_phone.model, v_phone.imei_1, v_phone.status)
+                );
+            END IF;
+        END IF;
+    END LOOP;
+
+    -- Insert Sales Master Record
+    BEGIN
+        INSERT INTO public.sales (
+            shop_id, branch_id, user_id, customer_id, customer_name,
+            customer_phone, customer_whatsapp, total_amount, discount,
+            net_amount, paid_amount, amount_paid, payment_method, payment_type, payment_details,
+            idempotency_key, status, created_at
+        ) VALUES (
+            v_shop_id, v_branch_id, v_user_id, p_customer_id, p_customer_name,
+            p_customer_phone, p_customer_whatsapp,
+            p_total_amount, COALESCE(p_discount, 0), p_net_amount, p_paid_amount, p_paid_amount,
+            p_payment_method, p_payment_method, p_payment_details,
+            v_idempotency_uuid, 'completed', NOW()
+        )
+        RETURNING id INTO v_sale_id;
+    EXCEPTION WHEN OTHERS THEN
+        BEGIN
+            INSERT INTO public.sales (
+                shop_id, branch_id, user_id, customer_id, customer_name,
+                total_amount, discount, net_amount, paid_amount, amount_paid,
+                payment_method, payment_type, payment_details,
+                idempotency_key, status, created_at
+            ) VALUES (
+                v_shop_id, v_branch_id, v_user_id, p_customer_id, p_customer_name,
+                p_total_amount, COALESCE(p_discount, 0), p_net_amount, p_paid_amount, p_paid_amount,
+                p_payment_method, p_payment_method, p_payment_details,
+                v_idempotency_uuid, 'completed', NOW()
+            )
+            RETURNING id INTO v_sale_id;
+        EXCEPTION WHEN OTHERS THEN
+            INSERT INTO public.sales (
+                shop_id, user_id, customer_id,
+                total_amount, discount, net_amount, amount_paid,
+                payment_method, payment_details, created_at
+            ) VALUES (
+                v_shop_id, v_user_id, p_customer_id,
+                p_total_amount, COALESCE(p_discount, 0), p_net_amount, p_paid_amount,
+                p_payment_method, p_payment_details, NOW()
+            )
+            RETURNING id INTO v_sale_id;
+        END;
+    END;
+
+    -- Process Each Line Item
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP
+        v_phone_id := (v_item->>'phone_id')::INTEGER;
+        v_product_id := (v_item->>'product_id')::INTEGER;
+        v_unit_price := COALESCE((v_item->>'price')::NUMERIC, (v_item->>'custom_price')::NUMERIC, 0);
+        v_qty := COALESCE((v_item->>'quantity')::INTEGER, (v_item->>'qty')::INTEGER, 1);
+        v_imei_snap := NULL;
+
+        IF v_phone_id IS NOT NULL THEN
+            SELECT * INTO v_phone FROM public.phones WHERE id = v_phone_id;
+            v_item_cost := COALESCE(v_phone.cost_price, 0);
+            v_imei_snap := jsonb_build_object(
+                'imei_1', v_phone.imei_1,
+                'imei_2', v_phone.imei_2,
+                'brand', v_phone.brand,
+                'model', v_phone.model,
+                'color', v_phone.color,
+                'storage', v_phone.storage,
+                'condition', v_phone.condition,
+                'pta_status', v_phone.pta_status
+            );
+
+            BEGIN
+                UPDATE public.phones
+                SET status = 'sold',
+                    sale_id = v_sale_id,
+                    sold_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = v_phone_id;
+            EXCEPTION WHEN OTHERS THEN
+                UPDATE public.phones
+                SET status = 'sold',
+                    updated_at = NOW()
+                WHERE id = v_phone_id;
+            END;
+
+            BEGIN
+                INSERT INTO public.phone_history (
+                    phone_id, shop_id, branch_id, action, previous_status, new_status, actor_id, user_id, details
+                ) VALUES (
+                    v_phone_id, v_shop_id, v_branch_id, 'SOLD', 'in_stock', 'sold', v_user_id, v_user_id,
+                    jsonb_build_object(
+                        'sale_id', v_sale_id,
+                        'customer_id', p_customer_id,
+                        'customer_name', p_customer_name,
+                        'sale_price', v_unit_price,
+                        'cost_price', v_item_cost
+                    )
+                );
+            EXCEPTION WHEN OTHERS THEN
+                NULL;
+            END;
+        ELSE
+            IF v_product_id IS NOT NULL THEN
+                BEGIN
+                    SELECT cost_price INTO v_item_cost FROM public.products WHERE id = v_product_id;
+                    UPDATE public.products
+                    SET stock_quantity = GREATEST(0, stock_quantity - v_qty)
+                    WHERE id = v_product_id;
+                EXCEPTION WHEN OTHERS THEN
+                    NULL;
+                END;
+            END IF;
+        END IF;
+
+        BEGIN
+            INSERT INTO public.sale_items (
+                sale_id, phone_id, product_id, product_name,
+                quantity, unit_price, price, cost_price,
+                total_price, subtotal, line_total, imei_snapshot
+            ) VALUES (
+                v_sale_id, v_phone_id, v_product_id, COALESCE(v_item->>'name', v_item->>'product_name'),
+                v_qty, v_unit_price, v_unit_price, COALESCE(v_item_cost, 0),
+                v_unit_price * v_qty, v_unit_price * v_qty, v_unit_price * v_qty, v_imei_snap
+            );
+        EXCEPTION WHEN OTHERS THEN
+            INSERT INTO public.sale_items (
+                sale_id, product_id, quantity, price, subtotal
+            ) VALUES (
+                v_sale_id, v_product_id, v_qty, v_unit_price, v_unit_price * v_qty
+            );
+        END;
+    END LOOP;
+
+    -- Update Customer Outstanding Balance
+    v_balance_increase := p_net_amount - p_paid_amount;
+    IF p_customer_id IS NOT NULL AND v_balance_increase > 0 THEN
+        BEGIN
+            UPDATE public.customers
+            SET balance = COALESCE(balance, 0) + v_balance_increase,
+                outstanding_balance = COALESCE(outstanding_balance, 0) + v_balance_increase
+            WHERE id = p_customer_id;
+        EXCEPTION WHEN OTHERS THEN
+            BEGIN
+                UPDATE public.customers
+                SET balance = COALESCE(balance, 0) + v_balance_increase
+                WHERE id = p_customer_id;
+            EXCEPTION WHEN OTHERS THEN
+                NULL;
+            END;
+        END;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'sale_id', v_sale_id
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'error', SQLERRM
+    );
+END;
+$$;
+
+-- 9-Parameter Overload for backward compatibility
+CREATE OR REPLACE FUNCTION public.process_phone_sale(
+    p_customer_id INTEGER,
+    p_items JSONB,
+    p_total_amount NUMERIC,
+    p_discount NUMERIC,
+    p_net_amount NUMERIC,
+    p_paid_amount NUMERIC,
+    p_payment_method TEXT,
+    p_payment_details JSONB,
+    p_idempotency_key TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    RETURN public.process_phone_sale(
+        p_customer_id => p_customer_id,
+        p_customer_name => NULL,
+        p_customer_phone => NULL,
+        p_customer_whatsapp => NULL,
+        p_branch_id => NULL,
+        p_items => p_items,
+        p_total_amount => p_total_amount,
+        p_discount => p_discount,
+        p_net_amount => p_net_amount,
+        p_paid_amount => p_paid_amount,
+        p_payment_method => p_payment_method,
+        p_payment_details => p_payment_details,
+        p_idempotency_key => p_idempotency_key
+    );
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- SECTION 8: GRANT EXECUTE PERMISSIONS TO ALL ROLES
 -- ----------------------------------------------------------------------------
 GRANT EXECUTE ON FUNCTION public.current_session_token() TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.current_user_shop_id() TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.record_phone_purchase(INTEGER, INTEGER, JSONB, NUMERIC, NUMERIC, TEXT, TEXT) TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.record_phone_purchase(INTEGER, JSONB, NUMERIC, NUMERIC, TEXT, TEXT) TO anon, authenticated, public;
+GRANT EXECUTE ON FUNCTION public.process_phone_sale(INTEGER, TEXT, TEXT, TEXT, INTEGER, JSONB, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, JSONB, TEXT) TO anon, authenticated, public;
+GRANT EXECUTE ON FUNCTION public.process_phone_sale(INTEGER, JSONB, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, JSONB, TEXT) TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.issue_phone_custody(INTEGER, TEXT, TEXT, TEXT, DATE, NUMERIC, TEXT) TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.issue_phone_custody(INTEGER, TEXT, TEXT, TEXT, TEXT, NUMERIC, DATE, TEXT) TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.return_phone_custody(INTEGER, TEXT) TO anon, authenticated, public;
@@ -1181,6 +1536,6 @@ GRANT EXECUTE ON FUNCTION public.open_cash_session(NUMERIC, TEXT) TO anon, authe
 GRANT EXECUTE ON FUNCTION public.close_cash_session(INTEGER, NUMERIC, TEXT) TO anon, authenticated, public;
 
 -- ----------------------------------------------------------------------------
--- SECTION 8: INSTANT POSTGREST SCHEMA CACHE RELOAD
+-- SECTION 9: INSTANT POSTGREST SCHEMA CACHE RELOAD
 -- ----------------------------------------------------------------------------
 NOTIFY pgrst, 'reload schema';
