@@ -154,6 +154,58 @@ export const syncOfflineData = async () => {
                     err = retry.error;
                 }
 
+                // If supplier_payments table lacks custom columns (details, bill_number, payment_mode, transaction_ref)
+                if (err && item.table === 'supplier_payments' && (err.code === 'PGRST204' || err.code === '42703' || String(err.status) === '400' || err.message?.includes('schema cache') || err.message?.includes('column'))) {
+                    console.warn('SyncService: Retrying supplier_payments insert without missing schema columns');
+                    const stripPay = (d) => {
+                        const copy = { ...d };
+                        const noteText = [copy.bill_number ? `[Bill #${copy.bill_number}]` : '', copy.note || copy.description].filter(Boolean).join(' ');
+                        if (noteText) {
+                            copy.note = noteText;
+                            if (!copy.description) copy.description = noteText;
+                        }
+                        delete copy.details;
+                        delete copy.bill_number;
+                        delete copy.payment_mode;
+                        delete copy.transaction_ref;
+                        return copy;
+                    };
+                    const strippedPayload = isArray ? payload.map(stripPay) : stripPay(payload);
+                    let retry = await supabase.from(item.table).insert(strippedPayload).select();
+                    if (retry.error && (retry.error.code === 'PGRST204' || retry.error.message?.includes('column'))) {
+                        const legacyStrip = (d) => {
+                            const c = { ...d };
+                            delete c.payment_type;
+                            delete c.note;
+                            return c;
+                        };
+                        const legacyPayload = isArray ? strippedPayload.map(legacyStrip) : legacyStrip(strippedPayload);
+                        retry = await supabase.from(item.table).insert(legacyPayload).select();
+                    }
+                    resData = retry.data;
+                    err = retry.error;
+                }
+
+                // If customer_payments table lacks custom columns
+                if (err && item.table === 'customer_payments' && (err.code === 'PGRST204' || err.code === '42703' || String(err.status) === '400' || err.message?.includes('schema cache') || err.message?.includes('column'))) {
+                    console.warn('SyncService: Retrying customer_payments insert with core columns');
+                    const stripPay = (d) => {
+                        const copy = { ...d };
+                        if (!copy.description && copy.note) copy.description = copy.note;
+                        delete copy.details;
+                        delete copy.bill_number;
+                        delete copy.payment_mode;
+                        delete copy.transaction_ref;
+                        delete copy.payment_type;
+                        delete copy.note;
+                        return copy;
+                    };
+                    const strippedPayload = isArray ? payload.map(stripPay) : stripPay(payload);
+                    const retry = await supabase.from(item.table).insert(strippedPayload).select();
+                    resData = retry.data;
+                    err = retry.error;
+                }
+
                 error = err;
                 returnedData = resData;
 
@@ -228,6 +280,11 @@ export const syncOfflineData = async () => {
                         const { brand: _b, product_type: _p, other_details: _o, outstanding_balance: _ob, ...strippedUpdate } = updateData;
                         ({ error } = await supabase.from(item.table).update(strippedUpdate).eq('id', id));
                     }
+                    if (error && (item.table === 'supplier_payments' || item.table === 'customer_payments') && (error.code === 'PGRST204' || error.code === '42703' || String(error.status) === '400' || error.message?.includes('schema cache'))) {
+                        const { bill_number: _b, details: _d, payment_mode: _pm, transaction_ref: _tr, payment_type: _pt, note: _n, ...strippedUpdate } = updateData;
+                        if (updateData.note && !strippedUpdate.description) strippedUpdate.description = updateData.note;
+                        ({ error } = await supabase.from(item.table).update(strippedUpdate).eq('id', id));
+                    }
                 } else {
                     // Can't update without an ID, skip
                     await db.sync_queue.delete(item.id);
@@ -249,7 +306,7 @@ export const syncOfflineData = async () => {
                 console.error(`Sync error for ${item.table}:`, error);
                 const retries = (item.retry_count || 0) + 1;
                 // If table/column error or exceeded max 5 retries, remove to prevent queue stalls
-                if (retries >= 5 || ['PGRST205', '42P01', 'PGRST204', '42703', '22P02'].includes(error.code)) {
+                if (retries >= 5 || ['PGRST205', '42P01', 'PGRST204', '42703', '22P02'].includes(error.code) || String(error.status) === '400' || error.message?.includes('schema cache') || error.message?.includes('Could not find')) {
                     console.warn(`Removing un-syncable item ${item.id} after ${retries} attempts.`);
                     await db.sync_queue.delete(item.id);
                 } else {

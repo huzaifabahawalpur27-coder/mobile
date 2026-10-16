@@ -69,13 +69,15 @@ function Suppliers() {
       ...(payments || []).map(p => {
         // payment_type === 'debit' means a manual debit/purchase entry
         const isDebit = p.payment_type === 'debit'
+        const noteText = p.note || p.description || ''
+        const billFromNote = noteText.match(/\[Bill #([^\]]+)\]/)?.[1] || ''
         return {
           id: p.id,
           date: p.created_at,
           type: isDebit ? 'debit' : (p.payment_type === 'return' ? 'return' : 'payment'),
-          bill_number: isDebit ? (p.bill_number || '') : '',
+          bill_number: isDebit ? (p.bill_number || billFromNote || '') : '',
           amount: p.amount || 0,
-          note: p.note || '',
+          note: noteText,
         }
       })
     ]
@@ -136,7 +138,31 @@ function Suppliers() {
     }
     try {
       if (!navigator.onLine) throw new TypeError('Failed to fetch')
-      const { error } = await supabase.from('supplier_payments').insert([payload])
+      let { error } = await supabase.from('supplier_payments').insert([payload])
+      if (error && (error.code === 'PGRST204' || error.code === '42703' || String(error.status) === '400' || error.message?.includes('column') || error.message?.includes('schema cache'))) {
+        console.warn('Suppliers: Retrying supplier_payments insert without missing bill_number column')
+        const fallbackPayload = {
+          shop_id: user.shop_id,
+          supplier_id: txSup.id,
+          amount,
+          payment_type: isDebit ? 'debit' : 'payment',
+          note: noteText || (isDebit ? 'Manual Purchase Entry' : 'Manual Payment Entry'),
+          description: noteText || (isDebit ? 'Manual Purchase Entry' : 'Manual Payment Entry'),
+          created_at: txDate
+        }
+        let retryRes = await supabase.from('supplier_payments').insert([fallbackPayload])
+        if (retryRes.error && (retryRes.error.message?.includes('column') || retryRes.error.code === 'PGRST204')) {
+          const corePayload = {
+            shop_id: user.shop_id,
+            supplier_id: txSup.id,
+            amount,
+            description: noteText || (isDebit ? 'Manual Purchase Entry' : 'Manual Payment Entry'),
+            created_at: txDate
+          }
+          retryRes = await supabase.from('supplier_payments').insert([corePayload])
+        }
+        error = retryRes.error
+      }
       if (error) throw error
 
       // Update supplier outstanding_balance
@@ -246,7 +272,30 @@ function Suppliers() {
         for (let i = 0; i < payloads.length; i += 50) {
           const batch = payloads.slice(i, i + 50)
           if (navigator.onLine) {
-            const { error } = await supabase.from('supplier_payments').insert(batch)
+            let { error } = await supabase.from('supplier_payments').insert(batch)
+            if (error && (error.code === 'PGRST204' || error.code === '42703' || String(error.status) === '400' || error.message?.includes('column') || error.message?.includes('schema cache'))) {
+              const fallbackBatch = batch.map(b => ({
+                shop_id: b.shop_id,
+                supplier_id: b.supplier_id,
+                amount: b.amount,
+                payment_type: b.payment_type,
+                note: b.bill_number ? `[Bill #${b.bill_number}] ${b.note}` : b.note,
+                description: b.bill_number ? `[Bill #${b.bill_number}] ${b.note}` : b.note,
+                created_at: b.created_at
+              }))
+              let retryRes = await supabase.from('supplier_payments').insert(fallbackBatch)
+              if (retryRes.error && (retryRes.error.message?.includes('column') || retryRes.error.code === 'PGRST204')) {
+                const coreBatch = batch.map(b => ({
+                  shop_id: b.shop_id,
+                  supplier_id: b.supplier_id,
+                  amount: b.amount,
+                  description: b.bill_number ? `[Bill #${b.bill_number}] ${b.note}` : (b.note || 'Imported Transaction'),
+                  created_at: b.created_at
+                }))
+                retryRes = await supabase.from('supplier_payments').insert(coreBatch)
+              }
+              error = retryRes.error
+            }
             if (error) throw error
           } else {
             for (const p of batch) {

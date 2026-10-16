@@ -28,6 +28,7 @@ function SupplierLedger() {
     const [filterTo, setFilterTo] = useState('')
 
     // Transaction entry form
+    const [txMode, setTxMode] = useState('both') // 'purchase' | 'payment' | 'both'
     const [txForm, setTxForm] = useState({
         bill_number: '',
         date: new Date().toISOString().slice(0, 10),
@@ -91,19 +92,22 @@ function SupplierLedger() {
                 note: `Bill #${String(p.id).slice(-8)}`,
                 items: p.purchase_items || []
             })),
-            ...payments.map(p => ({
-                id: p.id,
-                date: p.created_at,
-                type: p.payment_type === 'debit' ? 'debit' : p.payment_type === 'return' ? 'return' : 'payment',
-                payment_type: p.payment_type,
-                bill_number: p.bill_number || '',
-                amount: p.amount,
-                note: p.note || (p.payment_type === 'debit' ? 'Manual Purchase Entry' : 'Cash Payment'),
-                details: p.details || null,
-                payment_mode: p.payment_mode || null,
-                transaction_ref: p.transaction_ref || null,
-                items: []
-            }))
+            ...payments.map(p => {
+                const billFromNote = p.note?.match(/\[Bill #([^\]]+)\]/)?.[1] || ''
+                return {
+                    id: p.id,
+                    date: p.created_at,
+                    type: p.payment_type === 'debit' ? 'debit' : p.payment_type === 'return' ? 'return' : 'payment',
+                    payment_type: p.payment_type,
+                    bill_number: p.bill_number || billFromNote || '',
+                    amount: p.amount,
+                    note: p.note || (p.payment_type === 'debit' ? 'Manual Purchase Entry' : 'Cash Payment'),
+                    details: p.details || null,
+                    payment_mode: p.payment_mode || null,
+                    transaction_ref: p.transaction_ref || null,
+                    items: []
+                }
+            })
         ]
         combined.sort((a, b) => new Date(a.date) - new Date(b.date))
 
@@ -118,8 +122,10 @@ function SupplierLedger() {
 
     // ── Computed preview for transaction entry ──────────────────────────────────
     const prevBalance = ledger.length > 0 ? ledger[0].balance : (supplier?.outstanding_balance || 0)
-    const purchaseAmt = parseFloat(txForm.purchase_amount) || 0
-    const paidAmt = parseFloat(txForm.paid_amount) || 0
+    const rawPurchaseAmt = parseFloat(txForm.purchase_amount) || 0
+    const rawPaidAmt = parseFloat(txForm.paid_amount) || 0
+    const purchaseAmt = txMode === 'payment' ? 0 : rawPurchaseAmt
+    const paidAmt = txMode === 'purchase' ? 0 : rawPaidAmt
     const newBalance = prevBalance + purchaseAmt - paidAmt
 
     // ── Submit transaction ──────────────────────────────────────────────────────
@@ -158,7 +164,33 @@ function SupplierLedger() {
                 insertRows.push({ ...commonFields, amount: paidAmt, payment_type: 'payment', note: txForm.note.trim() || 'Payment to Supplier' })
             }
 
-            const { error: pErr } = await supabase.from('supplier_payments').insert(insertRows)
+            let { error: pErr } = await supabase.from('supplier_payments').insert(insertRows)
+            if (pErr && (pErr.message?.includes('column') || pErr.message?.includes('schema cache') || pErr.code === 'PGRST204' || pErr.code === '42703' || String(pErr.status) === '400')) {
+                // Try fallback with payment_type + note
+                const fallbackRows = insertRows.map(r => ({
+                    shop_id: r.shop_id,
+                    supplier_id: r.supplier_id,
+                    amount: r.amount,
+                    payment_type: r.payment_type,
+                    note: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.note].filter(Boolean).join(' '),
+                    created_at: r.created_at
+                }))
+                const retryRes = await supabase.from('supplier_payments').insert(fallbackRows)
+                pErr = retryRes.error
+
+                // If remote table only has basic description column (no payment_type/note)
+                if (pErr && (pErr.message?.includes('column') || pErr.message?.includes('schema cache') || pErr.code === 'PGRST204' || pErr.code === '42703' || String(pErr.status) === '400')) {
+                    const coreRows = insertRows.map(r => ({
+                        shop_id: r.shop_id,
+                        supplier_id: r.supplier_id,
+                        amount: r.amount,
+                        description: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.payment_type ? `[${r.payment_type}]` : '', r.note, r.details].filter(Boolean).join(' ') || 'Transaction',
+                        created_at: r.created_at
+                    }))
+                    const coreRetry = await supabase.from('supplier_payments').insert(coreRows)
+                    pErr = coreRetry.error
+                }
+            }
             if (pErr) throw pErr
 
             const { error: sErr } = await supabase.from('suppliers').update({ outstanding_balance: newBalance }).eq('id', id)
@@ -196,6 +228,7 @@ function SupplierLedger() {
 
     const resetForm = () => {
         setTxForm({ bill_number: '', date: new Date().toISOString().slice(0, 10), purchase_amount: '', paid_amount: '', details: '', payment_mode: 'cash', transaction_ref: '', note: '' })
+        setTxMode('both')
         setShowModal(false)
     }
 
@@ -329,7 +362,31 @@ function SupplierLedger() {
             if (!insertRows.length) { alert('Koi valid row nahi mili (Debit/Credit columns check karein).'); return }
 
             if (navigator.onLine) {
-                const { error } = await supabase.from('supplier_payments').insert(insertRows)
+                let { error } = await supabase.from('supplier_payments').insert(insertRows)
+                if (error && (error.message?.includes('column') || error.message?.includes('schema cache') || error.code === 'PGRST204' || error.code === '42703' || String(error.status) === '400')) {
+                    const fallbackRows = insertRows.map(r => ({
+                        shop_id: r.shop_id,
+                        supplier_id: r.supplier_id,
+                        amount: r.amount,
+                        payment_type: r.payment_type,
+                        note: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.note].filter(Boolean).join(' '),
+                        created_at: r.created_at
+                    }))
+                    const retryRes = await supabase.from('supplier_payments').insert(fallbackRows)
+                    error = retryRes.error
+
+                    if (error && (error.message?.includes('column') || error.message?.includes('schema cache') || error.code === 'PGRST204' || error.code === '42703' || String(error.status) === '400')) {
+                        const coreRows = insertRows.map(r => ({
+                            shop_id: r.shop_id,
+                            supplier_id: r.supplier_id,
+                            amount: r.amount,
+                            description: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.payment_type ? `[${r.payment_type}]` : '', r.note].filter(Boolean).join(' ') || 'Imported Transaction',
+                            created_at: r.created_at
+                        }))
+                        const coreRetry = await supabase.from('supplier_payments').insert(coreRows)
+                        error = coreRetry.error
+                    }
+                }
                 if (error) throw error
                 const newBal = (supplier?.outstanding_balance || 0) + balanceDelta
                 await supabase.from('suppliers').update({ outstanding_balance: newBal }).eq('id', id)
@@ -786,7 +843,37 @@ function SupplierLedger() {
                 <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
                     <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-md">
                         <h2 className="text-xl font-bold text-gray-800 mb-1">➕ Add Transaction</h2>
-                        <p className="text-xs text-gray-400 mb-4">Purchase aur payment ek saath darj kar saktay hain</p>
+                        <p className="text-xs text-gray-400 mb-3">Record a purchase, supplier payment, or both</p>
+
+                        {/* Informational Guidance Banner */}
+                        <div className="p-2.5 rounded-xl bg-blue-50/80 border border-blue-200/80 text-[11px] text-blue-800 leading-snug mb-3">
+                            💡 <b>Note:</b> Purchases completed in the <b>Purchases</b> module or <b>Phone Purchase Panel</b> are synced to this ledger automatically. Use this form only for manual credit/debit entries.
+                        </div>
+
+                        {/* Transaction Mode Selector */}
+                        <div className="grid grid-cols-3 gap-1 p-1 bg-gray-100 rounded-xl text-xs font-semibold mb-3">
+                            <button
+                                type="button"
+                                onClick={() => setTxMode('purchase')}
+                                className={`py-1.5 rounded-lg text-center transition ${txMode === 'purchase' ? 'bg-white text-orange-600 shadow-xs' : 'text-gray-500 hover:text-gray-800'}`}
+                            >
+                                📦 Purchase Only
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTxMode('payment')}
+                                className={`py-1.5 rounded-lg text-center transition ${txMode === 'payment' ? 'bg-white text-green-600 shadow-xs' : 'text-gray-500 hover:text-gray-800'}`}
+                            >
+                                💵 Payment Only
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTxMode('both')}
+                                className={`py-1.5 rounded-lg text-center transition ${txMode === 'both' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-500 hover:text-gray-800'}`}
+                            >
+                                🔄 Buy & Pay Both
+                            </button>
+                        </div>
 
                         <form onSubmit={handleSubmitTransaction} className="space-y-4">
 
@@ -808,28 +895,32 @@ function SupplierLedger() {
                             </div>
 
                             {/* Purchase Amount (Debit) */}
-                            <div>
-                                <label className="block font-semibold mb-1 text-sm text-orange-600">
-                                    📦 Total Purchase Amount (Debit)
-                                </label>
-                                <input type="number" min="0" step="any" value={txForm.purchase_amount}
-                                    onChange={e => setTxForm(f => ({ ...f, purchase_amount: e.target.value }))}
-                                    className="w-full px-4 py-2.5 border border-orange-200 bg-orange-50 rounded-lg focus:ring-2 focus:ring-orange-400 outline-none text-sm"
-                                    placeholder="0  — kitna maal liya (Rs.)" />
-                                <p className="text-xs text-gray-400 mt-0.5">Supplier sy jo maal purchase kiya uski total value</p>
-                            </div>
+                            {txMode !== 'payment' && (
+                                <div>
+                                    <label className="block font-semibold mb-1 text-sm text-orange-600">
+                                        📦 Total Purchase Amount (Debit)
+                                    </label>
+                                    <input type="number" min="0" step="any" value={txForm.purchase_amount}
+                                        onChange={e => setTxForm(f => ({ ...f, purchase_amount: e.target.value }))}
+                                        className="w-full px-4 py-2.5 border border-orange-200 bg-orange-50 rounded-lg focus:ring-2 focus:ring-orange-400 outline-none text-sm"
+                                        placeholder="0  — kitna maal liya (Rs.)" />
+                                    <p className="text-xs text-gray-400 mt-0.5">Supplier sy jo maal purchase kiya uski total value</p>
+                                </div>
+                            )}
 
                             {/* Paid Amount (Credit) */}
-                            <div>
-                                <label className="block font-semibold mb-1 text-sm text-green-600">
-                                    💵 Amount Paid (Credit)
-                                </label>
-                                <input type="number" min="0" step="any" value={txForm.paid_amount}
-                                    onChange={e => setTxForm(f => ({ ...f, paid_amount: e.target.value }))}
-                                    className="w-full px-4 py-2.5 border border-green-200 bg-green-50 rounded-lg focus:ring-2 focus:ring-green-400 outline-none text-sm"
-                                    placeholder="0  — kitna paisa diya (Rs.)" />
-                                <p className="text-xs text-gray-400 mt-0.5">Supplier ko abhi kitni payment ki</p>
-                            </div>
+                            {txMode !== 'purchase' && (
+                                <div>
+                                    <label className="block font-semibold mb-1 text-sm text-green-600">
+                                        💵 Amount Paid (Credit)
+                                    </label>
+                                    <input type="number" min="0" step="any" value={txForm.paid_amount}
+                                        onChange={e => setTxForm(f => ({ ...f, paid_amount: e.target.value }))}
+                                        className="w-full px-4 py-2.5 border border-green-200 bg-green-50 rounded-lg focus:ring-2 focus:ring-green-400 outline-none text-sm"
+                                        placeholder="0  — kitna paisa diya (Rs.)" />
+                                    <p className="text-xs text-gray-400 mt-0.5">Supplier ko abhi kitni payment ki</p>
+                                </div>
+                            )}
 
                             {/* Balance Preview */}
                             <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">

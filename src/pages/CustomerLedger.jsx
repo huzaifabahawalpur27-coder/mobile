@@ -298,7 +298,18 @@ function CustomerLedger() {
             if (!insertRows.length) { alert('Koi valid row nahi mili (Debit/Credit columns check karein).'); return }
 
             if (navigator.onLine) {
-                const { error } = await supabase.from('customer_payments').insert(insertRows)
+                let { error } = await supabase.from('customer_payments').insert(insertRows)
+                if (error && (error.message?.includes('column') || error.message?.includes('schema cache') || error.code === 'PGRST204' || error.code === '42703' || String(error.status) === '400')) {
+                    const coreRows = insertRows.map(r => ({
+                        shop_id: r.shop_id,
+                        customer_id: r.customer_id,
+                        amount: r.amount,
+                        description: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.payment_type ? `[${r.payment_type}]` : '', r.note].filter(Boolean).join(' ') || 'Imported Payment',
+                        created_at: r.created_at
+                    }))
+                    const retryRes = await supabase.from('customer_payments').insert(coreRows)
+                    error = retryRes.error
+                }
                 if (error) throw error
                 const newBal = Math.max(0, (customer?.outstanding_balance || 0) + balanceDelta)
                 try {
@@ -351,7 +362,18 @@ function CustomerLedger() {
 
         try {
             if (!navigator.onLine) throw new TypeError('Failed to fetch')
-            const { error } = await supabase.from('customer_payments').insert(insertRows)
+            let { error } = await supabase.from('customer_payments').insert(insertRows)
+            if (error && (error.message?.includes('column') || error.message?.includes('schema cache') || error.code === 'PGRST204' || error.code === '42703' || String(error.status) === '400')) {
+                const coreRows = insertRows.map(r => ({
+                    shop_id: r.shop_id,
+                    customer_id: r.customer_id,
+                    amount: r.amount,
+                    description: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.payment_type ? `[${r.payment_type}]` : '', r.note, r.details].filter(Boolean).join(' ') || 'Customer Transaction',
+                    created_at: r.created_at
+                }))
+                const retryRes = await supabase.from('customer_payments').insert(coreRows)
+                error = retryRes.error
+            }
             if (error) throw error
             const newBalance = Math.max(0, (customer.outstanding_balance || 0) + saleAmt - payAmt)
             try {

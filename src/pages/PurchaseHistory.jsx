@@ -70,6 +70,18 @@ function PurchaseHistory() {
             if (data) {
                 const cleanData = JSON.parse(JSON.stringify(data))
                 await db.purchases.bulkPut(cleanData)
+                // Remove any stale local UUID purchases that have already been synced
+                try {
+                    const pendingQueue = await db.sync_queue.where('table').equals('purchases').toArray().catch(() => [])
+                    const pendingIds = new Set(pendingQueue.map(q => q.data?.id).filter(Boolean))
+                    const allLocal = await db.purchases.toArray()
+                    const staleLocals = allLocal.filter(p => typeof p.id === 'string' && p.id.includes('-') && !pendingIds.has(p.id))
+                    if (staleLocals.length > 0) {
+                        await db.purchases.bulkDelete(staleLocals.map(p => p.id))
+                    }
+                } catch (cleanupErr) {
+                    console.warn('PurchaseHistory cleanup error:', cleanupErr)
+                }
             }
 
             // Always render from local DB to include pending items
@@ -77,13 +89,38 @@ function PurchaseHistory() {
             const sid = String(user.shop_id)
             const filtered = localData.filter(x => String(x.shop_id) === sid)
             const sorted = filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-            setPurchases(sorted)
+
+            // Deduplicate offline copies
+            const seenKeys = new Set()
+            const deduplicated = []
+            for (const item of sorted) {
+                const timeKey = item.created_at ? Math.floor(new Date(item.created_at).getTime() / 5000) : item.id
+                const dupKey = `${item.supplier_id}_${item.total_amount}_${timeKey}`
+                if (typeof item.id === 'string' && item.id.includes('-') && seenKeys.has(dupKey)) {
+                    continue
+                }
+                seenKeys.add(dupKey)
+                deduplicated.push(item)
+            }
+            setPurchases(deduplicated)
         } catch (e) {
             console.log('Purchases: Fetching from local DB (Offline Fallback)')
             try {
                 const localData = await db.purchases.toArray()
                 const sorted = localData.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-                setPurchases(sorted.filter(x => String(x.shop_id) === String(user.shop_id)))
+                const filtered = sorted.filter(x => String(x.shop_id) === String(user.shop_id))
+                const seenKeys = new Set()
+                const deduplicated = []
+                for (const item of filtered) {
+                    const timeKey = item.created_at ? Math.floor(new Date(item.created_at).getTime() / 5000) : item.id
+                    const dupKey = `${item.supplier_id}_${item.total_amount}_${timeKey}`
+                    if (typeof item.id === 'string' && item.id.includes('-') && seenKeys.has(dupKey)) {
+                        continue
+                    }
+                    seenKeys.add(dupKey)
+                    deduplicated.push(item)
+                }
+                setPurchases(deduplicated)
             } catch (err) { console.error('Local DB PurchaseHistory Error:', err) }
         } finally {
             setLoading(false)
@@ -176,13 +213,22 @@ function PurchaseHistory() {
                 await supabase.from('suppliers').update({ outstanding_balance: newBal }).eq('id', selectedPurchase.supplier_id)
 
                 // Log payment return in supplier_payments
-                await supabase.from('supplier_payments').insert([{
+                const returnPaymentPayload = {
                     shop_id: user.shop_id,
                     supplier_id: selectedPurchase.supplier_id,
                     amount: -totalReturnAmount,
                     payment_type: 'return',
                     note: `Return from Purchase PR-${String(selectedPurchase.id).slice(-6)}`
-                }])
+                }
+                const { error: spErr } = await supabase.from('supplier_payments').insert([returnPaymentPayload])
+                if (spErr && (spErr.code === 'PGRST204' || spErr.code === '42703' || String(spErr.status) === '400' || spErr.message?.includes('column') || spErr.message?.includes('schema cache'))) {
+                    await supabase.from('supplier_payments').insert([{
+                        shop_id: user.shop_id,
+                        supplier_id: selectedPurchase.supplier_id,
+                        amount: -totalReturnAmount,
+                        description: `Return from Purchase PR-${String(selectedPurchase.id).slice(-6)}`
+                    }])
+                }
             }
 
             // Audit Log

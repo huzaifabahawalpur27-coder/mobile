@@ -351,7 +351,15 @@ function Purchases() {
           payment_type: 'payment',
           note: paymentNote
         }
-        await supabase.from('supplier_payments').insert([paymentData])
+        const { error: payErr } = await supabase.from('supplier_payments').insert([paymentData])
+        if (payErr && (payErr.code === 'PGRST204' || payErr.code === '42703' || String(payErr.status) === '400' || payErr.message?.includes('column') || payErr.message?.includes('schema cache'))) {
+          await supabase.from('supplier_payments').insert([{
+            shop_id: user.shop_id,
+            supplier_id: supplierId,
+            amount: total,
+            description: paymentNote
+          }])
+        }
 
         // Deduct from selected bank account if configured
         if (selectedBankAccountId) {
