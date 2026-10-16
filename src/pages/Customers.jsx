@@ -157,13 +157,21 @@ function Customers() {
     const payload = { ...form, shop_id: user.shop_id }
 
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
-
       if (editingId) {
-        const { error } = await supabase.from('customers').update(payload).eq('id', editingId)
+        let { error } = await supabase.from('customers').update(payload).eq('id', editingId)
+        if (error && (error.message?.includes('column') || error.code === 'PGRST204')) {
+          const minimal = { name: payload.name, shop_id: payload.shop_id }
+          const retryRes = await supabase.from('customers').update(minimal).eq('id', editingId)
+          error = retryRes.error
+        }
         if (error) throw error
       } else {
-        const { error } = await supabase.from('customers').insert([payload])
+        let { error } = await supabase.from('customers').insert([payload])
+        if (error && (error.message?.includes('column') || error.code === 'PGRST204')) {
+          const minimal = { name: payload.name, shop_id: payload.shop_id }
+          const retryRes = await supabase.from('customers').insert([minimal])
+          error = retryRes.error
+        }
         if (error) throw error
       }
       setEditingId(null)

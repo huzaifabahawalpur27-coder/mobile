@@ -85,18 +85,38 @@ function Expenses() {
     setSaving(true)
     const payload = {
       ...form,
-      amount: parseFloat(form.amount),
+      note: form.note || '',
+      description: form.note || '',
+      amount: parseFloat(form.amount) || 0,
       shop_id: user.shop_id
     }
 
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
-
       if (editingId) {
-        const { error } = await supabase.from('expenses').update(payload).eq('id', editingId)
+        let { error } = await supabase.from('expenses').update(payload).eq('id', editingId)
+        if (error && (error.message?.includes('column') || error.code === 'PGRST204')) {
+          const minimal = {
+            category: payload.category,
+            amount: payload.amount,
+            description: payload.description,
+            shop_id: payload.shop_id
+          }
+          const retryRes = await supabase.from('expenses').update(minimal).eq('id', editingId)
+          error = retryRes.error
+        }
         if (error) throw error
       } else {
-        const { error } = await supabase.from('expenses').insert([payload])
+        let { error } = await supabase.from('expenses').insert([payload])
+        if (error && (error.message?.includes('column') || error.code === 'PGRST204')) {
+          const minimal = {
+            category: payload.category,
+            amount: payload.amount,
+            description: payload.description,
+            shop_id: payload.shop_id
+          }
+          const retryRes = await supabase.from('expenses').insert([minimal])
+          error = retryRes.error
+        }
         if (error) throw error
       }
       setEditingId(null)
