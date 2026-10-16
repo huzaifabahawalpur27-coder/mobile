@@ -10,6 +10,7 @@ import { generateBillPDF, shareOrDownloadPDF } from '../utils/pdfShare'
 import { printHTML } from '../utils/printUtils'
 import { getPricingConfig } from '../utils/businessPresets'
 import CashSessionModal from '../components/CashSessionModal'
+import { formatInvoiceWhatsAppMessage, buildWhatsAppUrl, cleanPhoneNumber } from '../utils/whatsappTemplates'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
   { id: 'easypaisa', name: 'Easypaisa', icon: '🟢' },
@@ -1220,6 +1221,31 @@ function POS() {
     setShowTenderSheet(false)
     fetchAll()
     setSaving(false)
+  }
+
+  const handleSendWhatsAppInvoice = (language = 'english') => {
+    if (!lastReceipt) return
+    let customerPhone = lastReceipt.customer?.phone || ''
+    if (!customerPhone) {
+      const input = window.prompt('Customer ka WhatsApp mobile number enter karein (e.g. 03001234567):', '')
+      if (!input || !input.trim()) return
+      customerPhone = input.trim()
+    }
+
+    const cleanedPhone = cleanPhoneNumber(customerPhone)
+    const shopInfo = {
+      name: form.name || (user?.shop_id ? localStorage.getItem(`shop_name_${user.shop_id}`) : null) || 'EdgeX POS Store',
+      phone: form.phone || user?.phone || ''
+    }
+
+    const msg = formatInvoiceWhatsAppMessage({
+      receipt: lastReceipt,
+      shopInfo,
+      language
+    })
+
+    const url = buildWhatsAppUrl(cleanedPhone, msg)
+    window.open(url, '_blank')
   }
 
   const handleSearchQuotation = async () => {
