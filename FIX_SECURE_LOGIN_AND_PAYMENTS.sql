@@ -10,6 +10,13 @@ ALTER TABLE public.supplier_payments ADD COLUMN IF NOT EXISTS note TEXT;
 ALTER TABLE public.supplier_payments ADD COLUMN IF NOT EXISTS details TEXT;
 ALTER TABLE public.supplier_payments ADD COLUMN IF NOT EXISTS payment_mode TEXT DEFAULT 'cash';
 ALTER TABLE public.supplier_payments ADD COLUMN IF NOT EXISTS transaction_ref TEXT;
+ALTER TABLE public.supplier_payments ADD COLUMN IF NOT EXISTS description TEXT;
+
+DO $$ 
+BEGIN 
+    ALTER TABLE public.supplier_payments ALTER COLUMN details TYPE TEXT USING details::text;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- 2. Ensure customer_payments table has all required ledger columns
 ALTER TABLE public.customer_payments ADD COLUMN IF NOT EXISTS payment_type TEXT DEFAULT 'payment';
@@ -18,6 +25,13 @@ ALTER TABLE public.customer_payments ADD COLUMN IF NOT EXISTS note TEXT;
 ALTER TABLE public.customer_payments ADD COLUMN IF NOT EXISTS details TEXT;
 ALTER TABLE public.customer_payments ADD COLUMN IF NOT EXISTS payment_mode TEXT DEFAULT 'cash';
 ALTER TABLE public.customer_payments ADD COLUMN IF NOT EXISTS transaction_ref TEXT;
+ALTER TABLE public.customer_payments ADD COLUMN IF NOT EXISTS description TEXT;
+
+DO $$ 
+BEGIN 
+    ALTER TABLE public.customer_payments ALTER COLUMN details TYPE TEXT USING details::text;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- 3. Fix secure_login stored procedure to prevent 'record v_shop is not assigned yet'
 DROP FUNCTION IF EXISTS secure_login(TEXT, TEXT);
