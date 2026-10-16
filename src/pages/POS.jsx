@@ -3034,85 +3034,67 @@ function POS() {
               )}
             </div>
             <div className="flex flex-col gap-2">
-              <div className="flex gap-3">
-                <button onClick={printReceipt} className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition">🖨️ Print</button>
-                {lastReceipt.customer?.phone && (
-                  <button
-                    onClick={async (e) => {
-                      const btn = e.currentTarget
-                      btn.disabled = true
-                      btn.textContent = '⏳ Generating PDF...'
-                      try {
-                        const phone = lastReceipt.customer.phone.replace(/[^0-9]/g, '')
-                        let formattedPhone = phone
-                        if (phone.startsWith('03')) formattedPhone = '92' + phone.substring(1)
-                        else if (phone.length === 10) formattedPhone = '92' + phone
-
-                        // Extract Phone Model and Date
-                        const phoneItems = (lastReceipt.items || []).filter(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone')))
-                        const modelDisplay = phoneItems.length > 0
-                          ? phoneItems.map(i => i.name).join(', ')
-                          : (lastReceipt.items || []).map(i => i.name).join(', ') || 'Item'
-
-                        const saleDate = lastReceipt.sale?.created_at
-                          ? new Date(lastReceipt.sale.created_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })
-                          : new Date().toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })
-
-                        const defaultTpl = 'Hello [Name], thank you for shopping at [Shop Name]! Your bill summary for Invoice #[ID] is Rs. [Amount].\n📱 Model: [Model]\n📅 Date: [Date]\nThank you for your business!'
-                        let rawTemplate = form.wa_bill_template || defaultTpl
-                        if (!rawTemplate.includes('[Model]')) {
-                          if (rawTemplate.includes('Thank you for your business!')) {
-                            rawTemplate = rawTemplate.replace('Thank you for your business!', '📱 Model: [Model]\n📅 Date: [Date]\nThank you for your business!')
-                          } else {
-                            rawTemplate = `${rawTemplate}\n📱 Model: [Model]\n📅 Date: [Date]`
-                          }
-                        }
-
-                        const msg = rawTemplate
-                          .replace(/\[Name\]/g, lastReceipt.customer.name || 'Customer')
-                          .replace(/\[Amount\]/g, lastReceipt.total.toFixed(0))
-                          .replace(/\[Shop Name\]/g, form.name || 'EdgeX POS Store')
-                          .replace(/\[ID\]/g, String(lastReceipt.sale.id).slice(-8))
-                          .replace(/\[Model\]/g, modelDisplay)
-                          .replace(/\[Phone Model\]/g, modelDisplay)
-                          .replace(/\[Item\]/g, modelDisplay)
-                          .replace(/\[Date\]/g, saleDate)
-
-                        const receiptWithShop = { ...lastReceipt, shop_id: user?.shop_id }
-                        const billHtml = buildReceiptHTML(receiptWithShop, false)
-                        const pdfBlob = await generateBillPDF(billHtml, receiptWithShop)
-                        const invoiceId = String(lastReceipt.sale?.id || Date.now()).slice(-8)
-                        await shareOrDownloadPDF(pdfBlob, `bill-${invoiceId}.pdf`, formattedPhone, msg)
-                      } catch (err) {
-                        console.error('PDF share failed:', err)
-                        alert('Could not generate PDF. Opening WhatsApp message.')
-                        const phone = lastReceipt.customer.phone.replace(/[^0-9]/g, '')
-                        let formattedPhone = phone
-                        if (phone.startsWith('03')) formattedPhone = '92' + phone.substring(1)
-                        else if (phone.length === 10) formattedPhone = '92' + phone
-
-                        const phoneItems = (lastReceipt.items || []).filter(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone')))
-                        const modelDisplay = phoneItems.length > 0
-                          ? phoneItems.map(i => i.name).join(', ')
-                          : (lastReceipt.items || []).map(i => i.name).join(', ') || 'Item'
-
-                        const saleDate = lastReceipt.sale?.created_at
-                          ? new Date(lastReceipt.sale.created_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })
-                          : new Date().toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })
-
-                        const msg = `Hello ${lastReceipt.customer.name || 'Customer'}, thank you for shopping at ${form.name || 'EdgeX POS Store'}! Your bill summary for Invoice #${String(lastReceipt.sale?.id || '').slice(-8)} is Rs. ${lastReceipt.total.toFixed(0)}.\n📱 Model: ${modelDisplay}\n📅 Date: ${saleDate}\nThank you for your business!`
-                        window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(msg)}`, '_blank')
-                      } finally {
-                        btn.disabled = false
-                        btn.innerHTML = '<span>💬</span> WhatsApp'
-                      }
-                    }}
-                    className="flex-1 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition flex items-center justify-center gap-2"
-                  >
-                    <span>💬</span> WhatsApp
-                  </button>
-                )}
+              {/* Primary Actions: Print & Quick WhatsApp Buttons Side-by-Side */}
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={printReceipt}
+                  className="py-2.5 px-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm"
+                  title="Print invoice on thermal or A4 printer"
+                >
+                  <span className="text-base">🖨️</span>
+                  <span>Print</span>
+                </button>
+                <button
+                  onClick={() => handleSendWhatsAppInvoice('english')}
+                  className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm"
+                  title="Send invoice details and thank you note in English via WhatsApp"
+                >
+                  <span className="text-base">💬</span>
+                  <span className="truncate">WA (EN)</span>
+                </button>
+                <button
+                  onClick={() => handleSendWhatsAppInvoice('urdu')}
+                  className="py-2.5 px-2 bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm text-center"
+                  title="Send invoice details and shukriya note in Urdu via WhatsApp"
+                >
+                  <span className="text-base">💚</span>
+                  <span className="truncate">WA (اردو)</span>
+                </button>
               </div>
+
+              {/* Secondary Option: Share PDF Bill Document */}
+              {lastReceipt.customer?.phone && (
+                <button
+                  onClick={async (e) => {
+                    const btn = e.currentTarget
+                    btn.disabled = true
+                    btn.textContent = '⏳ Generating PDF...'
+                    try {
+                      const phone = lastReceipt.customer.phone.replace(/[^0-9]/g, '')
+                      let formattedPhone = phone
+                      if (phone.startsWith('03')) formattedPhone = '92' + phone.substring(1)
+                      else if (phone.length === 10) formattedPhone = '92' + phone
+
+                      const receiptWithShop = { ...lastReceipt, shop_id: user?.shop_id }
+                      const billHtml = buildReceiptHTML(receiptWithShop, false)
+                      const pdfBlob = await generateBillPDF(billHtml, receiptWithShop)
+                      const invoiceId = String(lastReceipt.sale?.id || Date.now()).slice(-8)
+                      const msg = `Asslam o Alaikum ${lastReceipt.customer.name || 'Customer'},\nAttached is your official PDF bill for Invoice #INV-${invoiceId} from ${form.name || 'our store'}. Thank you!`
+                      await shareOrDownloadPDF(pdfBlob, `bill-${invoiceId}.pdf`, formattedPhone, msg)
+                    } catch (err) {
+                      console.error('PDF share failed:', err)
+                      handleSendWhatsAppInvoice('english')
+                    } finally {
+                      btn.disabled = false
+                      btn.innerHTML = '<span>📄</span> Send Full PDF Bill (WhatsApp)'
+                    }
+                  }}
+                  className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5"
+                >
+                  <span>📄</span>
+                  <span>Send Full PDF Bill (WhatsApp)</span>
+                </button>
+              )}
               {/* Phone Purchase Thank You WhatsApp Button */}
               {lastReceipt.customer?.phone && (lastReceipt.items || []).some(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone'))) && (
                 <button

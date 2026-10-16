@@ -5,6 +5,7 @@ import { db } from '../services/db'
 import { Link } from 'react-router-dom'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
+import { formatInvoiceWhatsAppMessage, buildWhatsAppUrl, cleanPhoneNumber } from '../utils/whatsappTemplates'
 import { 
   MessageSquare, 
   Users, 
@@ -85,6 +86,8 @@ function WhatsAppMessaging() {
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false)
   const [dispatchedIds, setDispatchedIds] = useState(new Set())
   const [copiedTemplate, setCopiedTemplate] = useState(null)
+  const [invoicePreviewLang, setInvoicePreviewLang] = useState('english')
+  const [testPhoneInput, setTestPhoneInput] = useState('')
 
   // Reminders Filter
   const [reminderSearch, setReminderSearch] = useState('')
@@ -779,7 +782,126 @@ function WhatsAppMessaging() {
 
       {/* ──────────────── TAB 3: TEMPLATES & OVERVIEW ──────────────── */}
       {activeTab === 'templates' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          {/* Featured: Quick Invoice & Thank-You System (English & Urdu) */}
+          <div className="bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl border-2 border-emerald-500/30 dark:border-emerald-500/20 rounded-[28px] p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider font-black px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20">
+                  POS Counter 1-Click Feature
+                </span>
+                <h3 className="text-base font-bold text-[#1d1d1f] dark:text-[#f5f5f7] mt-1.5 flex items-center gap-2">
+                  <span>⚡</span>
+                  <span>Quick WhatsApp Invoice & Thank-You (Urdu & English)</span>
+                </h3>
+                <p className="text-xs text-[#86868b] dark:text-[#98989d] mt-0.5">
+                  Available side-by-side with the 🖨️ Print button on every checkout. Starts with <b>Asslam o Alaikum</b>, itemizes the invoice, says thank you, and signs off with your shop name and phone.
+                </p>
+              </div>
+
+              {/* Language Switcher Pills */}
+              <div className="flex items-center p-1 bg-[#f5f5f7] dark:bg-[#2c2c2e] rounded-xl border border-black/[0.06] dark:border-white/[0.08] shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setInvoicePreviewLang('english')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    invoicePreviewLang === 'english'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white'
+                  }`}
+                >
+                  🇬🇧 English
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoicePreviewLang('urdu')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    invoicePreviewLang === 'urdu'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white'
+                  }`}
+                >
+                  🇵🇰 اردو (Roman Urdu)
+                </button>
+              </div>
+            </div>
+
+            {/* Live Message Preview Box */}
+            {(() => {
+              const previewShopInfo = {
+                name: shop?.name || localStorage.getItem(`shop_name_${user?.shop_id}`) || 'EdgeX POS Store',
+                phone: shop?.phone || user?.phone || '0301-2616367'
+              }
+              const mockReceipt = {
+                customer: { name: 'Muhammad Ali', phone: '03011234567', outstanding_balance: 0 },
+                sale: { id: 10452, created_at: new Date().toISOString(), payment_type: 'cash' },
+                items: [
+                  { name: 'Samsung Galaxy A15 (128GB)', quantity: 1, unit_price: 46000, total_price: 46000, imei: '354891102938471' },
+                  { name: '25W Super Fast Charger', quantity: 1, unit_price: 2500, total_price: 2500 },
+                  { name: '9D Full Curved Glass', quantity: 1, unit_price: 500, total_price: 500 }
+                ],
+                total: 49000,
+                receivedAmount: 49000,
+                totalProfit: 4200
+              }
+              const previewText = formatInvoiceWhatsAppMessage({
+                receipt: mockReceipt,
+                shopInfo: previewShopInfo,
+                language: invoicePreviewLang
+              })
+
+              return (
+                <div className="space-y-3">
+                  <div className="relative p-4 bg-[#f5f5f7] dark:bg-[#151516] rounded-2xl border border-black/[0.04] dark:border-white/[0.06] text-xs font-mono text-[#1d1d1f] dark:text-[#f5f5f7] whitespace-pre-wrap leading-relaxed">
+                    {previewText}
+                  </div>
+
+                  {/* Actions: Copy & Test Dispatch */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(previewText)
+                          setCopiedTemplate('invoice_sample')
+                          setTimeout(() => setCopiedTemplate(null), 2000)
+                        }}
+                        className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-white dark:bg-[#2c2c2e] hover:bg-gray-100 dark:hover:bg-[#3a3a3c] text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition flex items-center gap-1.5 shadow-2xs"
+                      >
+                        {copiedTemplate === 'invoice_sample' ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                        <span>{copiedTemplate === 'invoice_sample' ? 'Copied to Clipboard!' : 'Copy Template Text'}</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="tel"
+                        placeholder="Test mobile (0300...)"
+                        value={testPhoneInput}
+                        onChange={e => setTestPhoneInput(e.target.value)}
+                        className="w-36 px-2.5 py-1.5 bg-white dark:bg-[#2c2c2e] border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-mono outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = testPhoneInput || previewShopInfo.phone || '923012616367'
+                          const cleaned = cleanPhoneNumber(target)
+                          const url = buildWhatsAppUrl(cleaned, previewText)
+                          window.open(url, '_blank')
+                        }}
+                        className="px-4 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center gap-1.5 shadow-sm active:scale-95"
+                      >
+                        <span>💬</span>
+                        <span>Send Test to WhatsApp</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Bill Template */}
           <div className="bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] rounded-[24px] p-6 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
@@ -901,6 +1023,7 @@ Thank you for your business! 🤝`}
               {shop?.wa_reorder_template || 'Assalam-o-Alaikum *[Supplier Name]*! 🙏\n\n*[Shop Name]* se order:\n\n[Items]\n\nMeharbani farma kar supply karein.'}
             </div>
           </div>
+        </div>
         </div>
       )}
 
