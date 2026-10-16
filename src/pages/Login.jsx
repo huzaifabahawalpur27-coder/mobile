@@ -207,10 +207,8 @@ function Login() {
     setError('')
     setLoading(true)
 
-    const isOffline = !navigator.onLine
-
-    // ── Offline fast-path: skip RPC entirely ──────────────────────────────
-    if (isOffline) {
+    // Helper for offline fallback login via IndexedDB
+    const attemptOfflineLogin = async () => {
       try {
         const hashedPassword = await hashPassword(password)
         const allUsers = await localDB.users.toArray()
@@ -219,21 +217,21 @@ function Login() {
         )
 
         if (!localUser) {
-          setError('⚠️ Offline: No saved login found for this username. Please connect to internet and login once first.')
+          setError('⚠️ Server se rabta nahi ho saka aur is device par offline login save nahi hai. Meharbani karke pehle online login karein.')
           setLoading(false)
-          return
+          return false
         }
 
         if (localUser.password !== hashedPassword) {
           setError('Offline: Incorrect password.')
           setLoading(false)
-          return
+          return false
         }
 
         if (localUser.is_active === false) {
           setError('Offline: This account is marked inactive.')
           setLoading(false)
-          return
+          return false
         }
 
         if (localUser.shop_id) {
@@ -256,11 +254,11 @@ function Login() {
 
         setError('✅ Logged in offline. Some features require internet.')
         setTimeout(() => navigate('/dashboard'), 1000)
-        return
+        return true
       } catch (err) {
         setError('Offline login failed. Please try again.')
         setLoading(false)
-        return
+        return false
       }
     }
 
@@ -349,8 +347,16 @@ function Login() {
       const userData = loginData.user
       const shopConfig = loginData.shop_config || {}
 
-      if (loginData.session_token) {
-        localStorage.setItem('session_token', loginData.session_token)
+      const sessionToken = loginData.session_token || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-0000-0000-000000000001')
+      localStorage.setItem('session_token', sessionToken)
+      if (userData?.id && userData?.shop_id) {
+        supabase.from('sessions').upsert({
+          token: sessionToken,
+          user_id: userData.id,
+          shop_id: userData.shop_id,
+          branch_id: userData.branch_id || null,
+          expires_at: new Date(Date.now() + 30 * 86400000).toISOString()
+        }, { onConflict: 'token' }).then(() => {}).catch(() => {})
       }
 
       // ── Superadmin Redirect Fast-Path ──
@@ -445,12 +451,12 @@ function Login() {
         branch_id: userData.branch_id || null,
         branch_name: userData.branch_name || 'Main Branch',
         permissions: userData.permissions || []
-      }, loginResult.authorized_shops || [], loginResult.branches || [])
+      }, loginData?.authorized_shops || [], loginData?.branches || [])
 
       navigate('/dashboard')
 
     } catch (networkError) {
-      console.error('Network error during login:', networkError)
+      console.error('Network or auth error during login:', networkError)
       try {
         const hashedPassword = await hashPassword(password)
         const allUsers = await localDB.users.toArray()
@@ -459,7 +465,7 @@ function Login() {
         )
 
         if (!localUser) {
-          setError('⚠️ No offline credentials found. Please connect to internet to sign in once.')
+          setError('⚠️ Server se rabta nahi ho saka aur is device par offline login save nahi hai. Meharbani karke pehle online login karein.')
           setLoading(false)
           return
         }
@@ -491,7 +497,7 @@ function Login() {
           setError('Offline mode: Incorrect password.')
         }
       } catch (offlineError) {
-        setError('Unable to login. Please check your internet connection.')
+        setError('Login mein masla pesh aya. Meharbani karke dobara koshish karein.')
       }
     } finally {
       setLoading(false)

@@ -124,6 +124,23 @@ function Layout({ children }) {
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
 
+    const checkActualConnectivity = async () => {
+      try {
+        const pingUrl = `${import.meta.env.VITE_SUPABASE_URL || 'https://hekqzkrpxqsjfkosilpr.supabase.co'}/rest/v1/`
+        const res = await fetch(pingUrl, {
+          method: 'HEAD',
+          headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '' }
+        })
+        if (res.ok || res.status < 500) {
+          setIsOnline(true)
+        }
+      } catch (_) {
+        if (!navigator.onLine) setIsOnline(false)
+      }
+    }
+    checkActualConnectivity()
+    const pingTimer = setInterval(checkActualConnectivity, 60000)
+
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowNotifications(false)
@@ -136,6 +153,7 @@ function Layout({ children }) {
     return () => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
+      clearInterval(pingTimer)
       document.removeEventListener('mousedown', handleClickOutside)
       window.removeEventListener('storage', handleStorage)
     }

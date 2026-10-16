@@ -340,8 +340,6 @@ function Inventory() {
     if (!selectedProduct || newStock === '') return
 
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
-
       const { error } = await supabase
         .from('products')
         .update({ stock_quantity: parseInt(newStock) })

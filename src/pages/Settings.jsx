@@ -329,8 +329,6 @@ function Settings() {
     }
 
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
-
       // Use RPC to bypass RLS (direct table UPDATE is silently blocked)
       const { data: rpcResult, error } = await supabase.rpc('update_shop_settings', {
         p_shop_id: sid,

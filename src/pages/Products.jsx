@@ -535,7 +535,6 @@ function Products() {
       status: inlineForm.status || 'active'
     }
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
       const { error } = await supabase.from('products').update(updates).eq('id', inlineEditId)
       if (error) throw error
       setInlineEditId(null)

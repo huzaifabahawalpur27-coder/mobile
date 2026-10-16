@@ -137,7 +137,6 @@ function Suppliers() {
       created_at: txDate
     }
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
       let { error } = await supabase.from('supplier_payments').insert([payload])
       if (error && (error.code === 'PGRST204' || error.code === '42703' || String(error.status) === '400' || error.message?.includes('column') || error.message?.includes('schema cache'))) {
         console.warn('Suppliers: Retrying supplier_payments insert without missing bill_number column')
@@ -481,8 +480,6 @@ function Suppliers() {
     const payload = { ...form, shop_id: user.shop_id }
 
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
-
       if (editingId) {
         let { error } = await supabase.from('suppliers').update(payload).eq('id', editingId)
         if (error && (error.message?.includes('schema cache') || error.message?.includes('column'))) {

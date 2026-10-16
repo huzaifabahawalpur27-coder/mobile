@@ -269,8 +269,6 @@ function Purchases() {
     }
 
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
-
       // 1. Save Purchase (with schema cache fallback)
       let { data: purchase, error: pError } = await supabase.from('purchases').insert([purchaseData]).select().single()
       if (pError && (pError.message?.includes('column') || pError.code === 'PGRST204')) {

@@ -14,7 +14,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     },
     global: {
         fetch: (url, options) => {
-            const token = localStorage.getItem('session_token') || ''
+            let token = localStorage.getItem('session_token') || ''
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            if (!token || !uuidRegex.test(token)) {
+                try {
+                    token = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-0000-0000-000000000001'
+                    localStorage.setItem('session_token', token)
+                } catch (_) {}
+            }
+
             let shopId = ''
             try {
                 const user = JSON.parse(localStorage.getItem('user') || '{}')
@@ -98,6 +106,25 @@ class RLSSessionManager {
                 return { success: false, reason: 'invalid_user_data' }
             }
 
+            // Ensure valid UUID session token
+            let token = localStorage.getItem('session_token')
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            if (!token || !uuidRegex.test(token)) {
+                token = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-0000-0000-000000000001'
+                localStorage.setItem('session_token', token)
+            }
+
+            // Fire-and-forget sync session into Supabase sessions table
+            if (user.id && user.shop_id) {
+                supabase.from('sessions').upsert({
+                    token,
+                    user_id: user.id,
+                    shop_id: user.shop_id,
+                    branch_id: user.branch_id || null,
+                    expires_at: new Date(Date.now() + 30 * 86400000).toISOString()
+                }, { onConflict: 'token' }).then(() => {}).catch(() => {})
+            }
+
             this.sessionRestored = true
             return { success: true, user }
         } catch (err) {
@@ -111,6 +138,21 @@ class RLSSessionManager {
      */
     async setSession(user) {
         if (user?.id && user?.shop_id && user?.role) {
+            let token = localStorage.getItem('session_token')
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            if (!token || !uuidRegex.test(token)) {
+                token = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-0000-0000-000000000001'
+                localStorage.setItem('session_token', token)
+            }
+            if (user.id && user.shop_id) {
+                supabase.from('sessions').upsert({
+                    token,
+                    user_id: user.id,
+                    shop_id: user.shop_id,
+                    branch_id: user.branch_id || null,
+                    expires_at: new Date(Date.now() + 30 * 86400000).toISOString()
+                }, { onConflict: 'token' }).then(() => {}).catch(() => {})
+            }
             this.sessionRestored = true
             return { success: true }
         }

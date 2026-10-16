@@ -179,8 +179,6 @@ function PurchaseHistory() {
         let totalReturnAmount = 0
 
         try {
-            if (!navigator.onLine) throw new TypeError('Failed to fetch')
-
             for (const item of itemsToReturn) {
                 const returnQty = parseInt(returnQtys[item.id]) || 0
                 const returnAmount = item.unit_price * returnQty

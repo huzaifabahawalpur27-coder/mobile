@@ -140,8 +140,6 @@ function SupplierLedger() {
         const now = txForm.date ? new Date(txForm.date + 'T12:00:00').toISOString() : new Date().toISOString()
 
         try {
-            if (!navigator.onLine) throw new TypeError('Failed to fetch')
-
             const insertRows = []
 
             const commonFields = {

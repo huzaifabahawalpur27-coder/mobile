@@ -703,7 +703,6 @@ function POS() {
       created_at: new Date().toISOString()
     }
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
       let { data, error } = await supabase.from('customers').insert([newCustomer]).select()
       if (error && (error.message?.includes('outstanding_balance') || error.code === 'PGRST204')) {
         const fallbackCust = {
@@ -921,36 +920,17 @@ function POS() {
     let finalSale = null;
 
     try {
-      if (!navigator.onLine) throw new TypeError('Failed to fetch')
-
-      // If cart contains serialized mobile phones, use atomic RPC to lock rows and prevent race conditions
+      // If cart contains serialized mobile phones, attempt atomic RPC to lock rows and prevent race conditions
       if (hasPhoneItems && saleType === 'sale') {
-        let rpcRes, rpcErr
-        const primaryRes = await supabase.rpc('process_phone_sale', {
-          p_customer_id: toIntOrNull(customerId),
-          p_customer_name: customerId ? null : walkInName,
-          p_customer_phone: null,
-          p_customer_whatsapp: null,
-          p_branch_id: user.branch_id || null,
-          p_items: cart.map(i => ({
-            phone_id: i.phone_id || null,
-            product_id: i.phone_id ? null : toIntOrNull(i.id),
-            price: i.custom_price,
-            quantity: i.qty
-          })),
-          p_total_amount: subtotal,
-          p_discount: totalDiscount,
-          p_net_amount: total,
-          p_paid_amount: totalPaid,
-          p_payment_method: primaryPaymentMethod,
-          p_payment_details: finalPayments,
-          p_idempotency_key: idempotencyKey
-        })
-
-        if (primaryRes.error && (primaryRes.error.code === 'PGRST202' || primaryRes.error.message?.includes('schema cache'))) {
-          console.warn('Falling back to 9-param process_phone_sale signature...', primaryRes.error.message)
-          const fallbackRes = await supabase.rpc('process_phone_sale', {
+        let rpcRes = null
+        let rpcErr = null
+        try {
+          const primaryRes = await supabase.rpc('process_phone_sale', {
             p_customer_id: toIntOrNull(customerId),
+            p_customer_name: customerId ? null : walkInName,
+            p_customer_phone: null,
+            p_customer_whatsapp: null,
+            p_branch_id: user.branch_id || null,
             p_items: cart.map(i => ({
               phone_id: i.phone_id || null,
               product_id: i.phone_id ? null : toIntOrNull(i.id),
@@ -965,45 +945,80 @@ function POS() {
             p_payment_details: finalPayments,
             p_idempotency_key: idempotencyKey
           })
-          rpcRes = fallbackRes.data
-          rpcErr = fallbackRes.error
-        } else {
-          rpcRes = primaryRes.data
-          rpcErr = primaryRes.error
-        }
 
-        if (rpcErr) throw rpcErr
-        if (rpcRes && !rpcRes.success) {
-          alert(`⚠️ Sale Nahi Ho Saki: ${rpcRes.error || 'Inventory lock conflict'}`)
-          setSaving(false)
-          return
-        }
-
-        const saleId = rpcRes.sale_id
-        finalSale = { ...saleData, id: saleId }
-
-        // Mirror to Dexie
-        await db.sales.put(finalSale)
-        for (const item of cart) {
-          if (item.phone_id && db.phones) {
-            await db.phones.update(item.phone_id, { status: 'sold' }).catch(() => {})
-          } else if (item.id && !item.phone_id) {
-            const newStock = (item.stock_quantity || 1) - item.qty
-            await db.products.update(item.id, { stock_quantity: newStock }).catch(() => {})
+          if (primaryRes.error && (primaryRes.error.code === 'PGRST202' || primaryRes.error.message?.includes('schema cache'))) {
+            console.warn('Falling back to 9-param process_phone_sale signature...', primaryRes.error.message)
+            const fallbackRes = await supabase.rpc('process_phone_sale', {
+              p_customer_id: toIntOrNull(customerId),
+              p_items: cart.map(i => ({
+                phone_id: i.phone_id || null,
+                product_id: i.phone_id ? null : toIntOrNull(i.id),
+                price: i.custom_price,
+                quantity: i.qty
+              })),
+              p_total_amount: subtotal,
+              p_discount: totalDiscount,
+              p_net_amount: total,
+              p_paid_amount: totalPaid,
+              p_payment_method: primaryPaymentMethod,
+              p_payment_details: finalPayments,
+              p_idempotency_key: idempotencyKey
+            })
+            rpcRes = fallbackRes.data
+            rpcErr = fallbackRes.error
+          } else {
+            rpcRes = primaryRes.data
+            rpcErr = primaryRes.error
           }
+        } catch (callEx) {
+          console.warn('POS: process_phone_sale call exception:', callEx)
+          rpcErr = callEx
         }
-        setPhones(prev => prev.filter(p => !cart.some(c => c.phone_id === p.id)))
 
-        if (customerId) {
-          const actualPaidToBill = Math.min(total, totalPaid)
-          const balanceIncrease = total - actualPaidToBill
-          if (balanceIncrease > 0) {
-            const customer = customers.find(c => String(c.id) === String(customerId))
-            const newBalance = (customer?.outstanding_balance || 0) + balanceIncrease
-            await db.customers.update(customerId, { outstanding_balance: newBalance }).catch(() => {})
+        if (rpcRes && rpcRes.success) {
+          const saleId = rpcRes.sale_id
+          finalSale = { ...saleData, id: saleId }
+
+          // Mirror to Dexie
+          await db.sales.put(finalSale)
+          for (const item of cart) {
+            if (item.phone_id && db.phones) {
+              await db.phones.update(item.phone_id, { status: 'sold' }).catch(() => {})
+            } else if (item.id && !item.phone_id) {
+              const newStock = (item.stock_quantity || 1) - item.qty
+              await db.products.update(item.id, { stock_quantity: newStock }).catch(() => {})
+            }
           }
+          setPhones(prev => prev.filter(p => !cart.some(c => c.phone_id === p.id)))
+
+          if (customerId) {
+            const actualPaidToBill = Math.min(total, totalPaid)
+            const balanceIncrease = total - actualPaidToBill
+            if (balanceIncrease > 0) {
+              const customer = customers.find(c => String(c.id) === String(customerId))
+              const newBalance = (customer?.outstanding_balance || 0) + balanceIncrease
+              await db.customers.update(customerId, { outstanding_balance: newBalance }).catch(() => {})
+            }
+          }
+        } else if (rpcRes && !rpcRes.success) {
+          const errStr = (rpcRes.error || '').toLowerCase()
+          const isSessionOrAuth = errStr.includes('unauthenticated') || 
+                                  errStr.includes('session') || 
+                                  errStr.includes('token')
+          if (!isSessionOrAuth) {
+            // Real inventory conflict (e.g. Phone is already sold or not found in stock)
+            alert(`⚠️ Sale Nahi Ho Saki: ${rpcRes.error || 'Inventory lock conflict'}`)
+            setSaving(false)
+            return
+          }
+          console.warn('POS: process_phone_sale unauthenticated session (' + rpcRes.error + '). Falling back to resilient direct table insert...')
+        } else if (rpcErr) {
+          console.warn('POS: process_phone_sale RPC error. Falling back to resilient direct table insert...', rpcErr)
         }
-      } else {
+      }
+
+      // If sale not completed via phone RPC (e.g. accessories, quotation, or RPC session fallback):
+      if (!finalSale) {
         // Standard flow for accessories / quotation
         let sale = null
         let saleError = null
@@ -1106,8 +1121,13 @@ function POS() {
         }
       }
     } catch (error) {
-      const errMsg = error?.message || String(error)
-      if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
+      const errMsg = (error?.message || String(error)).toLowerCase()
+      const isNetworkErr = errMsg.includes('failed to fetch') ||
+                           errMsg.includes('network') ||
+                           errMsg.includes('load failed') ||
+                           errMsg.includes('err_') ||
+                           !navigator.onLine
+      if (isNetworkErr) {
         console.log('POS: Intercepted offline failure, routing to local queue...')
         // OFFLINE MODE
         const offlineId = crypto.randomUUID();
