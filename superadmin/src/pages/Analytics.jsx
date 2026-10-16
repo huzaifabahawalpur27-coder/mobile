@@ -41,11 +41,20 @@ export default function Analytics() {
             }
             const rawShops = shopsRes.data || []
 
+            const safeQuery = async (queryPromise, defaultData = null) => {
+                try {
+                    const res = await queryPromise
+                    return res || { data: defaultData, error: null }
+                } catch (e) {
+                    return { data: defaultData, error: e }
+                }
+            }
+
             const [growthRes, topsRes, inactiveRes, paymentsRes] = await Promise.all([
-                supabaseAdmin.rpc('get_global_growth_stats').catch(e => ({ error: e, data: null })),
-                supabaseAdmin.rpc('get_top_performing_shops').catch(e => ({ error: e, data: null })),
-                supabaseAdmin.rpc('get_inactive_shops').catch(e => ({ error: e, data: null })),
-                supabaseAdmin.from('shop_payments').select('id, amount, payment_date, payment_type').catch(e => ({ error: e, data: [] }))
+                safeQuery(supabaseAdmin.rpc('get_global_growth_stats')),
+                safeQuery(supabaseAdmin.rpc('get_top_performing_shops')),
+                safeQuery(supabaseAdmin.rpc('get_inactive_shops')),
+                safeQuery(supabaseAdmin.from('shop_payments').select('id, amount, payment_date, payment_type'), [])
             ])
 
             // 1. Resolve Global Growth Stats (RPC or direct sales table query)

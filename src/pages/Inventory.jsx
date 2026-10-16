@@ -248,7 +248,7 @@ function Inventory() {
         supabase.from('products').select('*, categories(name)').eq('shop_id', user.shop_id).order('name'),
         supabase.from('categories').select('*').eq('shop_id', user.shop_id),
         supabase.from('brands').select('*').eq('shop_id', user.shop_id).order('name'),
-        supabase.from('suppliers').select('id, name, phone').eq('shop_id', user.shop_id).catch(() => ({ data: [] }))
+        supabase.from('suppliers').select('id, name, phone').eq('shop_id', user.shop_id).then(r => r, () => ({ data: [] }))
       ])
 
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4000))
