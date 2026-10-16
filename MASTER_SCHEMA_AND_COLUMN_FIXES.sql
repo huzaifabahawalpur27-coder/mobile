@@ -944,9 +944,15 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.return_phone_custody(INTEGER, TEXT);
+DROP FUNCTION IF EXISTS public.return_phone_custody(INTEGER);
+DROP FUNCTION IF EXISTS public.return_phone_custody(INTEGER, TEXT, INTEGER, TEXT);
+
 CREATE OR REPLACE FUNCTION public.return_phone_custody(
-    p_custody_id INTEGER,
-    p_return_notes TEXT DEFAULT NULL
+    p_custody_id INTEGER DEFAULT NULL,
+    p_return_notes TEXT DEFAULT NULL,
+    p_phone_id INTEGER DEFAULT NULL,
+    p_notes TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -954,6 +960,8 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
+    v_actual_custody_id INTEGER := p_custody_id;
+    v_actual_notes TEXT := COALESCE(p_return_notes, p_notes);
     v_token UUID;
     v_user_id UUID := NULL;
     v_shop_id INTEGER := NULL;
@@ -972,9 +980,27 @@ BEGIN
         END;
     END IF;
 
+    -- If caller passed p_phone_id instead of p_custody_id
+    IF v_actual_custody_id IS NULL AND p_phone_id IS NOT NULL THEN
+        SELECT id INTO v_actual_custody_id
+        FROM public.phone_custody
+        WHERE phone_id = p_phone_id AND status = 'active'
+        ORDER BY created_at DESC
+        LIMIT 1;
+
+        IF v_actual_custody_id IS NULL THEN
+            UPDATE public.phones SET status = 'in_stock', updated_at = NOW() WHERE id = p_phone_id;
+            RETURN jsonb_build_object('success', true, 'phone_id', p_phone_id);
+        END IF;
+    END IF;
+
+    IF v_actual_custody_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Custody ID or Phone ID is required');
+    END IF;
+
     SELECT * INTO v_custody
     FROM public.phone_custody
-    WHERE id = p_custody_id
+    WHERE id = v_actual_custody_id
     FOR UPDATE;
 
     IF NOT FOUND THEN
@@ -989,8 +1015,8 @@ BEGIN
     SET status = 'returned',
         returned_at = NOW(),
         returned_by = v_user_id,
-        notes = COALESCE(notes || ' | Return: ' || p_return_notes, notes)
-    WHERE id = p_custody_id;
+        notes = COALESCE(notes || ' | Return: ' || v_actual_notes, notes, v_actual_notes)
+    WHERE id = v_actual_custody_id;
 
     UPDATE public.phones
     SET status = 'in_stock', updated_at = NOW()
@@ -1001,41 +1027,13 @@ BEGIN
             phone_id, shop_id, action, previous_status, new_status, actor_id, details
         ) VALUES (
             v_custody.phone_id, v_custody.shop_id, 'CUSTODY_RETURNED', 'issued', 'in_stock', v_user_id,
-            jsonb_build_object('custody_id', p_custody_id, 'notes', p_return_notes)
+            jsonb_build_object('custody_id', v_actual_custody_id, 'notes', v_actual_notes)
         );
     EXCEPTION WHEN OTHERS THEN
         NULL;
     END;
 
     RETURN jsonb_build_object('success', true, 'phone_id', v_custody.phone_id);
-END;
-$$;
-
--- Overload for return_phone_custody by phone_id
-CREATE OR REPLACE FUNCTION public.return_phone_custody(
-    p_phone_id INTEGER,
-    p_notes TEXT DEFAULT NULL
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-    v_custody_id INTEGER;
-BEGIN
-    SELECT id INTO v_custody_id
-    FROM public.phone_custody
-    WHERE phone_id = p_phone_id AND status = 'active'
-    ORDER BY created_at DESC
-    LIMIT 1;
-
-    IF v_custody_id IS NOT NULL THEN
-        RETURN public.return_phone_custody(v_custody_id, p_notes);
-    ELSE
-        UPDATE public.phones SET status = 'in_stock', updated_at = NOW() WHERE id = p_phone_id;
-        RETURN jsonb_build_object('success', true, 'phone_id', p_phone_id);
-    END IF;
 END;
 $$;
 
@@ -1547,8 +1545,7 @@ GRANT EXECUTE ON FUNCTION public.process_phone_sale(INTEGER, TEXT, TEXT, TEXT, I
 GRANT EXECUTE ON FUNCTION public.process_phone_sale(INTEGER, JSONB, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, JSONB, TEXT) TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.issue_phone_custody(INTEGER, TEXT, TEXT, TEXT, DATE, NUMERIC, TEXT) TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.issue_phone_custody(INTEGER, TEXT, TEXT, TEXT, TEXT, NUMERIC, DATE, TEXT) TO anon, authenticated, public;
-GRANT EXECUTE ON FUNCTION public.return_phone_custody(INTEGER, TEXT) TO anon, authenticated, public;
-GRANT EXECUTE ON FUNCTION public.return_phone_custody(INTEGER, TEXT) TO anon, authenticated, public;
+GRANT EXECUTE ON FUNCTION public.return_phone_custody(INTEGER, TEXT, INTEGER, TEXT) TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.open_cash_session(NUMERIC, TEXT) TO anon, authenticated, public;
 GRANT EXECUTE ON FUNCTION public.close_cash_session(INTEGER, NUMERIC, TEXT) TO anon, authenticated, public;
 
