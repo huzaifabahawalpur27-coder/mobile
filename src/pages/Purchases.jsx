@@ -8,6 +8,7 @@ import PhonePurchasePanel from '../components/PhonePurchasePanel'
 import { getBankAccounts, deductBankBalance } from '../services/bankService'
 import { enqueueWhatsAppMessage, buildPurchaseMemoText } from '../services/whatsappQueueService'
 import BankAccountModal from '../components/BankAccountModal'
+import { deduplicateProducts } from '../utils/productUtils'
 
 function Purchases() {
   const { user } = useAuth()
@@ -103,7 +104,7 @@ function Purchases() {
         db.brands.toArray()
       ])
       const sid = String(user.shop_id)
-      setProducts(lProds.filter(x => String(x.shop_id) === sid))
+      setProducts(deduplicateProducts(lProds.filter(x => String(x.shop_id) === sid)))
       setSuppliers(lSups.filter(x => String(x.shop_id) === sid))
       setBrands(lBrands.filter(x => String(x.shop_id) === sid))
     } catch (e) {
@@ -115,7 +116,7 @@ function Purchases() {
           db.brands.toArray()
         ])
         const sid = String(user.shop_id);
-        setProducts(lProds.filter(x => String(x.shop_id) === sid))
+        setProducts(deduplicateProducts(lProds.filter(x => String(x.shop_id) === sid)))
         setSuppliers(lSups.filter(x => String(x.shop_id) === sid))
         setBrands(lBrands.filter(x => String(x.shop_id) === sid))
       } catch (err) { console.error('Local DB Purchases Error:', err) }

@@ -13,6 +13,7 @@ import CashSessionModal from '../components/CashSessionModal'
 import { formatInvoiceWhatsAppMessage, buildWhatsAppUrl, cleanPhoneNumber } from '../utils/whatsappTemplates'
 import { enqueueWhatsAppMessage, buildPhoneSaleReceiptText } from '../services/whatsappQueueService'
 import { playError } from '../utils/soundEffects'
+import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
   { id: 'easypaisa', name: 'Easypaisa', icon: '🟢' },
@@ -364,8 +365,8 @@ function POS() {
         if (!bcMap[bc.brand_id]) bcMap[bc.brand_id] = []
         bcMap[bc.brand_id].push(bc.category_id)
       })
-      setProducts(myProds)
-      setPhones(myPhones)
+      setProducts(deduplicateProducts(myProds))
+      setPhones(deduplicatePhones(myPhones))
       setCategories(myCats)
       setCustomers(myCustomers)
       setBrands(myBrands)
@@ -386,13 +387,22 @@ function POS() {
         supabase.from('phones').select('*').eq('shop_id', user.shop_id).eq('status', 'in_stock').order('created_at', { ascending: false })
       ])
 
-      if (p.data) await db.products.bulkPut(JSON.parse(JSON.stringify(p.data)))
+      if (p.data) {
+        // Purge old local cached products for this shop to eliminate stale duplicate rows
+        const allLocal = await db.products.toArray().catch(() => [])
+        const oldShopIds = allLocal.filter(x => String(x.shop_id) === sid).map(x => x.id)
+        if (oldShopIds.length > 0) await db.products.bulkDelete(oldShopIds).catch(() => {})
+        await db.products.bulkPut(JSON.parse(JSON.stringify(p.data)))
+      }
       if (c.data) await db.categories.bulkPut(JSON.parse(JSON.stringify(c.data)))
       if (cu.data) await db.customers.bulkPut(JSON.parse(JSON.stringify(cu.data)))
       if (b.data) await db.brands.bulkPut(JSON.parse(JSON.stringify(b.data)))
       if (ph.data && db.phones) {
+        const allLocalPhones = await db.phones.toArray().catch(() => [])
+        const oldPhoneIds = allLocalPhones.filter(x => String(x.shop_id) === sid).map(x => x.id)
+        if (oldPhoneIds.length > 0) await db.phones.bulkDelete(oldPhoneIds).catch(() => {})
         await db.phones.bulkPut(JSON.parse(JSON.stringify(ph.data))).catch(() => {})
-        setPhones(ph.data)
+        setPhones(deduplicatePhones(ph.data))
       }
 
       if (s.data) {
@@ -437,8 +447,8 @@ function POS() {
         bcMap[bc.brand_id].push(bc.category_id)
       })
 
-      setProducts(myProds)
-      setPhones(myPhones)
+      setProducts(deduplicateProducts(myProds))
+      setPhones(deduplicatePhones(myPhones))
       setCategories(myCats)
       setCustomers(myCustomers)
       setBrands(myBrands)
@@ -469,8 +479,8 @@ function POS() {
           bcMap[bc.brand_id].push(bc.category_id)
         })
 
-        setProducts(myProds)
-        setPhones(myPhones)
+        setProducts(deduplicateProducts(myProds))
+        setPhones(deduplicatePhones(myPhones))
         setCategories(myCats)
         setCustomers(myCustomers)
         setBrands(myBrands)

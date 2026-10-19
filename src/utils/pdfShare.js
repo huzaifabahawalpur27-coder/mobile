@@ -424,6 +424,249 @@ export async function generatePurchaseOrderPDF(bySupplier, shopInfo) {
   return pdf.output('blob')
 }
 
+// ─── Mobile Phone Stock Inventory PDF ────────────────────────────────────────
+
+/**
+ * Generate Mobile Phone Stock / Inventory Report PDF (A4 Landscape).
+ * Includes Model Name, Approved Status (PTA), IMEI 1 & 2, Storage, Purchase Price, Sale Price, Color/Condition, and Status.
+ *
+ * @param {Array}  phones    — array of phone objects
+ * @param {object} shopInfo  — { name, phone, address, logo_url }
+ * @param {object} options   — { showCost: boolean, showImei2: boolean, title: string, subtitle: string }
+ * @returns {Promise<Blob>}
+ */
+export async function generatePhoneStockPDF(phones = [], shopInfo = {}, options = {}) {
+  const { jsPDF, autoTable } = await loadJsPDF()
+  // Landscape orientation to comfortably fit all serialized mobile phone specifications
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+
+  const today = new Date().toLocaleDateString('en-PK', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  })
+  const time = new Date().toLocaleTimeString('en-PK', {
+    hour: '2-digit', minute: '2-digit'
+  })
+
+  const shopName    = (typeof shopInfo === 'string' ? shopInfo : shopInfo?.name) || 'EdgeX Mobile Store'
+  const shopPhone   = typeof shopInfo === 'object' ? (shopInfo?.phone || '') : ''
+  const shopAddress = typeof shopInfo === 'object' ? (shopInfo?.address || '') : ''
+  const showCost    = options.showCost !== false
+  const showImei2   = options.showImei2 !== false
+  const docTitle    = options.title || 'Mobile Phone Stock & Inventory Report'
+  const subtitle    = options.subtitle || ''
+
+  // 1. Header (Centered, Clean & Professional)
+  pdf.setFontSize(17)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(30, 58, 95) // Dark navy
+  pdf.text(shopName, 148.5, 13, { align: 'center' })
+
+  let currentY = 18
+  pdf.setFontSize(8.5)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setTextColor(100, 116, 139)
+  if (shopPhone || shopAddress) {
+    const contactLine = [shopPhone, shopAddress].filter(Boolean).join('   |   ')
+    pdf.text(contactLine, 148.5, currentY, { align: 'center' })
+    currentY += 4.5
+  }
+
+  pdf.setFontSize(11)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(15, 23, 42)
+  pdf.text(docTitle, 148.5, currentY, { align: 'center' })
+  currentY += 4.5
+
+  if (subtitle) {
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(100, 116, 139)
+    pdf.text(subtitle, 148.5, currentY, { align: 'center' })
+    currentY += 4
+  }
+
+  // Top right date
+  pdf.setFontSize(8)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setTextColor(100, 116, 139)
+  pdf.text(`Printed: ${today} ${time}`, 283, 13, { align: 'right' })
+
+  // 2. Summary KPI Box
+  const totalUnits = phones.length
+  const inStockUnits = phones.filter(p => p.status === 'in_stock').length
+  const ptaApproved = phones.filter(p => {
+    const s = String(p.pta_status || '').toLowerCase()
+    return s.includes('approved')
+  }).length
+  const nonPta = phones.filter(p => {
+    const s = String(p.pta_status || '').toLowerCase()
+    return s.includes('non')
+  }).length
+  const cpidOrOther = totalUnits - ptaApproved - nonPta
+
+  const totalCost = phones.reduce((acc, p) => acc + (parseFloat(p.cost_price) || 0) + (parseFloat(p.additional_costs) || 0), 0)
+  const totalSale = phones.reduce((acc, p) => acc + (parseFloat(p.sale_price) || parseFloat(p.selling_price) || 0), 0)
+  const estMargin = totalSale - totalCost
+
+  pdf.setFillColor(248, 250, 252)
+  pdf.setDrawColor(226, 232, 240)
+  pdf.roundedRect(14, currentY, 269, 10, 2, 2, 'FD')
+
+  pdf.setFontSize(8)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(30, 41, 59)
+
+  let summaryParts = [
+    `Total Listed: ${totalUnits}`,
+    `In Stock: ${inStockUnits}`,
+    `PTA Approved: ${ptaApproved}`,
+    `Non-PTA: ${nonPta}`
+  ]
+  if (cpidOrOther > 0) summaryParts.push(`CPID/Other: ${cpidOrOther}`)
+  if (showCost) {
+    summaryParts.push(`Total Cost: Rs. ${Math.round(totalCost).toLocaleString()}`)
+    summaryParts.push(`Total Sale Value: Rs. ${Math.round(totalSale).toLocaleString()}`)
+    summaryParts.push(`Est. Margin: Rs. ${Math.round(estMargin).toLocaleString()}`)
+  } else {
+    summaryParts.push(`Total Sale Value: Rs. ${Math.round(totalSale).toLocaleString()}`)
+  }
+
+  pdf.text(summaryParts.join('   |   '), 148.5, currentY + 6.5, { align: 'center' })
+  currentY += 13
+
+  // 3. Table Rows
+  const head = showCost
+    ? [['#', 'Model & Brand', 'Approved Status', 'IMEI Number(s)', 'Storage', 'Color / Cond', 'Purchase Price', 'Sale Price', 'Status']]
+    : [['#', 'Model & Brand', 'Approved Status', 'IMEI Number(s)', 'Storage', 'Color / Cond', 'Sale Price', 'Status']]
+
+  const rows = phones.map((p, idx) => {
+    const modelName = [p.brand, p.model].filter(Boolean).join(' ') || 'Mobile Device'
+
+    let ptaLabel = 'Approved'
+    const ptaRaw = String(p.pta_status || '').toLowerCase()
+    if (ptaRaw.includes('non')) ptaLabel = 'Non-PTA'
+    else if (ptaRaw.includes('cpid') || ptaRaw.includes('patch')) ptaLabel = 'CPID / Patch'
+    else if (ptaRaw.includes('vip') || ptaRaw.includes('gevey')) ptaLabel = 'VIP / Gevey'
+    else if (ptaRaw.includes('block')) ptaLabel = 'Blocked'
+    else if (ptaRaw.includes('approved')) ptaLabel = 'PTA Approved'
+    else ptaLabel = p.pta_status || 'PTA Approved'
+
+    const imeis = [p.imei_1, showImei2 && p.imei_2 ? `S2: ${p.imei_2}` : null].filter(Boolean).join('\n') || '-'
+    const storage = p.storage || '-'
+    const colorCond = [p.color, p.condition ? `(${p.condition})` : ''].filter(Boolean).join(' ') || '-'
+    const cost = parseFloat(p.cost_price) || 0
+    const sale = parseFloat(p.sale_price) || parseFloat(p.selling_price) || 0
+    const status = String(p.status || 'in_stock').toUpperCase().replace('_', ' ')
+
+    if (showCost) {
+      return [
+        String(idx + 1),
+        modelName,
+        ptaLabel,
+        imeis,
+        storage,
+        colorCond,
+        cost > 0 ? `Rs. ${cost.toLocaleString()}` : '-',
+        sale > 0 ? `Rs. ${sale.toLocaleString()}` : '-',
+        status
+      ]
+    } else {
+      return [
+        String(idx + 1),
+        modelName,
+        ptaLabel,
+        imeis,
+        storage,
+        colorCond,
+        sale > 0 ? `Rs. ${sale.toLocaleString()}` : '-',
+        status
+      ]
+    }
+  })
+
+  const columnStyles = showCost
+    ? {
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 50 },
+        2: { cellWidth: 30, halign: 'center' },
+        3: { cellWidth: 46 },
+        4: { cellWidth: 22, halign: 'center' },
+        5: { cellWidth: 33 },
+        6: { cellWidth: 28, halign: 'right' },
+        7: { cellWidth: 28, halign: 'right' },
+        8: { cellWidth: 22, halign: 'center' }
+      }
+    : {
+        0: { cellWidth: 12, halign: 'center' },
+        1: { cellWidth: 64 },
+        2: { cellWidth: 35, halign: 'center' },
+        3: { cellWidth: 56 },
+        4: { cellWidth: 26, halign: 'center' },
+        5: { cellWidth: 40 },
+        6: { cellWidth: 36, halign: 'right' },
+        7: { cellWidth: 26, halign: 'center' }
+      }
+
+  autoTable(pdf, {
+    startY: currentY,
+    head: head,
+    body: rows,
+    styles: { fontSize: 8, cellPadding: 2, textColor: [30, 41, 59] },
+    headStyles: {
+      fillColor: [30, 58, 95], // Premium navy
+      textColor: 255,
+      fontStyle: 'bold',
+      halign: 'left'
+    },
+    columnStyles: columnStyles,
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    margin: { left: 14, right: 14 },
+    didParseCell: (data) => {
+      // Color-code PTA status
+      if (data.section === 'body' && data.column.index === 2) {
+        if (data.cell.raw === 'Non-PTA' || data.cell.raw === 'Blocked') {
+          data.cell.styles.textColor = [225, 29, 72] // Rose red
+          data.cell.styles.fontStyle = 'bold'
+        } else if (data.cell.raw === 'PTA Approved') {
+          data.cell.styles.textColor = [5, 150, 105] // Emerald green
+          data.cell.styles.fontStyle = 'bold'
+        } else if (data.cell.raw?.includes('CPID') || data.cell.raw?.includes('Patch')) {
+          data.cell.styles.textColor = [180, 83, 9] // Amber
+          data.cell.styles.fontStyle = 'bold'
+        }
+      }
+      // Status column
+      const statusColIdx = showCost ? 8 : 7
+      if (data.section === 'body' && data.column.index === statusColIdx) {
+        if (data.cell.raw === 'IN STOCK') {
+          data.cell.styles.textColor = [16, 185, 129]
+        } else if (data.cell.raw === 'SOLD') {
+          data.cell.styles.textColor = [100, 116, 139]
+        } else {
+          data.cell.styles.textColor = [217, 119, 6]
+        }
+      }
+    }
+  })
+
+  // Footers with page counts
+  const pageCount = pdf.internal.getNumberOfPages()
+  for (let i = 1; i <= pageCount; i++) {
+    pdf.setPage(i)
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'italic')
+    pdf.setTextColor(148, 163, 184)
+    pdf.text(
+      `Generated by EdgeX Mobile POS  |  Page ${i} of ${pageCount}`,
+      148.5,
+      202,
+      { align: 'center' }
+    )
+  }
+
+  return pdf.output('blob')
+}
+
 // ─── Share / Download Helper ──────────────────────────────────────────────────
 
 /**

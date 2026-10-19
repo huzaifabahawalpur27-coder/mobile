@@ -87,3 +87,365 @@ export function brandedA4Header(branding, docTitle, subtitle = '') {
       </div>
     </div>`
 }
+
+/**
+ * generatePhoneStockPrintHTML(phones, branding, options)
+ * Produces clean, print-optimized A4 landscape HTML for Mobile Phone Stock Inventory.
+ * Includes Model Name, Approved Status (PTA), IMEI 1/2, Storage, Purchase Price, Sale Price, Color/Condition, and Summary.
+ */
+export function generatePhoneStockPrintHTML(phones = [], branding = {}, options = {}) {
+  const { name, phone, address, logo_url } = branding || {}
+  const showCost = options.showCost !== false
+  const showImei2 = options.showImei2 !== false
+  const showSummary = options.showSummary !== false
+  const docTitle = options.title || 'Mobile Phone Stock & Inventory Report'
+  const filterDesc = options.filterDesc || ''
+
+  const today = new Date().toLocaleDateString('en-PK', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  })
+  const time = new Date().toLocaleTimeString('en-PK', {
+    hour: '2-digit', minute: '2-digit'
+  })
+
+  // Summary Metrics
+  const totalUnits = phones.length
+  const inStockUnits = phones.filter(p => p.status === 'in_stock').length
+  const ptaApproved = phones.filter(p => String(p.pta_status || '').toLowerCase().includes('approved')).length
+  const nonPta = phones.filter(p => String(p.pta_status || '').toLowerCase().includes('non')).length
+  const cpidOrOther = totalUnits - ptaApproved - nonPta
+
+  const totalCost = phones.reduce((acc, p) => acc + (parseFloat(p.cost_price) || 0) + (parseFloat(p.additional_costs) || 0), 0)
+  const totalSale = phones.reduce((acc, p) => acc + (parseFloat(p.sale_price) || parseFloat(p.selling_price) || 0), 0)
+  const estMargin = totalSale - totalCost
+
+  const logoHtml = logo_url
+    ? `<img src="${logo_url}" alt="logo" style="height:48px;max-width:140px;object-fit:contain;margin-right:12px;" />`
+    : ''
+  const contactLine = [phone, address].filter(Boolean).join('  |  ')
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <title>${docTitle} - ${today}</title>
+      <style>
+        @page {
+          size: A4 landscape;
+          margin: 8mm 10mm 10mm 10mm;
+        }
+        * {
+          box-sizing: border-box;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          color: #0f172a;
+          margin: 0;
+          padding: 8px;
+          background: #ffffff;
+          font-size: 11px;
+          line-height: 1.35;
+        }
+        .header-wrap {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 2px solid #1e3a5f;
+          padding-bottom: 8px;
+          margin-bottom: 10px;
+        }
+        .shop-info h1 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 800;
+          color: #1e3a5f;
+          letter-spacing: -0.3px;
+        }
+        .shop-info p {
+          margin: 2px 0 0 0;
+          font-size: 10.5px;
+          color: #64748b;
+        }
+        .doc-info {
+          text-align: right;
+        }
+        .doc-info h2 {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+        .doc-info p {
+          margin: 2px 0 0 0;
+          font-size: 10px;
+          color: #64748b;
+        }
+        .summary-bar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px 14px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 7px 12px;
+          margin-bottom: 10px;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .summary-stat {
+          display: flex;
+          align-items: baseline;
+          gap: 4px;
+        }
+        .stat-label {
+          font-size: 9.5px;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #64748b;
+        }
+        .stat-val {
+          font-size: 11.5px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+        .stat-val.green { color: #059669; }
+        .stat-val.red { color: #e11d48; }
+        .stat-val.blue { color: #2563eb; }
+        .stat-val.purple { color: #7c3aed; }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 2px;
+        }
+        th {
+          background: #1e3a5f;
+          color: #ffffff;
+          font-weight: 700;
+          font-size: 9.5px;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          padding: 6px 6px;
+          text-align: left;
+          border: 1px solid #1e3a5f;
+        }
+        th.center, td.center { text-align: center; }
+        th.right, td.right { text-align: right; }
+        td {
+          padding: 5px 6px;
+          border: 1px solid #e2e8f0;
+          font-size: 10px;
+          vertical-align: middle;
+        }
+        tr:nth-child(even) td {
+          background-color: #f8fafc;
+        }
+        .badge {
+          display: inline-block;
+          padding: 1.5px 5px;
+          border-radius: 4px;
+          font-size: 8.5px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          white-space: nowrap;
+        }
+        .badge-pta-approved { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .badge-pta-non { background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+        .badge-pta-cpid { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+        .badge-pta-vip { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+        .badge-status-instock { background: #ecfdf5; color: #047857; font-weight: 800; }
+        .badge-status-sold { background: #f1f5f9; color: #64748b; }
+        .badge-status-reserved { background: #fffbeb; color: #b45309; }
+        .imei-code {
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 10px;
+          font-weight: 700;
+          color: #0f172a;
+          letter-spacing: 0.4px;
+        }
+        .imei-sub {
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 8.5px;
+          color: #64748b;
+        }
+        .model-name {
+          font-weight: 800;
+          color: #0f172a;
+          font-size: 10.5px;
+        }
+        .meta-text {
+          font-size: 9px;
+          color: #64748b;
+        }
+        .footer {
+          margin-top: 12px;
+          padding-top: 6px;
+          border-top: 1px solid #e2e8f0;
+          display: flex;
+          justify-content: space-between;
+          font-size: 8.5px;
+          color: #94a3b8;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header-wrap">
+        <div style="display:flex;align-items:center;">
+          ${logoHtml}
+          <div class="shop-info">
+            <h1>${name || 'EdgeX Mobile Store'}</h1>
+            ${contactLine ? `<p>${contactLine}</p>` : ''}
+          </div>
+        </div>
+        <div class="doc-info">
+          <h2>${docTitle}</h2>
+          ${filterDesc ? `<p><strong>Filter:</strong> ${filterDesc}</p>` : ''}
+          <p><strong>Printed:</strong> ${today} &bull; ${time}</p>
+        </div>
+      </div>
+
+      ${showSummary ? `
+        <div class="summary-bar">
+          <div class="summary-stat">
+            <span class="stat-label">Total Devices:</span>
+            <span class="stat-val">${totalUnits}</span>
+          </div>
+          <div class="summary-stat">
+            <span class="stat-label">In-Stock:</span>
+            <span class="stat-val blue">${inStockUnits}</span>
+          </div>
+          <div class="summary-stat">
+            <span class="stat-label">PTA Approved:</span>
+            <span class="stat-val green">${ptaApproved}</span>
+          </div>
+          <div class="summary-stat">
+            <span class="stat-label">Non-PTA:</span>
+            <span class="stat-val red">${nonPta}</span>
+          </div>
+          ${cpidOrOther > 0 ? `
+            <div class="summary-stat">
+              <span class="stat-label">CPID/Other:</span>
+              <span class="stat-val">${cpidOrOther}</span>
+            </div>
+          ` : ''}
+          ${showCost ? `
+            <div class="summary-stat">
+              <span class="stat-label">Total Cost:</span>
+              <span class="stat-val">Rs. ${Math.round(totalCost).toLocaleString()}</span>
+            </div>
+          ` : ''}
+          <div class="summary-stat">
+            <span class="stat-label">Total Sale Value:</span>
+            <span class="stat-val purple">Rs. ${Math.round(totalSale).toLocaleString()}</span>
+          </div>
+          ${showCost ? `
+            <div class="summary-stat">
+              <span class="stat-label">Est. Margin:</span>
+              <span class="stat-val green">Rs. ${Math.round(estMargin).toLocaleString()}</span>
+            </div>
+          ` : ''}
+        </div>
+      ` : ''}
+
+      <table>
+        <thead>
+          <tr>
+            <th class="center" style="width:26px;">#</th>
+            <th>Model Name & Brand</th>
+            <th class="center" style="width:95px;">Approved Status</th>
+            <th style="width:130px;">IMEI Number(s)</th>
+            <th class="center" style="width:58px;">Storage</th>
+            <th style="width:95px;">Color & Cond</th>
+            ${showCost ? '<th class="right" style="width:85px;">Purchase Price</th>' : ''}
+            <th class="right" style="width:85px;">Sale Price</th>
+            <th class="center" style="width:68px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${phones.map((p, idx) => {
+            const modelName = [p.brand, p.model].filter(Boolean).join(' ') || 'Mobile Device'
+            
+            // PTA badge
+            const ptaRaw = String(p.pta_status || '').toLowerCase()
+            let ptaBadgeClass = 'badge-pta-approved'
+            let ptaText = 'PTA Approved'
+            if (ptaRaw.includes('non')) {
+              ptaBadgeClass = 'badge-pta-non'
+              ptaText = 'Non-PTA'
+            } else if (ptaRaw.includes('cpid') || ptaRaw.includes('patch')) {
+              ptaBadgeClass = 'badge-pta-cpid'
+              ptaText = 'CPID / Patch'
+            } else if (ptaRaw.includes('vip') || ptaRaw.includes('gevey')) {
+              ptaBadgeClass = 'badge-pta-vip'
+              ptaText = 'VIP / Gevey'
+            } else if (ptaRaw.includes('block')) {
+              ptaBadgeClass = 'badge-pta-non'
+              ptaText = 'Blocked'
+            }
+
+            // Status badge
+            const statusRaw = String(p.status || 'in_stock').toLowerCase()
+            let statusBadgeClass = 'badge-status-instock'
+            let statusText = 'In Stock'
+            if (statusRaw === 'sold') {
+              statusBadgeClass = 'badge-status-sold'
+              statusText = 'Sold'
+            } else if (statusRaw === 'reserved' || statusRaw === 'issued' || statusRaw === 'personal') {
+              statusBadgeClass = 'badge-status-reserved'
+              statusText = statusRaw.toUpperCase()
+            }
+
+            const cost = parseFloat(p.cost_price) || 0
+            const sale = parseFloat(p.sale_price) || parseFloat(p.selling_price) || 0
+
+            return `
+              <tr>
+                <td class="center font-bold" style="color:#64748b;">${idx + 1}</td>
+                <td>
+                  <div class="model-name">${modelName}</div>
+                  ${p.battery_health ? `<div class="meta-text">Battery Health: ${p.battery_health}%</div>` : ''}
+                </td>
+                <td class="center">
+                  <span class="badge ${ptaBadgeClass}">${ptaText}</span>
+                </td>
+                <td>
+                  <div class="imei-code">${p.imei_1 || '-'}</div>
+                  ${showImei2 && p.imei_2 ? `<div class="imei-sub">SIM 2: ${p.imei_2}</div>` : ''}
+                </td>
+                <td class="center" style="font-weight:700;">
+                  ${p.storage || '-'}
+                </td>
+                <td>
+                  <div>${p.color || '-'}</div>
+                  <div class="meta-text">${p.condition ? p.condition.replace('_', ' ') : 'Used'}</div>
+                </td>
+                ${showCost ? `
+                  <td class="right" style="font-weight:700;color:#1e293b;">
+                    ${cost > 0 ? 'Rs. ' + cost.toLocaleString() : '-'}
+                  </td>
+                ` : ''}
+                <td class="right" style="font-weight:800;color:#1e3a5f;">
+                  ${sale > 0 ? 'Rs. ' + sale.toLocaleString() : '-'}
+                </td>
+                <td class="center">
+                  <span class="badge ${statusBadgeClass}">${statusText}</span>
+                </td>
+              </tr>
+            `
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div class="footer">
+        <span>Computer Generated Mobile Phone Stock Inventory Report</span>
+        <span>${name || 'EdgeX Mobile Store'}</span>
+        <span>Page 1</span>
+      </div>
+    </body>
+    </html>
+  `
+}

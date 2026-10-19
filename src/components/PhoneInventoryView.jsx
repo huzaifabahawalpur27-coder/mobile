@@ -5,8 +5,10 @@ import { useAuth } from '../context/AuthContext'
 import {
   Smartphone, Search, Copy, Check, Filter, History,
   ShieldCheck, AlertTriangle, X, ChevronDown, ChevronUp,
-  Layers, HardDrive, Sparkles, Tag, Eye, EyeOff
+  Layers, HardDrive, Sparkles, Tag, Eye, EyeOff,
+  Printer, FileText
 } from 'lucide-react'
+import PhoneStockPrintModal from './PhoneStockPrintModal'
 
 // Normalize PTA statuses from various formats to standard keys
 export const normalizePtaStatus = (status) => {
@@ -89,6 +91,9 @@ export default function PhoneInventoryView() {
 
   // Copy Feedback state
   const [copiedImei, setCopiedImei] = useState(null)
+
+  // Print & PDF Stock Report Modal
+  const [showPrintModal, setShowPrintModal] = useState(false)
 
   // Role check: Only owner, admin, manager can view purchase cost & margins
   const canViewCost = ['owner', 'admin', 'manager', 'superadmin'].includes(user?.role)
@@ -361,6 +366,24 @@ export default function PhoneInventoryView() {
     })
   }, [phones, search, statusFilter, ptaFilter, storageFilter, brandFilter, conditionFilter])
 
+  // Active filter label description for print header & export
+  const activeFilterDesc = useMemo(() => {
+    const parts = []
+    if (statusFilter !== 'all') {
+      const statusMap = { in_stock: 'In Stock', reserved: 'Reserved', issued: 'Issued', sold: 'Sold' }
+      parts.push(`Status: ${statusMap[statusFilter] || statusFilter}`)
+    }
+    if (ptaFilter !== 'all') {
+      const ptaMap = { approved: 'PTA Approved', non_pta: 'Non-PTA', cpid: 'CPID / Patch', vip: 'VIP / Gevey' }
+      parts.push(`PTA: ${ptaMap[ptaFilter] || ptaFilter}`)
+    }
+    if (storageFilter !== 'all') parts.push(`Storage: ${storageFilter}`)
+    if (brandFilter !== 'all') parts.push(`Brand: ${brandFilter}`)
+    if (conditionFilter !== 'all') parts.push(`Condition: ${conditionFilter}`)
+    if (search.trim()) parts.push(`Search: "${search.trim()}"`)
+    return parts.length > 0 ? parts.join(' | ') : 'All Devices'
+  }, [statusFilter, ptaFilter, storageFilter, brandFilter, conditionFilter, search])
+
   // Model-level stock summary aggregation
   const modelSummaries = useMemo(() => {
     const groups = {}
@@ -537,11 +560,23 @@ export default function PhoneInventoryView() {
           </button>
         </div>
 
-        <div className="text-xs text-gray-500 px-2 font-medium flex items-center gap-2 justify-end">
-          <span>Available Units:</span>
-          <span className="font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md">
-            {filtered.length} units
-          </span>
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            type="button"
+            onClick={() => setShowPrintModal(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm shadow-blue-500/20 cursor-pointer"
+            title="Print Mobile Stock or Export PDF"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Stock / PDF</span>
+          </button>
+
+          <div className="text-xs text-gray-500 px-2 font-medium hidden sm:flex items-center gap-2">
+            <span>Available:</span>
+            <span className="font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md">
+              {filtered.length} units
+            </span>
+          </div>
         </div>
       </div>
 
@@ -658,6 +693,16 @@ export default function PhoneInventoryView() {
               Reset Filters
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setShowPrintModal(true)}
+            className="sm:ml-auto px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold rounded-xl transition cursor-pointer text-xs flex items-center gap-1.5 shadow-xs"
+            title="Print or export current filtered mobile phones"
+          >
+            <FileText className="w-3.5 h-3.5 text-blue-600" />
+            <span>Print Report ({filtered.length})</span>
+          </button>
         </div>
       </div>
 
@@ -1283,6 +1328,17 @@ export default function PhoneInventoryView() {
           </div>
         </div>
       )}
+
+      {/* Phone Stock Print / PDF Modal */}
+      <PhoneStockPrintModal
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        phones={phones}
+        filteredPhones={filtered}
+        activeFilterDesc={activeFilterDesc}
+        canViewCost={canViewCost}
+        shopId={user?.shop_id}
+      />
     </div>
   )
 }

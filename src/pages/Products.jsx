@@ -10,6 +10,7 @@ import PasswordModal from '../components/PasswordModal'
 import BarcodeLabelModal from '../components/BarcodeLabelModal'
 import ProductDetailModal from '../components/ProductDetailModal'
 import { hasFeature } from '../utils/featureGate'
+import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 
 function Products() {
   const [products, setProducts] = useState([])
@@ -96,12 +97,12 @@ function Products() {
       const mySups = lSups.filter(x => String(x.shop_id) === sid)
       const myPhones = (lPhones || []).filter(x => String(x.shop_id) === sid)
 
-      setProducts(myProds)
+      setProducts(deduplicateProducts(myProds))
       setCategories(myCats)
       setBrands(myBrands)
       setUnits(myUnits)
       setSuppliers(mySups)
-      setPhones(myPhones)
+      setPhones(deduplicatePhones(myPhones))
       if (myProds.length > 0 || myPhones.length > 0) {
         setLoading(false)
       }
@@ -134,8 +135,11 @@ function Products() {
 
       if (pData.error || cData.error || bData.error) throw new Error('Supabase fetch failed')
 
-      // Cache to local DB
+      // Cache to local DB: clean old cached records for this shop to eliminate duplicates
       if (pData.data) {
+        const allLocal = await db.products.toArray().catch(() => [])
+        const oldShopIds = allLocal.filter(x => String(x.shop_id) === sid).map(x => x.id)
+        if (oldShopIds.length > 0) await db.products.bulkDelete(oldShopIds).catch(() => {})
         await db.products.bulkPut(JSON.parse(JSON.stringify(pData.data)))
       }
       if (cData.data) {
@@ -148,6 +152,9 @@ function Products() {
         await db.units.bulkPut(JSON.parse(JSON.stringify(uData.data))).catch(() => {})
       }
       if (phData?.data && db.phones) {
+        const allLocalPhones = await db.phones.toArray().catch(() => [])
+        const oldPhoneIds = allLocalPhones.filter(x => String(x.shop_id) === sid).map(x => x.id)
+        if (oldPhoneIds.length > 0) await db.phones.bulkDelete(oldPhoneIds).catch(() => {})
         await db.phones.bulkPut(JSON.parse(JSON.stringify(phData.data))).catch(() => {})
       }
 
@@ -166,11 +173,11 @@ function Products() {
       const myUnits = lUnits.filter(x => String(x.shop_id) === sid)
       const myPhones = (lPhones || []).filter(x => String(x.shop_id) === sid)
 
-      setProducts(myProds)
+      setProducts(deduplicateProducts(myProds))
       setCategories(myCats)
       setBrands(myBrands)
       setUnits(myUnits)
-      setPhones(myPhones)
+      setPhones(deduplicatePhones(myPhones))
     } catch (e) {
       console.warn('Products: Supabase background refresh failed:', e)
     } finally {

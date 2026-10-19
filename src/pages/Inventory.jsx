@@ -9,6 +9,7 @@ import { generatePurchaseOrderPDF, shareOrDownloadPDF } from '../utils/pdfShare'
 import { printHTML, getShopBranding, brandedA4Header } from '../utils/printUtils'
 import BarcodeLabelModal from '../components/BarcodeLabelModal'
 import PhoneInventoryView from '../components/PhoneInventoryView'
+import { deduplicateProducts } from '../utils/productUtils'
 
 function Inventory() {
   const { user } = useAuth()
@@ -232,7 +233,7 @@ function Inventory() {
       const myCats = lCats.filter(x => String(x.shop_id) === sid)
       const myBrands = lBrands.filter(x => String(x.shop_id) === sid)
 
-      setProducts(myProds)
+      setProducts(deduplicateProducts(myProds))
       setCategories(myCats)
       setBrands(myBrands)
 
@@ -274,13 +275,16 @@ function Inventory() {
 
       if (p.error || c.error || b.error) throw new Error('Supabase fetch failed')
 
-      // Cache to local DB
+      // Cache to local DB: delete old cached products for this shop to eliminate duplicates
       if (p.data) {
         const suppMap = (s?.data || []).reduce((acc, sp) => { acc[sp.id] = sp; return acc }, {})
         const prodsWithSupp = p.data.map(item => ({
           ...item,
           suppliers: item.supplier_id ? suppMap[item.supplier_id] || null : null
         }))
+        const allLocal = await db.products.toArray().catch(() => [])
+        const oldShopIds = allLocal.filter(x => String(x.shop_id) === sid).map(x => x.id)
+        if (oldShopIds.length > 0) await db.products.bulkDelete(oldShopIds).catch(() => {})
         await db.products.bulkPut(JSON.parse(JSON.stringify(prodsWithSupp)))
       }
       if (c.data) await db.categories.bulkPut(JSON.parse(JSON.stringify(c.data)))
@@ -298,7 +302,7 @@ function Inventory() {
       const myCats = lCats.filter(x => String(x.shop_id) === sid)
       const myBrands = lBrands.filter(x => String(x.shop_id) === sid)
 
-      setProducts(myProds)
+      setProducts(deduplicateProducts(myProds))
       setCategories(myCats)
       setBrands(myBrands)
 

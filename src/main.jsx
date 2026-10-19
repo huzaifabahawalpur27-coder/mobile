@@ -68,6 +68,13 @@ async function checkForForceUpdate() {
         } catch (_) {}
       }
 
+      // Flush local products and phones cache to remove any stale duplicate records
+      try {
+        const { db } = await import('./services/db')
+        if (db?.products) await db.products.clear().catch(() => {})
+        if (db?.phones) await db.phones.clear().catch(() => {})
+      } catch (_) {}
+
       // Ask the waiting SW to take control immediately, then reload
       if ('serviceWorker' in navigator) {
         try {
@@ -94,6 +101,19 @@ async function checkForForceUpdate() {
 setTimeout(checkForForceUpdate, 3000)
 // Then every 5 minutes
 setInterval(checkForForceUpdate, 5 * 60 * 1000)
+
+// ── Auto-Purge Stale Duplicates Cache (One-Time Execution per Shop) ─────────
+const CACHE_CLEANUP_KEY = 'edgex_catalog_clean_v1'
+if (typeof window !== 'undefined' && !localStorage.getItem(CACHE_CLEANUP_KEY)) {
+  try {
+    import('./services/db').then(async ({ db }) => {
+      if (db?.products) await db.products.clear().catch(() => {})
+      if (db?.phones) await db.phones.clear().catch(() => {})
+      localStorage.setItem(CACHE_CLEANUP_KEY, 'true')
+      console.log('[EdgeX] Purged stale local product/phone cache to prevent duplicate items.')
+    }).catch(() => {})
+  } catch (_) {}
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
