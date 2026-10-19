@@ -201,44 +201,58 @@ export default function PhoneInventoryView() {
     setSavingCustody(true)
     try {
       if (navigator.onLine) {
+        const mappedIssueType = 
+          custodyForm.issue_type === 'customer_reservation' || custodyForm.issue_type === 'reservation'
+            ? 'reservation'
+            : custodyForm.issue_type === 'personal_use' || custodyForm.issue_type === 'personal'
+              ? 'personal_use'
+              : custodyForm.issue_type === 'repair'
+                ? 'repair'
+                : 'temporary_issue'
+        const depositVal = parseFloat(custodyForm.deposit_amount) || 0
+
         let res, rpcErr
         const primaryRes = await supabase.rpc('issue_phone_custody', {
           p_phone_id: selectedPhoneForCustody.id,
-          p_issue_type: custodyForm.issue_type,
+          p_issue_type: mappedIssueType,
           p_recipient_name: custodyForm.recipient_name.trim(),
           p_recipient_phone: custodyForm.recipient_phone.trim() || null,
           p_expected_return_date: custodyForm.expected_return_date || null,
-          p_deposit_amount: parseFloat(custodyForm.deposit_amount) || 0,
+          p_deposit_amount: depositVal,
           p_notes: custodyForm.notes.trim() || null
         })
 
-        if (primaryRes.error && (primaryRes.error.code === 'PGRST202' || primaryRes.error.message?.includes('schema cache'))) {
-          console.warn('Falling back to alternate issue_phone_custody signature...', primaryRes.error.message)
-          const fallbackRes = await supabase.rpc('issue_phone_custody', {
-            p_phone_id: selectedPhoneForCustody.id,
-            p_issue_type: custodyForm.issue_type,
-            p_recipient_name: custodyForm.recipient_name.trim(),
-            p_recipient_phone: custodyForm.recipient_phone.trim() || null,
-            p_recipient_cnic: null,
-            p_token_deposit: parseFloat(custodyForm.deposit_amount) || 0,
-            p_expected_return_date: custodyForm.expected_return_date || null,
-            p_notes: custodyForm.notes.trim() || null
+        if (primaryRes.error) {
+          console.warn('Primary RPC error, attempting direct update fallback...', primaryRes.error.message)
+          const { error: insertErr } = await supabase.from('phone_custody').insert({
+            shop_id: user.shop_id,
+            branch_id: user.branch_id || null,
+            phone_id: selectedPhoneForCustody.id,
+            status: 'active',
+            issue_type: mappedIssueType,
+            recipient_name: custodyForm.recipient_name.trim(),
+            recipient_phone: custodyForm.recipient_phone.trim() || null,
+            deposit_amount: depositVal,
+            token_deposit: depositVal,
+            expected_return_date: custodyForm.expected_return_date || null,
+            notes: custodyForm.notes.trim() || null
           })
-          res = fallbackRes.data
-          rpcErr = fallbackRes.error
-        } else {
-          res = primaryRes.data
-          rpcErr = primaryRes.error
+
+          if (insertErr) throw insertErr
+
+          const { error: pErr } = await supabase.from('phones').update({
+            status: 'reserved',
+            updated_at: new Date().toISOString()
+          }).eq('id', selectedPhoneForCustody.id)
+
+          if (pErr) throw pErr
         }
 
-        if (rpcErr) throw rpcErr
-        if (res && !res.success) throw new Error(res.error)
-
-        const newStatus = res?.new_status || (custodyForm.issue_type === 'customer_reservation' ? 'reserved' : custodyForm.issue_type === 'personal_use' ? 'personal' : 'issued')
+        const newStatus = 'reserved'
         setPhones(prev => prev.map(p => p.id === selectedPhoneForCustody.id ? { ...p, status: newStatus } : p))
         if (db.phones) await db.phones.update(selectedPhoneForCustody.id, { status: newStatus }).catch(() => {})
       } else {
-        const newStatus = custodyForm.issue_type === 'customer_reservation' ? 'reserved' : custodyForm.issue_type === 'personal_use' ? 'personal' : 'issued'
+        const newStatus = 'reserved'
         setPhones(prev => prev.map(p => p.id === selectedPhoneForCustody.id ? { ...p, status: newStatus } : p))
         if (db.phones) await db.phones.update(selectedPhoneForCustody.id, { status: newStatus })
       }

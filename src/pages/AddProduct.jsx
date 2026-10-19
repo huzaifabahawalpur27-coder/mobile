@@ -193,9 +193,6 @@ function AddProduct() {
 
     setLoading(true)
 
-    // UUID id only for local IndexedDB — Supabase products.id is SERIAL (integer)
-    const productData = { ...form, id: crypto.randomUUID(), shop_id: user.shop_id }
-
     // Phase 4: Enforce Product Limits
     try {
       const sid = user?.shop_id
@@ -211,30 +208,57 @@ function AddProduct() {
       console.warn('Limit check failed, proceeding anyway:', limitErr)
     }
 
-    // Ensure numeric fields are parsed correctly, treating empty strings as null/0 based on DB defaults
-    if (productData.supplier_id === '') productData.supplier_id = null;
-    if (productData.c_rate === '') productData.c_rate = 0;
+    // Sanitize foreign keys and numeric fields
+    const toIntOrNull = (v) => { const n = parseInt(v, 10); return (!isNaN(n) && n > 0) ? n : null }
+    const toNumOrZero = (v, def = 0) => {
+      if (v === null || v === undefined || v === '') return def
+      const n = parseFloat(v)
+      return isNaN(n) ? def : n
+    }
+
+    const localId = crypto.randomUUID()
+    const productData = {
+      ...form,
+      id: localId,
+      shop_id: user.shop_id,
+      category_id: toIntOrNull(form.category_id),
+      supplier_id: toIntOrNull(form.supplier_id),
+      unit_id: toIntOrNull(form.unit_id),
+      cost_price: toNumOrZero(form.cost_price, 0),
+      sale_price: toNumOrZero(form.sale_price, 0),
+      stock_quantity: toNumOrZero(form.stock_quantity, 0),
+      c_rate: toNumOrZero(form.c_rate, 0),
+      low_stock_threshold: toNumOrZero(form.low_stock_threshold, 10)
+    }
 
     try {
       if (!navigator.onLine) throw new TypeError('Failed to fetch')
 
-      // Strip the local UUID id — Supabase will auto-generate the integer PK
+      // Strip local UUID id for Supabase SERIAL integer PK
       const { id: _localId, ...supabaseProductData } = productData
 
-      // Sanitize integer FK fields — offline-created records have UUID ids which
-      // Supabase cannot cast to INTEGER. Parse to int; if it fails (UUID), set null.
-      const toIntOrNull = (v) => { const n = parseInt(v); return isNaN(n) ? null : n }
-      supabaseProductData.category_id = toIntOrNull(supabaseProductData.category_id)
-      supabaseProductData.supplier_id = toIntOrNull(supabaseProductData.supplier_id)
-      supabaseProductData.unit_id = toIntOrNull(supabaseProductData.unit_id)
+      let { data: inserted, error } = await supabase.from('products').insert([supabaseProductData]).select()
 
-      const { error } = await supabase.from('products').insert([supabaseProductData])
+      // If foreign key constraint failed (e.g. offline category ID), retry without FKs so the product is saved
+      if (error && (error.code === '23503' || error.message?.includes('foreign key') || error.message?.includes('fkey'))) {
+        console.warn('AddProduct: FK constraint failed on cloud insert, retrying without FKs')
+        const retryPayload = { ...supabaseProductData, category_id: null, supplier_id: null, unit_id: null }
+        const retry = await supabase.from('products').insert([retryPayload]).select()
+        inserted = retry.data
+        error = retry.error
+      }
+
       if (error) throw error
+
+      // Cache returned product with real cloud ID to local IndexedDB
+      if (inserted && inserted[0]) {
+        await db.products.put(inserted[0])
+      }
 
       await recordAuditLog(
         'PRODUCT_ADDED',
         'products',
-        productData.id,
+        (inserted && inserted[0]?.id) || productData.id,
         { name: productData.name, brand: productData.brand, category_id: productData.category_id },
         user.id,
         user.shop_id
@@ -244,7 +268,7 @@ function AddProduct() {
       navigate('/products')
     } catch (error) {
       const errMsg = error?.message || String(error)
-      if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
+      if (errMsg.includes('Failed to fetch') || !navigator.onLine || error.name === 'TypeError') {
         // Offline: Save to Local DB and Queue Sync
         await db.products.add(productData)
         await addToSyncQueue('products', 'INSERT', productData)

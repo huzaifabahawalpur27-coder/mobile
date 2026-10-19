@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
 import { useAuth } from '../context/AuthContext'
-import { Plus, Trash2, Smartphone, DollarSign, Shield, CheckCircle, AlertCircle, Scan, Landmark, ChevronDown, Check } from 'lucide-react'
+import { Plus, Trash2, Smartphone, DollarSign, Shield, CheckCircle, AlertCircle, Scan, Landmark, ChevronDown, Check, Send } from 'lucide-react'
 import { searchIphoneModels, getIphoneColorsForModel, ALL_IPHONE_COLORS, IPHONE_MODELS } from '../utils/iphonePresets'
 import { getBankAccounts, deductBankBalance } from '../services/bankService'
+import { enqueueWhatsAppMessage, buildPurchaseMemoText } from '../services/whatsappQueueService'
 import BankAccountModal from './BankAccountModal'
 
 const COMMON_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Vivo', 'Oppo', 'Realme', 'Google', 'OnePlus', 'Infinix', 'Tecno', 'Other']
@@ -709,7 +711,45 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
       const bankNotice = bankDeductionResult
         ? ` Paid Rs. ${effectivePaid.toLocaleString()} from ${selectedBankAccount?.account_name || 'Bank Account'}.`
         : ''
-      setSuccessMsg(`✅ Purchase PR-${rpcData.purchase_id} recorded successfully! ${phonesCountAdded} phones added to inventory.${bankNotice}`)
+
+      // Auto-enqueue WhatsApp Purchase Memo for Supplier
+      let waMemoNotice = ''
+      const sup = suppliers.find(s => String(s.id) === String(supplierId))
+      if (sup?.phone) {
+        try {
+          const shopName = localStorage.getItem(`shop_name_${user.shop_id}`) || 'EdgeX Mobile Store'
+          const memoText = buildPurchaseMemoText({
+            purchase: {
+              id: rpcData.purchase_id,
+              total_amount: totalCost,
+              paid_amount: effectivePaid,
+              created_at: new Date().toISOString()
+            },
+            supplier: sup,
+            items: phoneCart,
+            shopInfo: { name: shopName }
+          })
+          await enqueueWhatsAppMessage({
+            shop_id: user.shop_id,
+            recipient_name: sup.name || 'Supplier',
+            recipient_phone: sup.phone,
+            message_type: 'phone_purchase',
+            reference_id: String(rpcData.purchase_id),
+            reference_data: {
+              total_amount: totalCost,
+              paid_amount: effectivePaid,
+              phones_count: phonesCountAdded
+            },
+            message_text: memoText,
+            created_by: user.id
+          })
+          waMemoNotice = ` 📲 Supplier stock memo queued for ${sup.name} in Mobile WhatsApp Outbox!`
+        } catch (waErr) {
+          console.warn('Queue purchase memo notice:', waErr)
+        }
+      }
+
+      setSuccessMsg(`✅ Purchase PR-${rpcData.purchase_id} recorded successfully! ${phonesCountAdded} phones added to inventory.${bankNotice}${waMemoNotice}`)
       setPhoneCart([])
       setPaidAmount('')
       setPurchaseNotes('')
@@ -735,9 +775,18 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         </div>
       )}
       {successMsg && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center gap-2 text-sm font-semibold">
-          <CheckCircle className="w-5 h-5 shrink-0 text-emerald-600" />
-          <span>{successMsg}</span>
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center justify-between flex-wrap gap-2 text-sm font-semibold">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 shrink-0 text-emerald-600" />
+            <span>{successMsg}</span>
+          </div>
+          <Link
+            to="/whatsapp-queue"
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 ml-auto shrink-0 shadow-xs"
+          >
+            <Send size={13} />
+            <span>Open WhatsApp Outbox 📲</span>
+          </Link>
         </div>
       )}
 

@@ -1,45 +1,8 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "services": {
-    "app": {
-      "root": ".",
-      "framework": "vite"
-    },
-    "superadmin": {
-      "root": "superadmin",
-      "framework": "vite"
-    }
-  },
   "rewrites": [
     {
-      "source": "/superadmin/(.*)",
-      "destination": {
-        "service": "superadmin"
-      }
-    },
-    {
-      "source": "/superadmin",
-      "destination": {
-        "service": "superadmin"
-      }
-    },
-    {
-      "source": "/app/(.*)",
-      "destination": {
-        "service": "app"
-      }
-    },
-    {
-      "source": "/app",
-      "destination": {
-        "service": "app"
-      }
-    },
-    {
       "source": "/(.*)",
-      "destination": {
-        "service": "app"
-      }
+      "destination": "/index.html"
     }
   ],
   "headers": [

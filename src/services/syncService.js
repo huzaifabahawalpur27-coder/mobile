@@ -5,11 +5,217 @@ import { supabase } from './supabase';
 const LOCAL_ONLY_TABLES = ['held_carts', 'held_purchases']
 // Note: audit_logs intentionally removed — they now sync to Supabase;
 
+export const sanitizeProductPayload = (prod) => {
+    if (!prod || typeof prod !== 'object') return prod;
+    const copy = { ...prod };
+
+    // Delete string client-side UUID so Supabase assigns SERIAL integer PK
+    if (typeof copy.id === 'string' && copy.id.includes('-')) {
+        delete copy.id;
+    }
+
+    // Helper for integer FKs (category_id, supplier_id, unit_id, branch_id)
+    const toIntOrNull = (val) => {
+        if (val === null || val === undefined || val === '') return null;
+        const n = parseInt(val, 10);
+        return (!isNaN(n) && n > 0) ? n : null;
+    };
+
+    copy.category_id = toIntOrNull(copy.category_id);
+    copy.supplier_id = toIntOrNull(copy.supplier_id);
+    copy.unit_id = toIntOrNull(copy.unit_id);
+    if ('branch_id' in copy) copy.branch_id = toIntOrNull(copy.branch_id);
+
+    // Numeric fields: parse empty string or invalid number to 0 / fallback
+    const toNumOrZero = (val, defaultVal = 0) => {
+        if (val === null || val === undefined || val === '') return defaultVal;
+        const n = Number(val);
+        return isNaN(n) ? defaultVal : n;
+    };
+
+    copy.cost_price = toNumOrZero(copy.cost_price, 0);
+    copy.sale_price = toNumOrZero(copy.sale_price, 0);
+    copy.stock_quantity = toNumOrZero(copy.stock_quantity, 0);
+    copy.c_rate = toNumOrZero(copy.c_rate, 0);
+    copy.b_rate = toNumOrZero(copy.b_rate, 0);
+    copy.low_stock_threshold = toNumOrZero(copy.low_stock_threshold, 10);
+
+    // Strip nested joins that might be attached from local relations
+    delete copy.categories;
+    delete copy.suppliers;
+    delete copy.units;
+
+    return copy;
+};
+
+const updateLocalReferences = async (oldId, newId) => {
+    try {
+        if (!oldId || !newId || oldId === newId) return;
+
+        // Update sale_items
+        if (db.sale_items) {
+            const items = await db.sale_items.where('product_id').equals(oldId).toArray();
+            for (const it of items) {
+                await db.sale_items.update(it.id, { product_id: newId });
+            }
+        }
+        // Update purchase_items
+        if (db.purchase_items) {
+            const items = await db.purchase_items.where('product_id').equals(oldId).toArray();
+            for (const it of items) {
+                await db.purchase_items.update(it.id, { product_id: newId });
+            }
+        }
+    } catch (e) {
+        console.warn('updateLocalReferences error:', e);
+    }
+};
+
+export const reconcileOfflineProducts = async (shopId) => {
+    if (!navigator.onLine) {
+        return { synced: 0, reason: 'offline' };
+    }
+
+    try {
+        // Read local products for this shop (or all if shopId not specified)
+        let localProducts = await db.products.toArray();
+        if (shopId) {
+            localProducts = localProducts.filter(p => String(p.shop_id) === String(shopId));
+        }
+
+        if (localProducts.length === 0) {
+            return { synced: 0 };
+        }
+
+        // Fetch all existing product IDs, barcodes, and names from Supabase for this shop
+        let query = supabase.from('products').select('id, name, barcode, shop_id');
+        if (shopId) query = query.eq('shop_id', shopId);
+        const { data: remoteProducts, error: fetchErr } = await query;
+
+        if (fetchErr) {
+            console.warn('reconcileOfflineProducts: Failed to fetch remote products:', fetchErr);
+            return { synced: 0, error: fetchErr };
+        }
+
+        const remoteIdSet = new Set((remoteProducts || []).map(p => p.id));
+        const remoteBarcodeMap = new Map();
+        const remoteNameMap = new Map();
+
+        (remoteProducts || []).forEach(rp => {
+            if (rp.barcode && String(rp.barcode).trim()) {
+                remoteBarcodeMap.set(String(rp.barcode).trim(), rp);
+            }
+            if (rp.name && String(rp.name).trim()) {
+                remoteNameMap.set(String(rp.name).trim().toLowerCase(), rp);
+            }
+        });
+
+        // Find products that are offline-only (UUID id or ID not in Supabase)
+        const unsynced = localProducts.filter(p => {
+            if (typeof p.id === 'string' && p.id.includes('-')) return true;
+            if (!remoteIdSet.has(p.id)) return true;
+            return false;
+        });
+
+        if (unsynced.length === 0) {
+            return { synced: 0 };
+        }
+
+        console.log(`reconcileOfflineProducts: Found ${unsynced.length} unsynced product(s). Syncing to cloud...`);
+        let syncedCount = 0;
+
+        for (const prod of unsynced) {
+            const oldId = prod.id;
+
+            // Check if remote already has this product by barcode or name to avoid duplicates
+            const trimmedBarcode = prod.barcode ? String(prod.barcode).trim() : null;
+            const trimmedName = prod.name ? String(prod.name).trim().toLowerCase() : null;
+            const existingRemote = (trimmedBarcode && remoteBarcodeMap.get(trimmedBarcode)) ||
+                                   (trimmedName && remoteNameMap.get(trimmedName));
+
+            if (existingRemote) {
+                // Link local product to existing remote ID
+                await db.products.delete(oldId);
+                const merged = { ...prod, id: existingRemote.id };
+                await db.products.put(merged);
+                // Update references in sale_items & purchase_items
+                await updateLocalReferences(oldId, existingRemote.id);
+                syncedCount++;
+                continue;
+            }
+
+            // Prepare payload
+            const payload = sanitizeProductPayload(prod);
+            if (shopId && !payload.shop_id) payload.shop_id = shopId;
+            delete payload.id; // Ensure Supabase assigns SERIAL PK
+
+            let { data: inserted, error: insErr } = await supabase.from('products').insert([payload]).select();
+
+            // Retry without foreign keys if FK failed
+            if (insErr && (insErr.code === '23503' || insErr.message?.includes('foreign key') || insErr.message?.includes('fkey'))) {
+                console.warn(`reconcileOfflineProducts: FK failed for product "${prod.name}", retrying with null category/supplier`);
+                const retryPayload = { ...payload, category_id: null, supplier_id: null, unit_id: null };
+                const retry = await supabase.from('products').insert([retryPayload]).select();
+                inserted = retry.data;
+                insErr = retry.error;
+            }
+
+            if (!insErr && inserted && inserted[0]) {
+                const newRow = inserted[0];
+                const newId = newRow.id;
+
+                await db.products.delete(oldId);
+                await db.products.put(newRow);
+
+                // Update local relations referencing the old UUID ID
+                await updateLocalReferences(oldId, newId);
+
+                // Update lookup maps for next iterations
+                remoteIdSet.add(newId);
+                if (newRow.barcode) remoteBarcodeMap.set(String(newRow.barcode).trim(), newRow);
+                if (newRow.name) remoteNameMap.set(String(newRow.name).trim().toLowerCase(), newRow);
+
+                syncedCount++;
+            } else {
+                console.error(`reconcileOfflineProducts: Failed to sync product "${prod.name}":`, insErr);
+            }
+        }
+
+        // Clean up any remaining sync_queue entries for products that are now synced
+        try {
+            const queueItems = await db.sync_queue.where('table').equals('products').toArray();
+            for (const qItem of queueItems) {
+                const qId = qItem.data?.id;
+                if (!qId || !unsynced.some(u => u.id === qId)) {
+                    await db.sync_queue.delete(qItem.id);
+                }
+            }
+        } catch (_) {}
+
+        if (syncedCount > 0) {
+            try {
+                window.dispatchEvent(new CustomEvent('products_reconciled', { detail: { count: syncedCount } }));
+            } catch (_) {}
+        }
+
+        return { synced: syncedCount };
+    } catch (err) {
+        console.error('reconcileOfflineProducts failed:', err);
+        return { synced: 0, error: err };
+    }
+};
+
 export const syncOfflineData = async () => {
     if (!navigator.onLine) return;
 
     const queue = await db.sync_queue.toArray();
-    if (queue.length === 0) return;
+    if (queue.length === 0) {
+        // Even if queue is empty, reconcile offline products that might have had their queue dropped
+        try {
+            await reconcileOfflineProducts();
+        } catch (_) {}
+        return;
+    }
 
     // Filter out local-only table entries and clean them from queue
     const syncable = [];
@@ -21,7 +227,12 @@ export const syncOfflineData = async () => {
         }
     }
 
-    if (syncable.length === 0) return;
+    if (syncable.length === 0) {
+        try {
+            await reconcileOfflineProducts();
+        } catch (_) {}
+        return;
+    }
     console.log(`Syncing ${syncable.length} offline actions...`);
 
     const idMapping = {}; // Maps offline string UUIDs to real DB numeric IDs
@@ -65,7 +276,7 @@ export const syncOfflineData = async () => {
 
             if (item.action === 'INSERT') {
                 const isArray = Array.isArray(processedData);
-                const payload = isArray ? processedData.map(d => {
+                let payload = isArray ? processedData.map(d => {
                     const obj = { ...d };
                     if (typeof obj.id === 'string' && obj.id.includes('-')) delete obj.id;
                     return obj;
@@ -74,6 +285,10 @@ export const syncOfflineData = async () => {
                     if (typeof obj.id === 'string' && obj.id.includes('-')) delete obj.id;
                     return obj;
                 })();
+
+                if (item.table === 'products') {
+                    payload = isArray ? payload.map(sanitizeProductPayload) : sanitizeProductPayload(payload);
+                }
 
                 let resData = null;
                 let err = null;
@@ -99,21 +314,37 @@ export const syncOfflineData = async () => {
                     err = insertRes.error;
                 }
 
-                // If sales table doesn't have online_provider or transaction_ref columns yet in Supabase, retry without them
-                if (err && item.table === 'sales' && (err.code === 'PGRST204' || err.code === '42703' || err.message?.includes('online_provider') || err.message?.includes('transaction_ref'))) {
-                    console.warn('SyncService: Retrying sales insert without top-level online columns (details preserved in payment_details JSONB)');
-                    const strippedPayload = isArray ? payload.map(d => {
-                        const copy = { ...d };
-                        delete copy.online_provider;
-                        delete copy.transaction_ref;
-                        return copy;
-                    }) : (() => {
-                        const copy = { ...payload };
-                        delete copy.online_provider;
-                        delete copy.transaction_ref;
-                        return copy;
-                    })();
-                    const retry = await supabase.from(item.table).insert(strippedPayload).select();
+                // If products table fails on foreign key (category_id, supplier_id, unit_id), retry cleanly
+                if (err && item.table === 'products' && (err.code === '23503' || err.message?.includes('foreign key') || err.message?.includes('fkey'))) {
+                    console.warn('SyncService: Retrying products insert without foreign keys (category_id, supplier_id, unit_id)');
+                    const retryPayload = isArray
+                        ? payload.map(d => ({ ...d, category_id: null, supplier_id: null, unit_id: null }))
+                        : { ...payload, category_id: null, supplier_id: null, unit_id: null };
+                    const retry = await supabase.from(item.table).insert(retryPayload).select();
+                    resData = retry.data;
+                    err = retry.error;
+                }
+
+                // If sales table doesn't have newer columns yet in Supabase or fails on customer_id foreign key, retry cleanly
+                if (err && item.table === 'sales') {
+                    console.warn('SyncService: Retrying sales insert with core columns and sanitized customer_id');
+                    const stripCols = ['online_provider', 'transaction_ref', 'created_by', 'customer_name', 'branch_id', 'idempotency_key', 'payment_details'];
+                    const makeStripped = (dropCustomer = false) => {
+                        const cleanItem = (d) => {
+                            const copy = { ...d };
+                            stripCols.forEach(col => delete copy[col]);
+                            if (dropCustomer) copy.customer_id = null;
+                            return copy;
+                        };
+                        return isArray ? payload.map(cleanItem) : cleanItem(payload);
+                    };
+
+                    const isFkErr = err.code === '23503' || err.message?.includes('customer_id') || err.message?.includes('foreign key');
+                    let retry = await supabase.from(item.table).insert(makeStripped(isFkErr)).select();
+                    if (retry.error && (retry.error.code === '23503' || retry.error.message?.includes('customer_id') || retry.error.message?.includes('foreign key'))) {
+                        console.warn('SyncService: Retrying sales insert with customer_id = null');
+                        retry = await supabase.from(item.table).insert(makeStripped(true)).select();
+                    }
                     resData = retry.data;
                     err = retry.error;
                 }
@@ -206,6 +437,78 @@ export const syncOfflineData = async () => {
                     err = retry.error;
                 }
 
+                // If audit_logs table lacks action_type or action column in Supabase, retry cleanly
+                if (err && item.table === 'audit_logs' && (err.code === 'PGRST204' || err.code === '42703' || err.message?.includes('schema cache') || err.message?.includes('column'))) {
+                    const stripCol = err.message?.includes('action_type') ? 'action_type' : (err.message?.includes('action') ? 'action' : null);
+                    if (stripCol) {
+                        console.warn(`SyncService: Retrying audit_logs insert without ${stripCol}`);
+                        const stripAudit = (d) => {
+                            const copy = { ...d };
+                            delete copy[stripCol];
+                            return copy;
+                        };
+                        const strippedPayload = isArray ? payload.map(stripAudit) : stripAudit(payload);
+                        const retry = await supabase.from(item.table).insert(strippedPayload).select();
+                        resData = retry.data;
+                        err = retry.error;
+                    }
+                }
+
+                // If sale_items has non-integer sale_id (e.g. offline UUID), resolve from idMapping or Dexie/idempotency_key
+                if (err && item.table === 'sale_items' && (err.code === '22P02' || err.message?.includes('invalid input syntax for type integer'))) {
+                    const firstItem = isArray ? payload[0] : payload;
+                    const offlineSaleId = firstItem?.sale_id;
+                    let mappedSaleId = offlineSaleId && idMapping[offlineSaleId];
+                    if (!mappedSaleId && offlineSaleId && typeof offlineSaleId === 'string' && offlineSaleId.includes('-')) {
+                        try {
+                            const localSale = await db.sales.get(offlineSaleId);
+                            if (localSale?.idempotency_key) {
+                                const { data: matchedSale } = await supabase.from('sales').select('id').eq('idempotency_key', localSale.idempotency_key).maybeSingle();
+                                if (matchedSale?.id) {
+                                    mappedSaleId = matchedSale.id;
+                                    idMapping[offlineSaleId] = mappedSaleId;
+                                }
+                            }
+                        } catch (_) {}
+                    }
+                    if (mappedSaleId) {
+                        console.warn(`SyncService: Resolving sale_items sale_id from mapped id (${offlineSaleId} -> ${mappedSaleId})`);
+                        const fixedPayload = isArray ? payload.map(d => ({ ...d, sale_id: mappedSaleId })) : { ...payload, sale_id: mappedSaleId };
+                        let retry = await supabase.from(item.table).insert(fixedPayload).select();
+                        if (retry.error && (retry.error.code === 'PGRST204' || retry.error.code === '42703' || String(retry.error.status) === '400' || retry.error.message?.includes('schema cache') || retry.error.message?.includes('column'))) {
+                            const cleanItem = (d) => ({
+                                sale_id: mappedSaleId,
+                                product_id: d.phone_id ? null : d.product_id,
+                                quantity: d.quantity,
+                                price: d.price || d.unit_price,
+                                subtotal: d.subtotal || (d.quantity * (d.price || d.unit_price)),
+                                returned_qty: 0
+                            });
+                            const minimalPayload = isArray ? fixedPayload.map(cleanItem) : cleanItem(fixedPayload);
+                            retry = await supabase.from(item.table).insert(minimalPayload).select();
+                        }
+                        resData = retry.data;
+                        err = retry.error;
+                    }
+                }
+
+                // If sale_items lacks newer columns in standard insert
+                if (err && item.table === 'sale_items' && (err.code === 'PGRST204' || err.code === '42703' || String(err.status) === '400' || err.message?.includes('schema cache') || err.message?.includes('column'))) {
+                    console.warn('SyncService: Retrying sale_items with minimal columns');
+                    const cleanItem = (d) => ({
+                        sale_id: d.sale_id,
+                        product_id: d.phone_id ? null : d.product_id,
+                        quantity: d.quantity,
+                        price: d.price || d.unit_price,
+                        subtotal: d.subtotal || (d.quantity * (d.price || d.unit_price)),
+                        returned_qty: 0
+                    });
+                    const minimalPayload = isArray ? payload.map(cleanItem) : cleanItem(payload);
+                    const retry = await supabase.from(item.table).insert(minimalPayload).select();
+                    resData = retry.data;
+                    err = retry.error;
+                }
+
                 error = err;
                 returnedData = resData;
 
@@ -269,8 +572,18 @@ export const syncOfflineData = async () => {
                 }
             } else if (item.action === 'UPDATE') {
                 const dataObj = Array.isArray(processedData) ? processedData[0] : processedData;
-                const { id, ...updateData } = dataObj;
+                let { id, ...updateData } = dataObj;
+                if (item.table === 'products') {
+                    updateData = sanitizeProductPayload(updateData);
+                }
                 if (id) {
+                    if (item.table === 'products' && typeof id === 'string' && id.includes('-')) {
+                        // Product has offline UUID, cannot update directly by UUID in Supabase. Reconcile it!
+                        console.warn('SyncService: Product UPDATE has offline UUID ID, triggering reconcileOfflineProducts...');
+                        await reconcileOfflineProducts();
+                        await db.sync_queue.delete(item.id);
+                        continue;
+                    }
                     ({ error } = await supabase.from(item.table).update(updateData).eq('id', id));
                     if (error && item.table === 'categories' && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('description') || error.message?.includes('low_stock_threshold') || error.message?.includes('schema cache'))) {
                         const { description: _d, low_stock_threshold: _l, ...strippedUpdate } = updateData;
@@ -305,8 +618,8 @@ export const syncOfflineData = async () => {
             } else {
                 console.error(`Sync error for ${item.table}:`, error);
                 const retries = (item.retry_count || 0) + 1;
-                // If table/column error or exceeded max 5 retries, remove to prevent queue stalls
-                if (retries >= 5 || ['PGRST205', '42P01', 'PGRST204', '42703', '22P02'].includes(error.code) || String(error.status) === '400' || error.message?.includes('schema cache') || error.message?.includes('Could not find')) {
+                // If permanent missing table or exceeded max retries, remove to prevent queue stalls
+                if (retries >= 5 || ['PGRST205', '42P01'].includes(error.code) || (retries >= 3 && ['PGRST204', '42703', '22P02'].includes(error.code)) || (retries >= 3 && String(error.status) === '400') || error.message?.includes('Could not find')) {
                     console.warn(`Removing un-syncable item ${item.id} after ${retries} attempts.`);
                     await db.sync_queue.delete(item.id);
                 } else {
@@ -317,6 +630,11 @@ export const syncOfflineData = async () => {
             console.error('Sync failed:', e);
         }
     }
+
+    // Always run reconciliation after queue pass to catch any un-queued or dropped offline products
+    try {
+        await reconcileOfflineProducts();
+    } catch (_) {}
 
     try {
         window.dispatchEvent(new CustomEvent('sync_completed'));

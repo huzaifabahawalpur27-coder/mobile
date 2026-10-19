@@ -39,6 +39,7 @@ ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS idempotency_key UUID;
 ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'completed';
 ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS sale_type TEXT DEFAULT 'sale';
 ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS created_by TEXT;
 
 ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS product_id INTEGER;
 ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS product_name TEXT;
@@ -143,6 +144,9 @@ ALTER TABLE public.phones ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE public.phones ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'supplier';
 ALTER TABLE public.phones ADD COLUMN IF NOT EXISTS sold_at TIMESTAMPTZ;
 ALTER TABLE public.phones ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS action_type TEXT;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS action TEXT;
 
 CREATE TABLE IF NOT EXISTS public.phone_history (
     id BIGSERIAL PRIMARY KEY,
@@ -348,6 +352,30 @@ ALTER TABLE public.cash_sessions ADD COLUMN IF NOT EXISTS closing_cash_system NU
 ALTER TABLE public.cash_sessions ADD COLUMN IF NOT EXISTS closing_cash_actual NUMERIC(15,2);
 ALTER TABLE public.cash_sessions ADD COLUMN IF NOT EXISTS variance NUMERIC(15,2) DEFAULT 0;
 ALTER TABLE public.cash_sessions ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- 1.8b SALES, SALE ITEMS & AUDIT LOGS
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS branch_id INTEGER;
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS customer_name TEXT;
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS payment_details JSONB;
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS online_provider TEXT;
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS transaction_ref TEXT;
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'completed';
+
+ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS product_name TEXT;
+ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS unit_price NUMERIC(15,2);
+ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS cost_price NUMERIC(15,2) DEFAULT 0;
+ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS line_total NUMERIC(15,2);
+ALTER TABLE public.sale_items ADD COLUMN IF NOT EXISTS imei_snapshot JSONB;
+
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS action_type TEXT;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS action TEXT;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS entity TEXT;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS entity_id TEXT;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS user_id TEXT;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS shop_id INTEGER;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS timestamp TEXT;
 
 -- 1.9 BANK ACCOUNTS & TRANSACTIONS
 CREATE TABLE IF NOT EXISTS public.bank_accounts (
@@ -829,7 +857,8 @@ DECLARE
     v_branch_id INTEGER := NULL;
     v_phone RECORD;
     v_custody_id INTEGER;
-    v_target_status TEXT;
+    v_target_status TEXT := 'reserved';
+    v_clean_issue_type TEXT;
     v_headers JSONB;
 BEGIN
     v_token := public.current_session_token();
@@ -867,26 +896,27 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', format('Phone is %s, cannot issue custody', v_phone.status));
     END IF;
 
-    IF p_issue_type = 'customer_reservation' THEN
-        v_target_status := 'reserved';
-    ELSIF p_issue_type = 'personal_use' THEN
-        v_target_status := 'personal';
-    ELSE
-        v_target_status := 'issued';
-    END IF;
+    -- Normalize issue_type against check constraint ('temporary_issue', 'reservation', 'personal_use', 'repair')
+    v_clean_issue_type := CASE
+        WHEN p_issue_type IN ('reservation', 'customer_reservation') THEN 'reservation'
+        WHEN p_issue_type IN ('personal_use', 'personal') THEN 'personal_use'
+        WHEN p_issue_type IN ('repair', 'lab_repair') THEN 'repair'
+        ELSE 'temporary_issue'
+    END;
 
     INSERT INTO public.phone_custody (
         shop_id, branch_id, phone_id, issue_type,
         recipient_name, recipient_phone, expected_return_date,
-        deposit_amount, token_deposit, status, notes, issued_by, issued_at
+        deposit_amount, token_deposit, status, notes, issued_by
     ) VALUES (
-        v_shop_id, v_branch_id, p_phone_id, p_issue_type,
+        v_shop_id, v_branch_id, p_phone_id, v_clean_issue_type,
         p_recipient_name, p_recipient_phone, p_expected_return_date,
         COALESCE(p_deposit_amount, 0), COALESCE(p_deposit_amount, 0),
-        'active', p_notes, v_user_id, NOW()
+        'active', p_notes, v_user_id
     )
     RETURNING id INTO v_custody_id;
 
+    -- Phones status check constraint strictly allows: 'in_stock', 'reserved', 'sold', 'returned'
     UPDATE public.phones
     SET status = v_target_status, updated_at = NOW()
     WHERE id = p_phone_id;
@@ -1552,4 +1582,32 @@ GRANT EXECUTE ON FUNCTION public.close_cash_session(INTEGER, NUMERIC, TEXT) TO a
 -- ----------------------------------------------------------------------------
 -- SECTION 9: INSTANT POSTGREST SCHEMA CACHE RELOAD
 -- ----------------------------------------------------------------------------
+NOTIFY pgrst, 'reload schema';
+
+-- ----------------------------------------------------------------------------
+-- SECTION 10: WHATSAPP OUTBOX QUEUE TABLE FOR MOBILE DISPATCH
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.whatsapp_queue (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    shop_id INTEGER NULL,
+    recipient_name TEXT NULL,
+    recipient_phone TEXT NOT NULL,
+    message_type TEXT DEFAULT 'phone_sale_receipt',
+    reference_id TEXT NULL,
+    reference_data JSONB NULL,
+    message_text TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    sent_at TIMESTAMPTZ NULL,
+    created_by UUID NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_queue_shop_status ON public.whatsapp_queue(shop_id, status);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_queue_created ON public.whatsapp_queue(created_at DESC);
+
+ALTER TABLE public.whatsapp_queue ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "whatsapp_queue_all_access" ON public.whatsapp_queue;
+CREATE POLICY "whatsapp_queue_all_access" ON public.whatsapp_queue FOR ALL USING (true) WITH CHECK (true);
+GRANT ALL ON public.whatsapp_queue TO anon, authenticated, service_role, public;
+
 NOTIFY pgrst, 'reload schema';

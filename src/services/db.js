@@ -288,6 +288,37 @@ db.version(16).stores({
   bank_account_transactions: 'id, shop_id, account_id, transaction_type, reference_id, created_at'
 });
 
+// v17: whatsapp_queue store for mobile-friendly dispatching and desktop queueing
+db.version(17).stores({
+  products: 'id, name, brand, category_id, shop_id',
+  categories: 'id, name, shop_id',
+  suppliers: 'id, name, shop_id',
+  customers: 'id, name, shop_id',
+  brands: 'id, name, shop_id',
+  sales: 'id, customer_id, shop_id, branch_id, created_at',
+  sale_items: 'id, sale_id, product_id',
+  purchases: 'id, supplier_id, shop_id, branch_id, created_at',
+  purchase_items: 'id, purchase_id, product_id',
+  expenses: 'id, category, shop_id, branch_id, date',
+  users: 'id, username, shop_id, role',
+  shops: 'id, name',
+  customer_payments: 'id, customer_id, shop_id, created_at',
+  supplier_payments: 'id, supplier_id, shop_id, created_at',
+  sync_queue: '++id, table, action, data, timestamp',
+  audit_logs: 'id, action, entity, entity_id, user_id, shop_id, timestamp',
+  held_carts: '++id, customer_id, shop_id, saved_at',
+  trash: '++id, original_table, original_id, shop_id, deleted_at, deleted_by',
+  brand_categories: '++id, brand_id, category_id, shop_id',
+  units: '++id, name, abbreviation, shop_id',
+  branches: 'id, shop_id, name, is_main, is_active',
+  phones: 'id, shop_id, branch_id, imei_1, imei_2, brand, model, status, condition, pta_status',
+  phone_custody: 'id, shop_id, branch_id, phone_id, status, issue_type, recipient_name, created_at',
+  cash_sessions: 'id, shop_id, branch_id, user_id, status, opened_at',
+  bank_accounts: 'id, shop_id, account_name, bank_name, status, is_default',
+  bank_account_transactions: 'id, shop_id, account_id, transaction_type, reference_id, created_at',
+  whatsapp_queue: 'id, shop_id, recipient_phone, status, message_type, created_at'
+});
+
 export const addToSyncQueue = async (table, action, data) => {
   await db.sync_queue.add({
     table,

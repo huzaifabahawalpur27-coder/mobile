@@ -37,12 +37,16 @@ if (typeof window !== 'undefined') {
 
 let lastHoverTime = 0
 
+let userInteracted = false
+
 function getAudioContext() {
   if (typeof window === 'undefined') return null
-  if (!audioCtx) {
+  if (!audioCtx && userInteracted) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext
     if (AudioContextClass) {
-      audioCtx = new AudioContextClass({ latencyHint: 'interactive' })
+      try {
+        audioCtx = new AudioContextClass({ latencyHint: 'interactive' })
+      } catch (_) {}
     }
   }
   return audioCtx
@@ -50,17 +54,30 @@ function getAudioContext() {
 
 // Global unlock on ANY user interaction
 function unlockAudio() {
-  const ctx = getAudioContext()
-  if (!ctx) return
-  if (ctx.state === 'suspended') {
-    ctx.resume().catch(() => {})
+  if (typeof navigator !== 'undefined' && navigator.userActivation && !navigator.userActivation.hasBeenActive) {
+    return
+  }
+  userInteracted = true
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext
+    if (AudioContextClass) {
+      try {
+        audioCtx = new AudioContextClass({ latencyHint: 'interactive' })
+      } catch (_) {}
+    }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {})
   }
 }
 
 if (typeof window !== 'undefined') {
-  const unlockEvents = ['pointerdown', 'mousedown', 'touchstart', 'keydown', 'click']
+  const unlockEvents = ['click', 'touchend', 'keydown']
   const handleInteraction = (e) => {
     if (e && e.isTrusted === false) return
+    if (typeof navigator !== 'undefined' && navigator.userActivation && !navigator.userActivation.hasBeenActive) {
+      return
+    }
     unlockAudio()
     if (audioCtx && audioCtx.state === 'running') {
       unlockEvents.forEach((evt) => {
@@ -76,6 +93,7 @@ if (typeof window !== 'undefined') {
 function withAudio(type, fn) {
   if (!soundConfig.master) return
   if (type && soundConfig[type] === false) return
+  if (!userInteracted) return
 
   const ctx = getAudioContext()
   if (!ctx) return

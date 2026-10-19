@@ -335,6 +335,12 @@ function WhatsAppMessaging() {
 
           <div className="flex items-center gap-2">
             <Link
+              to="/whatsapp-queue"
+              className="px-4 py-2 text-xs font-bold rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-1.5 transition"
+            >
+              <span>📲 Mobile Outbox Queue</span>
+            </Link>
+            <Link
               to="/settings"
               className="px-4 py-2 text-xs font-semibold rounded-full bg-[#f5f5f7] dark:bg-[#2c2c2e] hover:bg-[#e5e5ea] dark:hover:bg-[#3a3a3c] text-[#1d1d1f] dark:text-[#f5f5f7] transition"
             >

@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { recordAuditLog } from '../services/auditService'
 import { db, addToSyncQueue } from '../services/db'
+import { reconcileOfflineProducts } from '../services/syncService'
 import * as XLSX from 'xlsx'
 import { generatePurchaseOrderPDF, shareOrDownloadPDF } from '../utils/pdfShare'
 import { printHTML, getShopBranding, brandedA4Header } from '../utils/printUtils'
@@ -193,9 +194,21 @@ function Inventory() {
   const [arPercent, setArPercent] = useState('')
   const [arTarget, setArTarget] = useState('sale_price')
   const [brandCategoryMap, setBrandCategoryMap] = useState({})
+  const [manualSyncing, setManualSyncing] = useState(false)
 
   useEffect(() => {
-    if (user?.shop_id) fetchInventory()
+    if (user?.shop_id) {
+      fetchInventory()
+
+      const handleSynced = () => fetchInventory()
+      window.addEventListener('products_reconciled', handleSynced)
+      window.addEventListener('sync_completed', handleSynced)
+
+      return () => {
+        window.removeEventListener('products_reconciled', handleSynced)
+        window.removeEventListener('sync_completed', handleSynced)
+      }
+    }
   }, [user?.shop_id])
 
   const fetchInventory = async () => {
@@ -244,6 +257,11 @@ function Inventory() {
     }
 
     try {
+      // Step 2a: Push any offline-only products to Supabase first!
+      await reconcileOfflineProducts(user.shop_id).catch(err => {
+        console.warn('Inventory: Reconcile offline products warning:', err)
+      })
+
       const fetchPromise = Promise.all([
         supabase.from('products').select('*, categories(name)').eq('shop_id', user.shop_id).order('name'),
         supabase.from('categories').select('*').eq('shop_id', user.shop_id),
@@ -631,6 +649,25 @@ function Inventory() {
     }
   }
 
+  const unsyncedCount = products.filter(p => typeof p.id === 'string' && p.id.includes('-')).length
+
+  const handleManualSync = async () => {
+    if (!navigator.onLine) {
+      alert('Internet connection nahi hai. Cloud sync ke liye online hona zaroori hai.')
+      return
+    }
+    setManualSyncing(true)
+    try {
+      const res = await reconcileOfflineProducts(user.shop_id)
+      await fetchInventory()
+      alert(`Cloud sync mukammal! ${res?.synced || 0} product(s) sync ho gaye.`)
+    } catch (err) {
+      alert('Sync error: ' + (err?.message || err))
+    } finally {
+      setManualSyncing(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Header with Tab Switcher */}
@@ -664,6 +701,30 @@ function Inventory() {
         <PhoneInventoryView />
       ) : (
         <div className="space-y-6">
+          {/* Offline Unsynced Products Alert Banner */}
+          {unsyncedCount > 0 && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-900 shadow-xs">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <div className="font-bold text-amber-950">
+                    {unsyncedCount} Product(s) Offline Stored (Cloud par mojood nahi)
+                  </div>
+                  <div className="text-xs text-amber-800">
+                    Ye products local IndexedDB mein hain aur abhi tak Supabase Cloud par sync nahi hue. Online version par dekhne ke liye sync button dabayein.
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleManualSync}
+                disabled={manualSyncing}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition-colors disabled:opacity-60 whitespace-nowrap cursor-pointer"
+              >
+                {manualSyncing ? '⏳ Syncing to Cloud...' : '⚡ Sync to Cloud Now'}
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">📦 Inventory Management</h1>
@@ -745,6 +806,19 @@ function Inventory() {
               title="Generate and print barcode labels for inventory"
             >
               🏷️ Barcodes
+            </button>
+            <button
+              onClick={handleManualSync}
+              disabled={manualSyncing}
+              className={`px-3 py-1.5 border rounded-lg transition font-bold text-xs flex items-center gap-1.5 cursor-pointer ${
+                unsyncedCount > 0
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse'
+                  : 'border-cyan-200 bg-cyan-50 hover:bg-cyan-100 text-cyan-700'
+              }`}
+              title="Sync local offline products with Supabase Cloud"
+            >
+              <span>{manualSyncing ? '⏳' : '⚡'}</span>
+              {manualSyncing ? 'Syncing...' : unsyncedCount > 0 ? `Sync Cloud (${unsyncedCount})` : 'Sync Cloud'}
             </button>
             <button
               onClick={handleExport}

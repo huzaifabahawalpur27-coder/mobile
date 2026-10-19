@@ -216,32 +216,55 @@ function EditProduct() {
     e.preventDefault()
     setLoading(true)
 
-    const updatedProductData = { ...form }
-    
-    // Ensure numeric fields are parsed correctly, treating empty strings as null/0 based on DB defaults
-    if(updatedProductData.c_rate === '') updatedProductData.c_rate = 0;
+    // Sanitize foreign keys and numeric fields
+    const toIntOrNull = (v) => { const n = parseInt(v, 10); return (!isNaN(n) && n > 0) ? n : null }
+    const toNumOrZero = (v, def = 0) => {
+      if (v === null || v === undefined || v === '') return def
+      const n = parseFloat(v)
+      return isNaN(n) ? def : n
+    }
 
-    // Sanitize integer FK fields — offline-created records have UUID ids which
-    // Supabase cannot cast to INTEGER. Parse to int; if it fails (UUID), set null.
-    const toIntOrNull = (v) => { const n = parseInt(v); return isNaN(n) ? null : n }
-    updatedProductData.category_id = updatedProductData.category_id ? toIntOrNull(updatedProductData.category_id) : null
-    updatedProductData.supplier_id = updatedProductData.supplier_id ? toIntOrNull(updatedProductData.supplier_id) : null
-    updatedProductData.unit_id = updatedProductData.unit_id ? toIntOrNull(updatedProductData.unit_id) : null
+    const updatedProductData = {
+      ...form,
+      category_id: toIntOrNull(form.category_id),
+      supplier_id: toIntOrNull(form.supplier_id),
+      unit_id: toIntOrNull(form.unit_id),
+      cost_price: toNumOrZero(form.cost_price, 0),
+      sale_price: toNumOrZero(form.sale_price, 0),
+      stock_quantity: toNumOrZero(form.stock_quantity, 0),
+      c_rate: toNumOrZero(form.c_rate, 0),
+      low_stock_threshold: toNumOrZero(form.low_stock_threshold, 10)
+    }
+
+    // Always update local IndexedDB immediately
+    await db.products.update(id, updatedProductData)
+
+    const isLocalUuid = typeof id === 'string' && id.includes('-')
 
     try {
       if (!navigator.onLine) throw new TypeError('Failed to fetch')
 
-      const { error } = await supabase.from('products').update(updatedProductData).eq('id', id)
-      if (error) throw error
+      if (isLocalUuid) {
+        // If this product was created offline with a UUID id, queue sync to reconcile and insert to cloud
+        await addToSyncQueue('products', 'INSERT', { id, ...updatedProductData, shop_id: user.shop_id })
+      } else {
+        let { error } = await supabase.from('products').update(updatedProductData).eq('id', id)
+        if (error && (error.code === '23503' || error.message?.includes('foreign key') || error.message?.includes('fkey'))) {
+          // If FK failed, retry update with null FKs
+          const retryPayload = { ...updatedProductData, category_id: null, supplier_id: null, unit_id: null }
+          const retry = await supabase.from('products').update(retryPayload).eq('id', id)
+          error = retry.error
+        }
+        if (error) throw error
+      }
 
       alert('Product updated successfully!')
       navigate('/products')
     } catch (error) {
       const errMsg = error?.message || String(error)
-      if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
-        // Offline: Save to Local DB and Queue Sync
-        await db.products.update(id, updatedProductData)
-        await addToSyncQueue('products', 'UPDATE', { id, ...updatedProductData })
+      if (errMsg.includes('Failed to fetch') || !navigator.onLine || error.name === 'TypeError') {
+        // Offline: Queue Sync
+        await addToSyncQueue('products', isLocalUuid ? 'INSERT' : 'UPDATE', { id, ...updatedProductData, shop_id: user.shop_id })
         alert('Offline mode: Product updated locally! It will sync automatically when you are back online. 🔄')
         navigate('/products')
       } else {

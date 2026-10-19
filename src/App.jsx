@@ -15,6 +15,7 @@ const AddProduct = lazy(() => import('./pages/AddProduct'))
 const EditProduct = lazy(() => import('./pages/EditProduct'))
 const MasterData = lazy(() => import('./pages/MasterData'))
 const Inventory = lazy(() => import('./pages/Inventory'))
+const Custody = lazy(() => import('./pages/Custody'))
 const Purchases = lazy(() => import('./pages/Purchases'))
 const Suppliers = lazy(() => import('./pages/Suppliers'))
 const SupplierLedger = lazy(() => import('./pages/SupplierLedger'))
@@ -30,7 +31,9 @@ const Settings = lazy(() => import('./pages/Settings'))
 const PurchaseHistory = lazy(() => import('./pages/PurchaseHistory'))
 const TrashBin = lazy(() => import('./pages/TrashBin'))
 const Support = lazy(() => import('./pages/Support'))
+const UserGuide = lazy(() => import('./pages/UserGuide'))
 const WhatsAppMessaging = lazy(() => import('./pages/WhatsAppMessaging'))
+const WhatsAppQueue = lazy(() => import('./pages/WhatsAppQueue'))
 
 // Superadmin Portal
 const AdminLayout = lazy(() => import('./components/admin/AdminLayout'))
@@ -117,13 +120,20 @@ function App() {
               <Route path="/expenses" element={<ProtectedRoute requiredModule="expenses" allowedRoles={['admin']}><Layout><Expenses /></Layout></ProtectedRoute>} />
               <Route path="/accounts" element={<ProtectedRoute requiredModule="expenses" allowedRoles={['admin', 'manager', 'accountant']}><Layout><Accounts /></Layout></ProtectedRoute>} />
               <Route path="/bank-accounts" element={<Navigate to="/accounts" replace />} />
-              <Route path="/inventory" element={<ProtectedRoute requiredModule="inventory" allowedRoles={['admin']}><Layout><Inventory /></Layout></ProtectedRoute>} />
+              <Route path="/inventory" element={<ProtectedRoute requiredModule="inventory" allowedRoles={['admin', 'manager']}><Layout><Inventory /></Layout></ProtectedRoute>} />
+              <Route path="/custody" element={<ProtectedRoute requiredModule="inventory" allowedRoles={['admin', 'manager', 'cashier']}><Layout><Custody /></Layout></ProtectedRoute>} />
+              <Route path="/phone-custody" element={<Navigate to="/custody" replace />} />
+              <Route path="/hold" element={<Navigate to="/custody" replace />} />
               <Route path="/reports" element={<ProtectedRoute requiredModule="reports" allowedRoles={['admin']}><Layout><Reports /></Layout></ProtectedRoute>} />
               <Route path="/users" element={<ProtectedRoute requiredModule="users" allowedRoles={['admin']}><Layout><Users /></Layout></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute requiredModule="settings" allowedRoles={['admin']}><Layout><Settings /></Layout></ProtectedRoute>} />
               <Route path="/trash" element={<ProtectedRoute requiredModule="trash" allowedRoles={['admin']}><Layout><TrashBin /></Layout></ProtectedRoute>} />
               <Route path="/whatsapp" element={<ProtectedRoute requiredModule="customers" allowedRoles={['admin', 'manager', 'cashier']}><Layout><WhatsAppMessaging /></Layout></ProtectedRoute>} />
+              <Route path="/whatsapp/queue" element={<ProtectedRoute requiredModule="customers" allowedRoles={['admin', 'manager', 'cashier']}><Layout><WhatsAppQueue /></Layout></ProtectedRoute>} />
+              <Route path="/whatsapp-queue" element={<ProtectedRoute requiredModule="customers" allowedRoles={['admin', 'manager', 'cashier']}><Layout><WhatsAppQueue /></Layout></ProtectedRoute>} />
               <Route path="/support" element={<ProtectedRoute requiredModule="support" allowedRoles={['admin', 'manager', 'cashier', 'accountant']}><Layout><Support /></Layout></ProtectedRoute>} />
+              <Route path="/guide" element={<ProtectedRoute requiredModule="support" allowedRoles={['admin', 'manager', 'cashier', 'accountant']}><Layout><UserGuide /></Layout></ProtectedRoute>} />
+              <Route path="/help" element={<Navigate to="/guide" replace />} />
             </Routes>
           </Suspense>
         </BrowserRouter>
