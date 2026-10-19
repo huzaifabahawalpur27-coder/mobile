@@ -9,8 +9,9 @@ import {
   Users, BookOpen, MessageSquare, Receipt, Truck,
   ShoppingBag, History, Wallet, BarChart3, UserCog,
   Settings as SettingsIcon, Trash2, LifeBuoy, Lock, Store,
-  Volume2, VolumeX, Sun, Moon, Palette, Check, Landmark
+  Volume2, VolumeX, Sun, Moon, Palette, Check, Landmark, Smartphone, Send
 } from 'lucide-react'
+import { getPendingWhatsAppQueueCount } from '../services/whatsappQueueService'
 import BroadcastBanner from './BroadcastBanner'
 
 let lastLayoutFetchTime = 0
@@ -43,10 +44,17 @@ function Layout({ children }) {
     const saved = localStorage.getItem('compact_mode')
     return saved === null ? true : saved === 'true'
   })
-  const [planInfo, setPlanInfo] = useState(null)
-  const [productCount, setProductCount] = useState(0)
+  const [waQueueCount, setWaQueueCount] = useState(0)
   const dropdownRef = useRef(null)
   const userDropdownRef = useRef(null)
+
+  const fetchWaQueueCount = async () => {
+    if (!user?.shop_id) return
+    try {
+      const count = await getPendingWhatsAppQueueCount(user.shop_id)
+      setWaQueueCount(count)
+    } catch (_) {}
+  }
 
   const toggleSidebar = () => {
     const newVal = !sidebarCollapsed
@@ -69,7 +77,7 @@ function Layout({ children }) {
       fetchLowStock()
       fetchShopName()
       fetchAnnouncements()
-      fetchPlanInfo()
+      fetchWaQueueCount()
     }
 
     const interval = setInterval(() => {
@@ -77,8 +85,8 @@ function Layout({ children }) {
       fetchLowStock()
       fetchShopName()
       fetchAnnouncements()
-      fetchPlanInfo()
-    }, 5 * 60 * 1000)
+      fetchWaQueueCount()
+    }, 30 * 1000)
     return () => clearInterval(interval)
   }, [user?.shop_id])
 
@@ -126,12 +134,8 @@ function Layout({ children }) {
 
     const checkActualConnectivity = async () => {
       try {
-        const pingUrl = `${import.meta.env.VITE_SUPABASE_URL || 'https://hekqzkrpxqsjfkosilpr.supabase.co'}/rest/v1/`
-        const res = await fetch(pingUrl, {
-          method: 'HEAD',
-          headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '' }
-        })
-        if (res.ok || res.status < 500) {
+        const { error } = await supabase.from('shops').select('id').limit(1)
+        if (!error || error.status < 500) {
           setIsOnline(true)
         }
       } catch (_) {
@@ -187,42 +191,6 @@ function Layout({ children }) {
     }
   }
 
-  const fetchPlanInfo = async () => {
-    if (!user?.shop_id) return
-    try {
-      let planData = null
-      const { data, error } = await supabase.rpc('get_shop_config', { p_shop_id: user.shop_id })
-      if (!error && data) {
-        planData = data
-      } else {
-        const { data: shopData } = await supabase
-          .from('shops')
-          .select('status, subscription_plan, subscription_fee, next_billing_date')
-          .eq('id', user.shop_id)
-          .maybeSingle()
-        if (shopData) {
-          const localLimits = JSON.parse(localStorage.getItem(`plan_limits_${user.shop_id}`) || localStorage.getItem('plan_limits') || '{}')
-          planData = {
-            plan_name: shopData.subscription_plan || localLimits.plan_name || 'Business Pro',
-            product_limit: localLimits.product_limit || 500,
-            user_limit: localLimits.user_limit || 5,
-            status: shopData.status || 'active',
-            ...shopData
-          }
-        }
-      }
-
-      if (planData) {
-        setPlanInfo(planData)
-      }
-
-      // Also fetch product count
-      const { count } = await supabase.from('products').select('*', { count: 'exact', head: true }).eq('shop_id', user.shop_id)
-      setProductCount(count || 0)
-    } catch (_) {
-      // graceful fallback
-    }
-  }
 
   const handleLogout = () => {
     logout()
@@ -301,6 +269,16 @@ function Layout({ children }) {
             {hasAccess('inventory', ['admin', 'manager', 'accountant']) && (
               <NavItem to="/inventory" icon={<Boxes size={18} />} label="Stock Inventory" active={location.pathname === '/inventory'} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             )}
+            {hasAccess('inventory', ['admin', 'manager', 'cashier']) && (
+              <NavItem
+                to="/custody"
+                icon={<Smartphone size={18} />}
+                label="Phone Custody & Hold"
+                active={location.pathname === '/custody' || location.pathname === '/phone-custody'}
+                onClick={() => setSidebarOpen(false)}
+                collapsed={sidebarCollapsed}
+              />
+            )}
 
             <NavHeader label="Sales & Customers" collapsed={sidebarCollapsed} />
             {hasAccess('customers', ['admin', 'manager', 'cashier']) && (
@@ -310,7 +288,10 @@ function Layout({ children }) {
               <NavItem to="/customer-ledger" icon={<BookOpen size={18} />} label="Customer Ledger" active={location.pathname === '/customer-ledger'} locked={!hasFeature('customer_ledger')} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             )}
             {hasAccess('customers', ['admin', 'manager', 'cashier']) && (
-              <NavItem to="/whatsapp" icon={<MessageSquare size={18} />} label="WhatsApp Messages" active={location.pathname === '/whatsapp'} locked={!hasFeature('whatsapp')} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
+              <NavItem to="/whatsapp-queue" icon={<Send size={18} />} label="WhatsApp Outbox" active={location.pathname === '/whatsapp-queue' || location.pathname === '/whatsapp/queue'} locked={!hasFeature('whatsapp')} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} badge={waQueueCount > 0 ? waQueueCount : null} />
+            )}
+            {hasAccess('customers', ['admin', 'manager', 'cashier']) && (
+              <NavItem to="/whatsapp" icon={<MessageSquare size={18} />} label="WhatsApp Broadcast" active={location.pathname === '/whatsapp'} locked={!hasFeature('whatsapp')} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             )}
             {hasAccess('sales', ['admin', 'manager', 'accountant']) && (
               <NavItem to="/sales" icon={<Receipt size={18} />} label="Sales History" active={location.pathname === '/sales'} locked={!hasFeature('sales_history')} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
@@ -348,12 +329,41 @@ function Layout({ children }) {
             {hasAccess('trash', ['admin']) && (
               <NavItem to="/trash" icon={<Trash2 size={18} />} label="Trash Bin" active={location.pathname === '/trash'} locked={!hasFeature('trash_bin')} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             )}
-            <NavItem to="/support" icon={<LifeBuoy size={18} />} label="Help & Support" active={location.pathname === '/support'} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
+            <NavItem to="/guide" icon={<BookOpen size={18} />} label="User Guide & Manual" active={location.pathname === '/guide'} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
+            <NavItem to="/support" icon={<LifeBuoy size={18} />} label="Support & Tickets" active={location.pathname === '/support'} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             {user?.role === 'superadmin' && (
               <NavItem to="/superadmin" icon={<ShieldCheck size={18} />} label="Superadmin Portal" active={location.pathname.startsWith('/superadmin') || location.pathname.startsWith('/admin')} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             )}
           </ul>
         </nav>
+
+        {/* Quick User Guide Button at Sidebar Bottom */}
+        {!sidebarCollapsed ? (
+          <div className="p-3 border-t border-[#e5e5ea] dark:border-[#2c2c2e] bg-blue-50/60 dark:bg-blue-950/20">
+            <Link
+              to="/guide"
+              onClick={() => setSidebarOpen(false)}
+              className="w-full py-2 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-between shadow-xs cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm">📖</span>
+                <span>Help & Guides</span>
+              </div>
+              <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded group-hover:translate-x-0.5 transition-transform">→</span>
+            </Link>
+          </div>
+        ) : (
+          <div className="p-2 border-t border-[#e5e5ea] dark:border-[#2c2c2e] flex justify-center">
+            <Link
+              to="/guide"
+              onClick={() => setSidebarOpen(false)}
+              className="w-10 h-10 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center transition"
+              title="Help & User Guides"
+            >
+              <BookOpen size={18} />
+            </Link>
+          </div>
+        )}
 
         {/* Credits */}
         {!sidebarCollapsed && (
@@ -873,7 +883,7 @@ function NavHeader({ label, collapsed }) {
   )
 }
 
-function NavItem({ to, icon, label, active, onClick, locked, collapsed }) {
+function NavItem({ to, icon, label, active, onClick, locked, collapsed, badge }) {
   return (
     <li>
       <Link
@@ -881,7 +891,7 @@ function NavItem({ to, icon, label, active, onClick, locked, collapsed }) {
         onClick={onClick}
         title={collapsed ? label + (locked ? " (Locked)" : "") : undefined}
         className={`flex items-center rounded-xl transition-all font-bold text-xs ${
-          collapsed ? 'justify-center p-3 mx-1' : 'gap-3 px-3.5 py-2.5'
+          collapsed ? 'justify-center p-3 mx-1 relative' : 'gap-3 px-3.5 py-2.5'
         } ${
           active
             ? 'bg-[#0071e3] text-white shadow-md shadow-[#0071e3]/30' + (collapsed ? '' : ' translate-x-1')
@@ -892,6 +902,14 @@ function NavItem({ to, icon, label, active, onClick, locked, collapsed }) {
       >
         <span className={`flex-shrink-0 flex items-center justify-center ${active ? 'text-white' : 'text-[#636366] dark:text-[#98989d]'}`}>{icon}</span>
         {!collapsed && <span className="flex-1 truncate">{label}</span>}
+        {!collapsed && badge && (
+          <span className="ml-auto px-1.5 py-0.5 bg-red-500 text-white rounded-full text-[10px] font-black leading-none animate-pulse">
+            {badge}
+          </span>
+        )}
+        {collapsed && badge && (
+          <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-[#1c1c1e]" />
+        )}
         {!collapsed && locked && <Lock size={13} className="ml-auto text-[#8e8e93] dark:text-[#636366]" />}
       </Link>
     </li>
