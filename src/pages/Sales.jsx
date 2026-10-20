@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
@@ -7,6 +8,44 @@ import { recordAuditLog } from '../services/auditService'
 import PasswordModal from '../components/PasswordModal'
 import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
+
+const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
+  let snap = null
+  if (it.imei_snapshot) {
+    if (typeof it.imei_snapshot === 'object') {
+      snap = it.imei_snapshot
+    } else if (typeof it.imei_snapshot === 'string') {
+      try { snap = JSON.parse(it.imei_snapshot) } catch (_) {}
+    }
+  }
+  const ph = it.phones || (phonesPool || []).find(p => p.id === it.phone_id || (it.sale_id && p.sale_id === it.sale_id)) || snap
+  const prod = it.products || (productsPool || []).find(p => p.id === it.product_id)
+
+  let name = (it.product_name && it.product_name.trim()) || (prod ? prod.name : null)
+  if (!name && ph) {
+    const brand = ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''
+    name = `${brand}${ph.model || 'Smartphone'}`.trim()
+  }
+  if (!name) name = 'Item'
+
+  const specs = ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null, ph.condition ? ph.condition.toUpperCase() : null].filter(Boolean).join(' • ') : null
+  const imei = ph ? (ph.imei_1 || ph.imei || ph.imei1 || (typeof it.imei_snapshot === 'string' && !it.imei_snapshot.startsWith('{') ? it.imei_snapshot : null)) : null
+  const imei2 = ph ? (ph.imei_2 || ph.imei2 || null) : null
+  const price = it.unit_price ?? (it.price ?? (it.subtotal || 0))
+  const qty = it.quantity || 1
+
+  return {
+    ...it,
+    phones: ph,
+    display_name: name,
+    specs,
+    imei,
+    imei2,
+    status: ph?.status || null,
+    unit_price: price,
+    quantity: qty
+  }
+}
 
 function Sales() {
   const { user } = useAuth()
@@ -18,6 +57,7 @@ function Sales() {
   const [loadingItems, setLoadingItems] = useState(false)
   const [returning, setReturning] = useState(false)
   const [returnQtys, setReturnQtys] = useState({})
+  const [expandedSales, setExpandedSales] = useState(new Set())
   const [search, setSearch] = useState('')
   const [searchDate, setSearchDate] = useState('')
   const [filterType, setFilterType] = useState('')
@@ -37,6 +77,15 @@ function Sales() {
       fetchSales()
     }
   }, [user?.shop_id])
+
+  const toggleExpand = (id) => {
+    setExpandedSales(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const fetchShopSettings = async () => {
     // Read from shop-scoped localStorage first for instant load
@@ -65,9 +114,23 @@ function Sales() {
 
     // ── Step 1: Show local IndexedDB data IMMEDIATELY (instant UI) ────────────
     try {
-      const localData = await db.sales.toArray()
+      const [localData, lItems, lPhones, lProducts] = await Promise.all([
+        db.sales.toArray(),
+        db.sale_items ? db.sale_items.toArray() : [],
+        db.phones ? db.phones.toArray() : [],
+        db.products ? db.products.toArray() : []
+      ])
       const filtered = localData.filter(x => String(x.shop_id) === sid)
-      const sorted = filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+      const mapped = filtered.map(s => {
+        const items = (s.sale_items && s.sale_items.length > 0)
+          ? s.sale_items
+          : lItems.filter(i => i.sale_id === s.id)
+        return {
+          ...s,
+          sale_items: items.map(it => normalizeSaleItem(it, lPhones, lProducts))
+        }
+      })
+      const sorted = mapped.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
       setSales(sorted)
       if (sorted.length > 0) {
         setLoading(false)
@@ -85,7 +148,7 @@ function Sales() {
     try {
       const fetchPromise = supabase
         .from('sales')
-        .select('*, customers(name)')
+        .select('*, customers(name), sale_items(*, phones(*), products(name))')
         .eq('shop_id', user.shop_id)
         .order('created_at', { ascending: false })
 
@@ -94,13 +157,35 @@ function Sales() {
 
       if (error) throw error
       if (data) {
-        const cleanData = JSON.parse(JSON.stringify(data))
+        const cleanData = JSON.parse(JSON.stringify(data)).map(s => ({
+          ...s,
+          sale_items: (s.sale_items || []).map(it => normalizeSaleItem(it))
+        }))
         await db.sales.bulkPut(cleanData)
+        // Cache sale items into local DB
+        const allItems = cleanData.flatMap(s => s.sale_items || [])
+        if (allItems.length > 0) {
+          await db.sale_items.bulkPut(allItems).catch(() => {})
+        }
       }
 
-      const localData = await db.sales.toArray()
+      const [localData, lItems, lPhones, lProducts] = await Promise.all([
+        db.sales.toArray(),
+        db.sale_items ? db.sale_items.toArray() : [],
+        db.phones ? db.phones.toArray() : [],
+        db.products ? db.products.toArray() : []
+      ])
       const filtered = localData.filter(x => String(x.shop_id) === sid)
-      const sorted = filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+      const mapped = filtered.map(s => {
+        const items = (s.sale_items && s.sale_items.length > 0)
+          ? s.sale_items
+          : lItems.filter(i => i.sale_id === s.id)
+        return {
+          ...s,
+          sale_items: items.map(it => normalizeSaleItem(it, lPhones, lProducts))
+        }
+      })
+      const sorted = mapped.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
       setSales(sorted)
     } catch (e) {
       console.warn('Sales: Supabase background refresh failed:', e)
@@ -117,31 +202,37 @@ function Sales() {
       if (!navigator.onLine) throw new Error('Offline')
       const fetchPromise = supabase
         .from('sale_items')
-        .select('*, products(name, stock_quantity)')
+        .select('*, products(name, stock_quantity), phones(*)')
         .eq('sale_id', sale.id)
 
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
       const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
 
       if (error) throw error
+      let items = []
       if (data) {
-        const cleanData = JSON.parse(JSON.stringify(data))
-        await db.sale_items.bulkPut(cleanData)
+        items = JSON.parse(JSON.stringify(data)).map(it => normalizeSaleItem(it))
+        await db.sale_items.bulkPut(items)
+      } else {
+        const localItems = await db.sale_items.where({ sale_id: sale.id }).toArray().catch(() => [])
+        const [lPhones, lProducts] = await Promise.all([
+          db.phones ? db.phones.toArray() : [],
+          db.products ? db.products.toArray() : []
+        ])
+        items = localItems.map(it => normalizeSaleItem(it, lPhones, lProducts))
       }
-
-      // Render from local for consistency
-      const localItems = await db.sale_items.where({ sale_id: sale.id }).toArray()
-      setSaleItems(localItems)
+      setSaleItems(items)
     } catch (e) {
       console.log('Sale Items: Fetching from local DB (Offline Fallback)')
       const localItems = await db.sale_items.where({ sale_id: sale.id }).toArray().catch(() => [])
-      // fallback if composite index is weird, just get all and filter
-      if (localItems.length === 0) {
-        const all = await db.sale_items.toArray()
-        setSaleItems(all.filter(i => i.sale_id === sale.id))
-      } else {
-        setSaleItems(localItems)
-      }
+      const [lPhones, lProducts] = await Promise.all([
+        db.phones ? db.phones.toArray() : [],
+        db.products ? db.products.toArray() : []
+      ])
+      const targetItems = localItems.length === 0
+        ? (await db.sale_items.toArray()).filter(i => i.sale_id === sale.id)
+        : localItems
+      setSaleItems(targetItems.map(it => normalizeSaleItem(it, lPhones, lProducts)))
     }
     setLoadingItems(false)
   }
@@ -155,7 +246,7 @@ function Sales() {
       const returnQty = parseInt(returnQtys[item.id]) || 0
       const alreadyReturned = item.returned_qty || 0
       const maxReturn = item.quantity - alreadyReturned
-      if (returnQty > maxReturn) { alert(`${item.product_name}: max ${maxReturn} return ho sakta hai`); return }
+      if (returnQty > maxReturn) { alert(`${item.display_name || item.product_name || 'Item'}: max ${maxReturn} return ho sakta hai`); return }
     }
 
     setReturning(true)
@@ -172,15 +263,22 @@ function Sales() {
           .update({ returned_qty: (item.returned_qty || 0) + returnQty })
           .eq('id', item.id)
 
-        // Restore stock — fetch live stock first to avoid undefined/stale value
-        const { data: liveProduct } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).maybeSingle()
-        const currentStock = liveProduct?.stock_quantity ?? 0
-        const newStock = currentStock + returnQty
-        await supabase.from('products')
-          .update({ stock_quantity: newStock })
-          .eq('id', item.product_id)
-        // Keep local DB in sync
-        await db.products.update(item.product_id, { stock_quantity: newStock })
+        // Restore stock or phone status
+        if (item.phone_id) {
+          await supabase.from('phones').update({ status: 'in_stock', sale_id: null, sold_at: null }).eq('id', item.phone_id)
+          if (db.phones) {
+            await db.phones.update(item.phone_id, { status: 'in_stock', sale_id: null, sold_at: null })
+          }
+        } else if (item.product_id) {
+          const { data: liveProduct } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).maybeSingle()
+          const currentStock = liveProduct?.stock_quantity ?? 0
+          const newStock = currentStock + returnQty
+          await supabase.from('products')
+            .update({ stock_quantity: newStock })
+            .eq('id', item.product_id)
+          // Keep local DB in sync
+          await db.products.update(item.product_id, { stock_quantity: newStock })
+        }
       }
 
       // Update sale record total
@@ -225,7 +323,7 @@ function Sales() {
         {
           invoice: selectedSale.id,
           returned_amount: totalReturnAmount,
-          items: itemsToReturn.map(it => ({ name: it.product_name, qty: returnQtys[it.id] }))
+          items: itemsToReturn.map(it => ({ name: it.display_name || it.product_name, qty: returnQtys[it.id] }))
         },
         user.id,
         user.shop_id
@@ -238,9 +336,9 @@ function Sales() {
       // Re-fetch updated sale + items to reflect new returned_qty in modal
       const { data: updatedSale } = await supabase.from('sales').select('*, customers(name)').eq('id', selectedSale.id).maybeSingle()
       if (updatedSale) setSelectedSale(updatedSale)
-      const { data: updatedItems } = await supabase.from('sale_items').select('*, products(name, stock_quantity)').eq('sale_id', selectedSale.id)
+      const { data: updatedItems } = await supabase.from('sale_items').select('*, products(name, stock_quantity), phones(*)').eq('sale_id', selectedSale.id)
       if (updatedItems) {
-        const cleanItems = JSON.parse(JSON.stringify(updatedItems))
+        const cleanItems = JSON.parse(JSON.stringify(updatedItems)).map(it => normalizeSaleItem(it))
         await db.sale_items.bulkPut(cleanItems)
         setSaleItems(cleanItems)
       }
@@ -260,11 +358,16 @@ function Sales() {
           // 2. Queue the update
           await db.sync_queue.add({ table: 'sale_items', action: 'UPDATE', data: { id: item.id, returned_qty: newRetQty }, timestamp: new Date().toISOString() })
 
-          // 3. Update local stock
-          const localProd = await db.products.get(item.product_id)
-          const newStock = (localProd?.stock_quantity || 0) + returnQty
-          await db.products.update(item.product_id, { stock_quantity: newStock })
-          await db.sync_queue.add({ table: 'products', action: 'UPDATE', data: { id: item.product_id, stock_quantity: newStock }, timestamp: new Date().toISOString() })
+          // 3. Update local stock / phone
+          if (item.phone_id && db.phones) {
+            await db.phones.update(item.phone_id, { status: 'in_stock', sale_id: null, sold_at: null })
+            await db.sync_queue.add({ table: 'phones', action: 'UPDATE', data: { id: item.phone_id, status: 'in_stock', sale_id: null, sold_at: null }, timestamp: new Date().toISOString() })
+          } else if (item.product_id) {
+            const localProd = await db.products.get(item.product_id)
+            const newStock = (localProd?.stock_quantity || 0) + returnQty
+            await db.products.update(item.product_id, { stock_quantity: newStock })
+            await db.sync_queue.add({ table: 'products', action: 'UPDATE', data: { id: item.product_id, stock_quantity: newStock }, timestamp: new Date().toISOString() })
+          }
         }
 
         // Update local Sale total
@@ -278,7 +381,11 @@ function Sales() {
         setSelectedSale({ ...selectedSale, total_amount: newSaleTotal })
         // Reflect updated returned_qty in modal items
         const localUpdated = await db.sale_items.where({ sale_id: selectedSale.id }).toArray().catch(() => [])
-        if (localUpdated.length > 0) setSaleItems(localUpdated)
+        const [lPhones, lProducts] = await Promise.all([
+          db.phones ? db.phones.toArray() : [],
+          db.products ? db.products.toArray() : []
+        ])
+        if (localUpdated.length > 0) setSaleItems(localUpdated.map(it => normalizeSaleItem(it, lPhones, lProducts)))
         fetchSales()
       } else {
         alert('Error processing return: ' + errMsg)
@@ -306,14 +413,15 @@ function Sales() {
     const formattedItems = items.map(i => {
       const returnedQty = i.returned_qty || 0
       const netQty = i.quantity - returnedQty
-      
+      const baseName = i.display_name || i.product_name || i.products?.name || (i.phones ? `${i.phones.brand && i.phones.brand !== 'Unknown' ? i.phones.brand + ' ' : ''}${i.phones.model || 'Phone'}`.trim() : 'Item')
+      const imeiNote = i.imei ? ` [${i.imei}]` : ''
       const returnNote = returnedQty > 0 ? ` (Returned: ${returnedQty})` : ''
       return {
-        name: (i.product_name || i.products?.name || '') + returnNote,
+        name: `${baseName}${imeiNote}${returnNote}`,
         qty: netQty,
         price: Number(i.unit_price || i.price || 0),
-        sku: i.products?.sku || '',
-        brand: i.products?.brand || ''
+        sku: i.imei || i.products?.sku || '',
+        brand: i.phones?.brand || i.products?.brand || ''
       }
     })
 
@@ -365,9 +473,49 @@ function Sales() {
     return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-800">📱 {label}</span>
   }
 
+  const exportToExcel = () => {
+    if (!filtered.length) {
+      alert('No sales to export')
+      return
+    }
+    const data = filtered.map(s => {
+      const items = (s.sale_items || []).map(it => {
+        const name = it.display_name || it.product_name || 'Item'
+        const imei = it.imei ? ` [IMEI: ${it.imei}]` : ''
+        return `${name}${imei} x${it.quantity || 1}`
+      }).join(', ') || 'Direct Sale'
+
+      return {
+        'Invoice ID': (s.sale_type === 'quotation' ? 'QT-' : '#') + String(s.id).slice(-8),
+        'Customer': s.customers?.name || s.customer_name || 'Walk-in',
+        'Phone / Items': items,
+        'Total Amount': (Number(s.total_amount) - Number(s.discount || 0)).toFixed(0),
+        'Type': s.sale_type === 'quotation' ? 'Quotation' : 'Sale',
+        'Payment': (s.payment_type || s.payment_method || 'cash').toUpperCase(),
+        'Date': new Date(s.created_at).toLocaleDateString('en-PK')
+      }
+    })
+    const ws = XLSX.utils.json_to_sheet(data)
+    ws['!cols'] = [{ wch: 14 }, { wch: 22 }, { wch: 45 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Sales')
+    XLSX.writeFile(wb, `SalesHistory_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
   const filtered = sales.filter(s => {
-    const matchSearch = (s.customers?.name || s.customer_name || 'walk-in').toLowerCase().includes(search.toLowerCase()) ||
-      String(s.id).toLowerCase().includes(search.toLowerCase())
+    const q = search.trim().toLowerCase()
+    const matchesItems = !q ? true : (s.sale_items || []).some(it => {
+      const name = (it.display_name || it.product_name || '').toLowerCase()
+      const imei1 = (it.imei || '').toLowerCase()
+      const imei2 = (it.imei2 || '').toLowerCase()
+      const specs = (it.specs || '').toLowerCase()
+      return name.includes(q) || imei1.includes(q) || imei2.includes(q) || specs.includes(q)
+    })
+    const matchSearch = !q ? true : (
+      (s.customers?.name || s.customer_name || 'walk-in').toLowerCase().includes(q) ||
+      String(s.id).toLowerCase().includes(q) ||
+      matchesItems
+    )
     const matchType = typeFilter !== 'all' ? s.sale_type === typeFilter : true
     const sPay = (s.payment_type || s.payment_method || 'cash').toLowerCase()
     const matchPayment = paymentFilter !== 'all' ? (
@@ -456,6 +604,11 @@ function Sales() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <h1 className="text-2xl font-bold text-gray-800">📜 Sales History</h1>
           <div className="flex gap-2 flex-wrap items-center">
+            {filtered.length > 0 && (
+              <button onClick={exportToExcel} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition font-bold text-sm shadow-xs flex items-center gap-1.5 cursor-pointer">
+                📥 Export Excel
+              </button>
+            )}
             {selected.length > 0 && (
               <button onClick={() => requestDelete(selected)} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl transition font-bold text-sm">
                 🗑️ Delete Selected ({selected.length})
@@ -468,7 +621,7 @@ function Sales() {
           <div className="flex gap-4 w-full sm:w-auto">
             <input
               type="text"
-              placeholder="Search invoice or customer..."
+              placeholder="Search invoice, customer, model, IMEI..."
               className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -504,48 +657,146 @@ function Sales() {
           </div>
         ) : (
           <div className="bg-white rounded-xl shadow overflow-hidden">
+            {/* Mobile View */}
             <div className="divide-y divide-gray-100 md:hidden">
-              {filtered.map(sale => (
-                <div key={sale.id} className={`p-4 ${selected.includes(sale.id) ? 'bg-blue-50' : ''}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-mono text-xs font-bold text-gray-500">
-                        {sale.sale_type === 'quotation' ? 'QT-' : '#'}{String(sale.id).slice(-8)}
-                      </p>
-                      <p className="mt-1 truncate font-bold text-gray-900">
-                        {sale.customers?.name || sale.customer_name || 'Walk-in'}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-400">{new Date(sale.created_at).toLocaleDateString('en-PK')}</p>
+              {filtered.map(sale => {
+                const isExpanded = expandedSales.has(sale.id)
+                const items = sale.sale_items || []
+                const firstItem = items[0]
+                const firstPhoneName = firstItem ? (firstItem.display_name || firstItem.product_name || 'Item') : null
+
+                return (
+                  <div key={sale.id} className={`p-4 ${selected.includes(sale.id) ? 'bg-blue-50' : ''}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-mono text-xs font-bold text-gray-500">
+                            {sale.sale_type === 'quotation' ? 'QT-' : '#'}{String(sale.id).slice(-8)}
+                          </p>
+                          <span className={`px-2 py-0.2 rounded-full text-[10px] font-medium ${sale.sale_type === 'quotation' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                            {sale.sale_type === 'quotation' ? '📄 Quotation' : '🧾 Sale'}
+                          </span>
+                        </div>
+                        <p className="mt-1 truncate font-bold text-gray-900">
+                          {sale.customers?.name || sale.customer_name || 'Walk-in'}
+                        </p>
+
+                        {/* Phone / Item display */}
+                        {items.length > 0 ? (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <span className="font-semibold text-gray-800 text-xs">
+                              📱 {firstPhoneName}
+                            </span>
+                            {items.length > 1 && (
+                              <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full">
+                                +{items.length - 1} more
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(sale.id)}
+                              className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-0.5 ml-1 cursor-pointer"
+                            >
+                              <span>{isExpanded ? 'Hide Details' : 'Details'}</span>
+                              <span className={`text-[9px] transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                            </button>
+                          </div>
+                        ) : null}
+
+                        <p className="mt-1 text-xs text-gray-400">{new Date(sale.created_at).toLocaleDateString('en-PK')}</p>
+                      </div>
+                      <input type="checkbox" checked={selected.includes(sale.id)} onChange={() => toggleSelect(sale.id)} className="mt-1 h-4 w-4 rounded" />
                     </div>
-                    <input type="checkbox" checked={selected.includes(sale.id)} onChange={() => toggleSelect(sale.id)} className="mt-1 h-4 w-4 rounded" />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-lg font-black text-gray-900">
-                        Rs. {(Number(sale.total_amount) - Number(sale.discount || 0)).toFixed(0)}
-                      </p>
-                      <div className="mt-1 flex flex-wrap gap-1.5 items-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${sale.sale_type === 'quotation' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
-                          {sale.sale_type === 'quotation' ? '📄 Quotation' : '🧾 Sale'}
-                        </span>
-                        {renderPaymentBadge(sale)}
+
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-lg font-black text-gray-900">
+                          Rs. {(Number(sale.total_amount) - Number(sale.discount || 0)).toFixed(0)}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5 items-center">
+                          {renderPaymentBadge(sale)}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => openSale(sale)} className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-blue-600 cursor-pointer">View</button>
+                        <button onClick={() => requestDelete([sale.id])} className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600 cursor-pointer">Delete</button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => openSale(sale)} className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-blue-600">View</button>
-                      <button onClick={() => requestDelete([sale.id])} className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">Delete</button>
-                    </div>
+
+                    {/* Mobile Expandable Phone Details Accordion */}
+                    {isExpanded && items.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-blue-100 bg-blue-50/50 -mx-4 -mb-4 p-3.5 rounded-b-xl space-y-2">
+                        <div className="flex items-center justify-between text-xs font-bold text-blue-900 border-b border-blue-200/60 pb-1.5">
+                          <span>📱 Items in Sale ({items.length})</span>
+                          <span className="font-mono text-[10px] text-gray-500">#{String(sale.id).slice(-8)}</span>
+                        </div>
+                        <div className="space-y-2">
+                          {items.map((it, iidx) => {
+                            const name = it.display_name || it.product_name || 'Item'
+                            const specs = it.specs
+                            const imei = it.imei
+                            const imei2 = it.imei2
+                            const rate = it.unit_price || it.price || 0
+                            const qty = it.quantity || 1
+                            const returnedQty = it.returned_qty || 0
+                            const netQty = qty - returnedQty
+                            const fullyReturned = netQty <= 0
+
+                            return (
+                              <div key={iidx} className={`p-2.5 rounded-lg border text-xs space-y-1 shadow-2xs ${fullyReturned ? 'bg-red-50/60 border-red-200' : 'bg-white border-blue-100/80'}`}>
+                                <div className="flex items-start justify-between gap-1">
+                                  <p className="font-bold text-gray-900">{name}</p>
+                                  {fullyReturned ? (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 bg-red-100 text-red-700">
+                                      Returned
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 bg-green-100 text-green-700">
+                                      Sold
+                                    </span>
+                                  )}
+                                </div>
+                                {specs && <p className="text-[11px] text-gray-500">{specs}</p>}
+                                {(imei || imei2) && (
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {imei && (
+                                      <span className="font-mono text-[10px] bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded">
+                                        IMEI: {imei}
+                                      </span>
+                                    )}
+                                    {imei2 && (
+                                      <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
+                                        IMEI 2: {imei2}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                <div className="flex justify-between items-center pt-1 border-t border-gray-100 text-[11px]">
+                                  <span className="text-gray-500">
+                                    Qty: {netQty} {returnedQty > 0 && <span className="text-red-500 font-bold">(-{returnedQty})</span>}
+                                  </span>
+                                  <span className="font-bold text-gray-900">Rs. {Number(rate).toLocaleString()}</span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
+
+            {/* Desktop Table View */}
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="px-4 py-3 w-10"><input type="checkbox" checked={selected.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded" /></th>
+                    <th className="px-4 py-3 w-10"><input type="checkbox" checked={selected.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded cursor-pointer" /></th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Invoice ID</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Customer</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Phone / Items</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Total</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Type / Payment</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Date</th>
@@ -553,36 +804,167 @@ function Sales() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filtered.map(sale => (
-                    <tr key={sale.id} className={`hover:bg-gray-50 ${selected.includes(sale.id) ? 'bg-blue-50' : ''}`}>
-                      <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(sale.id)} onChange={() => toggleSelect(sale.id)} className="w-4 h-4 rounded" /></td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-600">
-                        {sale.sale_type === 'quotation' ? 'QT-' : '#'}{String(sale.id).slice(-8)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-800">
-                        {sale.customers?.name || sale.customer_name || <span className="text-gray-400 italic">Walk-in</span>}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-gray-800">
-                        Rs. {(Number(sale.total_amount) - Number(sale.discount || 0)).toFixed(0)}
-                        {sale.discount > 0 && <span className="text-xs text-gray-400 ml-1">(disc: {sale.discount})</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${sale.sale_type === 'quotation' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
-                            {sale.sale_type === 'quotation' ? '📄 Quotation' : '🧾 Sale'}
-                          </span>
-                          {renderPaymentBadge(sale)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-sm">{new Date(sale.created_at).toLocaleDateString('en-PK')}</td>
-                      <td className="px-4 py-3 flex gap-2">
-                        <button onClick={() => openSale(sale)}
-                          className="text-blue-500 hover:text-blue-700 text-sm font-medium">View</button>
-                        <button onClick={() => requestDelete([sale.id])}
-                          className="text-red-500 hover:text-red-700 text-sm font-medium">Delete</button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filtered.map(sale => {
+                    const isExpanded = expandedSales.has(sale.id)
+                    const items = sale.sale_items || []
+                    const firstItem = items[0]
+                    const firstPhoneName = firstItem ? (firstItem.display_name || firstItem.product_name || 'Item') : null
+
+                    return (
+                      <React.Fragment key={sale.id}>
+                        <tr className={`hover:bg-gray-50 ${selected.includes(sale.id) ? 'bg-blue-50' : ''}`}>
+                          <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(sale.id)} onChange={() => toggleSelect(sale.id)} className="w-4 h-4 rounded cursor-pointer" /></td>
+                          <td className="px-4 py-3 font-mono text-xs text-gray-600 font-bold whitespace-nowrap">
+                            {sale.sale_type === 'quotation' ? 'QT-' : '#'}{String(sale.id).slice(-8)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-800 whitespace-nowrap">
+                            {sale.customers?.name || sale.customer_name || <span className="text-gray-400 italic">Walk-in</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {items.length > 0 ? (
+                              <div className="flex flex-col gap-1 max-w-xs">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-gray-900 text-xs">
+                                    {firstPhoneName}
+                                  </span>
+                                  {items.length > 1 && (
+                                    <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full shrink-0">
+                                      +{items.length - 1} more
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpand(sale.id)}
+                                  className={`inline-flex items-center gap-1 text-[11px] font-bold transition w-fit cursor-pointer ${
+                                    isExpanded ? 'text-blue-700 underline' : 'text-blue-600 hover:text-blue-800'
+                                  }`}
+                                  title="Click to view full phone details, specs, and IMEI"
+                                >
+                                  <span>{isExpanded ? 'Hide Details' : 'Details'}</span>
+                                  <span className={`text-[9px] transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-xs italic">Direct Sale</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
+                            Rs. {(Number(sale.total_amount) - Number(sale.discount || 0)).toFixed(0)}
+                            {sale.discount > 0 && <span className="text-xs text-gray-400 ml-1">(disc: {sale.discount})</span>}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${sale.sale_type === 'quotation' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                                {sale.sale_type === 'quotation' ? '📄 Quotation' : '🧾 Sale'}
+                              </span>
+                              {renderPaymentBadge(sale)}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 text-sm whitespace-nowrap">{new Date(sale.created_at).toLocaleDateString('en-PK')}</td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex gap-2">
+                              <button onClick={() => openSale(sale)}
+                                className="text-blue-500 hover:text-blue-700 text-sm font-medium cursor-pointer">View</button>
+                              <button onClick={() => requestDelete([sale.id])}
+                                className="text-red-500 hover:text-red-700 text-sm font-medium cursor-pointer">Delete</button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Desktop Expandable Phone Details Accordion */}
+                        {isExpanded && (
+                          <tr className="bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-blue-50/70 border-b border-blue-200/80">
+                            <td colSpan="8" className="px-6 py-4">
+                              <div className="flex flex-col gap-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200/60 pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+                                      📱 Phones / Items in {sale.sale_type === 'quotation' ? 'QT-' : '#'}{String(sale.id).slice(-8)}
+                                    </span>
+                                    <span className="text-xs bg-white text-blue-800 px-2 py-0.5 rounded-full border border-blue-200 font-bold shadow-2xs">
+                                      {items.length} item(s)
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-gray-500 font-medium">Customer:</span>
+                                    <span className="font-bold text-gray-800">{sale.customers?.name || sale.customer_name || 'Walk-in'}</span>
+                                    <span className="text-gray-300">|</span>
+                                    <span className="text-gray-500 font-medium">Payment:</span>
+                                    {renderPaymentBadge(sale)}
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  {items.map((it, iidx) => {
+                                    const name = it.display_name || it.product_name || 'Item'
+                                    const specs = it.specs
+                                    const imei = it.imei
+                                    const imei2 = it.imei2
+                                    const rate = it.unit_price || it.price || 0
+                                    const qty = it.quantity || 1
+                                    const returnedQty = it.returned_qty || 0
+                                    const netQty = qty - returnedQty
+                                    const fullyReturned = netQty <= 0
+
+                                    return (
+                                      <div key={iidx} className={`rounded-xl p-3 border shadow-2xs hover:shadow-xs transition flex flex-col justify-between gap-2 ${
+                                        fullyReturned ? 'bg-red-50/50 border-red-200' : 'bg-white border-blue-100'
+                                      }`}>
+                                        <div>
+                                          <div className="flex items-start justify-between gap-2">
+                                            <h4 className="font-bold text-gray-900 text-xs sm:text-sm">{name}</h4>
+                                            {fullyReturned ? (
+                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 bg-red-100 text-red-700">
+                                                Returned
+                                              </span>
+                                            ) : (
+                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 bg-green-100 text-green-700">
+                                                Sold
+                                              </span>
+                                            )}
+                                          </div>
+                                          {specs && (
+                                            <p className="text-xs text-gray-500 font-medium mt-1">
+                                              {specs}
+                                            </p>
+                                          )}
+                                          {(imei || imei2) && (
+                                            <div className="mt-2 flex flex-wrap gap-1 items-center">
+                                              {imei && (
+                                                <span className="font-mono text-[10px] bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.5 rounded">
+                                                  IMEI: {imei}
+                                                </span>
+                                              )}
+                                              {imei2 && (
+                                                <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1.5 py-0.5 rounded">
+                                                  IMEI 2: {imei2}
+                                                </span>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        <div className="flex items-center justify-between border-t border-gray-100 pt-2 mt-1 text-xs">
+                                          <span className="text-gray-500">
+                                            Qty: <span className="font-semibold text-gray-800">{netQty}</span>
+                                            {returnedQty > 0 && <span className="text-red-500 font-bold ml-1">(-{returnedQty})</span>}
+                                          </span>
+                                          <span className="font-black text-gray-900">
+                                            Rs. {Number(rate).toLocaleString()}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -609,7 +991,7 @@ function Sales() {
                       </span>
                     </p>
                   </div>
-                  <button onClick={() => setSelectedSale(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+                  <button onClick={() => setSelectedSale(null)} className="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">×</button>
                 </div>
 
                 {loadingItems ? <p className="text-gray-500 text-center py-8">Loading...</p> : (
@@ -618,7 +1000,7 @@ function Sales() {
                       <table className="w-full mb-4 text-sm">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-3 py-2 text-left text-xs text-gray-500 whitespace-nowrap">Product</th>
+                            <th className="px-3 py-2 text-left text-xs text-gray-500 whitespace-nowrap">Product / Phone</th>
                             <th className="px-3 py-2 text-right text-xs text-gray-500 whitespace-nowrap">Orig. Qty</th>
                             <th className="px-3 py-2 text-right text-xs text-red-400 whitespace-nowrap">Returned</th>
                             <th className="px-3 py-2 text-right text-xs text-green-600 whitespace-nowrap">Net Qty</th>
@@ -636,9 +1018,26 @@ function Sales() {
                             const fullyReturned = netQty <= 0
                             return (
                               <tr key={item.id} className={fullyReturned ? 'bg-red-50/40 opacity-60' : ''}>
-                                <td className="px-3 py-2 text-gray-800 whitespace-nowrap">
-                                  {item.product_name}
-                                  {fullyReturned && <span className="ml-1 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold uppercase">Fully Returned</span>}
+                                <td className="px-3 py-2 text-gray-800">
+                                  <div className="font-bold text-gray-900">
+                                    {item.display_name || item.product_name || 'Item'}
+                                    {fullyReturned && <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold uppercase">Fully Returned</span>}
+                                  </div>
+                                  {item.specs && <p className="text-xs text-gray-500 mt-0.5">{item.specs}</p>}
+                                  {(item.imei || item.imei2) && (
+                                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                                      {item.imei && (
+                                        <span className="font-mono text-[10px] bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded">
+                                          IMEI: {item.imei}
+                                        </span>
+                                      )}
+                                      {item.imei2 && (
+                                        <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
+                                          IMEI 2: {item.imei2}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 text-right text-gray-400 whitespace-nowrap">{item.quantity}</td>
                                 <td className="px-3 py-2 text-right text-red-500 font-medium whitespace-nowrap">
@@ -692,22 +1091,22 @@ function Sales() {
                         )}
                         {selectedSale.sale_type === 'quotation' && (
                           <button onClick={() => navigate(`/pos?convertQuote=${selectedSale.id}`)}
-                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition font-bold">
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition font-bold cursor-pointer">
                             🛒 Convert to Sale
                           </button>
                         )}
                         <button onClick={() => printInvoice(selectedSale, saleItems)}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition">
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition cursor-pointer">
                           🖨️ Print {selectedSale.sale_type === 'quotation' ? 'Quotation' : 'Invoice'}
                         </button>
                         {selectedSale.sale_type !== 'quotation' && (
                           <button onClick={handleReturn} disabled={returning}
-                            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition disabled:opacity-50">
+                            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition disabled:opacity-50 cursor-pointer">
                             {returning ? 'Processing...' : '↩️ Process Return'}
                           </button>
                         )}
                         <button onClick={() => setSelectedSale(null)}
-                          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition">
+                          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition cursor-pointer">
                           Close
                         </button>
                       </div>

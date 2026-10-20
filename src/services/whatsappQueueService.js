@@ -169,7 +169,22 @@ function saveLocalStorageQueue(items) {
 }
 
 /**
+ * Returns true only if an outbox queue item represents a sold phone sale.
+ * Strictly excludes all purchase memos and non-phone sales.
+ */
+export function isSoldPhoneQueueItem(item) {
+  if (!item) return false
+  const type = String(item.message_type || '').toLowerCase()
+  if (type.includes('purchase')) return false
+
+  if (type === 'phone_sale_receipt') return true
+  if (item.reference_data?.has_phone) return true
+  return false
+}
+
+/**
  * Enqueues a message into the WhatsApp Queue (Supabase + Dexie + LocalStorage fallback).
+ * Restricted strictly to sold phones. Purchases and non-phone sales are rejected.
  */
 export async function enqueueWhatsAppMessage({
   shop_id,
@@ -181,6 +196,19 @@ export async function enqueueWhatsAppMessage({
   message_text,
   created_by = null
 }) {
+  const type = String(message_type || '').toLowerCase()
+  // Reject all purchases
+  if (type.includes('purchase')) {
+    console.warn('enqueueWhatsAppMessage: Purchases are not permitted in WhatsApp Outbox')
+    return { success: false, ignored: true, reason: 'Purchases excluded from WhatsApp outbox' }
+  }
+
+  // Reject non-phone sales
+  if (type !== 'phone_sale_receipt' && !reference_data?.has_phone) {
+    console.warn('enqueueWhatsAppMessage: Only sold phone entries are permitted in WhatsApp Outbox')
+    return { success: false, ignored: true, reason: 'Only sold phones allowed in WhatsApp outbox' }
+  }
+
   const cleanedPhone = cleanPakistanPhone(recipient_phone)
   if (!cleanedPhone) {
     console.warn('enqueueWhatsAppMessage: Invalid or missing recipient phone number', recipient_phone)
@@ -318,7 +346,9 @@ export async function fetchWhatsAppQueue(shop_id, statusFilter = 'all') {
     if (!mergedMap.has(i.id)) mergedMap.set(i.id, i)
   })
 
-  return Array.from(mergedMap.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+  return Array.from(mergedMap.values())
+    .filter(isSoldPhoneQueueItem)
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
 }
 
 /**
@@ -386,13 +416,15 @@ export async function deleteWhatsAppMessage(id) {
  */
 export async function getPendingWhatsAppQueueCount(shop_id) {
   try {
+    const isPendingPhone = (i) => i.status === 'pending' && (!shop_id || String(i.shop_id) === String(shop_id)) && isSoldPhoneQueueItem(i)
+
     const localStore = getLocalStorageQueue()
-    const pendingLocal = localStore.filter(i => i.status === 'pending' && (!shop_id || String(i.shop_id) === String(shop_id))).length
+    const pendingLocal = localStore.filter(isPendingPhone).length
     if (pendingLocal > 0) return pendingLocal
 
     if (db.whatsapp_queue) {
       const items = await db.whatsapp_queue.toArray()
-      return items.filter(i => i.status === 'pending' && (!shop_id || String(i.shop_id) === String(shop_id))).length
+      return items.filter(isPendingPhone).length
     }
   } catch (err) {
     console.debug('Pending queue count check notice:', err)

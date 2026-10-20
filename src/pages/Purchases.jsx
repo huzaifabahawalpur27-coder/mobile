@@ -6,7 +6,6 @@ import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue } from '../services/db'
 import PhonePurchasePanel from '../components/PhonePurchasePanel'
 import { getBankAccounts, deductBankBalance } from '../services/bankService'
-import { enqueueWhatsAppMessage, buildPurchaseMemoText } from '../services/whatsappQueueService'
 import BankAccountModal from '../components/BankAccountModal'
 import { deduplicateProducts } from '../utils/productUtils'
 
@@ -379,40 +378,7 @@ function Purchases() {
         }
       }
 
-      // Auto-enqueue WhatsApp Purchase Memo if supplier has a phone number
-      const sup = suppliers.find(s => String(s.id) === String(supplierId))
-      let waNotice = ''
-      if (sup?.phone) {
-        try {
-          const shopName = localStorage.getItem(`shop_name_${user.shop_id}`) || 'EdgeX POS Store'
-          const memoText = buildPurchaseMemoText({
-            purchase: {
-              id: purchase.id,
-              total_amount: total,
-              paid_amount: paymentType === 'cash' ? total : 0,
-              created_at: new Date().toISOString()
-            },
-            supplier: sup,
-            items: cart,
-            shopInfo: { name: shopName }
-          })
-          await enqueueWhatsAppMessage({
-            shop_id: user.shop_id,
-            recipient_name: sup.name || 'Supplier',
-            recipient_phone: sup.phone,
-            message_type: 'phone_purchase',
-            reference_id: String(purchase.id),
-            reference_data: { total_amount: total, items_count: cart.length },
-            message_text: memoText,
-            created_by: user.id
-          })
-          waNotice = ' (Supplier memo queued in WhatsApp Outbox 📲)'
-        } catch (waErr) {
-          console.warn('Queue purchase memo notice:', waErr)
-        }
-      }
-
-      alert(`Purchase complete! Stock and supplier balance updated.${waNotice}`)
+      alert('Purchase complete! Stock and supplier balance updated.')
       clearCart()
       fetchData()
     } catch (err) {

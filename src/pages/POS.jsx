@@ -1249,9 +1249,9 @@ function POS() {
       isQuotation: saleType === 'quotation'
     })
 
-    // Auto-enqueue WhatsApp receipt for mobile outbox
+    // Auto-enqueue WhatsApp receipt for mobile outbox (sold phones only)
     const containsPhone = cart.some(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone')) || i.imei_1 || i.imei)
-    if (customer?.phone) {
+    if (customer?.phone && containsPhone) {
       try {
         const shopInfo = {
           name: form.name || (user?.shop_id ? localStorage.getItem(`shop_name_${user.shop_id}`) : null) || 'EdgeX POS Store',
@@ -1268,14 +1268,14 @@ function POS() {
           shop_id: user?.shop_id || 1,
           recipient_name: customer.name || walkInName || 'Customer',
           recipient_phone: customer.phone,
-          message_type: containsPhone ? 'phone_sale_receipt' : 'sale_receipt_en',
+          message_type: 'phone_sale_receipt',
           reference_id: finalSale?.id,
           reference_data: {
             total,
             paid: tendered,
             change: changeDueVal,
             items_count: cart.length,
-            has_phone: containsPhone
+            has_phone: true
           },
           message_text: msgText,
           created_by: user?.id
@@ -1325,6 +1325,8 @@ function POS() {
 
   const handleQueueWhatsAppInvoice = async (language = 'english', openDesktop = false) => {
     if (!lastReceipt) return
+    const hasPhone = (lastReceipt.items || []).some(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone')) || i.imei_1 || i.imei)
+
     let customerPhone = lastReceipt.customer?.phone || ''
     let customerName = lastReceipt.customer?.name || lastReceipt.walkInName || 'Customer'
     if (!customerPhone) {
@@ -1347,19 +1349,29 @@ function POS() {
       language
     })
 
-    const hasPhone = (lastReceipt.items || []).some(i => i.is_phone || i.phone_id || i.imei_1 || i.imei)
+    if (!hasPhone) {
+      if (openDesktop) {
+        const cleanedPhone = cleanPhoneNumber(customerPhone)
+        const url = buildWhatsAppUrl(cleanedPhone, msg)
+        window.open(url, '_blank')
+        return
+      }
+      alert('WhatsApp Outbox is for sold phones only.')
+      return
+    }
 
     await enqueueWhatsAppMessage({
       shop_id: user?.shop_id,
       recipient_name: customerName,
       recipient_phone: customerPhone,
-      message_type: hasPhone ? 'phone_sale_receipt' : (language === 'urdu' ? 'sale_receipt_urdu' : 'sale_receipt_en'),
+      message_type: 'phone_sale_receipt',
       reference_id: lastReceipt.sale?.id || null,
       reference_data: {
         total: lastReceipt.total,
         paid: lastReceipt.receivedAmount,
         change: lastReceipt.changeDue,
-        items_count: (lastReceipt.items || []).length
+        items_count: (lastReceipt.items || []).length,
+        has_phone: true
       },
       message_text: msg,
       created_by: user?.id
@@ -3160,44 +3172,42 @@ function POS() {
                 </div>
               )}
 
-              {/* Primary Actions: Print & Quick WhatsApp Buttons Side-by-Side */}
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={printReceipt}
-                  className="py-2.5 px-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm"
-                  title="Print invoice on thermal or A4 printer"
-                >
-                  <span className="text-base">🖨️</span>
-                  <span>Print</span>
-                </button>
-                <button
-                  onClick={() => handleQueueWhatsAppInvoice('english', false)}
-                  className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm"
-                  title="Queue invoice details and thank you note in English for mobile WhatsApp"
-                >
-                  <span className="text-base">📲</span>
-                  <span className="truncate">WA (EN)</span>
-                </button>
-                <button
-                  onClick={() => handleQueueWhatsAppInvoice('urdu', false)}
-                  className="py-2.5 px-2 bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm text-center"
-                  title="Queue invoice details and shukriya note in Urdu for mobile WhatsApp"
-                >
-                  <span className="text-base">💚</span>
-                  <span className="truncate">WA (اردو)</span>
-                </button>
-              </div>
-
-              {/* Phone Sale Dedicated Mobile Queue Button */}
-              {((lastReceipt.items || []).some(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone')) || i.imei_1 || i.imei)) && (
-                <button
-                  onClick={() => handleQueueWhatsAppInvoice('english', false)}
-                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl text-xs font-black shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-                >
-                  <span>📲</span>
-                  <span>Queue Phone Receipt & Thanks (Mobile WA)</span>
-                </button>
-              )}
+              {/* Primary Actions: Print & Quick WhatsApp Buttons (WhatsApp for sold phones only) */}
+              {(() => {
+                const hasPhoneItem = (lastReceipt.items || []).some(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone')) || i.imei_1 || i.imei)
+                return (
+                  <div className={`grid ${hasPhoneItem ? 'grid-cols-3' : 'grid-cols-1'} gap-2`}>
+                    <button
+                      onClick={printReceipt}
+                      className="py-2.5 px-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm"
+                      title="Print invoice on thermal or A4 printer"
+                    >
+                      <span className="text-base">🖨️</span>
+                      <span>Print</span>
+                    </button>
+                    {hasPhoneItem && (
+                      <>
+                        <button
+                          onClick={() => handleQueueWhatsAppInvoice('english', false)}
+                          className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm"
+                          title="Queue phone sale receipt and thank you note in English for mobile WhatsApp"
+                        >
+                          <span className="text-base">📲</span>
+                          <span className="truncate">WA (EN)</span>
+                        </button>
+                        <button
+                          onClick={() => handleQueueWhatsAppInvoice('urdu', false)}
+                          className="py-2.5 px-2 bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm text-center"
+                          title="Queue phone sale receipt and shukriya note in Urdu for mobile WhatsApp"
+                        >
+                          <span className="text-base">💚</span>
+                          <span className="truncate">WA (اردو)</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Secondary Option: Share PDF Bill Document */}
               {lastReceipt.customer?.phone && (

@@ -6,7 +6,6 @@ import { useAuth } from '../context/AuthContext'
 import { Plus, Trash2, Smartphone, DollarSign, Shield, CheckCircle, AlertCircle, Scan, Landmark, ChevronDown, Check, Send } from 'lucide-react'
 import { searchIphoneModels, getIphoneColorsForModel, ALL_IPHONE_COLORS, IPHONE_MODELS } from '../utils/iphonePresets'
 import { getBankAccounts, deductBankBalance } from '../services/bankService'
-import { enqueueWhatsAppMessage, buildPurchaseMemoText } from '../services/whatsappQueueService'
 import BankAccountModal from './BankAccountModal'
 
 const COMMON_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Vivo', 'Oppo', 'Realme', 'Google', 'OnePlus', 'Infinix', 'Tecno', 'Other']
@@ -728,44 +727,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         ? ` Paid Rs. ${effectivePaid.toLocaleString()} from ${selectedBankAccount?.account_name || 'Bank Account'}.`
         : ''
 
-      // Auto-enqueue WhatsApp Purchase Memo for Supplier
-      let waMemoNotice = ''
-      const sup = suppliers.find(s => String(s.id) === String(supplierId))
-      if (sup?.phone) {
-        try {
-          const shopName = localStorage.getItem(`shop_name_${user.shop_id}`) || 'EdgeX Mobile Store'
-          const memoText = buildPurchaseMemoText({
-            purchase: {
-              id: rpcData.purchase_id,
-              total_amount: totalCost,
-              paid_amount: effectivePaid,
-              created_at: new Date().toISOString()
-            },
-            supplier: sup,
-            items: phoneCart,
-            shopInfo: { name: shopName }
-          })
-          await enqueueWhatsAppMessage({
-            shop_id: user.shop_id,
-            recipient_name: sup.name || 'Supplier',
-            recipient_phone: sup.phone,
-            message_type: 'phone_purchase',
-            reference_id: String(rpcData.purchase_id),
-            reference_data: {
-              total_amount: totalCost,
-              paid_amount: effectivePaid,
-              phones_count: phonesCountAdded
-            },
-            message_text: memoText,
-            created_by: user.id
-          })
-          waMemoNotice = ` 📲 Supplier stock memo queued for ${sup.name} in Mobile WhatsApp Outbox!`
-        } catch (waErr) {
-          console.warn('Queue purchase memo notice:', waErr)
-        }
-      }
-
-      setSuccessMsg(`✅ Purchase PR-${rpcData.purchase_id} recorded successfully! ${phonesCountAdded} phones added to inventory.${bankNotice}${waMemoNotice}`)
+      setSuccessMsg(`✅ Purchase PR-${rpcData.purchase_id} recorded successfully! ${phonesCountAdded} phones added to inventory.${bankNotice}`)
       setPhoneCart([])
       setPaidAmount('')
       setPurchaseNotes('')
