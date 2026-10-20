@@ -211,7 +211,10 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
   // Calculations
   const totalCost = phoneCart.reduce((sum, p) => sum + (parseFloat(p.cost_price) || 0) + (parseFloat(p.additional_costs) || 0), 0)
-  const effectivePaid = paidAmount === '' ? totalCost : (parseFloat(paidAmount) || 0)
+  // Credit purchases default to 0 paid unless user explicitly enters an advance/partial payment amount
+  const effectivePaid = paymentType === 'credit'
+    ? (paidAmount === '' ? 0 : (parseFloat(paidAmount) || 0))
+    : (paidAmount === '' ? totalCost : (parseFloat(paidAmount) || 0))
   const remainingBalance = Math.max(0, totalCost - effectivePaid)
 
   // Selected Bank Account
@@ -1516,12 +1519,15 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     onChange={e => {
                       const val = e.target.value
                       setPaymentType(val)
+                      if (val === 'credit') {
+                        setPaidAmount('')
+                      }
                       if (val === 'bank' && !selectedBankAccountId && bankAccounts.length > 0) {
                         const def = bankAccounts.find(b => b.is_default) || bankAccounts[0]
                         if (def) setSelectedBankAccountId(String(def.id))
                       }
                     }}
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold outline-none bg-white"
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold outline-none bg-white cursor-pointer"
                   >
                     <option value="cash">💵 Cash Paid</option>
                     <option value="bank">🏦 Bank Transfer</option>
@@ -1529,17 +1535,32 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Paid Amount (Rs.)</label>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                    {paymentType === 'credit' ? 'Advance Token (Optional Rs.)' : 'Paid Amount (Rs.)'}
+                  </label>
                   <input
                     type="number"
                     min="0"
-                    placeholder={totalCost.toString()}
+                    placeholder={paymentType === 'credit' ? '0' : totalCost.toString()}
                     value={paidAmount}
                     onChange={e => setPaidAmount(e.target.value)}
                     className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-bold outline-none"
                   />
                 </div>
               </div>
+
+              {/* Status summary banner */}
+              {paymentType === 'credit' ? (
+                <div className="flex justify-between items-center text-[11px] bg-amber-50 text-amber-900 px-2.5 py-1.5 rounded-lg border border-amber-200">
+                  <span className="font-semibold">📒 Credit (Udhaar) to Supplier:</span>
+                  <span className="font-bold">Rs. {remainingBalance.toLocaleString()}</span>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center text-[11px] bg-emerald-50 text-emerald-900 px-2.5 py-1.5 rounded-lg border border-emerald-200">
+                  <span className="font-semibold">💵 Immediate Payment:</span>
+                  <span className="font-bold">Rs. {effectivePaid.toLocaleString()}</span>
+                </div>
+              )}
 
               {/* Bank Account Selection & Live Balance Deduction Preview */}
               {(paymentType === 'bank' || (paymentType === 'cash' && effectivePaid > 0)) && (

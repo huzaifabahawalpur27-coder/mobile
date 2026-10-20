@@ -258,13 +258,14 @@ function Purchases() {
     setSaving(true)
     // Sanitize integer FK — offline-created suppliers have UUID ids
     const toIntOrNull = (v) => { const n = parseInt(v); return isNaN(n) ? null : n }
+    const isImmediatePaid = paymentType === 'cash' || paymentType === 'bank'
     const purchaseData = {
       shop_id: user.shop_id,
       supplier_id: toIntOrNull(supplierId),
       total_amount: total,
       net_amount: total,
-      paid_amount: paymentType === 'cash' ? total : 0,
-      amount_paid: paymentType === 'cash' ? total : 0,
+      paid_amount: isImmediatePaid ? total : 0,
+      amount_paid: isImmediatePaid ? total : 0,
       payment_type: paymentType,
       payment_method: paymentType,
       status: 'completed'
@@ -278,7 +279,7 @@ function Purchases() {
           shop_id: user.shop_id,
           supplier_id: toIntOrNull(supplierId),
           total_amount: total,
-          amount_paid: paymentType === 'cash' ? total : 0,
+          amount_paid: isImmediatePaid ? total : 0,
           payment_method: paymentType
         }
         const res = await supabase.from('purchases').insert([minimalPurchase]).select().single()

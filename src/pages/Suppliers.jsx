@@ -847,6 +847,9 @@ function Suppliers() {
                       <Link to={`/suppliers/${sup.id}`} className="text-blue-600 hover:text-blue-800 text-sm font-bold bg-blue-50 px-2 py-1 rounded">
                         Ledger
                       </Link>
+                      <Link to={`/suppliers/${sup.id}?tab=phones`} className="text-indigo-600 hover:text-indigo-800 text-sm font-bold bg-indigo-50 px-2 py-1 rounded">
+                        📱 Phones
+                      </Link>
                       <button
                         onClick={() => handleEdit(sup)}
                         className="text-blue-500 hover:text-blue-700 text-sm font-medium">

@@ -1,16 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../services/db'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
+import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
+import PhoneReturnModal from '../components/PhoneReturnModal'
+import { printHTML, getShopBranding, brandedA4Header } from '../utils/printUtils'
+import { getPtaBadge } from '../components/PhoneInventoryView'
+import {
+    Smartphone, Search, Copy, Check, Filter,
+    Layers, HardDrive, Sparkles, Tag,
+    Printer, FileText, RotateCcw, CreditCard, ChevronDown, ChevronUp
+} from 'lucide-react'
 
 function SupplierLedger() {
     const { id } = useParams()
     const { user } = useAuth()
     const navigate = useNavigate()
+    const location = useLocation()
     const importRef = useRef()
 
     const [supplier, setSupplier] = useState(null)
@@ -20,6 +30,20 @@ function SupplierLedger() {
     const [saving, setSaving] = useState(false)
     const [expandedBill, setExpandedBill] = useState(null)
     const [selectedIds, setSelectedIds] = useState(new Set())
+
+    // Tabs: 'statement' | 'purchases' | 'phones'
+    const [activeTab, setActiveTab] = useState('statement')
+    const [supplierPhones, setSupplierPhones] = useState([])
+    const [purchasesList, setPurchasesList] = useState([])
+
+    // Modals
+    const [purchaseToEditPayment, setPurchaseToEditPayment] = useState(null)
+    const [phoneForReturn, setPhoneForReturn] = useState(null)
+    const [copiedImei, setCopiedImei] = useState(null)
+
+    // Phones search and status filter
+    const [phoneSearch, setPhoneSearch] = useState('')
+    const [phoneStatusFilter, setPhoneStatusFilter] = useState('all') // all | in_stock | sold | returned
 
     // Filters
     const [search, setSearch] = useState('')
@@ -51,27 +75,34 @@ function SupplierLedger() {
 
             const fetchPromise = Promise.all([
                 supabase.from('suppliers').select('*').eq('id', id).maybeSingle(),
-                supabase.from('purchases').select('*, purchase_items(*)').eq('supplier_id', id).order('created_at', { ascending: true }),
-                supabase.from('supplier_payments').select('*').eq('supplier_id', id)
+                supabase.from('purchases').select('*, purchase_items(*)').eq('supplier_id', id).order('created_at', { ascending: false }),
+                supabase.from('supplier_payments').select('*').eq('supplier_id', id).order('created_at', { ascending: false }),
+                supabase.from('phones').select('*').eq('supplier_id', id).order('created_at', { ascending: false })
             ])
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-            const [supRes, purchasesRes, paymentsRes] = await Promise.race([fetchPromise, timeoutPromise])
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4000))
+            const [supRes, purchasesRes, paymentsRes, phonesRes] = await Promise.race([fetchPromise, timeoutPromise])
 
             setSupplier(supRes.data)
+            setPurchasesList(purchasesRes.data || [])
+            setSupplierPhones(phonesRes.data || [])
             buildLedger(purchasesRes.data || [], paymentsRes.data || [])
         } catch (e) {
             console.log('SupplierLedger: Reconstructing from local DB (Offline)')
             try {
-                const [lSups, lPurchases, lItems, lPayments] = await Promise.all([
+                const [lSups, lPurchases, lItems, lPayments, lPhones] = await Promise.all([
                     db.suppliers.toArray(),
                     db.purchases.toArray(),
                     db.purchase_items.toArray(),
-                    db.supplier_payments.toArray()
+                    db.supplier_payments.toArray(),
+                    db.phones ? db.phones.toArray() : []
                 ])
                 const sup = lSups.find(s => String(s.id) === String(id))
                 if (sup) setSupplier(sup)
                 const myPurchases = lPurchases.filter(p => String(p.supplier_id) === String(id))
                 const myPayments = lPayments.filter(p => String(p.supplier_id) === String(id))
+                const myPhones = (lPhones || []).filter(p => String(p.supplier_id) === String(id))
+                setPurchasesList(myPurchases)
+                setSupplierPhones(myPhones)
                 buildLedger(
                     myPurchases.map(p => ({ ...p, purchase_items: lItems.filter(i => i.purchase_id === p.id) })),
                     myPayments
@@ -522,11 +553,222 @@ function SupplierLedger() {
         }
     }
 
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const tab = params.get('tab')
+        if (tab && ['statement', 'purchases', 'phones'].includes(tab)) {
+            setActiveTab(tab)
+        }
+    }, [location.search])
+
+    const handleCopyImei = (imei) => {
+        if (!imei) return
+        navigator.clipboard.writeText(imei)
+        setCopiedImei(imei)
+        setTimeout(() => setCopiedImei(null), 2000)
+    }
+
+    const stats = React.useMemo(() => {
+        let totalPurchases = 0
+        let totalPayments = 0
+        let totalReturns = 0
+
+        ledger.forEach(item => {
+            const amt = Number(item.amount) || 0
+            if (item.type === 'purchase' || item.type === 'debit') {
+                totalPurchases += amt
+            } else if (item.type === 'payment') {
+                totalPayments += amt
+            } else if (item.type === 'return') {
+                totalReturns += amt
+            }
+        })
+
+        const inStockPhones = (supplierPhones || []).filter(p => !p.status || p.status === 'in_stock' || p.status === 'available')
+        const inStockCount = inStockPhones.length
+        const inStockValue = inStockPhones.reduce((sum, p) => sum + (Number(p.cost_price || p.purchase_price) || 0), 0)
+
+        const soldCount = (supplierPhones || []).filter(p => p.status === 'sold').length
+        const returnedCount = (supplierPhones || []).filter(p => p.status === 'returned').length
+
+        return {
+            totalPurchases,
+            totalPayments,
+            totalReturns,
+            currentBalance: Number(supplier?.outstanding_balance || 0),
+            inStockCount,
+            inStockValue,
+            totalPhones: (supplierPhones || []).length,
+            soldCount,
+            returnedCount
+        }
+    }, [ledger, supplierPhones, supplier?.outstanding_balance])
+
+    const filteredPhones = React.useMemo(() => {
+        return (supplierPhones || []).filter(phone => {
+            if (phoneStatusFilter === 'in_stock') {
+                if (phone.status && phone.status !== 'in_stock' && phone.status !== 'available') return false
+            } else if (phoneStatusFilter === 'sold') {
+                if (phone.status !== 'sold') return false
+            } else if (phoneStatusFilter === 'returned') {
+                if (phone.status !== 'returned') return false
+            }
+
+            if (phoneSearch.trim()) {
+                const q = phoneSearch.toLowerCase()
+                const matchModel = (phone.model || phone.phone_model || '').toLowerCase().includes(q)
+                const matchImei1 = (phone.imei1 || phone.imei || '').toLowerCase().includes(q)
+                const matchImei2 = (phone.imei2 || '').toLowerCase().includes(q)
+                const matchColor = (phone.color || '').toLowerCase().includes(q)
+                if (!matchModel && !matchImei1 && !matchImei2 && !matchColor) return false
+            }
+            return true
+        })
+    }, [supplierPhones, phoneStatusFilter, phoneSearch])
+
+    const handlePrintStatement = async () => {
+        if (!supplier) return
+        const branding = await getShopBranding(user?.shop_id)
+        const headerHtml = brandedA4Header(branding, `SUPPLIER STATEMENT - ${supplier.name.toUpperCase()}`)
+
+        const rows = filteredLedger.map(item => `
+            <tr>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px;">
+                    ${new Date(item.date).toLocaleDateString()}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px;">
+                    <span style="font-weight: 600; text-transform: uppercase;">${item.type}</span>
+                    ${item.bill_number ? `<br/><span style="color: #6b7280; font-size: 10px;">Bill: ${item.bill_number}</span>` : ''}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px;">
+                    ${item.note || item.details || '-'}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: right; font-size: 11px; color: #dc2626; font-weight: 600;">
+                    ${(item.type === 'purchase' || item.type === 'debit') ? 'Rs. ' + Number(item.amount).toLocaleString() : '-'}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: right; font-size: 11px; color: #16a34a; font-weight: 600;">
+                    ${(item.type === 'payment' || item.type === 'return') ? 'Rs. ' + Number(item.amount).toLocaleString() : '-'}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: right; font-size: 11px; font-weight: 700;">
+                    Rs. ${Number(item.balance || 0).toLocaleString()}
+                </td>
+            </tr>
+        `).join('')
+
+        const contentHtml = `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111827; padding: 12px;">
+                ${headerHtml}
+                <div style="display: flex; justify-content: space-between; margin-bottom: 16px; padding: 12px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <div>
+                        <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 700;">${supplier.name}</h3>
+                        <p style="margin: 0; font-size: 12px; color: #4b5563;">Phone: ${supplier.phone || 'N/A'}${supplier.address ? ' | ' + supplier.address : ''}</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: 600;">Current Balance</span>
+                        <h2 style="margin: 2px 0 0 0; font-size: 20px; font-weight: 800; color: #dc2626;">Rs. ${Number(supplier.outstanding_balance || 0).toLocaleString()}</h2>
+                    </div>
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                    <thead>
+                        <tr style="background: #f3f4f6;">
+                            <th style="padding: 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #d1d5db;">Date</th>
+                            <th style="padding: 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #d1d5db;">Type / Ref</th>
+                            <th style="padding: 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #d1d5db;">Description</th>
+                            <th style="padding: 8px; text-align: right; font-size: 11px; border-bottom: 2px solid #d1d5db;">Debit (Purchases)</th>
+                            <th style="padding: 8px; text-align: right; font-size: 11px; border-bottom: 2px solid #d1d5db;">Credit (Payments)</th>
+                            <th style="padding: 8px; text-align: right; font-size: 11px; border-bottom: 2px solid #d1d5db;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || '<tr><td colspan="6" style="text-align: center; padding: 16px; color: #9ca3af;">No transaction records</td></tr>'}
+                    </tbody>
+                </table>
+
+                <div style="display: flex; justify-content: space-between; margin-top: 40px; padding-top: 20px;">
+                    <div style="text-align: center; width: 180px; border-top: 1px dashed #9ca3af; padding-top: 6px; font-size: 11px; color: #6b7280;">
+                        Supplier Signature
+                    </div>
+                    <div style="text-align: center; width: 180px; border-top: 1px dashed #9ca3af; padding-top: 6px; font-size: 11px; color: #6b7280;">
+                        Authorized Signature
+                    </div>
+                </div>
+            </div>
+        `
+        printHTML(contentHtml, `Statement_${supplier.name}`)
+    }
+
+    const handlePrintStock = async () => {
+        if (!supplier) return
+        const branding = await getShopBranding(user?.shop_id)
+        const headerHtml = brandedA4Header(branding, `SUPPLIER STOCK REPORT - ${supplier.name.toUpperCase()}`)
+
+        const inStock = (supplierPhones || []).filter(p => !p.status || p.status === 'in_stock' || p.status === 'available')
+        const totalCost = inStock.reduce((s, p) => s + (Number(p.cost_price || p.purchase_price) || 0), 0)
+
+        const rows = inStock.map((phone, idx) => `
+            <tr>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px; text-align: center;">${idx + 1}</td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 600;">
+                    ${phone.model || phone.phone_model || 'Phone'}
+                    ${phone.color ? `<span style="font-size: 10px; color: #6b7280;"> (${phone.color})</span>` : ''}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-family: monospace;">
+                    ${phone.imei1 || phone.imei || 'N/A'}${phone.imei2 ? ' / ' + phone.imei2 : ''}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px;">
+                    ${phone.storage || phone.ram ? `${phone.ram || ''} ${phone.storage || ''}`.trim() : '-'}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px;">
+                    ${(phone.pta_status || 'official').toUpperCase()}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px; text-align: right; font-weight: 600;">
+                    Rs. ${Number(phone.cost_price || phone.purchase_price || 0).toLocaleString()}
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px; text-align: right;">
+                    Rs. ${Number(phone.selling_price || phone.sale_price || 0).toLocaleString()}
+                </td>
+            </tr>
+        `).join('')
+
+        const contentHtml = `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111827; padding: 12px;">
+                ${headerHtml}
+                <div style="display: flex; justify-content: space-between; margin-bottom: 16px; padding: 12px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <div>
+                        <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 700;">Supplier: ${supplier.name}</h3>
+                        <p style="margin: 0; font-size: 12px; color: #4b5563;">In-Stock Phones: <strong>${inStock.length} units</strong></p>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: 600;">Active Inventory Value</span>
+                        <h2 style="margin: 2px 0 0 0; font-size: 20px; font-weight: 800; color: #2563eb;">Rs. ${totalCost.toLocaleString()}</h2>
+                    </div>
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                    <thead>
+                        <tr style="background: #f3f4f6;">
+                            <th style="padding: 8px; text-align: center; font-size: 11px; border-bottom: 2px solid #d1d5db; width: 30px;">#</th>
+                            <th style="padding: 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #d1d5db;">Model / Variant</th>
+                            <th style="padding: 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #d1d5db;">IMEI</th>
+                            <th style="padding: 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #d1d5db;">Storage</th>
+                            <th style="padding: 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #d1d5db;">PTA Status</th>
+                            <th style="padding: 8px; text-align: right; font-size: 11px; border-bottom: 2px solid #d1d5db;">Purchase Cost</th>
+                            <th style="padding: 8px; text-align: right; font-size: 11px; border-bottom: 2px solid #d1d5db;">Sale Target</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || '<tr><td colspan="7" style="text-align: center; padding: 16px; color: #9ca3af;">No in-stock phones found for this supplier</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        `
+        printHTML(contentHtml, `StockReport_${supplier.name}`)
+    }
+
     if (!hasFeature('supplier_ledger')) return <UpgradeWall feature="supplier_ledger" />
     if (loading) return <div className="p-8">Loading ledger...</div>
     if (!supplier) return <div className="p-8 text-red-500">Supplier not found!</div>
-
-    const currentBalance = supplier.outstanding_balance || 0
 
     return (
         <div>
@@ -538,41 +780,129 @@ function SupplierLedger() {
                     <p className="text-gray-500 text-sm">{supplier.phone}{supplier.address ? ' | ' + supplier.address : ''}</p>
                 </div>
                 <div className="w-full sm:w-auto flex flex-col sm:items-end gap-3">
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 w-full sm:w-auto text-center sm:text-right">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Total Payable Balance</p>
-                        <p className={`text-3xl font-bold ${currentBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                            Rs. {Number(currentBalance).toLocaleString()}
-                        </p>
-                    </div>
                     <div className="flex gap-2 flex-wrap justify-end">
+                        <button onClick={handlePrintStatement}
+                            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition flex items-center gap-1.5 shadow-sm">
+                            <Printer size={15} /> Print Statement
+                        </button>
+                        <button onClick={handlePrintStock}
+                            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition flex items-center gap-1.5 shadow-sm">
+                            <Smartphone size={15} /> Print Stock
+                        </button>
                         <button onClick={handleExport}
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition">
-                            📥 Export Excel
+                            className="px-3.5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition flex items-center gap-1.5 shadow-sm">
+                            📥 Export
                         </button>
                         <button onClick={() => importRef.current?.click()}
-                            className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm font-semibold transition">
-                            📤 Import Excel
+                            className="px-3.5 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm font-semibold transition flex items-center gap-1.5 shadow-sm">
+                            📤 Import
                         </button>
                         <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
                         <button onClick={handleReconcileBalance}
-                            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold text-sm shadow transition"
+                            className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold text-sm shadow transition"
                             title="Recalculate supplier balance from transaction ledger sum">
                             ⚡ Reconcile
                         </button>
                         <button onClick={() => setShowModal(true)}
-                            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm shadow transition">
-                            ➕ Add Transaction
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm shadow transition">
+                            ➕ Add Entry
                         </button>
                         {ledger.length > 0 && (
                             <button
                                 onClick={handleClearAllLedger}
-                                className="px-4 py-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-lg font-semibold text-sm transition">
-                                🗑️ Clear All Ledger
+                                className="px-3.5 py-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-lg font-semibold text-sm transition">
+                                🗑️ Clear
                             </button>
                         )}
                     </div>
                 </div>
             </div>
+
+            {/* ── Top 5 KPI Stats Cards ── */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase font-semibold">Total Purchases (Debit)</p>
+                    <p className="text-xl font-bold text-gray-900 mt-1">Rs. {stats.totalPurchases.toLocaleString()}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Purchases & debits</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase font-semibold">Total Payments (Credit)</p>
+                    <p className="text-xl font-bold text-green-600 mt-1">Rs. {stats.totalPayments.toLocaleString()}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Payments made</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase font-semibold">Returns / Adjustments</p>
+                    <p className="text-xl font-bold text-purple-600 mt-1">Rs. {stats.totalReturns.toLocaleString()}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">{stats.returnedCount} phone(s) returned</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm col-span-2 sm:col-span-1">
+                    <p className="text-xs text-gray-500 uppercase font-semibold">Net Payable Balance</p>
+                    <p className={`text-xl font-bold mt-1 ${stats.currentBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        Rs. {stats.currentBalance.toLocaleString()}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">{stats.currentBalance > 0 ? 'Payable to supplier' : 'Account Cleared'}</p>
+                </div>
+
+                <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-100 shadow-sm col-span-2 sm:col-span-1">
+                    <div className="flex justify-between items-start">
+                        <p className="text-xs text-blue-800 uppercase font-bold">Active Stock Value</p>
+                        <span className="px-2 py-0.5 text-[11px] font-bold bg-blue-600 text-white rounded-full">
+                            {stats.inStockCount} In Stock
+                        </span>
+                    </div>
+                    <p className="text-xl font-bold text-blue-900 mt-1">Rs. {stats.inStockValue.toLocaleString()}</p>
+                    <p className="text-[11px] text-blue-600 mt-0.5">Sold: {stats.soldCount} | Total: {stats.totalPhones}</p>
+                </div>
+            </div>
+
+            {/* ── Tab Switcher ── */}
+            <div className="flex items-center gap-2 border-b border-gray-200 mb-6 overflow-x-auto pb-1">
+                <button
+                    onClick={() => setActiveTab('statement')}
+                    className={`flex items-center gap-2 px-5 py-3 font-semibold text-sm rounded-t-xl transition border-b-2 whitespace-nowrap ${
+                        activeTab === 'statement'
+                            ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                            : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                    }`}
+                >
+                    <FileText size={17} />
+                    <span>Statement & Ledger</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">{ledger.length}</span>
+                </button>
+
+                <button
+                    onClick={() => setActiveTab('purchases')}
+                    className={`flex items-center gap-2 px-5 py-3 font-semibold text-sm rounded-t-xl transition border-b-2 whitespace-nowrap ${
+                        activeTab === 'purchases'
+                            ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                            : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                    }`}
+                >
+                    <CreditCard size={17} />
+                    <span>Purchase Invoices</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">{purchasesList.length}</span>
+                </button>
+
+                <button
+                    onClick={() => setActiveTab('phones')}
+                    className={`flex items-center gap-2 px-5 py-3 font-semibold text-sm rounded-t-xl transition border-b-2 whitespace-nowrap ${
+                        activeTab === 'phones'
+                            ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                            : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                    }`}
+                >
+                    <Smartphone size={17} />
+                    <span>Supplied Phones Stock</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700 font-bold">{supplierPhones.length}</span>
+                </button>
+            </div>
+
+            {/* ── Statement Tab ── */}
+            {activeTab === 'statement' && (
+                <>
 
             {/* ── Filter Bar ── */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-4 flex flex-wrap gap-3 items-end">
@@ -835,6 +1165,297 @@ function SupplierLedger() {
                     </table>
                 </div>
             </div>
+            </>
+            )}
+
+            {/* ── Purchases Tab ── */}
+            {activeTab === 'purchases' && (
+                <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+                    <div className="p-4 border-b border-gray-100 flex flex-wrap justify-between items-center gap-3 bg-gray-50/50">
+                        <div>
+                            <h3 className="font-bold text-gray-800 text-base">Purchase Invoices & Bills</h3>
+                            <p className="text-xs text-gray-500">All inventory batches and purchase transactions from {supplier.name}</p>
+                        </div>
+                        <span className="text-xs font-semibold px-3 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-100">
+                            {purchasesList.length} Invoices
+                        </span>
+                    </div>
+
+                    {purchasesList.length === 0 ? (
+                        <div className="p-12 text-center text-gray-400">
+                            <p className="text-sm">Koi purchase invoice nahi mili is supplier ke liye.</p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 text-gray-600 text-xs uppercase border-b border-gray-200">
+                                    <tr>
+                                        <th className="p-3">Invoice #</th>
+                                        <th className="p-3">Date</th>
+                                        <th className="p-3">Items / Phones</th>
+                                        <th className="p-3 text-right">Total Amount</th>
+                                        <th className="p-3 text-right">Paid Amount</th>
+                                        <th className="p-3 text-center">Payment Status</th>
+                                        <th className="p-3 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {purchasesList.map(p => {
+                                        const isCredit = p.payment_type === 'credit'
+                                        const isBank = p.payment_type === 'bank'
+                                        const itemsCount = p.purchase_items?.length || 0
+
+                                        return (
+                                            <tr key={p.id} className="hover:bg-gray-50/80 transition">
+                                                <td className="p-3 font-semibold text-blue-600 whitespace-nowrap">
+                                                    PR-{String(p.id).slice(-6)}
+                                                </td>
+                                                <td className="p-3 text-gray-600 text-xs whitespace-nowrap">
+                                                    {new Date(p.created_at).toLocaleDateString()}
+                                                </td>
+                                                <td className="p-3 text-xs text-gray-700">
+                                                    {itemsCount > 0 ? (
+                                                        <div>
+                                                            <span className="font-semibold text-gray-900">{itemsCount} item(s)</span>
+                                                            <p className="text-[11px] text-gray-400 truncate max-w-xs">
+                                                                {p.purchase_items.map(i => i.product_name || i.item_name || 'Item').join(', ')}
+                                                            </p>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-gray-400">Direct Purchase</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 text-right font-bold text-gray-900 whitespace-nowrap">
+                                                    Rs. {Number(p.total_amount).toLocaleString()}
+                                                </td>
+                                                <td className="p-3 text-right font-semibold text-gray-600 whitespace-nowrap">
+                                                    Rs. {Number(p.paid_amount || 0).toLocaleString()}
+                                                </td>
+                                                <td className="p-3 text-center whitespace-nowrap">
+                                                    {isCredit ? (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                                            Credit (Payable)
+                                                        </span>
+                                                    ) : isBank ? (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                                            Bank Transfer
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
+                                                            Cash Paid
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 text-right whitespace-nowrap">
+                                                    <button
+                                                        onClick={() => setPurchaseToEditPayment(p)}
+                                                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ml-auto shadow-xs"
+                                                        title="Credit ya Paid status change karein financial adjustment ke sath"
+                                                    >
+                                                        <CreditCard size={13} />
+                                                        Change Method
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Supplied Phones Stock Tab ── */}
+            {activeTab === 'phones' && (
+                <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+                    {/* Header with Search and Status Filter */}
+                    <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 bg-gray-50/50">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                onClick={() => setPhoneStatusFilter('all')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                    phoneStatusFilter === 'all'
+                                        ? 'bg-blue-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                            >
+                                All ({supplierPhones.length})
+                            </button>
+                            <button
+                                onClick={() => setPhoneStatusFilter('in_stock')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                    phoneStatusFilter === 'in_stock'
+                                        ? 'bg-green-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                            >
+                                In Stock ({stats.inStockCount})
+                            </button>
+                            <button
+                                onClick={() => setPhoneStatusFilter('sold')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                    phoneStatusFilter === 'sold'
+                                        ? 'bg-blue-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                            >
+                                Sold ({stats.soldCount})
+                            </button>
+                            <button
+                                onClick={() => setPhoneStatusFilter('returned')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                    phoneStatusFilter === 'returned'
+                                        ? 'bg-purple-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                            >
+                                Returned ({stats.returnedCount})
+                            </button>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-1 max-w-sm ml-auto">
+                            <div className="relative w-full">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={phoneSearch}
+                                    onChange={e => setPhoneSearch(e.target.value)}
+                                    placeholder="Search IMEI, model, color..."
+                                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none"
+                                />
+                            </div>
+                            <button
+                                onClick={handlePrintStock}
+                                className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-bold transition flex items-center gap-1 whitespace-nowrap"
+                            >
+                                <Printer size={13} /> Print
+                            </button>
+                        </div>
+                    </div>
+
+                    {filteredPhones.length === 0 ? (
+                        <div className="p-12 text-center text-gray-400">
+                            <Smartphone size={32} className="mx-auto mb-2 opacity-30" />
+                            <p className="text-sm">Koi phone nahi mila criteria ke mutabiq.</p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 text-gray-600 text-xs uppercase border-b border-gray-200">
+                                    <tr>
+                                        <th className="p-3">Model / Specs</th>
+                                        <th className="p-3">IMEI Numbers</th>
+                                        <th className="p-3">PTA Status</th>
+                                        <th className="p-3 text-right">Cost Price</th>
+                                        <th className="p-3 text-right">Sale Price</th>
+                                        <th className="p-3 text-center">Status</th>
+                                        <th className="p-3 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {filteredPhones.map(phone => {
+                                        const pta = getPtaBadge(phone.pta_status)
+                                        const isReturned = phone.status === 'returned'
+                                        const isSold = phone.status === 'sold'
+                                        const isInStock = !phone.status || phone.status === 'in_stock' || phone.status === 'available'
+
+                                        return (
+                                            <tr key={phone.id} className="hover:bg-gray-50/80 transition">
+                                                <td className="p-3">
+                                                    <p className="font-bold text-gray-900">{phone.model || phone.phone_model || 'Smartphone'}</p>
+                                                    <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
+                                                        {phone.storage && <span>{phone.ram ? `${phone.ram}/` : ''}{phone.storage}</span>}
+                                                        {phone.color && <span>• {phone.color}</span>}
+                                                    </div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="font-mono text-xs text-gray-800 flex items-center gap-1.5">
+                                                        <span>{phone.imei1 || phone.imei || 'N/A'}</span>
+                                                        {(phone.imei1 || phone.imei) && (
+                                                            <button
+                                                                onClick={() => handleCopyImei(phone.imei1 || phone.imei)}
+                                                                className="text-gray-400 hover:text-blue-600 transition"
+                                                                title="Copy IMEI"
+                                                            >
+                                                                {copiedImei === (phone.imei1 || phone.imei) ? (
+                                                                    <Check size={12} className="text-green-600" />
+                                                                ) : (
+                                                                    <Copy size={12} />
+                                                                )}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {phone.imei2 && (
+                                                        <div className="font-mono text-[11px] text-gray-400 flex items-center gap-1.5 mt-0.5">
+                                                            <span>{phone.imei2}</span>
+                                                            <button
+                                                                onClick={() => handleCopyImei(phone.imei2)}
+                                                                className="text-gray-400 hover:text-blue-600 transition"
+                                                                title="Copy IMEI 2"
+                                                            >
+                                                                {copiedImei === phone.imei2 ? (
+                                                                    <Check size={11} className="text-green-600" />
+                                                                ) : (
+                                                                    <Copy size={11} />
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="p-3">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${pta.color}`}>
+                                                        {pta.label}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 text-right font-bold text-gray-900 whitespace-nowrap">
+                                                    Rs. {Number(phone.cost_price || phone.purchase_price || 0).toLocaleString()}
+                                                </td>
+                                                <td className="p-3 text-right font-semibold text-gray-600 whitespace-nowrap">
+                                                    Rs. {Number(phone.selling_price || phone.sale_price || 0).toLocaleString()}
+                                                </td>
+                                                <td className="p-3 text-center whitespace-nowrap">
+                                                    {isInStock ? (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
+                                                            In Stock
+                                                        </span>
+                                                    ) : isSold ? (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                                            Sold
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200" title={phone.return_notes || ''}>
+                                                            Returned
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 text-right whitespace-nowrap">
+                                                    {isInStock ? (
+                                                        <button
+                                                            onClick={() => setPhoneForReturn(phone)}
+                                                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ml-auto shadow-xs"
+                                                            title="Supplier ko phone wapis karein (Credit adjustment / Cash refund / Bank refund)"
+                                                        >
+                                                            <RotateCcw size={13} />
+                                                            Return to Supplier
+                                                        </button>
+                                                    ) : isReturned ? (
+                                                        <span className="text-xs text-gray-400 italic">
+                                                            {phone.return_settlement || 'Returned'}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-400 italic">Customer Sold</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* ── Add Transaction Modal ── */}
             {showModal && (
@@ -1004,6 +1625,29 @@ function SupplierLedger() {
                     </div>
                 </div>
             )}
+
+            {/* Edit Purchase Payment Modal */}
+            <EditPurchasePaymentModal
+                isOpen={!!purchaseToEditPayment}
+                purchase={purchaseToEditPayment}
+                onClose={() => setPurchaseToEditPayment(null)}
+                onSuccess={() => {
+                    setPurchaseToEditPayment(null)
+                    fetchSupplierData()
+                }}
+            />
+
+            {/* Phone Return Modal */}
+            <PhoneReturnModal
+                isOpen={!!phoneForReturn}
+                phone={phoneForReturn}
+                supplier={supplier}
+                onClose={() => setPhoneForReturn(null)}
+                onSuccess={() => {
+                    setPhoneForReturn(null)
+                    fetchSupplierData()
+                }}
+            />
         </div>
     )
 }

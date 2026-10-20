@@ -9,6 +9,7 @@ import PasswordModal from '../components/PasswordModal'
 import * as XLSX from 'xlsx'
 import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
+import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
 
 function PurchaseHistory() {
     const { user } = useAuth()
@@ -17,6 +18,7 @@ function PurchaseHistory() {
     const [selectedPurchase, setSelectedPurchase] = useState(null)
     const [purchaseItems, setPurchaseItems] = useState([])
     const [loadingItems, setLoadingItems] = useState(false)
+    const [purchaseToEditPayment, setPurchaseToEditPayment] = useState(null)
     const [search, setSearch] = useState('')
     const [filterType, setFilterType] = useState('')
     const [paymentFilter, setPaymentFilter] = useState('all')
@@ -547,6 +549,7 @@ function PurchaseHistory() {
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
+                                            <button onClick={() => setPurchaseToEditPayment(p)} className="rounded-lg bg-purple-50 px-2.5 py-2 text-xs font-bold text-purple-700 hover:bg-purple-100 transition cursor-pointer">Payment</button>
                                             <button onClick={() => openPurchase(p)} className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-blue-600">View</button>
                                             <button onClick={() => requestDelete([p.id])} className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">Delete</button>
                                         </div>
@@ -581,14 +584,16 @@ function PurchaseHistory() {
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-col gap-1">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium w-fit ${p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                        {p.payment_type === 'cash' ? '💵 Cash' : '📒 Credit'}
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium w-fit ${p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : p.payment_type === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                        {p.payment_type === 'cash' ? '💵 Cash' : p.payment_type === 'bank' ? '🏦 Bank' : '📒 Credit'}
                                                     </span>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-gray-500 text-sm">{new Date(p.created_at).toLocaleDateString('en-PK')}</td>
                                             <td className="px-4 py-3">
                                                 <div className="flex gap-2">
+                                                    <button onClick={() => setPurchaseToEditPayment(p)}
+                                                        className="text-purple-600 hover:text-purple-800 text-sm font-medium">Edit Payment</button>
                                                     <button onClick={() => openPurchase(p)}
                                                         className="text-blue-500 hover:text-blue-700 text-sm font-medium">View</button>
                                                     <button onClick={() => requestDelete([p.id])}
@@ -628,7 +633,17 @@ function PurchaseHistory() {
                                 <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Supplier</span> <b>{selectedPurchase.suppliers?.name || 'Unknown'}</b></p>
                                 <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Date</span> <b>{new Date(selectedPurchase.created_at).toLocaleString('en-PK')}</b></p>
                                 <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Total Amount</span> <b className="text-lg">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b></p>
-                                <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Payment Type</span> <b className="uppercase">{selectedPurchase.payment_type}</b>
+                                <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Payment Type</span>
+                                    <span className="flex items-center gap-2 mt-0.5">
+                                        <b className="uppercase">{selectedPurchase.payment_type}</b>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPurchaseToEditPayment(selectedPurchase)}
+                                            className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 text-xs font-bold border border-purple-200 hover:bg-purple-100 transition cursor-pointer"
+                                        >
+                                            ✏️ Change Method
+                                        </button>
+                                    </span>
                                     {selectedPurchase.paid_amount != null && <span className="text-xs text-gray-400 ml-2">(Paid: Rs. {Number(selectedPurchase.paid_amount).toLocaleString()})</span>}
                                 </p>
                             </div>
@@ -718,6 +733,22 @@ function PurchaseHistory() {
                     />
                 )
             }
+
+            {/* Edit Purchase Payment Method Modal */}
+            <EditPurchasePaymentModal
+                isOpen={!!purchaseToEditPayment}
+                onClose={() => setPurchaseToEditPayment(null)}
+                purchase={purchaseToEditPayment}
+                onUpdated={async () => {
+                    await fetchPurchases()
+                    if (selectedPurchase && purchaseToEditPayment?.id === selectedPurchase.id) {
+                        try {
+                            const { data } = await supabase.from('purchases').select('*, suppliers(name)').eq('id', selectedPurchase.id).maybeSingle()
+                            if (data) setSelectedPurchase(data)
+                        } catch (_) {}
+                    }
+                }}
+            />
         </>
     )
 }

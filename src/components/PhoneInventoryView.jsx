@@ -6,9 +6,11 @@ import {
   Smartphone, Search, Copy, Check, Filter, History,
   ShieldCheck, AlertTriangle, X, ChevronDown, ChevronUp,
   Layers, HardDrive, Sparkles, Tag, Eye, EyeOff,
-  Printer, FileText
+  Printer, FileText, RotateCcw, CreditCard
 } from 'lucide-react'
 import PhoneStockPrintModal from './PhoneStockPrintModal'
+import PhoneReturnModal from './PhoneReturnModal'
+import EditPurchasePaymentModal from './EditPurchasePaymentModal'
 
 // Normalize PTA statuses from various formats to standard keys
 export const normalizePtaStatus = (status) => {
@@ -95,8 +97,39 @@ export default function PhoneInventoryView() {
   // Print & PDF Stock Report Modal
   const [showPrintModal, setShowPrintModal] = useState(false)
 
+  // Return to Supplier Modal
+  const [phoneForReturn, setPhoneForReturn] = useState(null)
+
+  // Edit Purchase Payment Modal
+  const [purchaseToEdit, setPurchaseToEdit] = useState(null)
+
   // Role check: Only owner, admin, manager can view purchase cost & margins
   const canViewCost = ['owner', 'admin', 'manager', 'superadmin'].includes(user?.role)
+
+  const handleEditPhonePayment = async (phone) => {
+    if (!phone.purchase_id) {
+      alert('This phone does not have an attached purchase invoice ID.')
+      return
+    }
+    try {
+      let pData = null
+      if (navigator.onLine) {
+        const { data } = await supabase.from('purchases').select('*, suppliers(id, name)').eq('id', phone.purchase_id).maybeSingle()
+        if (data) pData = data
+      }
+      if (!pData) {
+        const local = await db.purchases?.get(phone.purchase_id)
+        if (local) pData = local
+      }
+      if (pData) {
+        setPurchaseToEdit(pData)
+      } else {
+        alert(`Purchase invoice PR-${phone.purchase_id} not found.`)
+      }
+    } catch (err) {
+      alert('Error fetching purchase: ' + (err.message || String(err)))
+    }
+  }
 
   useEffect(() => {
     if (user?.shop_id) {
@@ -897,11 +930,29 @@ export default function PhoneInventoryView() {
                                   )}
                                 </div>
                                 {phone.status === 'in_stock' && (
+                                  <>
+                                    <button
+                                      onClick={() => openCustodyModal(phone)}
+                                      className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                                    >
+                                      Issue
+                                    </button>
+                                    <button
+                                      onClick={() => setPhoneForReturn(phone)}
+                                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-bold cursor-pointer flex items-center gap-1"
+                                      title="Return phone to supplier"
+                                    >
+                                      <RotateCcw className="w-2.5 h-2.5" /> Return
+                                    </button>
+                                  </>
+                                )}
+                                {canViewCost && phone.purchase_id && (
                                   <button
-                                    onClick={() => openCustodyModal(phone)}
-                                    className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                                    onClick={() => handleEditPhonePayment(phone)}
+                                    className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[10px] font-bold cursor-pointer flex items-center gap-1"
+                                    title="Edit payment method for purchase PR"
                                   >
-                                    Issue
+                                    <CreditCard className="w-2.5 h-2.5" /> Payment
                                   </button>
                                 )}
                               </div>
@@ -1030,12 +1081,30 @@ export default function PhoneInventoryView() {
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {p.status === 'in_stock' && (
+                            <>
+                              <button
+                                onClick={() => openCustodyModal(p)}
+                                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+                                title="Assign custody, reserve for customer, or dealer issue"
+                              >
+                                Issue / Reserve
+                              </button>
+                              <button
+                                onClick={() => setPhoneForReturn(p)}
+                                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                title="Return this phone to supplier"
+                              >
+                                <RotateCcw className="w-3 h-3" /> Return
+                              </button>
+                            </>
+                          )}
+                          {canViewCost && p.purchase_id && (
                             <button
-                              onClick={() => openCustodyModal(p)}
-                              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
-                              title="Assign custody, reserve for customer, or dealer issue"
+                              onClick={() => handleEditPhonePayment(p)}
+                              className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                              title="Edit purchase payment method"
                             >
-                              Issue / Reserve
+                              <CreditCard className="w-3 h-3" /> Pay
                             </button>
                           )}
                           {['issued', 'reserved', 'personal'].includes(p.status) && (
@@ -1116,13 +1185,29 @@ export default function PhoneInventoryView() {
                         <span className="text-gray-400 font-mono">Cost: ••••••••</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       {p.status === 'in_stock' && (
+                        <>
+                          <button
+                            onClick={() => openCustodyModal(p)}
+                            className="px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-[11px] font-bold"
+                          >
+                            Issue / Reserve
+                          </button>
+                          <button
+                            onClick={() => setPhoneForReturn(p)}
+                            className="px-2 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold flex items-center gap-1"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" /> Return
+                          </button>
+                        </>
+                      )}
+                      {canViewCost && p.purchase_id && (
                         <button
-                          onClick={() => openCustodyModal(p)}
-                          className="px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-[11px] font-bold"
+                          onClick={() => handleEditPhonePayment(p)}
+                          className="px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-[11px] font-bold"
                         >
-                          Issue / Reserve
+                          Payment
                         </button>
                       )}
                       {['issued', 'reserved', 'personal'].includes(p.status) && (
@@ -1338,6 +1423,22 @@ export default function PhoneInventoryView() {
         activeFilterDesc={activeFilterDesc}
         canViewCost={canViewCost}
         shopId={user?.shop_id}
+      />
+
+      {/* Phone Return to Supplier Modal */}
+      <PhoneReturnModal
+        isOpen={!!phoneForReturn}
+        onClose={() => setPhoneForReturn(null)}
+        phone={phoneForReturn}
+        onReturned={fetchPhones}
+      />
+
+      {/* Edit Purchase Payment Modal */}
+      <EditPurchasePaymentModal
+        isOpen={!!purchaseToEdit}
+        onClose={() => setPurchaseToEdit(null)}
+        purchase={purchaseToEdit}
+        onUpdated={fetchPhones}
       />
     </div>
   )
