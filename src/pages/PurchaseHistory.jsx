@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import { supabase } from '../services/supabase'
@@ -11,6 +11,36 @@ import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
 
+const normalizePurchaseItem = (it, phonesPool = [], productsPool = []) => {
+    const ph = it.phones || (phonesPool || []).find(p => p.id === it.phone_id || (it.purchase_id && p.purchase_id === it.purchase_id))
+    const prod = it.products || (productsPool || []).find(p => p.id === it.product_id)
+
+    let name = (it.product_name && it.product_name.trim()) || (prod ? prod.name : null)
+    if (!name && ph) {
+        const brand = ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''
+        name = `${brand}${ph.model || 'Smartphone'}`.trim()
+    }
+    if (!name) name = 'Item'
+
+    const specs = ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null, ph.condition ? ph.condition.toUpperCase() : null].filter(Boolean).join(' • ') : null
+    const imei = ph ? (ph.imei_1 || ph.imei || ph.imei1 || null) : null
+    const imei2 = ph ? (ph.imei_2 || ph.imei2 || null) : null
+    const price = it.unit_price ?? (it.cost_price ?? (it.price ?? 0))
+    const qty = it.quantity || 1
+
+    return {
+        ...it,
+        phones: ph,
+        display_name: name,
+        specs,
+        imei,
+        imei2,
+        status: ph?.status || null,
+        unit_price: price,
+        quantity: qty
+    }
+}
+
 function PurchaseHistory() {
     const { user } = useAuth()
     const [purchases, setPurchases] = useState([])
@@ -19,6 +49,7 @@ function PurchaseHistory() {
     const [purchaseItems, setPurchaseItems] = useState([])
     const [loadingItems, setLoadingItems] = useState(false)
     const [purchaseToEditPayment, setPurchaseToEditPayment] = useState(null)
+    const [expandedPurchases, setExpandedPurchases] = useState(new Set())
     const [search, setSearch] = useState('')
     const [filterType, setFilterType] = useState('')
     const [paymentFilter, setPaymentFilter] = useState('all')
@@ -54,24 +85,41 @@ function PurchaseHistory() {
         }
     }
 
+    const toggleExpand = (id) => {
+        setExpandedPurchases(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+    }
+
     const fetchPurchases = async () => {
         setLoading(true)
         try {
             if (!navigator.onLine) throw new Error('Offline');
             const fetchPromise = supabase
                 .from('purchases')
-                .select('*, suppliers(name)')
+                .select('*, suppliers(name), purchase_items(*, phones(*), products(name))')
                 .eq('shop_id', user.shop_id)
                 .order('created_at', { ascending: false })
 
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4000))
 
             const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
 
             if (error) throw error
             if (data) {
-                const cleanData = JSON.parse(JSON.stringify(data))
+                const cleanData = JSON.parse(JSON.stringify(data)).map(p => ({
+                    ...p,
+                    purchase_items: (p.purchase_items || []).map(it => normalizePurchaseItem(it))
+                }))
                 await db.purchases.bulkPut(cleanData)
+                // Cache purchase items into local DB
+                const allItems = cleanData.flatMap(p => p.purchase_items || [])
+                if (allItems.length > 0) {
+                    await db.purchase_items.bulkPut(allItems).catch(() => {})
+                }
                 // Remove any stale local UUID purchases that have already been synced
                 try {
                     const pendingQueue = await db.sync_queue.where('table').equals('purchases').toArray().catch(() => [])
@@ -87,7 +135,12 @@ function PurchaseHistory() {
             }
 
             // Always render from local DB to include pending items
-            const localData = await db.purchases.toArray()
+            const [localData, lItems, lPhones, lProducts] = await Promise.all([
+                db.purchases.toArray(),
+                db.purchase_items ? db.purchase_items.toArray() : [],
+                db.phones ? db.phones.toArray() : [],
+                db.products ? db.products.toArray() : []
+            ])
             const sid = String(user.shop_id)
             const filtered = localData.filter(x => String(x.shop_id) === sid)
             const sorted = filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
@@ -102,13 +155,24 @@ function PurchaseHistory() {
                     continue
                 }
                 seenKeys.add(dupKey)
-                deduplicated.push(item)
+                const itemsForP = item.purchase_items && item.purchase_items.length > 0
+                    ? item.purchase_items
+                    : lItems.filter(i => i.purchase_id === item.id)
+                deduplicated.push({
+                    ...item,
+                    purchase_items: itemsForP.map(it => normalizePurchaseItem(it, lPhones, lProducts))
+                })
             }
             setPurchases(deduplicated)
         } catch (e) {
             console.log('Purchases: Fetching from local DB (Offline Fallback)')
             try {
-                const localData = await db.purchases.toArray()
+                const [localData, lItems, lPhones, lProducts] = await Promise.all([
+                    db.purchases.toArray(),
+                    db.purchase_items ? db.purchase_items.toArray() : [],
+                    db.phones ? db.phones.toArray() : [],
+                    db.products ? db.products.toArray() : []
+                ])
                 const sorted = localData.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
                 const filtered = sorted.filter(x => String(x.shop_id) === String(user.shop_id))
                 const seenKeys = new Set()
@@ -120,7 +184,13 @@ function PurchaseHistory() {
                         continue
                     }
                     seenKeys.add(dupKey)
-                    deduplicated.push(item)
+                    const itemsForP = item.purchase_items && item.purchase_items.length > 0
+                        ? item.purchase_items
+                        : lItems.filter(i => i.purchase_id === item.id)
+                    deduplicated.push({
+                        ...item,
+                        purchase_items: itemsForP.map(it => normalizePurchaseItem(it, lPhones, lProducts))
+                    })
                 }
                 setPurchases(deduplicated)
             } catch (err) { console.error('Local DB PurchaseHistory Error:', err) }
@@ -137,7 +207,7 @@ function PurchaseHistory() {
             if (!navigator.onLine) throw new Error('Offline')
             const fetchPromise = supabase
                 .from('purchase_items')
-                .select('*, products(name, stock_quantity)')
+                .select('*, products(name, stock_quantity), phones(*)')
                 .eq('purchase_id', purchase.id)
 
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
@@ -145,22 +215,18 @@ function PurchaseHistory() {
 
             if (error) throw error
             if (data) {
-                const cleanData = JSON.parse(JSON.stringify(data))
+                const cleanData = JSON.parse(JSON.stringify(data)).map(it => normalizePurchaseItem(it))
                 await db.purchase_items.bulkPut(cleanData)
+                setPurchaseItems(cleanData)
+            } else {
+                setPurchaseItems((purchase.purchase_items || []).map(it => normalizePurchaseItem(it)))
             }
-
-            // Render from local for consistency
-            const localItems = await db.purchase_items.where({ purchase_id: purchase.id }).toArray()
-            setPurchaseItems(localItems)
         } catch (e) {
             console.log('Purchase Items: Fetching from local DB')
             const localItems = await db.purchase_items.where({ purchase_id: purchase.id }).toArray().catch(() => [])
-            if (localItems.length === 0) {
-                const all = await db.purchase_items.toArray()
-                setPurchaseItems(all.filter(i => i.purchase_id === purchase.id))
-            } else {
-                setPurchaseItems(localItems)
-            }
+            const localPhones = db.phones ? await db.phones.toArray().catch(() => []) : []
+            const rawItems = localItems.length > 0 ? localItems : (purchase.purchase_items || [])
+            setPurchaseItems(rawItems.map(it => normalizePurchaseItem(it, localPhones)))
         }
         setLoadingItems(false)
     }
@@ -295,12 +361,19 @@ function PurchaseHistory() {
         const data = filtered.map(p => ({
             'ID': `PR-${String(p.id).slice(-6)}`,
             'Supplier': p.suppliers?.name || 'Unknown',
+            'Phone / Items': (p.purchase_items || []).map(i => {
+                const name = i.display_name || i.product_name || 'Item'
+                const sp = i.specs ? ` (${i.specs})` : ''
+                const im = i.imei ? ` [IMEI: ${i.imei}]` : ''
+                return `${name}${sp}${im}`
+            }).join('; ') || 'Direct Purchase',
             'Total Amount': p.total_amount,
             'Paid Amount': p.paid_amount,
             'Payment Type': p.payment_type.toUpperCase(),
             'Date': new Date(p.created_at).toLocaleDateString('en-PK')
         }))
         const ws = XLSX.utils.json_to_sheet(data)
+        ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 38 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, 'Purchases')
         XLSX.writeFile(wb, `PurchaseHistory_${new Date().toISOString().slice(0, 10)}.xlsx`)
@@ -325,14 +398,16 @@ function PurchaseHistory() {
         const formattedItems = items.map(i => {
             const returnedQty = i.returned_qty || 0
             const netQty = i.quantity - returnedQty
-            
+            const ph = i.phones
+            const baseName = i.display_name || i.product_name || i.products?.name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Phone'}` : 'Item')
             const returnNote = returnedQty > 0 ? ` (Returned: ${returnedQty})` : ''
             return {
-                name: (i.product_name || i.products?.name || '') + returnNote,
+                name: baseName + returnNote,
                 qty: netQty,
                 price: Number(i.unit_price || i.price || 0),
                 sku: i.products?.sku || '',
-                brand: i.products?.brand || ''
+                brand: ph?.brand || i.products?.brand || '',
+                imei_1: i.imei || ph?.imei_1 || null
             }
         }).filter(i => i.qty > 0)
 
@@ -428,8 +503,17 @@ function PurchaseHistory() {
     }
 
     const filtered = purchases.filter(p => {
-        const matchSearch = (p.suppliers?.name || '').toLowerCase().includes(search.toLowerCase()) ||
-            String(p.id).toLowerCase().includes(search.toLowerCase())
+        const q = search.trim().toLowerCase()
+        const matchSearch = !q ||
+            (p.suppliers?.name || '').toLowerCase().includes(q) ||
+            String(p.id).toLowerCase().includes(q) ||
+            `pr-${String(p.id).slice(-6)}`.toLowerCase().includes(q) ||
+            (p.purchase_items || []).some(i => {
+                const name = (i.display_name || i.product_name || i.phones?.model || i.phones?.brand || '').toLowerCase()
+                const imei = (i.imei || i.phones?.imei_1 || '').toLowerCase()
+                const imei2 = (i.imei2 || i.phones?.imei_2 || '').toLowerCase()
+                return name.includes(q) || imei.includes(q) || imei2.includes(q)
+            })
         const matchPayment = paymentFilter !== 'all' ? p.payment_type === paymentFilter : true
         const matchDate = dateFilter ? p.created_at?.startsWith(dateFilter) : true
         return matchSearch && matchPayment && matchDate
@@ -518,90 +602,296 @@ function PurchaseHistory() {
                 ) : (
                     <div className="bg-white rounded-xl shadow overflow-hidden">
                         <div className="divide-y divide-gray-100 md:hidden">
-                            {filtered.map(p => (
-                                <div key={p.id} className={`p-4 ${selected.includes(p.id) ? 'bg-blue-50' : ''}`}>
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <p className="font-mono text-xs font-bold text-gray-500 font-black">
-                                                PR-{String(p.id).slice(-6)}
-                                            </p>
-                                            <p className="mt-1 truncate font-bold text-gray-900">
-                                                {p.suppliers?.name || 'Unknown'}
-                                            </p>
-                                            <p className="mt-1 text-xs text-gray-400">{new Date(p.created_at).toLocaleDateString('en-PK')}</p>
-                                        </div>
-                                        <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} className="mt-1 h-4 w-4 rounded" />
-                                    </div>
-                                    <div className="mt-3 flex items-center justify-between gap-3">
-                                        <div>
-                                            <p className="text-lg font-black text-gray-900">
-                                                Rs. {Number(p.total_amount).toLocaleString()}
-                                            </p>
-                                            <div className="mt-1 flex flex-wrap gap-1.5">
-                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                    {p.payment_type === 'cash' ? '💵 Cash' : '📒 Credit'}
-                                                </span>
-                                                {p.paid_amount != null && Number(p.paid_amount) < Number(p.total_amount) && (
-                                                    <span className="bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded text-[10px] font-bold">
-                                                        Paid: {Number(p.paid_amount).toLocaleString()}
-                                                    </span>
+                            {filtered.map(p => {
+                                const isExpanded = expandedPurchases.has(p.id)
+                                const items = p.purchase_items || []
+                                const firstItem = items[0]
+                                const firstPhoneName = firstItem ? (firstItem.display_name || firstItem.product_name || (firstItem.phones ? `${firstItem.phones.brand && firstItem.phones.brand !== 'Unknown' ? firstItem.phones.brand + ' ' : ''}${firstItem.phones.model || 'Phone'}` : 'Item')) : null
+
+                                return (
+                                    <div key={p.id} className={`p-4 ${selected.includes(p.id) ? 'bg-blue-50/60' : ''}`}>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="font-mono text-xs font-bold text-gray-500 font-black">
+                                                    PR-{String(p.id).slice(-6)}
+                                                </p>
+                                                <p className="mt-1 truncate font-bold text-gray-900">
+                                                    {p.suppliers?.name || 'Unknown'}
+                                                </p>
+                                                {firstPhoneName && (
+                                                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                                        <span className="text-xs font-bold text-blue-900 bg-blue-50 border border-blue-200/60 px-2 py-0.5 rounded-md">
+                                                            📱 {firstPhoneName}
+                                                            {items.length > 1 && ` (+${items.length - 1})`}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleExpand(p.id)}
+                                                            className="text-[11px] text-blue-600 font-bold hover:underline inline-flex items-center gap-0.5 cursor-pointer"
+                                                        >
+                                                            <span>{isExpanded ? 'Hide' : 'Details'}</span>
+                                                            <span className={`text-[9px] transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                                                        </button>
+                                                    </div>
                                                 )}
+                                                <p className="mt-1 text-xs text-gray-400">{new Date(p.created_at).toLocaleDateString('en-PK')}</p>
+                                            </div>
+                                            <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} className="mt-1 h-4 w-4 rounded cursor-pointer" />
+                                        </div>
+                                        <div className="mt-3 flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-lg font-black text-gray-900">
+                                                    Rs. {Number(p.total_amount).toLocaleString()}
+                                                </p>
+                                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                        {p.payment_type === 'cash' ? '💵 Cash' : '📒 Credit'}
+                                                    </span>
+                                                    {p.paid_amount != null && Number(p.paid_amount) < Number(p.total_amount) && (
+                                                        <span className="bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded text-[10px] font-bold">
+                                                            Paid: {Number(p.paid_amount).toLocaleString()}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => setPurchaseToEditPayment(p)} className="rounded-lg bg-purple-50 px-2.5 py-2 text-xs font-bold text-purple-700 hover:bg-purple-100 transition cursor-pointer">Payment</button>
+                                                <button onClick={() => openPurchase(p)} className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-blue-600">View</button>
+                                                <button onClick={() => requestDelete([p.id])} className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">Delete</button>
                                             </div>
                                         </div>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => setPurchaseToEditPayment(p)} className="rounded-lg bg-purple-50 px-2.5 py-2 text-xs font-bold text-purple-700 hover:bg-purple-100 transition cursor-pointer">Payment</button>
-                                            <button onClick={() => openPurchase(p)} className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-blue-600">View</button>
-                                            <button onClick={() => requestDelete([p.id])} className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">Delete</button>
-                                        </div>
+
+                                        {isExpanded && items.length > 0 && (
+                                            <div className="mt-3 bg-blue-50/70 p-3 rounded-xl border border-blue-100 flex flex-col gap-2">
+                                                <div className="flex items-center justify-between text-xs font-bold text-blue-900 border-b border-blue-200/60 pb-1.5">
+                                                    <span>📱 Phone List ({items.length})</span>
+                                                    <span className="uppercase text-[10px] text-gray-500 font-semibold">{p.payment_type}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-2">
+                                                    {items.map((it, iidx) => {
+                                                        const ph = it.phones
+                                                        const name = it.display_name || it.product_name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Phone'}` : 'Item')
+                                                        const specs = it.specs || (ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null, ph.condition ? ph.condition.toUpperCase() : null].filter(Boolean).join(' • ') : null)
+                                                        const imei = it.imei || ph?.imei_1 || null
+                                                        const imei2 = it.imei2 || ph?.imei_2 || null
+                                                        const cost = it.unit_price || it.cost_price || 0
+                                                        const qty = it.quantity || 1
+                                                        const status = it.status || ph?.status
+
+                                                        return (
+                                                            <div key={iidx} className="bg-white p-2.5 rounded-lg border border-blue-100/80 shadow-2xs text-xs space-y-1">
+                                                                <div className="flex items-start justify-between gap-1">
+                                                                    <p className="font-bold text-gray-900">{name}</p>
+                                                                    {status && (
+                                                                        <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 ${
+                                                                            status === 'in_stock' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                                                                        }`}>
+                                                                            {status.replace('_', ' ')}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {specs && <p className="text-[11px] text-gray-500">{specs}</p>}
+                                                                {(imei || imei2) && (
+                                                                    <div className="flex flex-wrap items-center gap-1">
+                                                                        {imei && (
+                                                                            <span className="font-mono text-[10px] bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded">
+                                                                                IMEI: {imei}
+                                                                            </span>
+                                                                        )}
+                                                                        {imei2 && (
+                                                                            <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
+                                                                                IMEI 2: {imei2}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex justify-between items-center pt-1 border-t border-gray-100 text-[11px]">
+                                                                    <span className="text-gray-400">Qty: {qty}</span>
+                                                                    <span className="font-bold text-gray-900">Rs. {Number(cost).toLocaleString()}</span>
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                            ))}
+                                )
+                            })}
                         </div>
                         <div className="hidden overflow-x-auto md:block">
                             <table className="w-full">
                                 <thead className="bg-gray-50 border-b">
                                     <tr>
-                                        <th className="px-4 py-4 w-10"><input type="checkbox" checked={selected.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded" /></th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Invoice ID</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Supplier</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Total</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Payment</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Date</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Actions</th>
+                                        <th className="px-4 py-4 w-10"><input type="checkbox" checked={selected.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded cursor-pointer" /></th>
+                                        <th className="px-5 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Invoice ID</th>
+                                        <th className="px-5 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Supplier</th>
+                                        <th className="px-5 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Phone / Items</th>
+                                        <th className="px-5 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Total</th>
+                                        <th className="px-5 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Payment</th>
+                                        <th className="px-5 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Date</th>
+                                        <th className="px-5 py-4 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
-                                    {filtered.map(p => (
-                                        <tr key={p.id} className={`hover:bg-gray-50 transition ${selected.includes(p.id) ? 'bg-blue-50' : ''}`}>
-                                            <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} className="w-4 h-4 rounded" /></td>
-                                            <td className="px-4 py-3 font-mono text-xs text-blue-600 font-bold">PR-{String(p.id).slice(-6)}</td>
-                                            <td className="px-4 py-3 text-gray-800 font-medium">{p.suppliers?.name || <span className="text-gray-400 italic">Unknown</span>}</td>
-                                            <td className="px-4 py-3 font-medium text-gray-800">
-                                                Rs. {Number(p.total_amount).toLocaleString()}
-                                                {p.paid_amount != null && Number(p.paid_amount) < Number(p.total_amount) && (
-                                                    <span className="text-xs text-orange-500 ml-1">(Paid: {Number(p.paid_amount).toLocaleString()})</span>
+                                    {filtered.map(p => {
+                                        const isExpanded = expandedPurchases.has(p.id)
+                                        const items = p.purchase_items || []
+                                        const firstItem = items[0]
+                                        const firstPhoneName = firstItem ? (firstItem.display_name || firstItem.product_name || (firstItem.phones ? `${firstItem.phones.brand && firstItem.phones.brand !== 'Unknown' ? firstItem.phones.brand + ' ' : ''}${firstItem.phones.model || 'Phone'}` : 'Item')) : null
+
+                                        return (
+                                            <React.Fragment key={p.id}>
+                                                <tr className={`hover:bg-gray-50 transition ${selected.includes(p.id) ? 'bg-blue-50/60' : ''}`}>
+                                                    <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} className="w-4 h-4 rounded cursor-pointer" /></td>
+                                                    <td className="px-5 py-3 font-mono text-xs text-blue-600 font-bold whitespace-nowrap">PR-{String(p.id).slice(-6)}</td>
+                                                    <td className="px-5 py-3 text-gray-800 font-medium whitespace-nowrap">{p.suppliers?.name || <span className="text-gray-400 italic">Unknown</span>}</td>
+                                                    <td className="px-5 py-3">
+                                                        {items.length > 0 ? (
+                                                            <div className="flex flex-col gap-1 max-w-xs">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className="font-bold text-gray-900 text-xs">
+                                                                        {firstPhoneName}
+                                                                    </span>
+                                                                    {items.length > 1 && (
+                                                                        <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full shrink-0">
+                                                                            +{items.length - 1} more
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleExpand(p.id)}
+                                                                    className={`inline-flex items-center gap-1 text-[11px] font-bold transition w-fit cursor-pointer ${
+                                                                        isExpanded ? 'text-blue-700 underline' : 'text-blue-600 hover:text-blue-800'
+                                                                    }`}
+                                                                    title="Click to view full phone details, specs, and IMEI"
+                                                                >
+                                                                    <span>{isExpanded ? 'Hide Details' : 'Details'}</span>
+                                                                    <span className={`text-[9px] transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-gray-400 text-xs italic">Direct Purchase</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-5 py-3 font-medium text-gray-800 whitespace-nowrap">
+                                                        Rs. {Number(p.total_amount).toLocaleString()}
+                                                        {p.paid_amount != null && Number(p.paid_amount) < Number(p.total_amount) && (
+                                                            <span className="text-xs text-orange-500 ml-1">(Paid: {Number(p.paid_amount).toLocaleString()})</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-5 py-3 whitespace-nowrap">
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium w-fit ${p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : p.payment_type === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                                {p.payment_type === 'cash' ? '💵 Cash' : p.payment_type === 'bank' ? '🏦 Bank' : '📒 Credit'}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-5 py-3 text-gray-500 text-sm whitespace-nowrap">{new Date(p.created_at).toLocaleDateString('en-PK')}</td>
+                                                    <td className="px-5 py-3 whitespace-nowrap">
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => setPurchaseToEditPayment(p)}
+                                                                className="text-purple-600 hover:text-purple-800 text-sm font-medium cursor-pointer">Edit Payment</button>
+                                                            <button onClick={() => openPurchase(p)}
+                                                                className="text-blue-500 hover:text-blue-700 text-sm font-medium cursor-pointer">View</button>
+                                                            <button onClick={() => requestDelete([p.id])}
+                                                                className="text-red-500 hover:text-red-700 text-sm font-medium cursor-pointer">Delete</button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {isExpanded && (
+                                                    <tr className="bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-blue-50/70 border-b border-blue-200/80">
+                                                        <td colSpan="8" className="px-6 py-4">
+                                                            <div className="flex flex-col gap-3">
+                                                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200/60 pb-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+                                                                            📱 Phones in PR-{String(p.id).slice(-6)}
+                                                                        </span>
+                                                                        <span className="text-xs bg-white text-blue-800 px-2 py-0.5 rounded-full border border-blue-200 font-bold shadow-2xs">
+                                                                            {items.length} unit(s)
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 text-xs">
+                                                                        <span className="text-gray-500 font-medium">Payment:</span>
+                                                                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase ${
+                                                                            p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                                                                        }`}>
+                                                                            {p.payment_type}
+                                                                        </span>
+                                                                        {p.paid_amount != null && (
+                                                                            <span className="text-gray-500 font-medium">
+                                                                                (Paid: Rs. {Number(p.paid_amount).toLocaleString()})
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                                    {items.map((it, iidx) => {
+                                                                        const ph = it.phones
+                                                                        const name = it.display_name || it.product_name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Phone'}` : 'Item')
+                                                                        const specs = it.specs || (ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null, ph.condition ? ph.condition.toUpperCase() : null].filter(Boolean).join(' • ') : null)
+                                                                        const imei = it.imei || ph?.imei_1 || null
+                                                                        const imei2 = it.imei2 || ph?.imei_2 || null
+                                                                        const cost = it.unit_price || it.cost_price || 0
+                                                                        const qty = it.quantity || 1
+                                                                        const status = it.status || ph?.status
+
+                                                                        return (
+                                                                            <div key={iidx} className="bg-white rounded-xl p-3 border border-blue-100 shadow-2xs hover:shadow-xs transition flex flex-col justify-between gap-2">
+                                                                                <div>
+                                                                                    <div className="flex items-start justify-between gap-2">
+                                                                                        <h4 className="font-bold text-gray-900 text-xs sm:text-sm">{name}</h4>
+                                                                                        {status && (
+                                                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${
+                                                                                                status === 'in_stock'
+                                                                                                    ? 'bg-green-100 text-green-700'
+                                                                                                    : status === 'sold'
+                                                                                                    ? 'bg-blue-100 text-blue-700'
+                                                                                                    : 'bg-gray-100 text-gray-600'
+                                                                                            }`}>
+                                                                                                {status.replace('_', ' ')}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    {specs && (
+                                                                                        <p className="text-[11px] text-gray-500 mt-1 font-medium">{specs}</p>
+                                                                                    )}
+                                                                                    {(imei || imei2) && (
+                                                                                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                                                                            {imei && (
+                                                                                                <span className="font-mono text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200/80 px-2 py-0.5 rounded">
+                                                                                                    IMEI: {imei}
+                                                                                                </span>
+                                                                                            )}
+                                                                                            {imei2 && (
+                                                                                                <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1.5 py-0.5 rounded">
+                                                                                                    IMEI 2: {imei2}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs">
+                                                                                    <span className="text-gray-400 font-medium">Qty: {qty}</span>
+                                                                                    <div className="text-right">
+                                                                                        <span className="text-gray-400 text-[10px] mr-1">Cost:</span>
+                                                                                        <span className="font-black text-gray-900">Rs. {Number(cost).toLocaleString()}</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        )
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
                                                 )}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium w-fit ${p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : p.payment_type === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                        {p.payment_type === 'cash' ? '💵 Cash' : p.payment_type === 'bank' ? '🏦 Bank' : '📒 Credit'}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-500 text-sm">{new Date(p.created_at).toLocaleDateString('en-PK')}</td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => setPurchaseToEditPayment(p)}
-                                                        className="text-purple-600 hover:text-purple-800 text-sm font-medium">Edit Payment</button>
-                                                    <button onClick={() => openPurchase(p)}
-                                                        className="text-blue-500 hover:text-blue-700 text-sm font-medium">View</button>
-                                                    <button onClick={() => requestDelete([p.id])}
-                                                        className="text-red-500 hover:text-red-700 text-sm font-medium">Delete</button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                            </React.Fragment>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -668,7 +958,24 @@ function PurchaseHistory() {
                                                     const maxReturn = item.quantity - (item.returned_qty || 0)
                                                     return (
                                                         <tr key={idx} className="hover:bg-gray-50">
-                                                            <td className="px-4 py-3 text-gray-800 whitespace-nowrap">{item.product_name}</td>
+                                                            <td className="px-4 py-3 text-gray-800">
+                                                                <p className="font-bold text-gray-900 text-sm">
+                                                                    {item.display_name || item.product_name || (item.phones ? `${item.phones.brand && item.phones.brand !== 'Unknown' ? item.phones.brand + ' ' : ''}${item.phones.model || 'Phone'}` : 'Item')}
+                                                                </p>
+                                                                {item.specs && <p className="text-xs text-gray-500 mt-0.5">{item.specs}</p>}
+                                                                {(item.imei || item.phones?.imei_1) && (
+                                                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                                                        <span className="font-mono text-[11px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.2 rounded font-semibold">
+                                                                            IMEI: {item.imei || item.phones?.imei_1}
+                                                                        </span>
+                                                                        {(item.imei2 || item.phones?.imei_2) && (
+                                                                            <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
+                                                                                IMEI 2: {item.imei2 || item.phones?.imei_2}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </td>
                                                             <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">
                                                                 {item.quantity}
                                                                 {item.returned_qty > 0 && <span className="text-xs text-red-500 ml-1 block">(-{item.returned_qty} ret)</span>}
