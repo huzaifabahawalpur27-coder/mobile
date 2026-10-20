@@ -896,65 +896,91 @@ export default function PhoneInventoryView() {
                           return (
                             <div
                               key={phone.id}
-                              className="bg-white p-2.5 rounded-xl border border-gray-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs"
+                              className="bg-white p-3 rounded-xl border border-gray-200 text-xs shadow-2xs space-y-2 hover:border-gray-300 transition"
                             >
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono font-bold text-gray-900">{phone.imei_1}</span>
+                              {/* Top Row: IMEI, Copy button, PTA badge, Storage & Pricing */}
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-1.5 font-mono">
+                                  <span className="font-bold text-gray-900 text-xs tracking-tight">{phone.imei_1}</span>
                                   <button
                                     onClick={() => handleCopyImei(phone.imei_1)}
-                                    className="text-gray-400 hover:text-blue-600 cursor-pointer"
+                                    className="text-gray-400 hover:text-blue-600 cursor-pointer p-0.5 rounded transition"
                                     title="Copy IMEI"
                                   >
-                                    {copiedImei === phone.imei_1 ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+                                    {copiedImei === phone.imei_1 ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
                                   </button>
-                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${badge.color}`}>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.color}`}>
                                     {badge.label}
                                   </span>
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-700">
-                                    {phone.storage}
-                                  </span>
+                                  {phone.storage && (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-700">
+                                      {phone.storage}
+                                    </span>
+                                  )}
                                 </div>
-                                <div className="flex items-center gap-2 text-[10px] text-gray-500 font-medium">
-                                  {phone.color && <span>Color: {phone.color}</span>}
-                                  {phone.battery_health && <span>· Battery: {phone.battery_health}%</span>}
-                                  <span>· Condition: {phone.condition}</span>
+
+                                <div className="flex items-baseline gap-2 text-right ml-auto">
+                                  <span className="font-bold text-emerald-700 text-xs">
+                                    Rs. {(parseFloat(phone.sale_price) || 0).toLocaleString()}
+                                  </span>
+                                  {canViewCost && (
+                                    <span className="text-[10px] text-gray-400">
+                                      Cost: Rs. {(parseFloat(phone.cost_price) || 0).toLocaleString()}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-gray-100">
-                                <div className="text-right">
-                                  <p className="font-bold text-emerald-700">Rs. {(parseFloat(phone.sale_price) || 0).toLocaleString()}</p>
-                                  {canViewCost && (
-                                    <p className="text-[10px] text-gray-400">Cost: Rs. {(parseFloat(phone.cost_price) || 0).toLocaleString()}</p>
+                              {/* Middle Row: Specs / Details */}
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                                {phone.color && <span>Color: <strong className="text-gray-700 font-medium">{phone.color}</strong></span>}
+                                {phone.battery_health && <span>· Battery: <strong className="text-gray-700 font-medium">{phone.battery_health}%</strong></span>}
+                                <span>· Condition: <strong className="text-gray-700 font-medium capitalize">{phone.condition}</strong></span>
+                                {phone.imei_2 && <span className="font-mono text-[10px] text-gray-400">· IMEI 2: {phone.imei_2}</span>}
+                              </div>
+
+                              {/* Dedicated Last Row: Status & Actions */}
+                              <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5">
+                                  {phone.status !== 'in_stock' && (
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                      phone.status === 'sold' ? 'bg-blue-100 text-blue-700' :
+                                      phone.status === 'returned' ? 'bg-purple-100 text-purple-700' :
+                                      'bg-amber-100 text-amber-700'
+                                    }`}>
+                                      {phone.status.replace('_', ' ')}
+                                    </span>
                                   )}
                                 </div>
-                                {phone.status === 'in_stock' && (
-                                  <>
+
+                                <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                                  {phone.status === 'in_stock' && (
+                                    <>
+                                      <button
+                                        onClick={() => openCustodyModal(phone)}
+                                        className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold cursor-pointer transition"
+                                      >
+                                        Issue
+                                      </button>
+                                      <button
+                                        onClick={() => setPhoneForReturn(phone)}
+                                        className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1 transition"
+                                        title="Return phone to supplier"
+                                      >
+                                        <RotateCcw className="w-3 h-3" /> Return
+                                      </button>
+                                    </>
+                                  )}
+                                  {canViewCost && phone.purchase_id && (
                                     <button
-                                      onClick={() => openCustodyModal(phone)}
-                                      className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                                      onClick={() => handleEditPhonePayment(phone)}
+                                      className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1 transition"
+                                      title="Edit payment method for purchase PR"
                                     >
-                                      Issue
+                                      <CreditCard className="w-3 h-3" /> Edit Payment
                                     </button>
-                                    <button
-                                      onClick={() => setPhoneForReturn(phone)}
-                                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-bold cursor-pointer flex items-center gap-1"
-                                      title="Return phone to supplier"
-                                    >
-                                      <RotateCcw className="w-2.5 h-2.5" /> Return
-                                    </button>
-                                  </>
-                                )}
-                                {canViewCost && phone.purchase_id && (
-                                  <button
-                                    onClick={() => handleEditPhonePayment(phone)}
-                                    className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[10px] font-bold cursor-pointer flex items-center gap-1"
-                                    title="Edit payment method for purchase PR"
-                                  >
-                                    <CreditCard className="w-2.5 h-2.5" /> Payment
-                                  </button>
-                                )}
+                                  )}
+                                </div>
                               </div>
                             </div>
                           )

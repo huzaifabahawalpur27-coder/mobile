@@ -66,7 +66,10 @@ function Suppliers() {
         amount: p.total_amount || 0,
         note: p.note || '',
       })),
-      ...(payments || []).map(p => {
+      ...(payments || []).filter(p => {
+        const desc = `${p.note || ''} ${p.description || ''}`.toLowerCase()
+        return !desc.includes('(credit)')
+      }).map(p => {
         // payment_type === 'debit' means a manual debit/purchase entry
         const isDebit = p.payment_type === 'debit'
         const noteText = p.note || p.description || ''

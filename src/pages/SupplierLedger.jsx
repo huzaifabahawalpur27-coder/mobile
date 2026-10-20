@@ -123,7 +123,10 @@ function SupplierLedger() {
                 note: `Bill #${String(p.id).slice(-8)}`,
                 items: p.purchase_items || []
             })),
-            ...payments.map(p => {
+            ...payments.filter(p => {
+                const desc = `${p.note || ''} ${p.description || ''} ${p.details || ''}`.toLowerCase()
+                return !desc.includes('(credit)')
+            }).map(p => {
                 const billFromNote = p.note?.match(/\[Bill #([^\]]+)\]/)?.[1] || ''
                 return {
                     id: p.id,

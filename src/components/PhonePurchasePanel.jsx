@@ -692,6 +692,19 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         console.warn('Local Dexie cache notice:', cacheErr)
       }
 
+      // Synchronize supplier outstanding_balance and balance both online and in local Dexie
+      if (supplierId) {
+        const balanceDelta = totalCost - effectivePaid
+        try {
+          const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supplierId).maybeSingle()
+          if (curSup) {
+            const updatedBal = Math.max(0, (curSup.outstanding_balance ?? curSup.balance ?? 0) + balanceDelta)
+            await supabase.from('suppliers').update({ balance: updatedBal, outstanding_balance: updatedBal }).eq('id', supplierId)
+            await db.suppliers?.update(parseInt(supplierId), { balance: updatedBal, outstanding_balance: updatedBal }).catch(() => {})
+          }
+        } catch (_) {}
+      }
+
       // Automatically deduct from chosen bank account
       let bankDeductionResult = null
       if (selectedBankAccountId && effectivePaid > 0) {
