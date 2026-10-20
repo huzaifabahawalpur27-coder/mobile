@@ -7,6 +7,41 @@ import { printHTML, getShopBranding } from '../utils/printUtils'
 import { db } from '../services/db'
 import { generateOutstandingPDF, shareOrDownloadPDF } from '../utils/pdfShare'
 
+const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
+    let snap = null
+    if (it.imei_snapshot) {
+        if (typeof it.imei_snapshot === 'object') {
+            snap = it.imei_snapshot
+        } else if (typeof it.imei_snapshot === 'string') {
+            try { snap = JSON.parse(it.imei_snapshot) } catch (_) {}
+        }
+    }
+    const ph = it.phones || (phonesPool || []).find(p => p.id === it.phone_id || (it.sale_id && p.sale_id === it.sale_id)) || snap
+    const prod = it.products || (productsPool || []).find(p => p.id === it.product_id)
+
+    let name = (it.product_name && it.product_name.trim()) || (prod ? prod.name : null)
+    if (!name && ph) {
+        const brand = ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''
+        name = `${brand}${ph.model || 'Smartphone'}`.trim()
+    }
+    if (!name) name = 'Item'
+
+    const specs = ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null].filter(Boolean).join(' • ') : null
+    const imei = ph ? (ph.imei_1 || ph.imei || ph.imei1 || (typeof it.imei_snapshot === 'string' && !it.imei_snapshot.startsWith('{') ? it.imei_snapshot : null)) : null
+    const price = it.unit_price ?? (it.price ?? (it.subtotal || 0))
+    const qty = it.quantity || 1
+
+    return {
+        ...it,
+        phones: ph,
+        display_name: name,
+        specs,
+        imei,
+        unit_price: price,
+        quantity: qty
+    }
+}
+
 function CustomerLedger() {
     const { id } = useParams()
     const { user } = useAuth()
@@ -43,7 +78,7 @@ function CustomerLedger() {
 
             const fetchPromise = Promise.all([
                 supabase.from('customers').select('*').eq('id', id).eq('shop_id', user.shop_id).maybeSingle(),
-                supabase.from('sales').select('*, sale_items(*)').eq('customer_id', id).eq('shop_id', user.shop_id).order('created_at', { ascending: true }),
+                supabase.from('sales').select('*, sale_items(*, phones(*), products(name))').eq('customer_id', id).eq('shop_id', user.shop_id).order('created_at', { ascending: true }),
                 supabase.from('customer_payments').select('*').eq('customer_id', id).eq('shop_id', user.shop_id)
             ])
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
@@ -66,7 +101,7 @@ function CustomerLedger() {
                     amount: s.total_amount - (s.discount || 0),
                     paid_amount: s.paid_amount || 0,
                     note: `Invoice #${String(s.id).slice(-8)}`,
-                    items: s.sale_items || []
+                    items: (s.sale_items || []).map(it => normalizeSaleItem(it))
                 })),
                 ...(payments || []).map(p => ({
                     id: p.id,
@@ -120,11 +155,13 @@ function CustomerLedger() {
             console.log('CustomerLedger: Reconstructing from local DB (Offline)')
             try {
                 const sid = String(user.shop_id)
-                const [lCusts, lSales, lItems, lPayments] = await Promise.all([
+                const [lCusts, lSales, lItems, lPayments, lPhones, lProducts] = await Promise.all([
                     db.customers.toArray(),
                     db.sales.toArray(),
                     db.sale_items.toArray(),
-                    db.customer_payments.toArray()
+                    db.customer_payments.toArray(),
+                    db.phones ? db.phones.toArray() : [],
+                    db.products ? db.products.toArray() : []
                 ])
 
                 const cust = lCusts.find(c => String(c.id) === String(id))
@@ -142,7 +179,7 @@ function CustomerLedger() {
                         amount: s.total_amount - (s.discount || 0),
                         paid_amount: s.paid_amount || 0,
                         note: `Invoice #${String(s.id).slice(-8)}`,
-                        items: lItems.filter(i => i.sale_id === s.id)
+                        items: lItems.filter(i => i.sale_id === s.id).map(it => normalizeSaleItem(it, lPhones, lProducts))
                     })),
                     ...myPayments.map(p => ({
                         id: p.id,
@@ -227,6 +264,12 @@ function CustomerLedger() {
             'Date': new Date(item.date).toLocaleDateString('en-PK'),
             'Bill #': item.bill_number || (item.type === 'sale' ? `INV-${String(item.id).slice(-8)}` : ''),
             'Description': item.note,
+            'Items': (item.items || []).map(i => {
+                const name = i.display_name || i.product_name || 'Item'
+                const sp = i.specs ? ` (${i.specs})` : ''
+                const im = i.imei ? ` [IMEI: ${i.imei}]` : ''
+                return `${name}${sp}${im}`
+            }).join('; ') || item.details || '',
             'Type': item.type === 'sale' ? 'Sale' : item.type === 'debit' ? 'Manual Sale' : item.type === 'return' ? 'Return' : 'Payment',
             'Debit (Sale)': (item.type === 'sale' || item.type === 'debit') ? Number(item.amount) : '',
             'Credit (Payment)': (item.type === 'payment' || item.type === 'return') ? Math.abs(Number(item.amount)) : '',
@@ -236,7 +279,7 @@ function CustomerLedger() {
             'Transaction Ref': item.transaction_ref || '',
         }))
         const ws = XLSX.utils.json_to_sheet(rows)
-        ws['!cols'] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 18 }]
+        ws['!cols'] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }, { wch: 25 }, { wch: 35 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 18 }]
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, 'Ledger')
         const safeName = (customer?.name || 'customer').replace(/[^a-z0-9]/gi, '_')
@@ -723,13 +766,35 @@ function CustomerLedger() {
                                                 {item.payment_type}
                                             </span>
                                         </div>
-                                        <div className="flex flex-col gap-1.5">
-                                            {(item.items || []).map((it, iidx) => (
-                                                <div key={iidx} className="flex justify-between text-xs bg-white/60 p-2 rounded border border-blue-100/30">
-                                                    <span className="text-gray-700 font-medium">{it.product_name}</span>
-                                                    <span className="text-gray-500 font-semibold">Rs.{it.unit_price} × {it.quantity}</span>
-                                                </div>
-                                            ))}
+                                        <div className="flex flex-col gap-2">
+                                            {(item.items || []).map((it, iidx) => {
+                                                const ph = it.phones
+                                                const name = it.display_name || it.product_name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Smartphone'}` : 'Item')
+                                                const specs = it.specs || (ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null].filter(Boolean).join(' • ') : null)
+                                                const imei = it.imei || (ph ? (ph.imei_1 || ph.imei1 || ph.imei) : null)
+                                                const price = it.unit_price || it.cost_price || it.subtotal || 0
+                                                const qty = it.quantity || 1
+
+                                                return (
+                                                    <div key={iidx} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs bg-white/90 p-2.5 rounded-xl border border-blue-100/80 shadow-2xs gap-1.5">
+                                                        <div className="space-y-0.5">
+                                                            <p className="text-gray-900 font-bold text-xs">{name}</p>
+                                                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                                                                {specs && <span>{specs}</span>}
+                                                                {imei && (
+                                                                    <span className="font-mono bg-blue-50/80 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded text-[10px]">
+                                                                        IMEI: {imei}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right shrink-0">
+                                                            <span className="text-gray-900 font-bold">Rs. {Number(price).toLocaleString()}</span>
+                                                            <span className="text-gray-500 text-[11px]"> × {qty}</span>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
                                         </div>
                                     </div>
                                 )}
@@ -832,13 +897,35 @@ function CustomerLedger() {
                                                         {item.payment_type}
                                                     </span>
                                                 </div>
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                                                    {(item.items || []).map((it, iidx) => (
-                                                        <div key={iidx} className="flex justify-between text-xs bg-white/60 p-2 rounded-lg border border-blue-100/50 shadow-sm">
-                                                            <span className="text-gray-700 font-medium">{it.product_name}</span>
-                                                            <span className="text-gray-500 font-semibold">Rs.{it.unit_price} × {it.quantity}</span>
-                                                        </div>
-                                                    ))}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                                    {(item.items || []).map((it, iidx) => {
+                                                        const ph = it.phones
+                                                        const name = it.display_name || it.product_name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Smartphone'}` : 'Item')
+                                                        const specs = it.specs || (ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null].filter(Boolean).join(' • ') : null)
+                                                        const imei = it.imei || (ph ? (ph.imei_1 || ph.imei1 || ph.imei) : null)
+                                                        const price = it.unit_price || it.cost_price || it.subtotal || 0
+                                                        const qty = it.quantity || 1
+
+                                                        return (
+                                                            <div key={iidx} className="flex flex-col justify-between text-xs bg-white/90 p-2.5 rounded-xl border border-blue-100/80 shadow-2xs gap-1.5">
+                                                                <div className="space-y-0.5">
+                                                                    <p className="text-gray-900 font-bold text-xs">{name}</p>
+                                                                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                                                                        {specs && <span>{specs}</span>}
+                                                                        {imei && (
+                                                                            <span className="font-mono bg-blue-50/80 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded text-[10px]">
+                                                                                IMEI: {imei}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-right pt-1 border-t border-gray-100/80 flex justify-between items-center">
+                                                                    <span className="text-gray-400 text-[10px]">Qty: {qty}</span>
+                                                                    <span className="text-gray-900 font-bold">Rs. {Number(price).toLocaleString()}</span>
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })}
                                                 </div>
                                             </div>
                                         </td>

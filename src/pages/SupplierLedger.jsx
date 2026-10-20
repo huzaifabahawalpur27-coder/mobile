@@ -75,7 +75,7 @@ function SupplierLedger() {
 
             const fetchPromise = Promise.all([
                 supabase.from('suppliers').select('*').eq('id', id).maybeSingle(),
-                supabase.from('purchases').select('*, purchase_items(*)').eq('supplier_id', id).order('created_at', { ascending: false }),
+                supabase.from('purchases').select('*, purchase_items(*, phones(*))').eq('supplier_id', id).order('created_at', { ascending: false }),
                 supabase.from('supplier_payments').select('*').eq('supplier_id', id).order('created_at', { ascending: false }),
                 supabase.from('phones').select('*').eq('supplier_id', id).order('created_at', { ascending: false })
             ])
@@ -85,7 +85,7 @@ function SupplierLedger() {
             setSupplier(supRes.data)
             setPurchasesList(purchasesRes.data || [])
             setSupplierPhones(phonesRes.data || [])
-            buildLedger(purchasesRes.data || [], paymentsRes.data || [])
+            buildLedger(purchasesRes.data || [], paymentsRes.data || [], phonesRes.data || [])
         } catch (e) {
             console.log('SupplierLedger: Reconstructing from local DB (Offline)')
             try {
@@ -104,14 +104,22 @@ function SupplierLedger() {
                 setPurchasesList(myPurchases)
                 setSupplierPhones(myPhones)
                 buildLedger(
-                    myPurchases.map(p => ({ ...p, purchase_items: lItems.filter(i => i.purchase_id === p.id) })),
-                    myPayments
+                    myPurchases.map(p => ({
+                        ...p,
+                        purchase_items: lItems.filter(i => i.purchase_id === p.id).map(it => {
+                            const ph = myPhones.find(ph => ph.id === it.phone_id || ph.purchase_id === p.id)
+                            return { ...it, phones: it.phones || ph }
+                        })
+                    })),
+                    myPayments,
+                    myPhones
                 )
             } catch (err) { console.error('SupplierLedger Fallback Error:', err) }
         } finally { setLoading(false) }
     }
 
-    const buildLedger = (purchases, payments) => {
+    const buildLedger = (purchases, payments, currentPhones = []) => {
+        const phonesPool = currentPhones.length > 0 ? currentPhones : supplierPhones
         const combined = [
             ...purchases.map(p => ({
                 id: p.id,
@@ -121,7 +129,23 @@ function SupplierLedger() {
                 bill_number: '',
                 amount: p.total_amount,
                 note: `Bill #${String(p.id).slice(-8)}`,
-                items: p.purchase_items || []
+                items: (p.purchase_items || []).map(it => {
+                    const ph = it.phones || (phonesPool || []).find(sp => sp.id === it.phone_id || sp.purchase_id === p.id)
+                    const name = it.product_name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Smartphone'}` : 'Item')
+                    const specs = ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null].filter(Boolean).join(' • ') : null
+                    const imei = ph ? (ph.imei_1 || ph.imei1 || ph.imei) : null
+                    const price = it.unit_price || it.cost_price || it.subtotal || 0
+                    const qty = it.quantity || 1
+                    return {
+                        ...it,
+                        phones: ph,
+                        display_name: name,
+                        specs,
+                        imei,
+                        unit_price: price,
+                        quantity: qty
+                    }
+                })
             })),
             ...payments.filter(p => {
                 const desc = `${p.note || ''} ${p.description || ''} ${p.details || ''}`.toLowerCase()
@@ -328,13 +352,19 @@ function SupplierLedger() {
             'Date': new Date(item.date).toLocaleDateString('en-PK'),
             'Bill #': item.bill_number || (item.type === 'purchase' ? String(item.id).slice(-8) : ''),
             'Description': item.note,
+            'Items': (item.items || []).map(i => {
+                const name = i.display_name || i.product_name || 'Item'
+                const sp = i.specs ? ` (${i.specs})` : ''
+                const im = i.imei ? ` [IMEI: ${i.imei}]` : ''
+                return `${name}${sp}${im}`
+            }).join('; ') || item.details || '',
             'Type': item.type === 'purchase' || item.type === 'debit' ? 'Purchase/Debit' : item.type === 'payment' ? 'Payment' : 'Return',
             'Debit (Purchase)': (item.type === 'purchase' || item.type === 'debit') ? Number(item.amount) : '',
             'Credit (Payment)': (item.type !== 'purchase' && item.type !== 'debit') ? Math.abs(Number(item.amount)) : '',
             'Balance': Number(item.balance)
         }))
         const ws = XLSX.utils.json_to_sheet(rows)
-        ws['!cols'] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 14 }]
+        ws['!cols'] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }, { wch: 25 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 14 }]
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, 'Ledger')
         const safeName = (supplier?.name || 'supplier').replace(/[^a-z0-9]/gi, '_')
@@ -1045,13 +1075,35 @@ function SupplierLedger() {
                                                 {item.payment_type}
                                             </span>
                                         </div>
-                                        <div className="flex flex-col gap-1.5">
-                                            {(item.items || []).map((it, iidx) => (
-                                                <div key={iidx} className="flex justify-between text-xs bg-white/60 p-2 rounded border border-orange-100/30">
-                                                    <span className="text-gray-700 font-medium">{it.product_name}</span>
-                                                    <span className="text-gray-500 font-semibold">Rs.{it.unit_price} × {it.quantity}</span>
-                                                </div>
-                                            ))}
+                                        <div className="flex flex-col gap-2">
+                                            {(item.items || []).map((it, iidx) => {
+                                                const ph = it.phones
+                                                const name = it.display_name || it.product_name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Smartphone'}` : 'Item')
+                                                const specs = it.specs || (ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null].filter(Boolean).join(' • ') : null)
+                                                const imei = it.imei || (ph ? (ph.imei_1 || ph.imei1 || ph.imei) : null)
+                                                const price = it.unit_price || it.cost_price || it.subtotal || 0
+                                                const qty = it.quantity || 1
+
+                                                return (
+                                                    <div key={iidx} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs bg-white/90 p-2.5 rounded-xl border border-orange-100/80 shadow-2xs gap-1.5">
+                                                        <div className="space-y-0.5">
+                                                            <p className="text-gray-900 font-bold text-xs">{name}</p>
+                                                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                                                                {specs && <span>{specs}</span>}
+                                                                {imei && (
+                                                                    <span className="font-mono bg-orange-50/80 text-orange-800 border border-orange-200/60 px-1.5 py-0.2 rounded text-[10px]">
+                                                                        IMEI: {imei}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right shrink-0">
+                                                            <span className="text-gray-900 font-bold">Rs. {Number(price).toLocaleString()}</span>
+                                                            <span className="text-gray-500 text-[11px]"> × {qty}</span>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
                                         </div>
                                     </div>
                                 )}
@@ -1144,13 +1196,35 @@ function SupplierLedger() {
                                                         {item.payment_type}
                                                     </span>
                                                 </div>
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                                                    {(item.items || []).map((it, iidx) => (
-                                                        <div key={iidx} className="flex justify-between text-xs bg-white/60 p-2 rounded-lg border border-orange-100/50 shadow-sm">
-                                                            <span className="text-gray-700 font-medium">{it.product_name}</span>
-                                                            <span className="text-gray-500 font-semibold">Rs.{it.unit_price} × {it.quantity}</span>
-                                                        </div>
-                                                    ))}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                                    {(item.items || []).map((it, iidx) => {
+                                                        const ph = it.phones
+                                                        const name = it.display_name || it.product_name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Smartphone'}` : 'Item')
+                                                        const specs = it.specs || (ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null].filter(Boolean).join(' • ') : null)
+                                                        const imei = it.imei || (ph ? (ph.imei_1 || ph.imei1 || ph.imei) : null)
+                                                        const price = it.unit_price || it.cost_price || it.subtotal || 0
+                                                        const qty = it.quantity || 1
+
+                                                        return (
+                                                            <div key={iidx} className="flex flex-col justify-between text-xs bg-white/90 p-2.5 rounded-xl border border-orange-100/80 shadow-2xs gap-1.5">
+                                                                <div className="space-y-0.5">
+                                                                    <p className="text-gray-900 font-bold text-xs">{name}</p>
+                                                                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                                                                        {specs && <span>{specs}</span>}
+                                                                        {imei && (
+                                                                            <span className="font-mono bg-orange-50/80 text-orange-800 border border-orange-200/60 px-1.5 py-0.2 rounded text-[10px]">
+                                                                                IMEI: {imei}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-right pt-1 border-t border-gray-100/80 flex justify-between items-center">
+                                                                    <span className="text-gray-400 text-[10px]">Qty: {qty}</span>
+                                                                    <span className="text-gray-900 font-bold">Rs. {Number(price).toLocaleString()}</span>
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })}
                                                 </div>
                                             </td>
                                         </tr>
@@ -1221,7 +1295,10 @@ function SupplierLedger() {
                                                         <div>
                                                             <span className="font-semibold text-gray-900">{itemsCount} item(s)</span>
                                                             <p className="text-[11px] text-gray-400 truncate max-w-xs">
-                                                                {p.purchase_items.map(i => i.product_name || i.item_name || 'Item').join(', ')}
+                                                                {p.purchase_items.map(i => {
+                                                                    const ph = i.phones || (supplierPhones || []).find(sp => sp.id === i.phone_id || sp.purchase_id === p.id)
+                                                                    return i.product_name || i.item_name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Phone'}` : 'Item')
+                                                                }).join(', ')}
                                                             </p>
                                                         </div>
                                                     ) : (
