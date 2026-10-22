@@ -292,8 +292,8 @@ CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_
               <Landmark className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-gray-900 tracking-tight">Business Bank Accounts & Balances</h1>
-              <p className="text-xs text-gray-500 font-medium">Manage liquid balances, bank deductions, purchase settlements, and internal transfers</p>
+              <h1 className="text-2xl font-black text-gray-900 tracking-tight">Business Bank & Cash Accounts</h1>
+              <p className="text-xs text-gray-500 font-medium">Manage liquid cash in hand, bank balances, automatic POS sales routing, and transfers</p>
             </div>
           </div>
         </div>
@@ -347,7 +347,7 @@ CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_
         <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden">
           <div className="relative z-10 space-y-2">
             <div className="flex items-center justify-between text-blue-200 text-xs font-bold uppercase tracking-wider">
-              <span>Total Liquid Bank Funds</span>
+              <span>Total Liquid Funds (Cash & Bank)</span>
               <span className="p-1.5 bg-white/10 rounded-lg">🏦</span>
             </div>
             <div className="text-3xl font-black tracking-tight">
@@ -569,7 +569,11 @@ CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_
 
           <div className="divide-y divide-gray-100">
             {transactions.slice(0, 10).map((tx, idx) => {
-              const isCredit = tx.transaction_type === 'CREDIT'
+              const isCredit = tx.transaction_type === 'CREDIT' || 
+                tx.transaction_type === 'credit' || 
+                tx.transaction_type === 'deposit' ||
+                tx.reference_type?.toLowerCase() === 'sale' ||
+                tx.reference_type?.toLowerCase() === 'deposit'
               const acc = accounts.find(a => String(a.id) === String(tx.account_id))
               const dateStr = new Date(tx.created_at).toLocaleDateString('en-PK', {
                 month: 'short',
@@ -893,7 +897,11 @@ CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_
                 }
 
                 return filtered.map((tx, idx) => {
-                  const isCredit = tx.transaction_type === 'CREDIT'
+                  const isCredit = tx.transaction_type === 'CREDIT' || 
+                    tx.transaction_type === 'credit' || 
+                    tx.transaction_type === 'deposit' ||
+                    tx.reference_type?.toLowerCase() === 'sale' ||
+                    tx.reference_type?.toLowerCase() === 'deposit'
                   const acc = accounts.find(a => String(a.id) === String(tx.account_id))
                   const dateStr = new Date(tx.created_at).toLocaleString('en-PK')
 

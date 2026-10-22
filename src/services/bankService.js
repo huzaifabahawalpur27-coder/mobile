@@ -26,10 +26,12 @@ export const getBankAccounts = async (shopId) => {
         .order('is_default', { ascending: false })
         .order('account_name', { ascending: true });
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         // Sync into Dexie cache
         try {
-          await db.bank_accounts.bulkPut(data);
+          if (data.length > 0) {
+            await db.bank_accounts.bulkPut(data);
+          }
         } catch (dexieErr) {
           console.warn('Dexie bank_accounts cache warning:', dexieErr);
         }
@@ -64,6 +66,21 @@ const normalizeAccount = (acc) => ({
 });
 
 /**
+ * Normalizes transaction values (numbers and transaction_type).
+ */
+const normalizeTransaction = (tx) => {
+  const rawType = String(tx.transaction_type || '').toLowerCase();
+  const isCredit = rawType === 'credit' || rawType === 'deposit';
+  return {
+    ...tx,
+    transaction_type: isCredit ? 'CREDIT' : 'DEBIT',
+    amount: Number(tx.amount || 0),
+    balance_before: Number(tx.balance_before || 0),
+    balance_after: Number(tx.balance_after || 0)
+  };
+};
+
+/**
  * Create a new bank account for a shop.
  */
 export const createBankAccount = async (accountData) => {
@@ -78,7 +95,7 @@ export const createBankAccount = async (accountData) => {
     current_balance: openingBalance,
     opening_balance: openingBalance,
     is_default: Boolean(accountData.is_default),
-    status: accountData.status || 'ACTIVE',
+    status: (accountData.status || 'active').toLowerCase(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
@@ -341,14 +358,17 @@ export const recordBankTransaction = async ({
   referenceId = null,
   description = ''
 }) => {
+  const normTxType = String(transactionType || '').toLowerCase();
+  const dbTransactionType = (normTxType === 'credit' || normTxType === 'deposit') ? 'deposit' : 'withdrawal';
+
   const record = {
-    shop_id: shopId,
-    account_id: accountId,
-    transaction_type: transactionType,
+    shop_id: Number(shopId) || shopId,
+    account_id: Number(accountId) || accountId,
+    transaction_type: dbTransactionType,
     amount: Number(amount || 0),
     balance_before: Number(balanceBefore || 0),
     balance_after: Number(balanceAfter || 0),
-    reference_type: referenceType,
+    reference_type: String(referenceType || 'manual').toLowerCase(),
     reference_id: referenceId ? String(referenceId) : null,
     description: description || null,
     created_at: new Date().toISOString()
@@ -409,7 +429,7 @@ export const getAccountTransactions = async (accountId, shopId, limit = 50) => {
 
       const { data, error } = await query;
       if (!error && data) {
-        return data;
+        return data.map(normalizeTransaction);
       }
     } catch (err) {
       console.warn('Error fetching account transactions from Supabase:', err);
@@ -423,7 +443,7 @@ export const getAccountTransactions = async (accountId, shopId, limit = 50) => {
       .equals(Number(accountId))
       .reverse()
       .sortBy('created_at');
-    return list.slice(0, limit);
+    return list.slice(0, limit).map(normalizeTransaction);
   } catch (err) {
     console.error('Dexie getAccountTransactions failed:', err);
     return [];
@@ -446,7 +466,16 @@ export const getAllBankTransactions = async (shopId, limit = 100) => {
         .order('created_at', { ascending: false })
         .limit(limit);
 
-      if (!error && data) return data;
+      if (!error && data) {
+        try {
+          if (data.length > 0) {
+            await db.bank_account_transactions.bulkPut(data.map(normalizeTransaction));
+          }
+        } catch {
+          // ignore cache error
+        }
+        return data.map(normalizeTransaction);
+      }
     } catch (err) {
       console.warn('getAllBankTransactions Supabase warning:', err);
     }
@@ -457,7 +486,8 @@ export const getAllBankTransactions = async (shopId, limit = 100) => {
     return all
       .filter(tx => String(tx.shop_id) === String(shopId))
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(normalizeTransaction);
   } catch (err) {
     console.error('getAllBankTransactions Dexie error:', err);
     return [];
@@ -648,4 +678,193 @@ export const transferBetweenAccounts = async ({
 
   return { success: true, amount: transferAmount };
 };
+
+/**
+ * Find or auto-create an account for receiving POS sales.
+ * Handles:
+ * - 'cash': finds or creates 'Cash in Hand' (bank_name: 'Cash')
+ * - Bank / Provider (e.g. 'hbl', 'meezan', 'jazzcash', 'easypaisa', 'bank', etc.):
+ *   searches for existing account matching the provider name, or default bank, or auto-creates one.
+ */
+export const findOrCreateAccountForPayment = async ({
+  shopId,
+  method = 'cash',
+  provider = null,
+  accounts = []
+}) => {
+  let list = accounts;
+  if (!list || list.length === 0) {
+    list = await getBankAccounts(shopId);
+  }
+
+  const cleanMethod = (method || 'cash').toLowerCase().trim();
+  const cleanProvider = (provider || '').toLowerCase().trim();
+  const targetKey = cleanProvider || cleanMethod;
+
+  // 1. CASH
+  if (cleanMethod === 'cash' || targetKey === 'cash') {
+    const existingCash = list.find(a => 
+      a.bank_name?.toLowerCase().includes('cash') || 
+      a.account_name?.toLowerCase().includes('cash')
+    );
+    if (existingCash) return existingCash;
+
+    // Create Cash account
+    const newCash = await createBankAccount({
+      shop_id: shopId,
+      account_name: 'Cash in Hand',
+      bank_name: 'Cash',
+      account_number: 'CASH',
+      opening_balance: 0,
+      is_default: list.length === 0,
+      status: 'active'
+    });
+    return newCash;
+  }
+
+  // 2. BANK / ONLINE / SPECIFIC PROVIDER
+  const PROVIDER_NAMES = {
+    hbl: { name: 'HBL Business Account', bank: 'Habib Bank Limited (HBL)' },
+    meezan: { name: 'Meezan Bank Account', bank: 'Meezan Bank' },
+    ubl: { name: 'UBL Account', bank: 'United Bank Limited (UBL)' },
+    mcb: { name: 'MCB Bank Account', bank: 'MCB Bank' },
+    abl: { name: 'Allied Bank Account', bank: 'Allied Bank Limited (ABL)' },
+    alfalah: { name: 'Bank Alfalah Account', bank: 'Bank Alfalah' },
+    faysal: { name: 'Faysal Bank Account', bank: 'Faysal Bank' },
+    bop: { name: 'Bank of Punjab Account', bank: 'Bank of Punjab (BOP)' },
+    askari: { name: 'Askari Bank Account', bank: 'Askari Bank' },
+    jazzcash: { name: 'JazzCash Wallet', bank: 'JazzCash' },
+    easypaisa: { name: 'Easypaisa Wallet', bank: 'EasyPaisa' },
+    sadapay: { name: 'SadaPay Account', bank: 'SadaPay' },
+    nayapay: { name: 'NayaPay Account', bank: 'NayaPay' },
+    other_bank: { name: 'Bank Transfer / Raast', bank: 'Bank Transfer' }
+  };
+
+  const info = PROVIDER_NAMES[targetKey] || {
+    name: `${targetKey.toUpperCase()} Account`,
+    bank: targetKey.toUpperCase()
+  };
+
+  // Search by keyword in existing accounts
+  const matched = list.find(a => {
+    const name = (a.account_name || '').toLowerCase();
+    const bank = (a.bank_name || '').toLowerCase();
+    return name.includes(targetKey) || bank.includes(targetKey) || (cleanProvider && (name.includes(cleanProvider) || bank.includes(cleanProvider)));
+  });
+
+  if (matched) return matched;
+
+  // If no direct keyword match, check if there's a non-cash default or single bank account
+  const nonCashAccounts = list.filter(a => 
+    !a.bank_name?.toLowerCase().includes('cash') && 
+    !a.account_name?.toLowerCase().includes('cash')
+  );
+
+  // If only one non-cash bank account exists and payment method is generic 'bank' or 'online', use it
+  if (nonCashAccounts.length === 1 && (targetKey === 'bank' || targetKey === 'online' || targetKey === 'other_bank')) {
+    return nonCashAccounts[0];
+  }
+
+  // Otherwise, create an account for this provider
+  const newBankAcc = await createBankAccount({
+    shop_id: shopId,
+    account_name: info.name,
+    bank_name: info.bank,
+    account_number: targetKey.toUpperCase(),
+    opening_balance: 0,
+    is_default: false,
+    status: 'active'
+  });
+
+  return newBankAcc;
+};
+
+/**
+ * Automatically credits sale amount into the appropriate Cash or Bank account.
+ * Supports:
+ * - Single payment (cash, online/bank, partial paid)
+ * - Split payments (multiple tenders with respective amounts)
+ */
+export const recordSaleToAccounts = async ({
+  shopId,
+  saleId,
+  paymentType,
+  paymentMethod,
+  paymentDetails = [],
+  totalPaid = 0,
+  description = ''
+}) => {
+  const paid = Number(totalPaid || 0);
+  if (!shopId || paid <= 0) return null;
+
+  try {
+    // 1. Fetch current accounts
+    let accounts = await getBankAccounts(shopId);
+
+    // 2. Check if split payments
+    if (paymentDetails && Array.isArray(paymentDetails) && paymentDetails.length > 0) {
+      const results = [];
+      for (const tender of paymentDetails) {
+        const tenderAmount = Number(tender.amount || 0);
+        if (tenderAmount <= 0) continue;
+
+        const tenderMethod = (tender.method || paymentType || 'cash').toLowerCase();
+        if (tenderMethod === 'credit') continue;
+
+        const tenderProvider = (tender.provider || (tenderMethod !== 'cash' ? tenderMethod : null));
+
+        const targetAccount = await findOrCreateAccountForPayment({
+          shopId,
+          method: tenderMethod,
+          provider: tenderProvider,
+          accounts
+        });
+
+        if (targetAccount) {
+          const txDesc = description || `POS Sale #${saleId} (${tenderProvider || tenderMethod})`;
+          await creditBankBalance({
+            shopId,
+            accountId: targetAccount.id,
+            amount: tenderAmount,
+            referenceType: 'sale',
+            referenceId: String(saleId),
+            description: txDesc
+          });
+          results.push({ accountId: targetAccount.id, amount: tenderAmount });
+          // refresh accounts cache for next item in case balance changed
+          accounts = await getBankAccounts(shopId);
+        }
+      }
+      return results;
+    }
+
+    // 3. Single payment method
+    const method = (paymentMethod || paymentType || 'cash').toLowerCase();
+    if (method === 'credit') return null; // Unpaid credit balance
+
+    const targetAccount = await findOrCreateAccountForPayment({
+      shopId,
+      method,
+      provider: method !== 'cash' ? method : null,
+      accounts
+    });
+
+    if (targetAccount) {
+      const txDesc = description || `POS Sale #${saleId} (${method.toUpperCase()})`;
+      await creditBankBalance({
+        shopId,
+        accountId: targetAccount.id,
+        amount: paid,
+        referenceType: 'sale',
+        referenceId: String(saleId),
+        description: txDesc
+      });
+      return [{ accountId: targetAccount.id, amount: paid }];
+    }
+  } catch (err) {
+    console.error('Error auto-crediting sale to accounts:', err);
+  }
+  return null;
+};
+
 

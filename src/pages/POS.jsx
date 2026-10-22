@@ -14,6 +14,7 @@ import { formatInvoiceWhatsAppMessage, buildWhatsAppUrl, cleanPhoneNumber } from
 import { enqueueWhatsAppMessage, buildPhoneSaleReceiptText } from '../services/whatsappQueueService'
 import { playError } from '../utils/soundEffects'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
+import { recordSaleToAccounts } from '../services/bankService'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
   { id: 'easypaisa', name: 'Easypaisa', icon: '🟢' },
@@ -1227,6 +1228,19 @@ function POS() {
         }
       }
       setQueueToast('Offline/Sync Mode: Sale completed locally & queued to sync 🔄')
+    }
+
+    // Auto-credit sale proceeds into bank or cash account
+    if (finalSale && saleType === 'sale' && totalPaid > 0) {
+      recordSaleToAccounts({
+        shopId: saleData.shop_id,
+        saleId: finalSale.id,
+        paymentType: saleData.payment_type,
+        paymentMethod: saleData.payment_method,
+        paymentDetails: finalPayments,
+        totalPaid: totalPaid,
+        description: `POS Sale #${finalSale.id}${customerId ? '' : (walkInName ? ` - ${walkInName}` : '')}`
+      }).catch(accErr => console.warn('Account settlement credit warning:', accErr))
     }
 
     // 4. GUARANTEED RECEIPT DIALOG DISPLAY

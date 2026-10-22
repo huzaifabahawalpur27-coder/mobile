@@ -8,6 +8,7 @@ import { recordAuditLog } from '../services/auditService'
 import PasswordModal from '../components/PasswordModal'
 import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
+import { getBankAccounts, deductBankBalance } from '../services/bankService'
 
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
   let snap = null
@@ -304,7 +305,6 @@ function Sales() {
           payment_type: 'return',
           note: `Return from Invoice #${String(selectedSale.id).slice(-6)} (Credited to Balance)`
         }])
-      } else {
         // Log as refund (Cash or Walk-in)
         await supabase.from('customer_payments').insert([{
           shop_id: user.shop_id,
@@ -313,6 +313,25 @@ function Sales() {
           payment_type: 'refund',
           note: `Cash Refund from Invoice #${String(selectedSale.id).slice(-6)}`
         }])
+
+        // Deduct from Cash account in Accounts section
+        try {
+          const accounts = await getBankAccounts(user.shop_id)
+          const cashAcc = accounts.find(a => 
+            a.bank_name?.toLowerCase().includes('cash') || 
+            a.account_name?.toLowerCase().includes('cash')
+          )
+          if (cashAcc) {
+            await deductBankBalance({
+              shopId: user.shop_id,
+              accountId: cashAcc.id,
+              amount: totalReturnAmount,
+              description: `Sale Return Refund (Invoice #${selectedSale.id})`
+            })
+          }
+        } catch (accErr) {
+          console.warn('Could not deduct refund from cash account:', accErr)
+        }
       }
 
       // Audit Log
