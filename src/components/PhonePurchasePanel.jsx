@@ -15,6 +15,7 @@ const DEFAULT_PTA_STATUSES = [
   'PTA Approved',
   'Non-PTA',
   'JV',
+  'CPID / Patch',
   'CPID Approved',
   'VIP Approved',
   'Software Patch',
@@ -36,8 +37,9 @@ function normalizePtaStatus(status) {
   if (!status) return 'approved'
   const s = status.toLowerCase().trim()
   if (s.includes('non') || s === 'non-pta' || s === 'non_pta') return 'non_pta'
-  if (s.includes('cpid') || s === 'jv' || s.includes('patch') || s.includes('software')) return 'cpid'
-  if (s.includes('vip')) return 'vip'
+  if (s === 'jv' || s.includes('jv')) return 'JV'
+  if (s.includes('cpid') || s.includes('patch') || s.includes('software')) return 'cpid'
+  if (s.includes('vip') || s.includes('gevey')) return 'vip'
   if (s.includes('block')) return 'blocked'
   return 'approved'
 }
@@ -646,13 +648,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           await supabase.from('purchase_items').insert([itemRecord]).catch(() => {})
         }
 
-        // 3. Update Supplier Balance
-        const balanceIncrease = totalCost - effectivePaid
-        if (balanceIncrease > 0) {
-          const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supplierId).maybeSingle()
-          const newBal = (curSup?.outstanding_balance || curSup?.balance || 0) + balanceIncrease
-          await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', supplierId).catch(() => {})
-        }
+
 
         // 4. Record Supplier Payment if paid > 0
         if (effectivePaid > 0) {

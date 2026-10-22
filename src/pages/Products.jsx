@@ -301,7 +301,12 @@ function Products() {
     ) : true
 
     const matchPta = selectedPta !== 'all' ? (
-      item.item_type === 'phone' && String(item.pta_status || '').toLowerCase() === selectedPta.toLowerCase()
+      item.item_type === 'phone' && (
+        String(item.pta_status || '').toLowerCase() === selectedPta.toLowerCase() ||
+        (selectedPta === 'approved' && ['approved', 'pta_approved'].includes(String(item.pta_status || '').toLowerCase())) ||
+        (selectedPta === 'jv' && ['jv', 'jv_gevey'].includes(String(item.pta_status || '').toLowerCase())) ||
+        (selectedPta === 'cpid' && ['cpid', 'patch', 'cpid_patch'].includes(String(item.pta_status || '').toLowerCase()))
+      )
     ) : true
 
     const matchStorage = selectedStorage !== 'all' ? (
@@ -950,9 +955,11 @@ function Products() {
                   onChange={e => setSelectedPta(e.target.value)}
                 >
                   <option value="all">All PTA Status</option>
-                  <option value="pta_approved">PTA Approved</option>
+                  <option value="approved">PTA Approved</option>
                   <option value="non_pta">Non-PTA</option>
-                  <option value="jv_gevey">JV / Gevey</option>
+                  <option value="jv">JV</option>
+                  <option value="cpid">CPID / Patch</option>
+                  <option value="vip">VIP / Gevey</option>
                 </select>
 
                 <select
@@ -1308,11 +1315,15 @@ function Products() {
                             </div>
                             {item.pta_status && (
                               <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-black uppercase tracking-wider ${
-                                item.pta_status === 'pta_approved'
+                                String(item.pta_status).toLowerCase().includes('approved')
                                   ? 'bg-emerald-100 text-emerald-800'
-                                  : item.pta_status === 'non_pta'
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-purple-100 text-purple-800'
+                                  : String(item.pta_status).toLowerCase().includes('non')
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : String(item.pta_status).toLowerCase() === 'jv'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : String(item.pta_status).toLowerCase().includes('cpid') || String(item.pta_status).toLowerCase().includes('patch')
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-purple-100 text-purple-800'
                               }`}>
                                 {item.pta_status.replace(/_/g, ' ')}
                               </span>

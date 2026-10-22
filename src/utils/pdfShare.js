@@ -502,7 +502,15 @@ export async function generatePhoneStockPDF(phones = [], shopInfo = {}, options 
     const s = String(p.pta_status || '').toLowerCase()
     return s.includes('non')
   }).length
-  const cpidOrOther = totalUnits - ptaApproved - nonPta
+  const jvCount = phones.filter(p => {
+    const s = String(p.pta_status || '').toLowerCase()
+    return s === 'jv' || s.includes('jv')
+  }).length
+  const cpidCount = phones.filter(p => {
+    const s = String(p.pta_status || '').toLowerCase()
+    return s.includes('cpid') || s.includes('patch')
+  }).length
+  const cpidOrOther = totalUnits - ptaApproved - nonPta - jvCount - cpidCount
 
   const totalCost = phones.reduce((acc, p) => acc + (parseFloat(p.cost_price) || 0) + (parseFloat(p.additional_costs) || 0), 0)
   const totalSale = phones.reduce((acc, p) => acc + (parseFloat(p.sale_price) || parseFloat(p.selling_price) || 0), 0)
@@ -522,7 +530,9 @@ export async function generatePhoneStockPDF(phones = [], shopInfo = {}, options 
     `PTA Approved: ${ptaApproved}`,
     `Non-PTA: ${nonPta}`
   ]
-  if (cpidOrOther > 0) summaryParts.push(`CPID/Other: ${cpidOrOther}`)
+  if (jvCount > 0) summaryParts.push(`JV: ${jvCount}`)
+  if (cpidCount > 0) summaryParts.push(`CPID: ${cpidCount}`)
+  if (cpidOrOther > 0) summaryParts.push(`Other: ${cpidOrOther}`)
   if (showCost) {
     summaryParts.push(`Total Cost: Rs. ${Math.round(totalCost).toLocaleString()}`)
     summaryParts.push(`Total Sale Value: Rs. ${Math.round(totalSale).toLocaleString()}`)
@@ -545,6 +555,7 @@ export async function generatePhoneStockPDF(phones = [], shopInfo = {}, options 
     let ptaLabel = 'Approved'
     const ptaRaw = String(p.pta_status || '').toLowerCase()
     if (ptaRaw.includes('non')) ptaLabel = 'Non-PTA'
+    else if (ptaRaw === 'jv' || ptaRaw.includes('jv')) ptaLabel = 'JV'
     else if (ptaRaw.includes('cpid') || ptaRaw.includes('patch')) ptaLabel = 'CPID / Patch'
     else if (ptaRaw.includes('vip') || ptaRaw.includes('gevey')) ptaLabel = 'VIP / Gevey'
     else if (ptaRaw.includes('block')) ptaLabel = 'Blocked'
@@ -629,6 +640,9 @@ export async function generatePhoneStockPDF(phones = [], shopInfo = {}, options 
           data.cell.styles.fontStyle = 'bold'
         } else if (data.cell.raw === 'PTA Approved') {
           data.cell.styles.textColor = [5, 150, 105] // Emerald green
+          data.cell.styles.fontStyle = 'bold'
+        } else if (data.cell.raw === 'JV') {
+          data.cell.styles.textColor = [37, 99, 235] // Blue
           data.cell.styles.fontStyle = 'bold'
         } else if (data.cell.raw?.includes('CPID') || data.cell.raw?.includes('Patch')) {
           data.cell.styles.textColor = [180, 83, 9] // Amber

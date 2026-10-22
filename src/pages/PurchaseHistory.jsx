@@ -474,6 +474,22 @@ function PurchaseHistory() {
 
                 await moveToTrash('purchases', id, item, user.id, user.shop_id)
                 await db.purchases.delete(id)
+
+                if (item.supplier_id) {
+                    const unpaid = Math.max(0, Number(item.total_amount || 0) - Number(item.paid_amount || 0))
+                    if (unpaid > 0) {
+                        try {
+                            const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', item.supplier_id).maybeSingle()
+                            const baseBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
+                            const newBal = Math.max(0, baseBal - unpaid)
+                            if (navigator.onLine) {
+                                await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', item.supplier_id)
+                            }
+                            await db.suppliers?.update(Number(item.supplier_id), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
+                        } catch (_) {}
+                    }
+                }
+
                 successfulIds.push(id)
                 successCount++
             } catch (err) {

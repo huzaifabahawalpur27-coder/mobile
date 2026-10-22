@@ -83,6 +83,43 @@ function TrashBin() {
         sale_items: '📋 Sale Item'
     }
 
+    const adjustBalanceOnRestore = async (table, data) => {
+        try {
+            if (table === 'purchases' && data?.supplier_id) {
+                const unpaid = Math.max(0, Number(data.total_amount || 0) - Number(data.paid_amount || 0))
+                if (unpaid > 0) {
+                    const supId = data.supplier_id
+                    const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supId).maybeSingle()
+                    const baseBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
+                    const newBal = baseBal + unpaid
+                    await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', supId)
+                    await db.suppliers?.update(Number(supId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
+                }
+            } else if (table === 'supplier_payments' && data?.supplier_id) {
+                const supId = data.supplier_id
+                const amt = Number(data.amount || 0)
+                const isDebit = data.payment_type === 'debit'
+                const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supId).maybeSingle()
+                const baseBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
+                const newBal = Math.max(0, isDebit ? baseBal + amt : baseBal - amt)
+                await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', supId)
+                await db.suppliers?.update(Number(supId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
+            } else if (table === 'sales' && data?.customer_id) {
+                const unpaid = Math.max(0, Number(data.total_amount || 0) - Number(data.paid_amount || 0))
+                if (unpaid > 0) {
+                    const custId = data.customer_id
+                    const { data: curCust } = await supabase.from('customers').select('outstanding_balance, balance').eq('id', custId).maybeSingle()
+                    const baseBal = Number(curCust?.outstanding_balance ?? curCust?.balance ?? 0)
+                    const newBal = baseBal + unpaid
+                    await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', custId)
+                    await db.customers?.update(Number(custId), { outstanding_balance: newBal, balance: newBal }).catch(() => {})
+                }
+            }
+        } catch (err) {
+            console.warn('Balance adjustment on restore notice:', err)
+        }
+    }
+
     const handleRestore = async (items) => {
         try {
             for (const item of items) {
@@ -96,6 +133,7 @@ function TrashBin() {
                 } else {
                     await addToSyncQueue(item.original_table, 'INSERT', item.data)
                 }
+                await adjustBalanceOnRestore(item.original_table, item.data)
             }
             alert(`✅ ${items.length} item(s) restored successfully!`)
             setSelected([])

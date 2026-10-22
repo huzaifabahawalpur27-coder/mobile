@@ -15,10 +15,11 @@ import EditPurchasePaymentModal from './EditPurchasePaymentModal'
 // Normalize PTA statuses from various formats to standard keys
 export const normalizePtaStatus = (status) => {
   const s = String(status || '').toLowerCase().trim()
-  if (['approved', 'pta approved', 'pta_approved'].includes(s)) return 'approved'
-  if (['non_pta', 'non-pta', 'non pta'].includes(s)) return 'non_pta'
-  if (['cpid', 'patch'].includes(s)) return 'cpid'
-  if (['vip', 'gevey'].includes(s)) return 'vip'
+  if (['approved', 'pta approved', 'pta_approved'].includes(s) || s.includes('approved')) return 'approved'
+  if (['non_pta', 'non-pta', 'non pta'].includes(s) || s.includes('non')) return 'non_pta'
+  if (['jv'].includes(s) || s.includes('jv')) return 'jv'
+  if (['cpid', 'patch', 'cpid_patch', 'cpid / patch'].includes(s) || s.includes('cpid') || s.includes('patch')) return 'cpid'
+  if (['vip', 'gevey'].includes(s) || s.includes('vip') || s.includes('gevey')) return 'vip'
   if (['blocked'].includes(s)) return 'blocked'
   return s || 'approved'
 }
@@ -37,6 +38,12 @@ export const getPtaBadge = (status) => {
       color: 'bg-rose-50 text-rose-700 border-rose-200'
     }
   }
+  if (norm === 'jv') {
+    return {
+      label: 'JV',
+      color: 'bg-blue-50 text-blue-700 border-blue-200'
+    }
+  }
   if (norm === 'cpid') {
     return {
       label: 'CPID / Patch',
@@ -50,7 +57,7 @@ export const getPtaBadge = (status) => {
     }
   }
   return {
-    label: status || 'Unknown',
+    label: status ? String(status).toUpperCase() : 'Unknown',
     color: 'bg-gray-50 text-gray-700 border-gray-200'
   }
 }
@@ -407,7 +414,7 @@ export default function PhoneInventoryView() {
       parts.push(`Status: ${statusMap[statusFilter] || statusFilter}`)
     }
     if (ptaFilter !== 'all') {
-      const ptaMap = { approved: 'PTA Approved', non_pta: 'Non-PTA', cpid: 'CPID / Patch', vip: 'VIP / Gevey' }
+      const ptaMap = { approved: 'PTA Approved', non_pta: 'Non-PTA', jv: 'JV', cpid: 'CPID / Patch', vip: 'VIP / Gevey' }
       parts.push(`PTA: ${ptaMap[ptaFilter] || ptaFilter}`)
     }
     if (storageFilter !== 'all') parts.push(`Storage: ${storageFilter}`)
@@ -437,6 +444,7 @@ export default function PhoneInventoryView() {
           reservedOrIssued: 0,
           ptaApproved: 0,
           nonPta: 0,
+          jv: 0,
           cpid: 0,
           otherPta: 0,
           storages: {},
@@ -462,6 +470,7 @@ export default function PhoneInventoryView() {
       const ptaNorm = normalizePtaStatus(p.pta_status)
       if (ptaNorm === 'approved') g.ptaApproved += 1
       else if (ptaNorm === 'non_pta') g.nonPta += 1
+      else if (ptaNorm === 'jv') g.jv += 1
       else if (ptaNorm === 'cpid') g.cpid += 1
       else g.otherPta += 1
 
@@ -667,6 +676,7 @@ export default function PhoneInventoryView() {
             <option value="all">🔍 PTA: All Statuses</option>
             <option value="approved">🟢 PTA Approved</option>
             <option value="non_pta">🔴 Non-PTA</option>
+            <option value="jv">🔵 JV</option>
             <option value="cpid">🟡 CPID / Patch</option>
             <option value="vip">🟣 VIP / Gevey</option>
           </select>
@@ -817,10 +827,16 @@ export default function PhoneInventoryView() {
                             {group.nonPta} Non-PTA
                           </span>
                         )}
+                        {group.jv > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            <span className="w-2 h-2 rounded-full bg-blue-500" />
+                            {group.jv} JV
+                          </span>
+                        )}
                         {group.cpid > 0 && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
                             <span className="w-2 h-2 rounded-full bg-amber-500" />
-                            {group.cpid} CPID
+                            {group.cpid} CPID / Patch
                           </span>
                         )}
                         {group.otherPta > 0 && (

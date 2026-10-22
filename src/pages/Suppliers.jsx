@@ -167,17 +167,17 @@ function Suppliers() {
       }
       if (error) throw error
 
-      // Update supplier outstanding_balance
+      // Update supplier outstanding_balance and balance
       const newBal = isDebit
         ? (txSup.outstanding_balance || 0) + amount
         : Math.max(0, (txSup.outstanding_balance || 0) - amount)
-      await supabase.from('suppliers').update({ outstanding_balance: newBal }).eq('id', txSup.id)
-      setTxSup({ ...txSup, outstanding_balance: newBal })
-      setSuppliers(prev => prev.map(s => s.id === txSup.id ? { ...s, outstanding_balance: newBal } : s))
+      await supabase.from('suppliers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', txSup.id)
+      setTxSup({ ...txSup, outstanding_balance: newBal, balance: newBal })
+      setSuppliers(prev => prev.map(s => s.id === txSup.id ? { ...s, outstanding_balance: newBal, balance: newBal } : s))
 
       setTxForm({ date: new Date().toISOString().slice(0, 10), bill_number: '', type: 'debit', amount: '', note: '' })
       setShowAddTx(false)
-      await openTxModal({ ...txSup, outstanding_balance: newBal })
+      await openTxModal({ ...txSup, outstanding_balance: newBal, balance: newBal })
     } catch (err) {
       const msg = err?.message || String(err)
       if (msg.includes('Failed to fetch') || !navigator.onLine) {
@@ -187,12 +187,12 @@ function Suppliers() {
         const newBal = isDebit
           ? (txSup.outstanding_balance || 0) + amount
           : Math.max(0, (txSup.outstanding_balance || 0) - amount)
-        await db.suppliers.update(txSup.id, { outstanding_balance: newBal })
-        setTxSup({ ...txSup, outstanding_balance: newBal })
-        setSuppliers(prev => prev.map(s => s.id === txSup.id ? { ...s, outstanding_balance: newBal } : s))
+        await db.suppliers.update(txSup.id, { outstanding_balance: newBal, balance: newBal })
+        setTxSup({ ...txSup, outstanding_balance: newBal, balance: newBal })
+        setSuppliers(prev => prev.map(s => s.id === txSup.id ? { ...s, outstanding_balance: newBal, balance: newBal } : s))
         setTxForm({ date: new Date().toISOString().slice(0, 10), bill_number: '', type: 'debit', amount: '', note: '' })
         setShowAddTx(false)
-        await openTxModal({ ...txSup, outstanding_balance: newBal })
+        await openTxModal({ ...txSup, outstanding_balance: newBal, balance: newBal })
         alert('Offline: Locally saved, will sync when online.')
       } else {
         alert('Error: ' + msg)

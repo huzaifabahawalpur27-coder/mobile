@@ -113,7 +113,15 @@ export function generatePhoneStockPrintHTML(phones = [], branding = {}, options 
   const inStockUnits = phones.filter(p => p.status === 'in_stock').length
   const ptaApproved = phones.filter(p => String(p.pta_status || '').toLowerCase().includes('approved')).length
   const nonPta = phones.filter(p => String(p.pta_status || '').toLowerCase().includes('non')).length
-  const cpidOrOther = totalUnits - ptaApproved - nonPta
+  const jvCount = phones.filter(p => {
+    const s = String(p.pta_status || '').toLowerCase()
+    return s === 'jv' || s.includes('jv')
+  }).length
+  const cpidCount = phones.filter(p => {
+    const s = String(p.pta_status || '').toLowerCase()
+    return s.includes('cpid') || s.includes('patch')
+  }).length
+  const cpidOrOther = totalUnits - ptaApproved - nonPta - jvCount
 
   const totalCost = phones.reduce((acc, p) => acc + (parseFloat(p.cost_price) || 0) + (parseFloat(p.additional_costs) || 0), 0)
   const totalSale = phones.reduce((acc, p) => acc + (parseFloat(p.sale_price) || parseFloat(p.selling_price) || 0), 0)
@@ -255,6 +263,7 @@ export function generatePhoneStockPrintHTML(phones = [], branding = {}, options 
         }
         .badge-pta-approved { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
         .badge-pta-non { background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+        .badge-pta-jv { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
         .badge-pta-cpid { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
         .badge-pta-vip { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
         .badge-status-instock { background: #ecfdf5; color: #047857; font-weight: 800; }
@@ -326,9 +335,21 @@ export function generatePhoneStockPrintHTML(phones = [], branding = {}, options 
             <span class="stat-label">Non-PTA:</span>
             <span class="stat-val red">${nonPta}</span>
           </div>
+          ${jvCount > 0 ? `
+            <div class="summary-stat">
+              <span class="stat-label">JV:</span>
+              <span class="stat-val blue">${jvCount}</span>
+            </div>
+          ` : ''}
+          ${cpidCount > 0 ? `
+            <div class="summary-stat">
+              <span class="stat-label">CPID / Patch:</span>
+              <span class="stat-val" style="color:#b45309;">${cpidCount}</span>
+            </div>
+          ` : ''}
           ${cpidOrOther > 0 ? `
             <div class="summary-stat">
-              <span class="stat-label">CPID/Other:</span>
+              <span class="stat-label">Other:</span>
               <span class="stat-val">${cpidOrOther}</span>
             </div>
           ` : ''}
@@ -376,6 +397,9 @@ export function generatePhoneStockPrintHTML(phones = [], branding = {}, options 
             if (ptaRaw.includes('non')) {
               ptaBadgeClass = 'badge-pta-non'
               ptaText = 'Non-PTA'
+            } else if (ptaRaw === 'jv' || ptaRaw.includes('jv')) {
+              ptaBadgeClass = 'badge-pta-jv'
+              ptaText = 'JV'
             } else if (ptaRaw.includes('cpid') || ptaRaw.includes('patch')) {
               ptaBadgeClass = 'badge-pta-cpid'
               ptaText = 'CPID / Patch'

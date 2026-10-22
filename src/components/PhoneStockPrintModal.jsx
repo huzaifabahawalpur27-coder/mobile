@@ -38,6 +38,14 @@ export default function PhoneStockPrintModal({
   const totalCount = targetPhones.length
   const ptaCount = targetPhones.filter(p => String(p.pta_status || '').toLowerCase().includes('approved')).length
   const nonPtaCount = targetPhones.filter(p => String(p.pta_status || '').toLowerCase().includes('non')).length
+  const jvCount = targetPhones.filter(p => {
+    const s = String(p.pta_status || '').toLowerCase()
+    return s === 'jv' || s.includes('jv')
+  }).length
+  const cpidCount = targetPhones.filter(p => {
+    const s = String(p.pta_status || '').toLowerCase()
+    return s.includes('cpid') || s.includes('patch')
+  }).length
   const totalCost = targetPhones.reduce((sum, p) => sum + (parseFloat(p.cost_price) || 0) + (parseFloat(p.additional_costs) || 0), 0)
   const totalSale = targetPhones.reduce((sum, p) => sum + (parseFloat(p.sale_price) || parseFloat(p.selling_price) || 0), 0)
 
@@ -261,7 +269,7 @@ export default function PhoneStockPrintModal({
           </div>
 
           {/* Quick Metrics Preview */}
-          <div className="grid grid-cols-3 gap-2 bg-blue-50/50 p-3 rounded-xl border border-blue-100 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-blue-50/50 p-3 rounded-xl border border-blue-100 text-center">
             <div>
               <p className="text-[10px] font-bold uppercase text-gray-500">Units</p>
               <p className="text-base font-black text-gray-900">{totalCount}</p>
@@ -273,6 +281,10 @@ export default function PhoneStockPrintModal({
             <div>
               <p className="text-[10px] font-bold uppercase text-rose-600">Non-PTA</p>
               <p className="text-base font-black text-rose-700">{nonPtaCount}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase text-blue-600">JV Phones</p>
+              <p className="text-base font-black text-blue-700">{jvCount}</p>
             </div>
           </div>
 

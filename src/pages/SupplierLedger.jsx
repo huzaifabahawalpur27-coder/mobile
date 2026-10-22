@@ -249,7 +249,7 @@ function SupplierLedger() {
             }
             if (pErr) throw pErr
 
-            const { error: sErr } = await supabase.from('suppliers').update({ outstanding_balance: newBalance }).eq('id', id)
+            const { error: sErr } = await supabase.from('suppliers').update({ outstanding_balance: newBalance, balance: newBalance }).eq('id', id)
             if (sErr) throw sErr
 
             alert('Transaction save ho gaya! ✅')
@@ -270,9 +270,9 @@ function SupplierLedger() {
                     await db.supplier_payments.add(rec)
                     await db.sync_queue.add({ table: 'supplier_payments', action: 'INSERT', data: rec, timestamp: now })
                 }
-                await db.suppliers.update(id, { outstanding_balance: newBalance })
-                await db.sync_queue.add({ table: 'suppliers', action: 'UPDATE', data: { id, outstanding_balance: newBalance }, timestamp: now })
-                setSupplier(s => ({ ...s, outstanding_balance: newBalance }))
+                await db.suppliers.update(id, { outstanding_balance: newBalance, balance: newBalance })
+                await db.sync_queue.add({ table: 'suppliers', action: 'UPDATE', data: { id, outstanding_balance: newBalance, balance: newBalance }, timestamp: now })
+                setSupplier(s => ({ ...s, outstanding_balance: newBalance, balance: newBalance }))
                 alert('Offline mode: Transaction locally save ho gaya. Online hone pr sync hoga! 🔄')
                 resetForm()
                 fetchSupplierData()
@@ -333,11 +333,11 @@ function SupplierLedger() {
 
             try {
                 if (navigator.onLine) {
-                    await supabase.from('suppliers').update({ outstanding_balance: Math.max(0, newBalance) }).eq('id', id)
+                    await supabase.from('suppliers').update({ outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) }).eq('id', id)
                 } else {
-                    await db.suppliers.update(parseInt(id), { outstanding_balance: Math.max(0, newBalance) })
+                    await db.suppliers.update(parseInt(id), { outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) })
                 }
-                setSupplier(s => s ? ({ ...s, outstanding_balance: Math.max(0, newBalance) }) : s)
+                setSupplier(s => s ? ({ ...s, outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) }) : s)
             } catch (_) { /* supplier may already be deleted — ignore */ }
             fetchSupplierData()
         } catch (err) {
@@ -451,7 +451,7 @@ function SupplierLedger() {
                 }
                 if (error) throw error
                 const newBal = (supplier?.outstanding_balance || 0) + balanceDelta
-                await supabase.from('suppliers').update({ outstanding_balance: newBal }).eq('id', id)
+                await supabase.from('suppliers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', id)
             } else {
                 for (const row of insertRows) {
                     const rec = { ...row, id: crypto.randomUUID() }
@@ -459,7 +459,7 @@ function SupplierLedger() {
                     await db.sync_queue.add({ table: 'supplier_payments', action: 'INSERT', data: rec, timestamp: rec.created_at })
                 }
                 const newBal = (supplier?.outstanding_balance || 0) + balanceDelta
-                await db.suppliers.update(id, { outstanding_balance: newBal })
+                await db.suppliers.update(id, { outstanding_balance: newBal, balance: newBal })
             }
 
             alert(`${insertRows.length} entries import ho gayi! ✅`)
@@ -555,11 +555,11 @@ function SupplierLedger() {
         // Update supplier balance (skip gracefully if supplier no longer exists)
         try {
             if (navigator.onLine) {
-                await supabase.from('suppliers').update({ outstanding_balance: Math.max(0, newBalance) }).eq('id', id)
+                await supabase.from('suppliers').update({ outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) }).eq('id', id)
             } else {
-                await db.suppliers.update(parseInt(id), { outstanding_balance: Math.max(0, newBalance) })
+                await db.suppliers.update(parseInt(id), { outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) })
             }
-            setSupplier(s => s ? ({ ...s, outstanding_balance: Math.max(0, newBalance) }) : s)
+            setSupplier(s => s ? ({ ...s, outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) }) : s)
         } catch (_) { /* supplier may already be deleted — ignore */ }
         setSelectedIds(new Set())
         if (errors.length) alert(`${errors.length} entries delete nahi huin:\n${errors.slice(0, 3).join('\n')}`)
@@ -574,12 +574,12 @@ function SupplierLedger() {
 
         try {
             if (navigator.onLine) {
-                await supabase.from('suppliers').update({ outstanding_balance: Math.max(0, computedBalance) }).eq('id', id)
+                await supabase.from('suppliers').update({ outstanding_balance: Math.max(0, computedBalance), balance: Math.max(0, computedBalance) }).eq('id', id)
             } else {
-                await db.suppliers.update(parseInt(id), { outstanding_balance: Math.max(0, computedBalance) })
-                await db.sync_queue.add({ table: 'suppliers', action: 'UPDATE', data: { id, outstanding_balance: Math.max(0, computedBalance) }, timestamp: new Date().toISOString() })
+                await db.suppliers.update(parseInt(id), { outstanding_balance: Math.max(0, computedBalance), balance: Math.max(0, computedBalance) })
+                await db.sync_queue.add({ table: 'suppliers', action: 'UPDATE', data: { id, outstanding_balance: Math.max(0, computedBalance), balance: Math.max(0, computedBalance) }, timestamp: new Date().toISOString() })
             }
-            setSupplier(s => s ? { ...s, outstanding_balance: Math.max(0, computedBalance) } : s)
+            setSupplier(s => s ? { ...s, outstanding_balance: Math.max(0, computedBalance), balance: Math.max(0, computedBalance) } : s)
             alert(`✅ Balance reconciled successfully to Rs. ${Math.max(0, computedBalance)}`)
         } catch (err) {
             alert('Reconcile error: ' + err.message)
