@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, CreditCard, Landmark, Banknote, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { X, CreditCard, Landmark, Banknote, AlertCircle, CheckCircle2, ArrowRightLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getBankAccounts } from '../services/bankService'
 import { updatePurchasePaymentMethod } from '../services/purchaseService'
@@ -12,8 +12,10 @@ export default function EditPurchasePaymentModal({
 }) {
   const { user } = useAuth()
   const [newMethod, setNewMethod] = useState('cash')
-  const [bankAccounts, setBankAccounts] = useState([])
+  const [allAccounts, setAllAccounts] = useState([])
   const [selectedBankId, setSelectedBankId] = useState('')
+  const [refundBankId, setRefundBankId] = useState('')
+  const [selectedCashId, setSelectedCashId] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
@@ -21,6 +23,62 @@ export default function EditPurchasePaymentModal({
   const currentMethod = (purchase?.payment_type || purchase?.payment_method || 'cash').toLowerCase()
   const totalAmount = Number(purchase?.total_amount || purchase?.net_amount || 0)
   const supplierName = purchase?.suppliers?.name || 'Supplier'
+
+  const cashAccounts = allAccounts.filter(a =>
+    a.bank_name?.toLowerCase().includes('cash') ||
+    a.account_name?.toLowerCase().includes('cash') ||
+    a.account_number === 'CASH'
+  )
+  const bankAccounts = allAccounts.filter(a =>
+    !a.bank_name?.toLowerCase().includes('cash') &&
+    !a.account_name?.toLowerCase().includes('cash') &&
+    a.account_number !== 'CASH'
+  )
+
+  useEffect(() => {
+    if (user?.shop_id && isOpen) {
+      getBankAccounts(user.shop_id).then(list => {
+        const accs = list || []
+        setAllAccounts(accs)
+
+        const banks = accs.filter(a =>
+          !a.bank_name?.toLowerCase().includes('cash') &&
+          !a.account_name?.toLowerCase().includes('cash') &&
+          a.account_number !== 'CASH'
+        )
+        const cashes = accs.filter(a =>
+          a.bank_name?.toLowerCase().includes('cash') ||
+          a.account_name?.toLowerCase().includes('cash') ||
+          a.account_number === 'CASH'
+        )
+
+        // Select default bank
+        const defBank = banks.find(b => b.is_default) || banks[0]
+        if (defBank) setSelectedBankId(String(defBank.id))
+
+        // Select default cash
+        const defCash = cashes.find(c => c.is_default) || cashes[0]
+        if (defCash) setSelectedCashId(String(defCash.id))
+
+        // Detect purchase's original bank if bank
+        let detectedBankId = purchase?.payment_details?.bank_account_id
+        if (!detectedBankId && (purchase?.remarks || purchase?.notes)) {
+          const rem = `${purchase.remarks || ''} ${purchase.notes || ''}`.toLowerCase()
+          const matched = banks.find(b =>
+            (b.bank_name && rem.includes(b.bank_name.toLowerCase())) ||
+            (b.account_name && rem.includes(b.account_name.toLowerCase()))
+          )
+          if (matched) detectedBankId = matched.id
+        }
+        if (detectedBankId) {
+          setRefundBankId(String(detectedBankId))
+          setSelectedBankId(String(detectedBankId))
+        } else if (defBank) {
+          setRefundBankId(String(defBank.id))
+        }
+      }).catch(() => {})
+    }
+  }, [user?.shop_id, isOpen, purchase])
 
   useEffect(() => {
     if (purchase) {
@@ -30,26 +88,16 @@ export default function EditPurchasePaymentModal({
     }
   }, [purchase, currentMethod])
 
-  useEffect(() => {
-    if (user?.shop_id && isOpen) {
-      getBankAccounts(user.shop_id).then(list => {
-        setBankAccounts(list || [])
-        const def = (list || []).find(b => b.is_default) || (list || [])[0]
-        if (def) setSelectedBankId(String(def.id))
-      }).catch(() => {})
-    }
-  }, [user?.shop_id, isOpen])
-
   if (!isOpen || !purchase) return null
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (newMethod === currentMethod) {
+    if (newMethod === currentMethod && (newMethod !== 'bank' || String(purchase?.payment_details?.bank_account_id) === String(selectedBankId))) {
       onClose()
       return
     }
     if (newMethod === 'bank' && !selectedBankId) {
-      setErrorMsg('Please select a bank account for Bank Payment.')
+      setErrorMsg('Please select a bank account to deduct.')
       return
     }
 
@@ -60,10 +108,12 @@ export default function EditPurchasePaymentModal({
         purchaseId: purchase.id,
         newPaymentMethod: newMethod,
         bankAccountId: newMethod === 'bank' ? selectedBankId : null,
+        refundBankAccountId: currentMethod === 'bank' ? refundBankId : null,
+        cashAccountId: selectedCashId || null,
         notes: notes.trim(),
         user
       })
-      alert(`Payment method for PR-${String(purchase.id).slice(-6)} successfully changed to ${newMethod.toUpperCase()}!`)
+      alert(`Payment method for PR-${String(purchase.id).slice(-6)} successfully updated to ${newMethod.toUpperCase()}!`)
       if (onUpdated) onUpdated()
       onClose()
     } catch (err) {
@@ -73,14 +123,89 @@ export default function EditPurchasePaymentModal({
     }
   }
 
-  // Financial preview calculation
-  let financialSummary = ''
-  if (currentMethod === 'credit' && (newMethod === 'cash' || newMethod === 'bank')) {
-    financialSummary = `Supplier debt will decrease by Rs. ${totalAmount.toLocaleString()} (marked as paid via ${newMethod.toUpperCase()}).`
-  } else if ((currentMethod === 'cash' || currentMethod === 'bank') && newMethod === 'credit') {
-    financialSummary = `Supplier debt will increase by Rs. ${totalAmount.toLocaleString()} (converted to credit payable).`
-  } else if (currentMethod !== newMethod) {
-    financialSummary = `Payment source will be switched from ${currentMethod.toUpperCase()} to ${newMethod.toUpperCase()}.`
+  // Selected account names for live preview
+  const chosenBank = bankAccounts.find(b => String(b.id) === String(selectedBankId))
+  const refundBank = bankAccounts.find(b => String(b.id) === String(refundBankId)) || chosenBank
+  const chosenCash = cashAccounts.find(c => String(c.id) === String(selectedCashId)) || { account_name: 'Cash in Hand' }
+
+  // Detailed Financial Preview
+  let financialSummary = null
+  if (currentMethod === 'bank' && newMethod === 'cash') {
+    financialSummary = (
+      <div className="space-y-1">
+        <p className="font-bold text-blue-950 flex items-center gap-1">
+          <ArrowRightLeft className="w-3.5 h-3.5 text-blue-600" /> Bank ➔ Cash Adjustment:
+        </p>
+        <p className="text-emerald-700 font-semibold">
+          ➕ Rs. {totalAmount.toLocaleString()} will be <b>refunded/credited back</b> to {refundBank?.account_name || 'Bank Account'}.
+        </p>
+        <p className="text-red-600 font-semibold">
+          ➖ Rs. {totalAmount.toLocaleString()} will be <b>deducted</b> from {chosenCash?.account_name || 'Cash in Hand'}.
+        </p>
+      </div>
+    )
+  } else if (currentMethod === 'cash' && newMethod === 'bank') {
+    financialSummary = (
+      <div className="space-y-1">
+        <p className="font-bold text-blue-950 flex items-center gap-1">
+          <ArrowRightLeft className="w-3.5 h-3.5 text-blue-600" /> Cash ➔ Bank Adjustment:
+        </p>
+        <p className="text-emerald-700 font-semibold">
+          ➕ Rs. {totalAmount.toLocaleString()} will be <b>refunded/credited back</b> to {chosenCash?.account_name || 'Cash in Hand'}.
+        </p>
+        <p className="text-red-600 font-semibold">
+          ➖ Rs. {totalAmount.toLocaleString()} will be <b>deducted</b> from {chosenBank?.account_name || 'Bank Account'}.
+        </p>
+      </div>
+    )
+  } else if (currentMethod === 'credit' && newMethod === 'cash') {
+    financialSummary = (
+      <div className="space-y-1">
+        <p className="font-bold text-blue-950">Credit ➔ Cash Payment:</p>
+        <p className="text-emerald-700 font-semibold">
+          📉 Supplier debt will reduce by Rs. {totalAmount.toLocaleString()}.
+        </p>
+        <p className="text-red-600 font-semibold">
+          ➖ Rs. {totalAmount.toLocaleString()} will be deducted from {chosenCash?.account_name || 'Cash in Hand'}.
+        </p>
+      </div>
+    )
+  } else if (currentMethod === 'credit' && newMethod === 'bank') {
+    financialSummary = (
+      <div className="space-y-1">
+        <p className="font-bold text-blue-950">Credit ➔ Bank Payment:</p>
+        <p className="text-emerald-700 font-semibold">
+          📉 Supplier debt will reduce by Rs. {totalAmount.toLocaleString()}.
+        </p>
+        <p className="text-red-600 font-semibold">
+          ➖ Rs. {totalAmount.toLocaleString()} will be deducted from {chosenBank?.account_name || 'Bank Account'}.
+        </p>
+      </div>
+    )
+  } else if (currentMethod === 'cash' && newMethod === 'credit') {
+    financialSummary = (
+      <div className="space-y-1">
+        <p className="font-bold text-blue-950">Cash ➔ Credit Conversion:</p>
+        <p className="text-amber-700 font-semibold">
+          📈 Supplier debt will increase by Rs. {totalAmount.toLocaleString()} (payable).
+        </p>
+        <p className="text-emerald-700 font-semibold">
+          ➕ Rs. {totalAmount.toLocaleString()} will be refunded to {chosenCash?.account_name || 'Cash in Hand'}.
+        </p>
+      </div>
+    )
+  } else if (currentMethod === 'bank' && newMethod === 'credit') {
+    financialSummary = (
+      <div className="space-y-1">
+        <p className="font-bold text-blue-950">Bank ➔ Credit Conversion:</p>
+        <p className="text-amber-700 font-semibold">
+          📈 Supplier debt will increase by Rs. {totalAmount.toLocaleString()} (payable).
+        </p>
+        <p className="text-emerald-700 font-semibold">
+          ➕ Rs. {totalAmount.toLocaleString()} will be refunded to {refundBank?.account_name || 'Bank Account'}.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -173,11 +298,12 @@ export default function EditPurchasePaymentModal({
             </div>
           </div>
 
-          {/* Bank Account Selection if Bank */}
+          {/* Account Selectors depending on transition */}
+          {/* 1. If new method is Bank: Choose bank to deduct */}
           {newMethod === 'bank' && (
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1">
-                Select Shop Bank Account *
+                🏦 Bank Account to Deduct *
               </label>
               <select
                 value={selectedBankId}
@@ -193,14 +319,50 @@ export default function EditPurchasePaymentModal({
             </div>
           )}
 
+          {/* 2. If transitioning from Bank: Select which bank account was used so it gets refunded */}
+          {currentMethod === 'bank' && (newMethod === 'cash' || newMethod === 'credit') && (
+            <div>
+              <label className="block text-xs font-bold text-blue-900 mb-1">
+                🏦 Bank Account to Receive Refund *
+              </label>
+              <select
+                value={refundBankId}
+                onChange={e => setRefundBankId(e.target.value)}
+                className="w-full px-3 py-2 border border-blue-300 rounded-xl bg-blue-50/50 font-semibold text-xs outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {bankAccounts.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.bank_name ? `${b.bank_name} - ` : ''}{b.account_name} (Current: Rs. {Number(b.current_balance || 0).toLocaleString()})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 3. If Cash account involved: choose Cash Vault if multiple exist */}
+          {((newMethod === 'cash' || currentMethod === 'cash') && cashAccounts.length > 1) && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                💵 Cash Vault / Drawer:
+              </label>
+              <select
+                value={selectedCashId}
+                onChange={e => setSelectedCashId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white font-semibold text-xs outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {cashAccounts.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.account_name} (Balance: Rs. {Number(c.current_balance || 0).toLocaleString()})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Financial Impact Alert */}
           {financialSummary && (
-            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-blue-900 flex items-start gap-2 text-[11px]">
-              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">Automated Financial Adjustment:</p>
-                <p className="mt-0.5">{financialSummary}</p>
-              </div>
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-blue-900 text-[11px]">
+              {financialSummary}
             </div>
           )}
 
@@ -230,7 +392,7 @@ export default function EditPurchasePaymentModal({
             </button>
             <button
               type="submit"
-              disabled={saving || newMethod === currentMethod}
+              disabled={saving || (newMethod === currentMethod && (newMethod !== 'bank' || String(purchase?.payment_details?.bank_account_id) === String(selectedBankId)))}
               className="flex-1 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm disabled:opacity-50 transition cursor-pointer"
             >
               {saving ? 'Updating...' : 'Save & Adjust Balance'}
@@ -241,3 +403,4 @@ export default function EditPurchasePaymentModal({
     </div>
   )
 }
+

@@ -537,8 +537,9 @@ function PurchaseHistory() {
 
     // Summary stats
     const totalPurchaseValue = filtered.reduce((sum, p) => sum + Number(p.total_amount || 0), 0)
-    const cashCount = filtered.filter(p => p.payment_type === 'cash').length
-    const creditCount = filtered.filter(p => p.payment_type === 'credit').length
+    const cashCount = filtered.filter(p => (p.payment_type || '').toLowerCase() === 'cash').length
+    const bankCount = filtered.filter(p => (p.payment_type || '').toLowerCase() === 'bank').length
+    const creditCount = filtered.filter(p => (p.payment_type || '').toLowerCase() === 'credit').length
 
     if (!hasFeature('purchases')) return <UpgradeWall feature="purchases" />
 
@@ -556,11 +557,15 @@ function PurchaseHistory() {
                             <p className="text-[10px] text-gray-400 font-bold uppercase">Total</p>
                             <p className="text-sm font-bold text-blue-600">Rs. {totalPurchaseValue.toLocaleString()}</p>
                         </div>
-                        <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[100px]">
+                        <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[90px]">
                             <p className="text-[10px] text-gray-400 font-bold uppercase">Cash</p>
                             <p className="text-sm font-bold text-green-600">{cashCount}</p>
                         </div>
-                        <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[100px]">
+                        <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[90px]">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Bank</p>
+                            <p className="text-sm font-bold text-blue-600">{bankCount}</p>
+                        </div>
+                        <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[90px]">
                             <p className="text-[10px] text-gray-400 font-bold uppercase">Credit</p>
                             <p className="text-sm font-bold text-orange-600">{creditCount}</p>
                         </div>
@@ -586,8 +591,9 @@ function PurchaseHistory() {
                             onChange={e => setPaymentFilter(e.target.value)}
                         >
                             <option value="all">All Payments</option>
-                            <option value="cash">Cash Only</option>
-                            <option value="credit">Credit Only</option>
+                            <option value="cash">💵 Cash Only</option>
+                            <option value="bank">🏦 Bank Only</option>
+                            <option value="credit">📒 Credit Only</option>
                         </select>
                         <input
                             type="date"
@@ -659,10 +665,21 @@ function PurchaseHistory() {
                                                 <p className="text-lg font-black text-gray-900">
                                                     Rs. {Number(p.total_amount).toLocaleString()}
                                                 </p>
-                                                <div className="mt-1 flex flex-wrap gap-1.5">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                        {p.payment_type === 'cash' ? '💵 Cash' : '📒 Credit'}
+                                                <div className="mt-1 flex flex-wrap gap-1.5 items-center">
+                                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                                        p.payment_type === 'cash'
+                                                            ? 'bg-green-100 text-green-700'
+                                                            : p.payment_type === 'bank'
+                                                                ? 'bg-blue-100 text-blue-700'
+                                                                : 'bg-orange-100 text-orange-700'
+                                                    }`}>
+                                                        {p.payment_type === 'cash' ? '💵 Cash' : p.payment_type === 'bank' ? '🏦 Bank' : '📒 Credit'}
                                                     </span>
+                                                    {p.payment_type === 'bank' && (p.payment_details?.bank_name || p.remarks?.includes('[Paid via')) && (
+                                                        <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                                                            {p.payment_details?.bank_name || p.remarks?.match(/\[Paid via ([^\]]+)\]/)?.[1] || 'Bank Transfer'}
+                                                        </span>
+                                                    )}
                                                     {p.paid_amount != null && Number(p.paid_amount) < Number(p.total_amount) && (
                                                         <span className="bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded text-[10px] font-bold">
                                                             Paid: {Number(p.paid_amount).toLocaleString()}
@@ -681,7 +698,9 @@ function PurchaseHistory() {
                                             <div className="mt-3 bg-blue-50/70 p-3 rounded-xl border border-blue-100 flex flex-col gap-2">
                                                 <div className="flex items-center justify-between text-xs font-bold text-blue-900 border-b border-blue-200/60 pb-1.5">
                                                     <span>📱 Phone List ({items.length})</span>
-                                                    <span className="uppercase text-[10px] text-gray-500 font-semibold">{p.payment_type}</span>
+                                                    <span className="uppercase text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-blue-200 text-blue-800">
+                                                        {p.payment_type === 'bank' ? `🏦 Bank${p.payment_details?.bank_name ? ` (${p.payment_details.bank_name})` : ''}` : p.payment_type}
+                                                    </span>
                                                 </div>
                                                 <div className="flex flex-col gap-2">
                                                     {items.map((it, iidx) => {
@@ -832,9 +851,9 @@ function PurchaseHistory() {
                                                                     <div className="flex items-center gap-2 text-xs">
                                                                         <span className="text-gray-500 font-medium">Payment:</span>
                                                                         <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase ${
-                                                                            p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                                                                            p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : p.payment_type === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
                                                                         }`}>
-                                                                            {p.payment_type}
+                                                                            {p.payment_type === 'bank' ? `🏦 Bank${p.payment_details?.bank_name ? ` (${p.payment_details.bank_name})` : ''}` : p.payment_type}
                                                                         </span>
                                                                         {p.paid_amount != null && (
                                                                             <span className="text-gray-500 font-medium">
@@ -941,7 +960,15 @@ function PurchaseHistory() {
                                 <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Total Amount</span> <b className="text-lg">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b></p>
                                 <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Payment Type</span>
                                     <span className="flex items-center gap-2 mt-0.5">
-                                        <b className="uppercase">{selectedPurchase.payment_type}</b>
+                                        <b className={`uppercase px-2 py-0.5 rounded text-xs ${
+                                            selectedPurchase.payment_type === 'cash'
+                                                ? 'bg-green-100 text-green-800'
+                                                : selectedPurchase.payment_type === 'bank'
+                                                    ? 'bg-blue-100 text-blue-800'
+                                                    : 'bg-orange-100 text-orange-800'
+                                        }`}>
+                                            {selectedPurchase.payment_type === 'bank' ? `🏦 Bank${selectedPurchase.payment_details?.bank_name ? ` (${selectedPurchase.payment_details.bank_name})` : ''}` : selectedPurchase.payment_type}
+                                        </b>
                                         <button
                                             type="button"
                                             onClick={() => setPurchaseToEditPayment(selectedPurchase)}

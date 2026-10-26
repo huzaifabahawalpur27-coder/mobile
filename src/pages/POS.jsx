@@ -14,7 +14,7 @@ import { formatInvoiceWhatsAppMessage, buildWhatsAppUrl, cleanPhoneNumber } from
 import { enqueueWhatsAppMessage, buildPhoneSaleReceiptText } from '../services/whatsappQueueService'
 import { playError } from '../utils/soundEffects'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
-import { recordSaleToAccounts } from '../services/bankService'
+import { recordSaleToAccounts, getBankAccounts } from '../services/bankService'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
   { id: 'easypaisa', name: 'Easypaisa', icon: '🟢' },
@@ -65,6 +65,20 @@ function POS() {
   const [paymentType, setPaymentType] = useState('cash')
   const [onlineProvider, setOnlineProvider] = useState('jazzcash')
   const [transactionRef, setTransactionRef] = useState('')
+  const [shopBankAccounts, setShopBankAccounts] = useState([])
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState('')
+  const [selectedCashVaultId, setSelectedCashVaultId] = useState('')
+
+  const cashVaults = shopBankAccounts.filter(a =>
+    a.bank_name?.toLowerCase().includes('cash') ||
+    a.account_name?.toLowerCase().includes('cash') ||
+    a.account_number === 'CASH'
+  )
+  const bankOnlyAccounts = shopBankAccounts.filter(a =>
+    !a.bank_name?.toLowerCase().includes('cash') &&
+    !a.account_name?.toLowerCase().includes('cash') &&
+    a.account_number !== 'CASH'
+  )
   const searchInputRef = useRef(null)
   const [receivedAmount, setReceivedAmount] = useState('') // New state for partial payments
   const [queuedForMobile, setQueuedForMobile] = useState(false)
@@ -276,8 +290,39 @@ function POS() {
   const [showQuickView, setShowQuickView] = useState(false)
   const [showMobileCart, setShowMobileCart] = useState(false)
 
+  const fetchShopAccounts = async () => {
+    if (!user?.shop_id) return
+    try {
+      const list = await getBankAccounts(user.shop_id)
+      setShopBankAccounts(list || [])
+      const cashes = (list || []).filter(a =>
+        a.bank_name?.toLowerCase().includes('cash') ||
+        a.account_name?.toLowerCase().includes('cash') ||
+        a.account_number === 'CASH'
+      )
+      const banks = (list || []).filter(a =>
+        !a.bank_name?.toLowerCase().includes('cash') &&
+        !a.account_name?.toLowerCase().includes('cash') &&
+        a.account_number !== 'CASH'
+      )
+      if (cashes.length > 0) {
+        const defC = cashes.find(c => c.is_default) || cashes[0]
+        setSelectedCashVaultId(String(defC.id))
+      }
+      if (banks.length > 0) {
+        const defB = banks.find(b => b.is_default) || banks[0]
+        setSelectedBankAccountId(String(defB.id))
+      }
+    } catch (err) {
+      console.warn('POS fetchShopAccounts error:', err)
+    }
+  }
+
   useEffect(() => {
-    if (user?.shop_id) fetchAll()
+    if (user?.shop_id) {
+      fetchAll()
+      fetchShopAccounts()
+    }
   }, [user?.shop_id])
 
   // Auto-load quotation if ID is in URL
@@ -901,6 +946,11 @@ function POS() {
       return
     }
 
+    // Determine chosen bank or cash account
+    const chosenAccountId = paymentType === 'online'
+      ? (selectedBankAccountId || null)
+      : (paymentType === 'cash' ? (selectedCashVaultId || null) : null)
+
     // If split payment not used, default to single payment
     const singleMethod = paymentType === 'online' ? onlineProvider : paymentType
     const finalPayments = payments.length > 0
@@ -909,7 +959,8 @@ function POS() {
           method: singleMethod,
           provider: paymentType === 'online' ? onlineProvider : null,
           ref: paymentType === 'online' ? transactionRef : null,
-          amount: (receivedAmount === '' ? total : Number(receivedAmount))
+          amount: (receivedAmount === '' ? total : Number(receivedAmount)),
+          account_id: chosenAccountId
         }]
     const totalPaid = finalPayments.reduce((s, p) => s + Number(p.amount), 0)
 
@@ -1239,7 +1290,10 @@ function POS() {
         paymentMethod: saleData.payment_method,
         paymentDetails: finalPayments,
         totalPaid: totalPaid,
+        accountId: chosenAccountId,
         description: `POS Sale #${finalSale.id}${customerId ? '' : (walkInName ? ` - ${walkInName}` : '')}`
+      }).then(() => {
+        fetchShopAccounts()
       }).catch(accErr => console.warn('Account settlement credit warning:', accErr))
     }
 
@@ -2424,8 +2478,61 @@ function POS() {
                   </button>
                 </div>
 
+                {paymentType === 'cash' && cashVaults.length > 0 && (
+                  <div className="p-1.5 bg-emerald-50/80 border border-emerald-200 rounded-lg flex items-center gap-1.5 shadow-2xs">
+                    <span className="text-[10px] font-bold text-emerald-900 shrink-0">Vault:</span>
+                    <select
+                      value={selectedCashVaultId}
+                      onChange={e => setSelectedCashVaultId(e.target.value)}
+                      className="w-full text-xs font-semibold px-2 py-0.5 bg-white border border-emerald-300 rounded-md focus:ring-1 focus:ring-emerald-500 outline-none text-slate-800"
+                    >
+                      {cashVaults.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.account_name} (Rs. {Number(c.current_balance || 0).toLocaleString()})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {paymentType === 'online' && (
                   <div className="p-1.5 bg-white border border-blue-200 rounded-lg space-y-1 shadow-2xs">
+                    {bankOnlyAccounts.length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-blue-900 shrink-0">Bank:</span>
+                        <select
+                          value={selectedBankAccountId}
+                          onChange={e => {
+                            const val = e.target.value
+                            setSelectedBankAccountId(val)
+                            const chosen = bankOnlyAccounts.find(b => String(b.id) === String(val))
+                            if (chosen) {
+                              const bName = (chosen.bank_name || chosen.account_name || '').toLowerCase()
+                              if (bName.includes('meezan')) setOnlineProvider('meezan')
+                              else if (bName.includes('hbl')) setOnlineProvider('hbl')
+                              else if (bName.includes('ubl')) setOnlineProvider('ubl')
+                              else if (bName.includes('mcb')) setOnlineProvider('mcb')
+                              else if (bName.includes('alfalah')) setOnlineProvider('alfalah')
+                              else if (bName.includes('abl')) setOnlineProvider('abl')
+                              else if (bName.includes('faysal')) setOnlineProvider('faysal')
+                              else if (bName.includes('bop')) setOnlineProvider('bop')
+                              else if (bName.includes('askari')) setOnlineProvider('askari')
+                              else if (bName.includes('jazzcash')) setOnlineProvider('jazzcash')
+                              else if (bName.includes('easypaisa')) setOnlineProvider('easypaisa')
+                              else if (bName.includes('sadapay')) setOnlineProvider('sadapay')
+                              else if (bName.includes('nayapay')) setOnlineProvider('nayapay')
+                            }
+                          }}
+                          className="w-full text-xs font-bold px-2 py-0.5 bg-slate-50 border border-blue-300 rounded-md focus:ring-1 focus:ring-blue-500 outline-none text-slate-800"
+                        >
+                          {bankOnlyAccounts.map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.bank_name ? `${b.bank_name} - ` : ''}{b.account_name} (Rs. {Number(b.current_balance || 0).toLocaleString()})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] font-bold text-blue-900 shrink-0">Provider:</span>
                       <select
@@ -2926,9 +3033,69 @@ function POS() {
                 </div>
               </div>
 
-              {/* Online Provider Selection & TID Input */}
+              {/* Cash Vault Selection */}
+              {paymentType === 'cash' && cashVaults.length > 0 && (
+                <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-1.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <span className="text-xs font-bold text-emerald-900 shrink-0 flex items-center gap-1">
+                      💵 Cash Deposit Vault:
+                    </span>
+                    <select
+                      value={selectedCashVaultId}
+                      onChange={e => setSelectedCashVaultId(e.target.value)}
+                      className="flex-1 text-xs font-bold px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800"
+                    >
+                      {cashVaults.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.account_name} (Current: Rs. {Number(c.current_balance || 0).toLocaleString()})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Online Provider & Bank Account Selection & TID Input */}
               {paymentType === 'online' && (
                 <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
+                  {bankOnlyAccounts.length > 0 && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <span className="text-xs font-bold text-blue-900 shrink-0 flex items-center gap-1">
+                        🏦 Deposit To Bank Account:
+                      </span>
+                      <select
+                        value={selectedBankAccountId}
+                        onChange={e => {
+                          const val = e.target.value
+                          setSelectedBankAccountId(val)
+                          const chosen = bankOnlyAccounts.find(b => String(b.id) === String(val))
+                          if (chosen) {
+                            const bName = (chosen.bank_name || chosen.account_name || '').toLowerCase()
+                            if (bName.includes('meezan')) setOnlineProvider('meezan')
+                            else if (bName.includes('hbl')) setOnlineProvider('hbl')
+                            else if (bName.includes('ubl')) setOnlineProvider('ubl')
+                            else if (bName.includes('mcb')) setOnlineProvider('mcb')
+                            else if (bName.includes('alfalah')) setOnlineProvider('alfalah')
+                            else if (bName.includes('abl')) setOnlineProvider('abl')
+                            else if (bName.includes('faysal')) setOnlineProvider('faysal')
+                            else if (bName.includes('bop')) setOnlineProvider('bop')
+                            else if (bName.includes('askari')) setOnlineProvider('askari')
+                            else if (bName.includes('jazzcash')) setOnlineProvider('jazzcash')
+                            else if (bName.includes('easypaisa')) setOnlineProvider('easypaisa')
+                            else if (bName.includes('sadapay')) setOnlineProvider('sadapay')
+                            else if (bName.includes('nayapay')) setOnlineProvider('nayapay')
+                          }
+                        }}
+                        className="flex-1 text-xs font-bold px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-slate-800"
+                      >
+                        {bankOnlyAccounts.map(b => (
+                          <option key={b.id} value={b.id}>
+                            {b.bank_name ? `${b.bank_name} - ` : ''}{b.account_name} (Balance: Rs. {Number(b.current_balance || 0).toLocaleString()}) {b.is_default ? '★' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <span className="text-xs font-bold text-blue-900 shrink-0">Select Bank / Wallet:</span>
                     <select

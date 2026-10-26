@@ -5,7 +5,7 @@ import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue } from '../services/db'
 import PhonePurchasePanel from '../components/PhonePurchasePanel'
-import { getBankAccounts, deductBankBalance } from '../services/bankService'
+import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
 import { deduplicateProducts } from '../utils/productUtils'
 
@@ -258,6 +258,20 @@ function Purchases() {
     // Sanitize integer FK — offline-created suppliers have UUID ids
     const toIntOrNull = (v) => { const n = parseInt(v); return isNaN(n) ? null : n }
     const isImmediatePaid = paymentType === 'cash' || paymentType === 'bank'
+    const effectivePaymentType = selectedBankAccountId || paymentType === 'bank' ? 'bank' : paymentType
+    const selectedBank = effectivePaymentType === 'bank' && selectedBankAccountId
+      ? bankAccounts.find(b => String(b.id) === String(selectedBankAccountId))
+      : null
+    const paymentDetailsObj = selectedBank ? {
+      bank_account_id: selectedBank.id,
+      bank_name: selectedBank.bank_name,
+      account_name: selectedBank.account_name
+    } : null
+
+    const paymentNote = selectedBank 
+      ? `[Paid via ${selectedBank.bank_name ? `${selectedBank.bank_name} - ` : ''}${selectedBank.account_name}]`
+      : (effectivePaymentType === 'bank' ? `[Paid via Bank Transfer]` : `[Paid via Cash in Hand]`)
+
     const purchaseData = {
       shop_id: user.shop_id,
       supplier_id: toIntOrNull(supplierId),
@@ -265,8 +279,11 @@ function Purchases() {
       net_amount: total,
       paid_amount: isImmediatePaid ? total : 0,
       amount_paid: isImmediatePaid ? total : 0,
-      payment_type: paymentType,
-      payment_method: paymentType,
+      payment_type: effectivePaymentType,
+      payment_method: effectivePaymentType,
+      payment_details: paymentDetailsObj,
+      remarks: paymentNote,
+      notes: paymentNote,
       status: 'completed'
     }
 
@@ -279,7 +296,10 @@ function Purchases() {
           supplier_id: toIntOrNull(supplierId),
           total_amount: total,
           amount_paid: isImmediatePaid ? total : 0,
-          payment_method: paymentType
+          payment_method: effectivePaymentType,
+          payment_type: effectivePaymentType,
+          payment_details: paymentDetailsObj,
+          remarks: paymentNote
         }
         const res = await supabase.from('purchases').insert([minimalPurchase]).select().single()
         purchase = res.data
@@ -337,18 +357,14 @@ function Purchases() {
         await supabase.from('suppliers').update({ outstanding_balance: newBalance }).eq('id', supplierId)
         // Mirror to local DB
         await db.suppliers.update(supplierId, { outstanding_balance: newBalance })
-      } else if ((paymentType === 'cash' || paymentType === 'bank') && total > 0) {
+      } else if (isImmediatePaid && total > 0) {
         // Record the payment explicitly
-        const selectedBank = bankAccounts.find(b => String(b.id) === String(selectedBankAccountId))
-        const paymentNote = selectedBank 
-          ? `Paid via ${selectedBank.bank_name || 'Bank'} (${selectedBank.account_name}) for Purchase PR-${String(purchase.id).slice(-6)}`
-          : (paymentType === 'bank' ? `Bank Transfer for Purchase PR-${String(purchase.id).slice(-6)}` : `Cash Paid for Purchase PR-${String(purchase.id).slice(-6)}`)
-
         const paymentData = {
           shop_id: user.shop_id,
           supplier_id: supplierId,
           amount: total,
           payment_type: 'payment',
+          payment_method: effectivePaymentType,
           note: paymentNote
         }
         const { error: payErr } = await supabase.from('supplier_payments').insert([paymentData])
@@ -361,8 +377,8 @@ function Purchases() {
           }])
         }
 
-        // Deduct from selected bank account if configured
-        if (selectedBankAccountId) {
+        // Deduct from selected bank account or cash vault
+        if (effectivePaymentType === 'bank' && selectedBankAccountId) {
           try {
             await deductBankBalance({
               shopId: user.shop_id,
@@ -374,6 +390,22 @@ function Purchases() {
             fetchBankAccounts()
           } catch (bankErr) {
             console.warn('Bank balance deduction error:', bankErr)
+          }
+        } else if (effectivePaymentType === 'cash') {
+          try {
+            const cashAcc = await findOrCreateAccountForPayment({ shopId: user.shop_id, method: 'cash', accounts: bankAccounts })
+            if (cashAcc) {
+              await deductBankBalance({
+                shopId: user.shop_id,
+                accountId: Number(cashAcc.id),
+                amount: total,
+                purchaseId: purchase.id,
+                description: `Cash Purchase PR-${String(purchase.id).slice(-6)}`
+              })
+              fetchBankAccounts()
+            }
+          } catch (cErr) {
+            console.warn('Cash deduction error:', cErr)
           }
         }
       }
@@ -632,7 +664,10 @@ function Purchases() {
         <div className="grid grid-cols-3 gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={() => setPaymentType('cash')}
+            onClick={() => {
+              setPaymentType('cash')
+              setSelectedBankAccountId('')
+            }}
             className={`py-1.5 rounded-lg font-bold text-xs transition ${paymentType === 'cash' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
           >
             💵 Cash
@@ -652,22 +687,21 @@ function Purchases() {
           </button>
           <button
             type="button"
-            onClick={() => setPaymentType('credit')}
+            onClick={() => {
+              setPaymentType('credit')
+              setSelectedBankAccountId('')
+            }}
             className={`py-1.5 rounded-lg font-bold text-xs transition ${paymentType === 'credit' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
           >
             📒 Credit
           </button>
         </div>
 
-        {/* Bank Account Selector (for Bank or Cash purchases) */}
-        {(paymentType === 'bank' || (paymentType === 'cash' && bankAccounts.length > 0)) && (
-          <div className={`shrink-0 rounded-xl p-2.5 space-y-1.5 border transition ${
-            paymentType === 'bank'
-              ? 'bg-blue-50/90 border-blue-300 ring-2 ring-blue-100'
-              : 'bg-blue-50/60 border-blue-100'
-          }`}>
+        {/* Bank Account Selector (for Bank purchases) */}
+        {paymentType === 'bank' && (
+          <div className="shrink-0 rounded-xl p-2.5 space-y-1.5 border transition bg-blue-50/90 border-blue-300 ring-2 ring-blue-100">
             <div className="flex items-center justify-between text-[11px] font-bold text-blue-900">
-              <span>{paymentType === 'bank' ? '🏦 Pay Through Bank Account:' : 'Deduct From Bank (Optional):'}</span>
+              <span>🏦 Pay Through Bank Account:</span>
               <button
                 type="button"
                 onClick={() => setShowBankModal(true)}

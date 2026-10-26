@@ -5,7 +5,7 @@ import { db } from '../services/db'
 import { useAuth } from '../context/AuthContext'
 import { Plus, Trash2, Smartphone, DollarSign, Shield, CheckCircle, AlertCircle, Scan, Landmark, ChevronDown, Check, Send } from 'lucide-react'
 import { searchIphoneModels, getIphoneColorsForModel, ALL_IPHONE_COLORS, IPHONE_MODELS } from '../utils/iphonePresets'
-import { getBankAccounts, deductBankBalance } from '../services/bankService'
+import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment } from '../services/bankService'
 import BankAccountModal from './BankAccountModal'
 
 const COMMON_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Vivo', 'Oppo', 'Realme', 'Google', 'OnePlus', 'Infinix', 'Tecno', 'Other']
@@ -505,12 +505,27 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         notes: p.notes ? `${p.notes} [PTA: ${p.pta_status}]` : `[PTA: ${p.pta_status}]`
       }))
 
+      // Determine effective payment type: if a bank account is selected or paymentType is 'bank', it is 'bank'
+      const isBankSelected = Boolean(selectedBankAccountId)
+      const effectivePaymentType = isBankSelected || paymentType === 'bank' ? 'bank' : paymentType
+      const isBankPurchase = effectivePaymentType === 'bank' && selectedBankAccountId
+      const selectedBank = isBankPurchase ? bankAccounts.find(b => String(b.id) === String(selectedBankAccountId)) : null
+
       // Build effective purchase notes including bank deduction reference if applicable
       let effectiveNotes = purchaseNotes?.trim() || ''
-      if (selectedBankAccount && effectivePaid > 0) {
-        const bankTag = `[Paid via ${selectedBankAccount.bank_name || 'Bank'} - ${selectedBankAccount.account_name}]`
+      if (selectedBank && effectivePaid > 0) {
+        const bankTag = `[Paid via ${selectedBank.bank_name ? `${selectedBank.bank_name} - ` : ''}${selectedBank.account_name}]`
         effectiveNotes = effectiveNotes ? `${effectiveNotes} ${bankTag}` : bankTag
+      } else if (effectivePaymentType === 'cash' && effectivePaid > 0) {
+        const cashTag = `[Paid via Cash in Hand]`
+        effectiveNotes = effectiveNotes ? `${effectiveNotes} ${cashTag}` : cashTag
       }
+
+      const paymentDetailsObj = isBankPurchase && selectedBank ? {
+        bank_account_id: selectedBank.id,
+        bank_name: selectedBank.bank_name,
+        account_name: selectedBank.account_name
+      } : null
 
       // Call Atomic PostgreSQL RPC (primary 7-param signature, with graceful fallback to 6-param signature if schema cache differs)
       let rpcData, rpcError
@@ -520,7 +535,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         p_phones: phonesPayload,
         p_total_amount: totalCost,
         p_paid_amount: effectivePaid,
-        p_payment_type: paymentType,
+        p_payment_type: effectivePaymentType,
         p_notes: effectiveNotes || null
       })
 
@@ -531,7 +546,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           p_phones: phonesPayload,
           p_total_amount: totalCost,
           p_paid_amount: effectivePaid,
-          p_payment_method: paymentType,
+          p_payment_method: effectivePaymentType,
           p_remarks: effectiveNotes || null
         })
         rpcData = fallbackRes.data
@@ -561,8 +576,9 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           net_amount: totalCost,
           paid_amount: effectivePaid,
           amount_paid: effectivePaid,
-          payment_method: paymentType,
-          payment_type: paymentType,
+          payment_method: effectivePaymentType,
+          payment_type: effectivePaymentType,
+          payment_details: paymentDetailsObj,
           remarks: effectiveNotes || null,
           notes: effectiveNotes || null,
           status: 'completed',
@@ -577,7 +593,9 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
             supplier_id: parseInt(supplierId),
             total_amount: totalCost,
             amount_paid: effectivePaid,
-            payment_method: paymentType,
+            payment_method: effectivePaymentType,
+            payment_type: effectivePaymentType,
+            payment_details: paymentDetailsObj,
             remarks: effectiveNotes || null
           }
           pRes = await supabase.from('purchases').insert([corePurchase]).select().single()
@@ -657,9 +675,9 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
             branch_id: user.branch_id || null,
             supplier_id: parseInt(supplierId),
             amount: effectivePaid,
-            payment_method: paymentType,
+            payment_method: effectivePaymentType,
             payment_type: 'payment',
-            description: `Payment for Phone Purchase PR-${purchaseId} (${paymentType})`
+            description: `Payment for Phone Purchase PR-${purchaseId} (${effectivePaymentType})`
           }]).catch(() => {})
         }
 
@@ -668,6 +686,19 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           purchase_id: purchaseId,
           phones_count: phoneCart.length
         }
+      }
+
+      // Ensure purchase record in DB has payment_type, payment_method and payment_details set correctly
+      if (rpcData?.purchase_id) {
+        const pUpdates = {
+          payment_type: effectivePaymentType,
+          payment_method: effectivePaymentType,
+          payment_details: paymentDetailsObj,
+          remarks: effectiveNotes || null,
+          notes: effectiveNotes || null
+        }
+        await supabase.from('purchases').update(pUpdates).eq('id', rpcData.purchase_id).catch(() => {})
+        await db.purchases?.update(rpcData.purchase_id, pUpdates).catch(() => {})
       }
 
       // Cache phones locally in Dexie
@@ -700,9 +731,9 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         } catch (_) {}
       }
 
-      // Automatically deduct from chosen bank account
+      // Automatically deduct from chosen bank account or cash drawer
       let bankDeductionResult = null
-      if (selectedBankAccountId && effectivePaid > 0) {
+      if (effectivePaymentType === 'bank' && selectedBankAccountId && effectivePaid > 0) {
         try {
           bankDeductionResult = await deductBankBalance({
             shopId: user.shop_id,
@@ -716,12 +747,31 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         } catch (bankErr) {
           console.warn('Bank balance deduction warning:', bankErr)
         }
+      } else if (effectivePaymentType === 'cash' && effectivePaid > 0) {
+        try {
+          const cashAcc = await findOrCreateAccountForPayment({ shopId: user.shop_id, method: 'cash', accounts: bankAccounts })
+          if (cashAcc) {
+            await deductBankBalance({
+              shopId: user.shop_id,
+              accountId: Number(cashAcc.id),
+              amount: effectivePaid,
+              purchaseId: rpcData.purchase_id,
+              description: `Cash Purchase PR-${rpcData.purchase_id} (${phoneCart.length} phones)`
+            })
+            const updated = await getBankAccounts(user.shop_id)
+            setBankAccounts(updated)
+          }
+        } catch (cErr) {
+          console.warn('Cash balance deduction warning:', cErr)
+        }
       }
 
       const phonesCountAdded = rpcData.phones_count || rpcData.phone_count || phoneCart.length
       const bankNotice = bankDeductionResult
-        ? ` Paid Rs. ${effectivePaid.toLocaleString()} from ${selectedBankAccount?.account_name || 'Bank Account'}.`
-        : ''
+        ? ` Paid Rs. ${effectivePaid.toLocaleString()} from ${selectedBank?.account_name || 'Bank Account'}.`
+        : effectivePaymentType === 'cash' && effectivePaid > 0
+          ? ` Paid Rs. ${effectivePaid.toLocaleString()} in Cash.`
+          : ''
 
       setSuccessMsg(`✅ Purchase PR-${rpcData.purchase_id} recorded successfully! ${phonesCountAdded} phones added to inventory.${bankNotice}`)
       setPhoneCart([])
@@ -1492,10 +1542,14 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                       setPaymentType(val)
                       if (val === 'credit') {
                         setPaidAmount('')
-                      }
-                      if (val === 'bank' && !selectedBankAccountId && bankAccounts.length > 0) {
-                        const def = bankAccounts.find(b => b.is_default) || bankAccounts[0]
-                        if (def) setSelectedBankAccountId(String(def.id))
+                        setSelectedBankAccountId('')
+                      } else if (val === 'bank') {
+                        if (!selectedBankAccountId && bankAccounts.length > 0) {
+                          const def = bankAccounts.find(b => b.is_default) || bankAccounts[0]
+                          if (def) setSelectedBankAccountId(String(def.id))
+                        }
+                      } else if (val === 'cash') {
+                        setSelectedBankAccountId('')
                       }
                     }}
                     className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold outline-none bg-white cursor-pointer"
@@ -1528,22 +1582,18 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 </div>
               ) : (
                 <div className="flex justify-between items-center text-[11px] bg-emerald-50 text-emerald-900 px-2.5 py-1.5 rounded-lg border border-emerald-200">
-                  <span className="font-semibold">💵 Immediate Payment:</span>
+                  <span className="font-semibold">{paymentType === 'bank' ? '🏦 Bank Transfer Payment:' : '💵 Cash Payment:'}</span>
                   <span className="font-bold">Rs. {effectivePaid.toLocaleString()}</span>
                 </div>
               )}
 
-              {/* Bank Account Selection & Live Balance Deduction Preview */}
-              {(paymentType === 'bank' || (paymentType === 'cash' && effectivePaid > 0)) && (
-                <div className={`rounded-xl p-3 space-y-2 text-xs border transition ${
-                  paymentType === 'bank'
-                    ? 'bg-blue-50/90 border-blue-300 ring-2 ring-blue-100'
-                    : 'bg-blue-50/60 border-blue-200'
-                }`}>
+              {/* Bank Account Selection for Bank Purchases */}
+              {paymentType === 'bank' && (
+                <div className="rounded-xl p-3 space-y-2 text-xs border transition bg-blue-50/90 border-blue-300 ring-2 ring-blue-100">
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5 uppercase tracking-wide">
                       <Landmark className="w-3.5 h-3.5 text-blue-600" />
-                      {paymentType === 'bank' ? '🏦 Pay Through Bank Account *' : 'Deduct From Bank (Optional)'}
+                      Pay Through Bank Account *
                     </label>
                     <button
                       type="button"
@@ -1570,10 +1620,13 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                   ) : (
                     <select
                       value={selectedBankAccountId}
-                      onChange={e => setSelectedBankAccountId(e.target.value)}
+                      onChange={e => {
+                        const val = e.target.value
+                        setSelectedBankAccountId(val)
+                      }}
                       className="w-full px-2.5 py-1.5 border border-blue-300 rounded-lg text-xs font-semibold outline-none bg-white focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="">{paymentType === 'bank' ? '-- Select Bank Account --' : '-- No Bank Deduction (Cash Drawer) --'}</option>
+                      <option value="">-- Select Bank Account --</option>
                       {bankAccounts.map(b => (
                         <option key={b.id} value={b.id}>
                           {b.bank_name ? `${b.bank_name} - ` : ''}{b.account_name} (Rs. {b.current_balance.toLocaleString()}) {b.is_default ? '★' : ''}

@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { db, addToSyncQueue } from './db'
 import { recordAuditLog } from './auditService'
-import { deductBankBalance, creditBankBalance } from './bankService'
+import { deductBankBalance, creditBankBalance, getBankAccounts, findOrCreateAccountForPayment } from './bankService'
 
 /**
  * Updates the payment method of an existing purchase invoice.
@@ -24,6 +24,8 @@ export async function updatePurchasePaymentMethod({
   purchaseId,
   newPaymentMethod,
   bankAccountId = null,
+  refundBankAccountId = null,
+  cashAccountId = null,
   notes = '',
   user
 }) {
@@ -55,7 +57,7 @@ export async function updatePurchasePaymentMethod({
   if (!purchase) throw new Error(`Purchase record PR-${purchaseId} not found`)
 
   const oldMethod = (purchase.payment_type || purchase.payment_method || 'cash').toLowerCase()
-  if (oldMethod === newPaymentMethod) {
+  if (oldMethod === newPaymentMethod && (!bankAccountId || String(purchase.payment_details?.bank_account_id) === String(bankAccountId))) {
     return { success: true, message: 'Payment method is already ' + newPaymentMethod }
   }
 
@@ -83,7 +85,51 @@ export async function updatePurchasePaymentMethod({
   let newSupplierBal = currentBal
   const now = new Date().toISOString()
 
-  // 3. Financial Reconciliation Calculations
+  // 3. Resolve Accounts (Bank & Cash)
+  const bankAccounts = await getBankAccounts(shopId).catch(() => [])
+
+  // Resolve Cash Account
+  let cashAccount = cashAccountId
+    ? bankAccounts.find(a => String(a.id) === String(cashAccountId))
+    : null
+  if (!cashAccount) {
+    cashAccount = await findOrCreateAccountForPayment({ shopId, method: 'cash', accounts: bankAccounts })
+  }
+
+  // Resolve Original Bank Account if oldMethod was bank
+  let effectiveRefundBankId = refundBankAccountId
+  if (!effectiveRefundBankId && oldMethod === 'bank') {
+    if (purchase.payment_details?.bank_account_id) {
+      effectiveRefundBankId = purchase.payment_details.bank_account_id
+    }
+    if (!effectiveRefundBankId && (purchase.remarks || purchase.notes)) {
+      const rem = `${purchase.remarks || ''} ${purchase.notes || ''}`.toLowerCase()
+      const match = bankAccounts.find(b =>
+        (b.bank_name && rem.includes(b.bank_name.toLowerCase())) ||
+        (b.account_name && rem.includes(b.account_name.toLowerCase()))
+      )
+      if (match) effectiveRefundBankId = match.id
+    }
+    if (!effectiveRefundBankId) {
+      if (bankAccountId) {
+        effectiveRefundBankId = bankAccountId
+      } else {
+        const defBank = bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash') && !b.account_name?.toLowerCase().includes('cash') && b.is_default) ||
+          bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash') && !b.account_name?.toLowerCase().includes('cash'))
+        if (defBank) effectiveRefundBankId = defBank.id
+      }
+    }
+  }
+
+  // Resolve Target Bank Account if newMethod is bank
+  let effectiveBankId = bankAccountId
+  if (!effectiveBankId && newPaymentMethod === 'bank') {
+    const defBank = bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash') && !b.account_name?.toLowerCase().includes('cash') && b.is_default) ||
+      bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash') && !b.account_name?.toLowerCase().includes('cash'))
+    if (defBank) effectiveBankId = defBank.id
+  }
+
+  // 4. Financial Reconciliation Calculations
   // Case A: Credit -> Paid (Cash or Bank)
   // Supplier balance decreases (debt cleared)
   if (oldMethod === 'credit' && (newPaymentMethod === 'cash' || newPaymentMethod === 'bank')) {
@@ -102,7 +148,6 @@ export async function updatePurchasePaymentMethod({
     if (navigator.onLine) {
       const { error: insErr } = await supabase.from('supplier_payments').insert([paymentEntry])
       if (insErr) {
-        // Fallback for minimal columns
         await supabase.from('supplier_payments').insert([{
           shop_id: shopId,
           supplier_id: supplierId,
@@ -116,18 +161,30 @@ export async function updatePurchasePaymentMethod({
     }
     await db.supplier_payments?.add(paymentEntry).catch(() => {})
 
-    // If Bank, deduct from bank account
-    if (newPaymentMethod === 'bank' && bankAccountId) {
+    // Deduct from bank or cash
+    if (newPaymentMethod === 'bank' && effectiveBankId) {
       try {
         await deductBankBalance({
           shopId,
-          accountId: Number(bankAccountId),
+          accountId: Number(effectiveBankId),
           amount: totalAmount,
           purchaseId,
           description: `Settlement for Purchase PR-${String(purchaseId).slice(-6)}`
         })
       } catch (bErr) {
         console.warn('Bank deduction warning on method update:', bErr)
+      }
+    } else if (newPaymentMethod === 'cash' && cashAccount) {
+      try {
+        await deductBankBalance({
+          shopId,
+          accountId: Number(cashAccount.id),
+          amount: totalAmount,
+          purchaseId,
+          description: `Cash settlement for Purchase PR-${String(purchaseId).slice(-6)}`
+        })
+      } catch (cErr) {
+        console.warn('Cash deduction warning on method update:', cErr)
       }
     }
   }
@@ -163,56 +220,126 @@ export async function updatePurchasePaymentMethod({
     }
     await db.supplier_payments?.add(reversalEntry).catch(() => {})
 
-    // If previously Bank and bank account supplied, credit/refund balance back to bank
-    if (oldMethod === 'bank' && bankAccountId) {
+    // Refund bank or cash
+    if (oldMethod === 'bank' && effectiveRefundBankId) {
       try {
         await creditBankBalance({
           shopId,
-          accountId: Number(bankAccountId),
+          accountId: Number(effectiveRefundBankId),
           amount: totalAmount,
           referenceType: 'PURCHASE_REVERSAL',
           referenceId: purchaseId,
-          description: `Refund/Reversal for Purchase PR-${String(purchaseId).slice(-6)} converted to Credit`
+          description: `Refund for Purchase PR-${String(purchaseId).slice(-6)} converted to Credit`
         })
       } catch (bErr) {
         console.warn('Bank refund warning on method update:', bErr)
       }
+    } else if (oldMethod === 'cash' && cashAccount) {
+      try {
+        await creditBankBalance({
+          shopId,
+          accountId: Number(cashAccount.id),
+          amount: totalAmount,
+          referenceType: 'PURCHASE_REVERSAL',
+          referenceId: purchaseId,
+          description: `Cash refunded for Purchase PR-${String(purchaseId).slice(-6)} converted to Credit`
+        })
+      } catch (cErr) {
+        console.warn('Cash refund warning on method update:', cErr)
+      }
     }
   }
 
-  // Case C: Cash <-> Bank (Both are paid, just transferring payment source)
+  // Case C: Cash -> Bank
+  // 1. Refund Cash account
+  // 2. Deduct from selected Bank account
   else if (oldMethod === 'cash' && newPaymentMethod === 'bank') {
-    if (bankAccountId) {
+    if (cashAccount) {
+      try {
+        await creditBankBalance({
+          shopId,
+          accountId: Number(cashAccount.id),
+          amount: totalAmount,
+          referenceType: 'PAYMENT_CORRECTION',
+          referenceId: purchaseId,
+          description: `Cash refunded for PR-${String(purchaseId).slice(-6)} switched to Bank`
+        })
+      } catch (cErr) {
+        console.warn('Cash refund warning:', cErr)
+      }
+    }
+    if (effectiveBankId) {
       try {
         await deductBankBalance({
           shopId,
-          accountId: Number(bankAccountId),
+          accountId: Number(effectiveBankId),
           amount: totalAmount,
           purchaseId,
-          description: `Payment for PR-${String(purchaseId).slice(-6)} switched from Cash to Bank`
+          description: `Bank deduction for PR-${String(purchaseId).slice(-6)} switched from Cash to Bank`
         })
       } catch (bErr) {
         console.warn('Bank deduction warning:', bErr)
       }
     }
-  } else if (oldMethod === 'bank' && newPaymentMethod === 'cash') {
-    if (bankAccountId) {
+  }
+
+  // Case D: Bank -> Cash
+  // 1. Refund Bank account
+  // 2. Deduct from Cash account
+  else if (oldMethod === 'bank' && newPaymentMethod === 'cash') {
+    if (effectiveRefundBankId) {
       try {
         await creditBankBalance({
           shopId,
-          accountId: Number(bankAccountId),
+          accountId: Number(effectiveRefundBankId),
           amount: totalAmount,
           referenceType: 'PAYMENT_CORRECTION',
           referenceId: purchaseId,
-          description: `Cash received correction for PR-${String(purchaseId).slice(-6)}`
+          description: `Bank refunded for PR-${String(purchaseId).slice(-6)} switched to Cash`
         })
       } catch (bErr) {
         console.warn('Bank refund warning:', bErr)
       }
     }
+    if (cashAccount) {
+      try {
+        await deductBankBalance({
+          shopId,
+          accountId: Number(cashAccount.id),
+          amount: totalAmount,
+          purchaseId,
+          description: `Cash deduction for PR-${String(purchaseId).slice(-6)} switched from Bank to Cash`
+        })
+      } catch (cErr) {
+        console.warn('Cash deduction warning:', cErr)
+      }
+    }
   }
 
-  // 4. Update Supplier Balance if Changed
+  // Case E: Bank -> Bank (Switching bank accounts)
+  else if (oldMethod === 'bank' && newPaymentMethod === 'bank' && effectiveRefundBankId && effectiveBankId && String(effectiveRefundBankId) !== String(effectiveBankId)) {
+    try {
+      await creditBankBalance({
+        shopId,
+        accountId: Number(effectiveRefundBankId),
+        amount: totalAmount,
+        referenceType: 'PAYMENT_CORRECTION',
+        referenceId: purchaseId,
+        description: `Refund: PR-${String(purchaseId).slice(-6)} moved to another bank account`
+      })
+      await deductBankBalance({
+        shopId,
+        accountId: Number(effectiveBankId),
+        amount: totalAmount,
+        purchaseId,
+        description: `Deduction: PR-${String(purchaseId).slice(-6)} moved from another bank account`
+      })
+    } catch (bErr) {
+      console.warn('Bank transfer warning:', bErr)
+    }
+  }
+
+  // 5. Update Supplier Balance if Changed
   if (supplierId && newSupplierBal !== currentBal) {
     if (navigator.onLine) {
       await supabase
@@ -236,13 +363,36 @@ export async function updatePurchasePaymentMethod({
     }).catch(() => {})
   }
 
-  // 5. Update Purchase Record
+  // 6. Update Purchase Record
   const isPaid = newPaymentMethod === 'cash' || newPaymentMethod === 'bank'
+  const chosenBank = effectiveBankId ? bankAccounts.find(b => String(b.id) === String(effectiveBankId)) : null
+
+  let updatedRemarks = (purchase.remarks || purchase.notes || '').replace(/\[Paid via [^\]]+\]/g, '').trim()
+  if (newPaymentMethod === 'bank' && chosenBank) {
+    const bankTag = `[Paid via ${chosenBank.bank_name ? `${chosenBank.bank_name} - ` : ''}${chosenBank.account_name}]`
+    updatedRemarks = updatedRemarks ? `${updatedRemarks} ${bankTag}` : bankTag
+  } else if (newPaymentMethod === 'cash') {
+    const cashTag = `[Paid via Cash in Hand]`
+    updatedRemarks = updatedRemarks ? `${updatedRemarks} ${cashTag}` : cashTag
+  }
+
+  const paymentDetails = newPaymentMethod === 'bank' && chosenBank ? {
+    bank_account_id: chosenBank.id,
+    bank_name: chosenBank.bank_name,
+    account_name: chosenBank.account_name
+  } : (newPaymentMethod === 'cash' && cashAccount ? {
+    cash_account_id: cashAccount.id,
+    account_name: cashAccount.account_name
+  } : null)
+
   const purchaseUpdates = {
     payment_method: newPaymentMethod,
     payment_type: newPaymentMethod,
     paid_amount: isPaid ? totalAmount : 0,
-    amount_paid: isPaid ? totalAmount : 0
+    amount_paid: isPaid ? totalAmount : 0,
+    remarks: updatedRemarks || null,
+    notes: updatedRemarks || null,
+    payment_details: paymentDetails
   }
 
   if (navigator.onLine) {
@@ -251,10 +401,9 @@ export async function updatePurchasePaymentMethod({
       .update(purchaseUpdates)
       .eq('id', purchaseId)
     if (updErr) {
-      // Retry minimal columns
       await supabase
         .from('purchases')
-        .update({ payment_method: newPaymentMethod })
+        .update({ payment_method: newPaymentMethod, payment_type: newPaymentMethod })
         .eq('id', purchaseId)
     }
   } else {

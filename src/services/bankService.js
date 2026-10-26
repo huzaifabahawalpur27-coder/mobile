@@ -792,7 +792,8 @@ export const recordSaleToAccounts = async ({
   paymentMethod,
   paymentDetails = [],
   totalPaid = 0,
-  description = ''
+  description = '',
+  accountId = null
 }) => {
   const paid = Number(totalPaid || 0);
   if (!shopId || paid <= 0) return null;
@@ -812,16 +813,23 @@ export const recordSaleToAccounts = async ({
         if (tenderMethod === 'credit') continue;
 
         const tenderProvider = (tender.provider || (tenderMethod !== 'cash' ? tenderMethod : null));
+        const tenderAccId = tender.account_id || tender.accountId;
 
-        const targetAccount = await findOrCreateAccountForPayment({
-          shopId,
-          method: tenderMethod,
-          provider: tenderProvider,
-          accounts
-        });
+        let targetAccount = null;
+        if (tenderAccId) {
+          targetAccount = accounts.find(a => String(a.id) === String(tenderAccId));
+        }
+        if (!targetAccount) {
+          targetAccount = await findOrCreateAccountForPayment({
+            shopId,
+            method: tenderMethod,
+            provider: tenderProvider,
+            accounts
+          });
+        }
 
         if (targetAccount) {
-          const txDesc = description || `POS Sale #${saleId} (${tenderProvider || tenderMethod})`;
+          const txDesc = description || `POS Sale #${saleId} (${targetAccount.bank_name ? `${targetAccount.bank_name} - ` : ''}${targetAccount.account_name})`;
           await creditBankBalance({
             shopId,
             accountId: targetAccount.id,
@@ -842,15 +850,21 @@ export const recordSaleToAccounts = async ({
     const method = (paymentMethod || paymentType || 'cash').toLowerCase();
     if (method === 'credit') return null; // Unpaid credit balance
 
-    const targetAccount = await findOrCreateAccountForPayment({
-      shopId,
-      method,
-      provider: method !== 'cash' ? method : null,
-      accounts
-    });
+    let targetAccount = null;
+    if (accountId) {
+      targetAccount = accounts.find(a => String(a.id) === String(accountId));
+    }
+    if (!targetAccount) {
+      targetAccount = await findOrCreateAccountForPayment({
+        shopId,
+        method,
+        provider: method !== 'cash' ? method : null,
+        accounts
+      });
+    }
 
     if (targetAccount) {
-      const txDesc = description || `POS Sale #${saleId} (${method.toUpperCase()})`;
+      const txDesc = description || `POS Sale #${saleId} (${targetAccount.bank_name ? `${targetAccount.bank_name} - ` : ''}${targetAccount.account_name})`;
       await creditBankBalance({
         shopId,
         accountId: targetAccount.id,
