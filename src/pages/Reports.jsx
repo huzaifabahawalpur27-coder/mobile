@@ -20,7 +20,7 @@ import {
 function Reports() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
-  const [range, setRange] = useState('month') // today, week, month, year, custom, all
+  const [range, setRange] = useState('today') // today, week, month, year, custom, all
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
   const [activeTab, setActiveTab] = useState('products') // 'products', 'flow', 'overview', 'financials'
