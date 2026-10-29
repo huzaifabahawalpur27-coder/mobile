@@ -144,7 +144,13 @@ function Reports() {
 
       // Cache for offline use
       if (salesRes.data) await db.sales.bulkPut(JSON.parse(JSON.stringify(salesRes.data))).catch(() => {})
-      if (itemsRes.data) await db.sale_items.bulkPut(JSON.parse(JSON.stringify(itemsRes.data))).catch(() => {})
+      if (itemsRes.data && db.sale_items) {
+        const currentSaleIds = (salesRes.data || []).map(s => s.id).filter(Boolean)
+        if (currentSaleIds.length > 0) {
+          await db.sale_items.where('sale_id').anyOf(currentSaleIds).delete().catch(() => {})
+        }
+        await db.sale_items.bulkPut(JSON.parse(JSON.stringify(itemsRes.data))).catch(() => {})
+      }
       if (expensesRes.data) await db.expenses.bulkPut(JSON.parse(JSON.stringify(expensesRes.data))).catch(() => {})
       if (purchasesRes.data) await db.purchases.bulkPut(JSON.parse(JSON.stringify(purchasesRes.data))).catch(() => {})
       if (phonesRes.data && db.phones) await db.phones.bulkPut(JSON.parse(JSON.stringify(phonesRes.data))).catch(() => {})
@@ -424,7 +430,10 @@ function Reports() {
     })
 
     // 4. Overall Financials (Fully Consistent & Accurate COGS & Profit)
-    const grossSales = sales.reduce((sum, s) => sum + Number(s.total_amount || s.net_amount || 0), 0)
+    const totalItemsRevenue = phoneSoldRevenue + bulkSoldRevenue
+    const grossSales = totalItemsRevenue > 0
+      ? totalItemsRevenue
+      : sales.reduce((sum, s) => sum + Number(s.total_amount || s.net_amount || 0), 0)
     const totalDiscount = sales.reduce((sum, s) => sum + Number(s.discount || 0), 0)
     const netSalesValue = Math.max(0, grossSales - totalDiscount)
     const costOfSales = phoneSoldCost + bulkSoldCost

@@ -345,8 +345,11 @@ function Dashboard() {
       })
     })
 
-    const todayProfit = todayTotal - todayCOGS
-    const todayProfitMargin = todayTotal > 0 ? (todayProfit / todayTotal) * 100 : 0
+    const todayItemsRevenue = todayPhonesRevenue + todayBulkRevenue
+    const todayTotalDiscount = todaySalesList.reduce((sum, s) => sum + Number(s.discount || 0), 0)
+    const todayNetSales = todayItemsRevenue > 0 ? Math.max(0, todayItemsRevenue - todayTotalDiscount) : todayTotal
+    const todayProfit = todayNetSales - todayCOGS
+    const todayProfitMargin = todayNetSales > 0 ? (todayProfit / todayNetSales) * 100 : 0
 
     // Payment breakdowns
     const todayCashSales = todaySalesList
