@@ -13,7 +13,7 @@ import { printHTML, getShopBranding, brandedA4Header } from '../utils/printUtils
 import {
   DollarSign, Package, TrendingUp, BarChart3, PieChart as PieIcon,
   Search, Download, Printer, Award, Zap,
-  Calendar, RefreshCw, X, ShoppingBag, Layers,
+  Calendar, RefreshCw, X, ShoppingBag, Layers, Smartphone,
   CheckCircle2, AlertTriangle, AlertCircle, ArrowUpRight
 } from 'lucide-react'
 
@@ -23,7 +23,8 @@ function Reports() {
   const [range, setRange] = useState('month') // today, week, month, year, custom, all
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
-  const [activeTab, setActiveTab] = useState('products') // 'products', 'overview', 'financials'
+  const [activeTab, setActiveTab] = useState('products') // 'products', 'flow', 'overview', 'financials'
+  const [catalogSegment, setCatalogSegment] = useState('all') // 'all', 'products', 'phones'
 
   // Product table filters & sorting
   const [productSearch, setProductSearch] = useState('')
@@ -40,6 +41,34 @@ function Reports() {
     totalDiscount: 0,
     purchases: 0,
     totalUnitsSold: 0
+  })
+
+  const [flowStats, setFlowStats] = useState({
+    bulkPurchasedUnits: 0,
+    bulkPurchasedCost: 0,
+    bulkPurchasedCash: 0,
+    bulkPurchasedBank: 0,
+    bulkPurchasedCredit: 0,
+    bulkSoldUnits: 0,
+    bulkSoldRevenue: 0,
+    bulkSoldCost: 0,
+    bulkSoldProfit: 0,
+    bulkSoldMargin: 0,
+    bulkStockUnits: 0,
+    bulkStockValue: 0,
+    phonePurchasedUnits: 0,
+    phonePurchasedCost: 0,
+    phonePurchasedCash: 0,
+    phonePurchasedBank: 0,
+    phonePurchasedCredit: 0,
+    phoneSoldUnits: 0,
+    phoneSoldRevenue: 0,
+    phoneSoldCost: 0,
+    phoneSoldProfit: 0,
+    phoneSoldMargin: 0,
+    phoneStockUnits: 0,
+    phoneStockValue: 0,
+    totalStockValuation: 0
   })
 
   const [productList, setProductList] = useState([])
@@ -95,8 +124,8 @@ function Reports() {
         supabase.from('sales').select('*').eq('shop_id', user.shop_id).eq('sale_type', 'sale').gte('created_at', startISO).lte('created_at', endISO),
         supabase.from('sale_items').select('*, products(name, category_id, categories(name)), sales!inner(created_at, sale_type, shop_id)').eq('sales.shop_id', user.shop_id).eq('sales.sale_type', 'sale').gte('sales.created_at', startISO).lte('sales.created_at', endISO),
         supabase.from('expenses').select('*').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO),
-        supabase.from('purchases').select('*').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO),
-        supabase.from('products').select('id, name, stock_quantity, category_id, categories(name)').eq('shop_id', user.shop_id),
+        supabase.from('purchases').select('*, purchase_items(*)').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO),
+        supabase.from('products').select('id, name, stock_quantity, cost_price, sale_price, category_id, categories(name)').eq('shop_id', user.shop_id),
         supabase.from('categories').select('*').eq('shop_id', user.shop_id),
         supabase.from('phones').select('id, brand, model, storage, color, status, cost_price, sale_price').eq('shop_id', user.shop_id)
       ])
@@ -124,11 +153,12 @@ function Reports() {
     } catch (e) {
       console.warn('Reports: calculating from local DB...', e)
       try {
-        const [lSales, lItems, lExpenses, lPurchases, lProducts, lCats, lPhones] = await Promise.all([
+        const [lSales, lItems, lExpenses, lPurchases, lPurchaseItems, lProducts, lCats, lPhones] = await Promise.all([
           db.sales.toArray(),
           db.sale_items.toArray(),
           db.expenses.toArray(),
           db.purchases.toArray(),
+          db.purchase_items ? db.purchase_items.toArray().catch(() => []) : Promise.resolve([]),
           db.products.toArray(),
           db.categories.toArray(),
           db.phones ? db.phones.toArray().catch(() => []) : Promise.resolve([])
@@ -146,11 +176,20 @@ function Reports() {
           const t = new Date(x.created_at)
           return t >= startDate && t <= endDate
         })
-        const purchases = lPurchases.filter(x => {
+        const purchasesRaw = lPurchases.filter(x => {
           if (String(x.shop_id) !== sid) return false
           const t = new Date(x.created_at)
           return t >= startDate && t <= endDate
         })
+        const pItemsByPId = (lPurchaseItems || []).reduce((acc, pi) => {
+          if (!acc[pi.purchase_id]) acc[pi.purchase_id] = []
+          acc[pi.purchase_id].push(pi)
+          return acc
+        }, {})
+        const purchases = purchasesRaw.map(p => ({
+          ...p,
+          purchase_items: p.purchase_items || pItemsByPId[p.id] || []
+        }))
         const liveProducts = lProducts.filter(x => String(x.shop_id) === sid)
         const catList = lCats.filter(x => String(x.shop_id) === sid)
         const phones = (lPhones || []).filter(x => String(x.shop_id) === sid)
@@ -207,13 +246,81 @@ function Reports() {
       return acc
     }, {})
 
+    const productCostMap = (liveProducts || []).reduce((acc, p) => {
+      acc[p.name] = Number(p.cost_price || 0)
+      return acc
+    }, {})
+
     // Group in-stock phones by Product Name (e.g. "iPhone 13 128GB" -> 4 in stock)
     ;(phones || []).filter(p => p.status === 'in_stock').forEach(p => {
       const pName = `${p.brand || ''} ${p.model || ''}${p.storage ? ` ${p.storage}` : ''}`.trim() || 'Mobile Phone'
       stockMap[pName] = (stockMap[pName] || 0) + 1
     })
 
-    // 3. Aggregate Strictly by Product Name (NO IMEI Focus)
+    // 3. INWARD FLOW (PURCHASES) BREAKDOWN
+    let bulkPurchasedUnits = 0
+    let bulkPurchasedCost = 0
+    let bulkPurchasedCash = 0
+    let bulkPurchasedBank = 0
+    let bulkPurchasedCredit = 0
+
+    let phonePurchasedUnits = 0
+    let phonePurchasedCost = 0
+    let phonePurchasedCash = 0
+    let phonePurchasedBank = 0
+    let phonePurchasedCredit = 0
+
+    const inwardByProductName = {}
+
+    purchases.forEach(p => {
+      const isBulkPurchase = Boolean(
+        (p.purchase_items && p.purchase_items.length > 0) ||
+        (p.item_type && p.item_type !== 'phone')
+      )
+      const payType = String(p.payment_type || 'cash').toLowerCase()
+      const pAmount = Number(p.total_amount || 0)
+
+      if (isBulkPurchase) {
+        let pUnits = 0
+        if (p.purchase_items && p.purchase_items.length > 0) {
+          p.purchase_items.forEach(pi => {
+            const piQty = Number(pi.quantity || 1)
+            pUnits += piQty
+            const piName = String(pi.product_name || pi.products?.name || '').trim()
+            if (piName) {
+              inwardByProductName[piName] = (inwardByProductName[piName] || 0) + piQty
+            }
+          })
+        } else {
+          pUnits = Number(p.total_items || 1)
+        }
+
+        bulkPurchasedUnits += pUnits
+        bulkPurchasedCost += pAmount
+        if (payType === 'cash') bulkPurchasedCash += pAmount
+        else if (['bank', 'online'].includes(payType)) bulkPurchasedBank += pAmount
+        else bulkPurchasedCredit += pAmount
+      } else {
+        // Phone purchase
+        phonePurchasedUnits += 1
+        phonePurchasedCost += pAmount
+        if (payType === 'cash') phonePurchasedCash += pAmount
+        else if (['bank', 'online'].includes(payType)) phonePurchasedBank += pAmount
+        else phonePurchasedCredit += pAmount
+      }
+    })
+
+    // 4. OUTWARD FLOW (SALES) & PRODUCT AGGREGATION
+    let bulkSoldUnits = 0
+    let bulkSoldRevenue = 0
+    let bulkSoldCost = 0
+    let bulkSoldProfit = 0
+
+    let phoneSoldUnits = 0
+    let phoneSoldRevenue = 0
+    let phoneSoldCost = 0
+    let phoneSoldProfit = 0
+
     const prodMap = {}
 
     items.forEach(i => {
@@ -245,27 +352,42 @@ function Reports() {
         name = `${i.brand} ${i.model}`.trim()
       }
 
-      // Clean away any raw IMEI pattern accidentally stored in name
       name = name.replace(/\s*\(?IMEI[:\s]+[0-9/,\s]+\)?/gi, '').trim() || 'Uncategorized Product'
 
+      const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
       const unitPrice = Number(i.unit_price ?? i.price ?? (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0)
-      const costPrice = Number(i.cost_price ?? (i.phone_id ? phoneMap[i.phone_id]?.cost : 0) ?? 0)
+      const costPrice = Number(i.cost_price ?? (i.phone_id ? phoneMap[i.phone_id]?.cost : productCostMap[name] || 0) ?? 0)
       const lineRev = Number(i.line_total ?? i.subtotal ?? (qty * unitPrice))
       const lineCost = qty * costPrice
       const lineProfit = lineRev - lineCost
       const categoryName = i.products?.categories?.name ||
         catNameById[String(i.products?.category_id)] ||
-        (i.phone_id || snap ? 'Mobile Phones' : 'General')
+        (isPhone ? 'Mobile Phones' : 'General')
+
+      if (isPhone) {
+        phoneSoldUnits += qty
+        phoneSoldRevenue += lineRev
+        phoneSoldCost += lineCost
+        phoneSoldProfit += lineProfit
+      } else {
+        bulkSoldUnits += qty
+        bulkSoldRevenue += lineRev
+        bulkSoldCost += lineCost
+        bulkSoldProfit += lineProfit
+      }
 
       if (!prodMap[name]) {
         prodMap[name] = {
           name,
           category: categoryName,
+          item_type: isPhone ? 'phone' : 'product',
           qty: 0,
           revenue: 0,
           cost: 0,
           profit: 0,
-          stock: stockMap[name] ?? 0
+          stock: stockMap[name] ?? 0,
+          inwardQty: inwardByProductName[name] || 0,
+          unitCost: costPrice
         }
       }
 
@@ -276,16 +398,78 @@ function Reports() {
       if (categoryName !== 'General') prodMap[name].category = categoryName
     })
 
+    // Also include live products that didn't sell this period so stock & inventory velocity show all items
+    ;(liveProducts || []).forEach(p => {
+      const pName = p.name?.trim()
+      if (pName && !prodMap[pName]) {
+        const catName = p.categories?.name || catNameById[String(p.category_id)] || 'General'
+        const isPhone = catName === 'Mobile Phones'
+        prodMap[pName] = {
+          name: pName,
+          category: catName,
+          item_type: isPhone ? 'phone' : 'product',
+          qty: 0,
+          revenue: 0,
+          cost: 0,
+          profit: 0,
+          stock: Number(p.stock_quantity || 0),
+          inwardQty: inwardByProductName[pName] || 0,
+          unitCost: Number(p.cost_price || 0)
+        }
+      }
+    })
+
     const compiledProducts = Object.values(prodMap).map(p => {
       const margin = p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0
       const avgPrice = p.qty > 0 ? p.revenue / p.qty : 0
-      const avgCost = p.qty > 0 ? p.cost / p.qty : 0
+      const avgCost = p.qty > 0 ? p.cost / p.qty : p.unitCost
+      const netMovement = Number(p.inwardQty || 0) - Number(p.qty || 0)
       return {
         ...p,
         margin,
         avgPrice,
-        avgCost
+        avgCost,
+        netMovement
       }
+    })
+
+    // 5. Stock Valuations
+    const bulkStockUnits = (liveProducts || []).reduce((sum, p) => sum + Math.max(0, Number(p.stock_quantity || 0)), 0)
+    const bulkStockValue = (liveProducts || []).reduce((sum, p) => sum + (Number(p.cost_price || 0) * Math.max(0, Number(p.stock_quantity || 0))), 0)
+    const inStockPhones = (phones || []).filter(p => p.status === 'in_stock')
+    const phoneStockUnits = inStockPhones.length
+    const phoneStockValue = inStockPhones.reduce((sum, p) => sum + Number(p.cost_price || 0), 0)
+    const totalStockValuation = bulkStockValue + phoneStockValue
+
+    const bulkSoldMargin = bulkSoldRevenue > 0 ? (bulkSoldProfit / bulkSoldRevenue) * 100 : 0
+    const phoneSoldMargin = phoneSoldRevenue > 0 ? (phoneSoldProfit / phoneSoldRevenue) * 100 : 0
+
+    setFlowStats({
+      bulkPurchasedUnits,
+      bulkPurchasedCost,
+      bulkPurchasedCash,
+      bulkPurchasedBank,
+      bulkPurchasedCredit,
+      bulkSoldUnits,
+      bulkSoldRevenue,
+      bulkSoldCost,
+      bulkSoldProfit,
+      bulkSoldMargin,
+      bulkStockUnits,
+      bulkStockValue,
+      phonePurchasedUnits,
+      phonePurchasedCost,
+      phonePurchasedCash,
+      phonePurchasedBank,
+      phonePurchasedCredit,
+      phoneSoldUnits,
+      phoneSoldRevenue,
+      phoneSoldCost,
+      phoneSoldProfit,
+      phoneSoldMargin,
+      phoneStockUnits,
+      phoneStockValue,
+      totalStockValuation
     })
 
     setProductList(compiledProducts)
@@ -301,7 +485,7 @@ function Reports() {
       totalUnitsSold
     })
 
-    // 4. Expense Breakdown
+    // 6. Expense Breakdown
     const expMap = {}
     expenses.forEach(e => {
       const cat = e.category || 'Other'
@@ -309,7 +493,7 @@ function Reports() {
     })
     setExpenseBreakdown(Object.entries(expMap).map(([cat, val]) => ({ cat, val })).sort((a, b) => b.val - a.val))
 
-    // 5. Sales Trend
+    // 7. Sales Trend
     const trendMap = {}
     sales.forEach(s => {
       const date = new Date(s.created_at).toLocaleDateString('en-PK', { day: '2-digit', month: 'short' })
@@ -317,7 +501,7 @@ function Reports() {
     })
     setSalesTrend(Object.entries(trendMap).map(([date, amount]) => ({ date, amount })))
 
-    // 6. Category Profit Distribution
+    // 8. Category Profit Distribution
     const catMap = {}
     compiledProducts.forEach(p => {
       catMap[p.category] = (catMap[p.category] || 0) + Math.max(0, p.profit)
@@ -329,6 +513,9 @@ function Reports() {
   const filteredProducts = useMemo(() => {
     return productList
       .filter(p => {
+        if (catalogSegment === 'products' && p.item_type !== 'product') return false
+        if (catalogSegment === 'phones' && p.item_type !== 'phone') return false
+
         const matchSearch = productSearch.trim()
           ? p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.category.toLowerCase().includes(productSearch.toLowerCase())
           : true
@@ -345,10 +532,11 @@ function Reports() {
         if (sortBy === 'qty') return b.qty - a.qty
         if (sortBy === 'profit') return b.profit - a.profit
         if (sortBy === 'margin') return b.margin - a.margin
-        if (sortBy === 'slow_moving') return a.qty - b.qty // least units sold
+        if (sortBy === 'slow_moving') return a.qty - b.qty
+        if (sortBy === 'inward') return (b.inwardQty || 0) - (a.inwardQty || 0)
         return b.revenue - a.revenue // default: highest revenue
       })
-  }, [productList, productSearch, selectedCategory, stockFilter, sortBy])
+  }, [productList, productSearch, selectedCategory, stockFilter, sortBy, catalogSegment])
 
   // Top Product Highlights
   const topRevenueProduct = useMemo(() => {
@@ -371,8 +559,11 @@ function Reports() {
     const dataToExport = filteredProducts.map((p, idx) => ({
       'Rank': idx + 1,
       'Product Name': p.name,
+      'Type': p.item_type === 'phone' ? 'Mobile Phone' : 'Bulk Product / Accessory',
       'Category': p.category,
-      'Units Sold': p.qty,
+      'Inward (Purchased)': p.inwardQty || 0,
+      'Outward (Sold)': p.qty,
+      'Net Movement': p.netMovement ?? ((p.inwardQty || 0) - p.qty),
       'Avg Selling Price (Rs.)': Math.round(p.avgPrice),
       'Avg Cost (Rs.)': Math.round(p.avgCost),
       'Total Revenue (Rs.)': Math.round(p.revenue),
@@ -380,7 +571,6 @@ function Reports() {
       'Gross Profit (Rs.)': Math.round(p.profit),
       'Margin (%)': `${p.margin.toFixed(1)}%`,
       'In-Stock Qty': p.stock,
-      'Stock Status': p.stock > 3 ? 'In Stock' : p.stock > 0 ? 'Low Stock' : 'Out of Stock'
     }))
 
     const ws = XLSX.utils.json_to_sheet(dataToExport)
@@ -709,6 +899,18 @@ function Reports() {
             </button>
 
             <button
+              onClick={() => setActiveTab('flow')}
+              className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'flow'
+                  ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
+                  : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+              }`}
+            >
+              <Layers size={13} className={activeTab === 'flow' ? 'text-[#0071e3]' : ''} />
+              <span>📦 Product Flow & Velocity</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('financials')}
               className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'financials'
@@ -811,6 +1013,28 @@ function Reports() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 items-center">
+                  {/* Segment Switcher: All Items | 📦 Bulk Products | 📱 Mobile Phones */}
+                  <div className="bg-[#f5f5f7] dark:bg-[#2c2c2e] p-0.5 rounded-full flex items-center border border-black/[0.06] dark:border-white/[0.08]">
+                    {[
+                      { id: 'all', label: 'All Items' },
+                      { id: 'products', label: '📦 Bulk Products' },
+                      { id: 'phones', label: '📱 Mobile Phones' }
+                    ].map(seg => (
+                      <button
+                        key={seg.id}
+                        type="button"
+                        onClick={() => setCatalogSegment(seg.id)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold transition cursor-pointer ${
+                          catalogSegment === seg.id
+                            ? 'bg-white dark:bg-[#1c1c1e] text-[#0071e3] shadow-xs'
+                            : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                        }`}
+                      >
+                        {seg.label}
+                      </button>
+                    ))}
+                  </div>
+
                   <select
                     className="px-3 py-1.5 bg-[#f5f5f7] dark:bg-[#2c2c2e] border border-black/[0.06] dark:border-white/[0.08] rounded-full text-xs font-semibold outline-none text-[#1d1d1f] dark:text-[#f5f5f7] cursor-pointer"
                     value={selectedCategory}
@@ -838,6 +1062,7 @@ function Reports() {
                   >
                     <option value="revenue">Sort: Highest Revenue</option>
                     <option value="qty">Sort: Most Units Sold</option>
+                    <option value="inward">Sort: Highest Inward (Purchased)</option>
                     <option value="profit">Sort: Highest Profit</option>
                     <option value="margin">Sort: Highest Margin %</option>
                     <option value="slow_moving">Sort: Slow Moving</option>
@@ -853,8 +1078,11 @@ function Reports() {
                       <tr>
                         <th className="px-4 py-3 w-10">#</th>
                         <th className="px-5 py-3">Product Name</th>
+                        <th className="px-3 py-3 text-center">Type</th>
                         <th className="px-4 py-3">Category</th>
-                        <th className="px-4 py-3 text-center">Units Sold</th>
+                        <th className="px-3 py-3 text-center">Inward (In)</th>
+                        <th className="px-4 py-3 text-center">Sold (Out)</th>
+                        <th className="px-3 py-3 text-center">Net Flow</th>
                         <th className="px-4 py-3 text-right">Avg Price</th>
                         <th className="px-5 py-3 text-right">Total Revenue</th>
                         <th className="px-4 py-3 text-right">Cost (COGS)</th>
@@ -881,6 +1109,17 @@ function Reports() {
                             </div>
                           </td>
 
+                          {/* Type */}
+                          <td className="px-3 py-3 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              p.item_type === 'phone'
+                                ? 'bg-[#af52de]/10 text-[#af52de]'
+                                : 'bg-[#0071e3]/10 text-[#0071e3]'
+                            }`}>
+                              {p.item_type === 'phone' ? '📱 Mobile' : '📦 Bulk'}
+                            </span>
+                          </td>
+
                           {/* Category */}
                           <td className="px-4 py-3">
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#e5e5ea]/70 dark:bg-[#2c2c2e]/70 text-[#86868b]">
@@ -888,10 +1127,34 @@ function Reports() {
                             </span>
                           </td>
 
+                          {/* Inward Qty */}
+                          <td className="px-3 py-3 text-center font-semibold text-[#86868b]">
+                            {p.inwardQty ? (
+                              <span className="text-[#0071e3] bg-[#0071e3]/10 px-2 py-0.5 rounded-full text-[11px] font-bold">
+                                +{p.inwardQty}
+                              </span>
+                            ) : (
+                              <span>-</span>
+                            )}
+                          </td>
+
                           {/* Units Sold */}
                           <td className="px-4 py-3 text-center">
-                            <span className="inline-block px-2.5 py-0.5 rounded-full font-bold text-xs bg-[#0071e3]/10 text-[#0071e3]">
+                            <span className="inline-block px-2.5 py-0.5 rounded-full font-bold text-xs bg-[#34c759]/10 text-[#34c759]">
                               {p.qty}
+                            </span>
+                          </td>
+
+                          {/* Net Movement */}
+                          <td className="px-3 py-3 text-center">
+                            <span className={`text-[11px] font-bold ${
+                              (p.netMovement ?? 0) > 0
+                                ? 'text-[#0071e3]'
+                                : (p.netMovement ?? 0) < 0
+                                  ? 'text-[#ff9500]'
+                                  : 'text-[#86868b]'
+                            }`}>
+                              {(p.netMovement ?? 0) > 0 ? `+${p.netMovement}` : p.netMovement ?? 0}
                             </span>
                           </td>
 
@@ -947,7 +1210,7 @@ function Reports() {
 
                       {filteredProducts.length === 0 && (
                         <tr>
-                          <td colSpan="10" className="py-12 text-center text-[#86868b] font-medium">
+                          <td colSpan="13" className="py-12 text-center text-[#86868b] font-medium">
                             No product sales recorded for this period matching your filter.
                           </td>
                         </tr>
@@ -958,12 +1221,16 @@ function Reports() {
                     {filteredProducts.length > 0 && (
                       <tfoot className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 font-bold text-xs border-t border-black/[0.08] dark:border-white/[0.08]">
                         <tr>
-                          <td colSpan="3" className="px-5 py-3 text-[#86868b] uppercase text-[10px] tracking-wider">
+                          <td colSpan="4" className="px-5 py-3 text-[#86868b] uppercase text-[10px] tracking-wider">
                             Period Totals ({filteredProducts.length} Products):
                           </td>
-                          <td className="px-4 py-3 text-center text-[#0071e3]">
+                          <td className="px-3 py-3 text-center text-[#0071e3]">
+                            +{filteredProducts.reduce((s, p) => s + (p.inwardQty || 0), 0)} Pcs
+                          </td>
+                          <td className="px-4 py-3 text-center text-[#34c759]">
                             {filteredProducts.reduce((s, p) => s + p.qty, 0)} Pcs
                           </td>
+                          <td className="px-3 py-3 text-center text-[#86868b]">—</td>
                           <td className="px-4 py-3 text-right text-[#86868b]">—</td>
                           <td className="px-5 py-3 text-right text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                             Rs. {Math.round(filteredProducts.reduce((s, p) => s + p.revenue, 0)).toLocaleString()}
@@ -981,10 +1248,388 @@ function Reports() {
                               return rev > 0 ? `${((prof / rev) * 100).toFixed(1)}%` : '-'
                             })()}
                           </td>
-                          <td className="px-4 py-3 text-center">—</td>
+                          <td className="px-4 py-3 text-center text-[#1d1d1f] dark:text-[#f5f5f7]">
+                            {filteredProducts.reduce((s, p) => s + (Number(p.stock) || 0), 0)} Pcs
+                          </td>
                         </tr>
                       </tfoot>
                     )}
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: PRODUCT FLOW & STOCK VELOCITY */}
+          {activeTab === 'flow' && (
+            <div className="space-y-6">
+              {/* Dual-Flow Comparative Cards */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {/* 1. Bulk Products & Accessories Flow Card */}
+                <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] p-5 sm:p-6 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-[10px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center">
+                          <Package size={16} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm leading-tight">
+                            Bulk Products Flow
+                          </h3>
+                          <span className="text-[11px] text-[#86868b]">Accessories, Cables, Parts</span>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0071e3]/10 text-[#0071e3]">
+                        Fast Flow
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* Inward Purchases */}
+                      <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04]">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-[#86868b] font-medium flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#0071e3]"></span>
+                            <span>Inward (Purchased):</span>
+                          </span>
+                          <span className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                            {flowStats.bulkPurchasedUnits} units • Rs. {Math.round(flowStats.bulkPurchasedCost).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-2 text-[10px] text-[#86868b]">
+                          <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 font-medium">💵 Cash: Rs. {Math.round(flowStats.bulkPurchasedCash).toLocaleString()}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 font-medium">🏦 Bank: Rs. {Math.round(flowStats.bulkPurchasedBank).toLocaleString()}</span>
+                          {flowStats.bulkPurchasedCredit > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-[#ff9500]/10 text-[#ff9500] font-medium">📒 Credit: Rs. {Math.round(flowStats.bulkPurchasedCredit).toLocaleString()}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Outward Sales */}
+                      <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04]">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-[#86868b] font-medium flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#34c759]"></span>
+                            <span>Outward (Sold):</span>
+                          </span>
+                          <span className="font-bold text-[#34c759] tabular-nums">
+                            {flowStats.bulkSoldUnits} units • Rs. {Math.round(flowStats.bulkSoldRevenue).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center mt-2 text-[11px]">
+                          <span className="text-[#86868b]">Gross Profit & Margin:</span>
+                          <span className="font-bold text-[#34c759]">
+                            Rs. {Math.round(flowStats.bulkSoldProfit).toLocaleString()} ({flowStats.bulkSoldMargin.toFixed(1)}%)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Net Flow Movement */}
+                      <div className="flex justify-between items-center text-xs pt-1 px-1">
+                        <span className="text-[#86868b] font-medium">Net Stock Movement:</span>
+                        <span className={`font-bold tabular-nums ${
+                          (flowStats.bulkPurchasedUnits - flowStats.bulkSoldUnits) >= 0 ? 'text-[#0071e3]' : 'text-[#ff9500]'
+                        }`}>
+                          {flowStats.bulkPurchasedUnits - flowStats.bulkSoldUnits >= 0 ? `+${flowStats.bulkPurchasedUnits - flowStats.bulkSoldUnits}` : flowStats.bulkPurchasedUnits - flowStats.bulkSoldUnits} Units
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
+                    <span className="text-[#86868b] font-medium">Current Stock Asset:</span>
+                    <span className="font-bold text-[#0071e3] tabular-nums">
+                      {flowStats.bulkStockUnits} pcs • Rs. {Math.round(flowStats.bulkStockValue).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 2. Mobile Phones Flow Card */}
+                <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] p-5 sm:p-6 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-[10px] bg-[#af52de]/10 text-[#af52de] flex items-center justify-center">
+                          <Smartphone size={16} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm leading-tight">
+                            Mobile Phones Flow
+                          </h3>
+                          <span className="text-[11px] text-[#86868b]">Serialized Devices (IMEI)</span>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#af52de]/10 text-[#af52de]">
+                        High Value
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* Inward Purchases */}
+                      <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04]">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-[#86868b] font-medium flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#af52de]"></span>
+                            <span>Inward (Purchased):</span>
+                          </span>
+                          <span className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                            {flowStats.phonePurchasedUnits} phones • Rs. {Math.round(flowStats.phonePurchasedCost).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-2 text-[10px] text-[#86868b]">
+                          <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 font-medium">💵 Cash: Rs. {Math.round(flowStats.phonePurchasedCash).toLocaleString()}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 font-medium">🏦 Bank: Rs. {Math.round(flowStats.phonePurchasedBank).toLocaleString()}</span>
+                          {flowStats.phonePurchasedCredit > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-[#ff9500]/10 text-[#ff9500] font-medium">📒 Credit: Rs. {Math.round(flowStats.phonePurchasedCredit).toLocaleString()}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Outward Sales */}
+                      <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04]">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-[#86868b] font-medium flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#34c759]"></span>
+                            <span>Outward (Sold):</span>
+                          </span>
+                          <span className="font-bold text-[#34c759] tabular-nums">
+                            {flowStats.phoneSoldUnits} phones • Rs. {Math.round(flowStats.phoneSoldRevenue).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center mt-2 text-[11px]">
+                          <span className="text-[#86868b]">Gross Profit & Margin:</span>
+                          <span className="font-bold text-[#34c759]">
+                            Rs. {Math.round(flowStats.phoneSoldProfit).toLocaleString()} ({flowStats.phoneSoldMargin.toFixed(1)}%)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Net Flow Movement */}
+                      <div className="flex justify-between items-center text-xs pt-1 px-1">
+                        <span className="text-[#86868b] font-medium">Net Stock Movement:</span>
+                        <span className={`font-bold tabular-nums ${
+                          (flowStats.phonePurchasedUnits - flowStats.phoneSoldUnits) >= 0 ? 'text-[#af52de]' : 'text-[#ff9500]'
+                        }`}>
+                          {flowStats.phonePurchasedUnits - flowStats.phoneSoldUnits >= 0 ? `+${flowStats.phonePurchasedUnits - flowStats.phoneSoldUnits}` : flowStats.phonePurchasedUnits - flowStats.phoneSoldUnits} Phones
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
+                    <span className="text-[#86868b] font-medium">Current Stock Asset:</span>
+                    <span className="font-bold text-[#af52de] tabular-nums">
+                      {flowStats.phoneStockUnits} units • Rs. {Math.round(flowStats.phoneStockValue).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. Combined Capital Allocation & Stock Portfolio */}
+                <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] p-5 sm:p-6 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-[10px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center">
+                          <Layers size={16} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm leading-tight">
+                            Inventory Asset Split
+                          </h3>
+                          <span className="text-[11px] text-[#86868b]">Capital Allocation</span>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#34c759]/10 text-[#34c759]">
+                        Valuation
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 rounded-[18px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04] mb-3">
+                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Total Shop Inventory Assets</span>
+                      <span className="text-xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] mt-0.5 block tabular-nums">
+                        Rs. {Math.round(flowStats.totalStockValuation).toLocaleString()}
+                      </span>
+                    </div>
+
+                    {/* Progress Ratio Bar */}
+                    <div className="w-full h-2.5 bg-[#e5e5ea] dark:bg-[#2c2c2e] rounded-full overflow-hidden flex my-3">
+                      <div
+                        className="bg-[#af52de] h-full"
+                        style={{
+                          width: `${flowStats.totalStockValuation > 0 ? (flowStats.phoneStockValue / flowStats.totalStockValuation) * 100 : 50}%`
+                        }}
+                        title={`Phones: Rs. ${Math.round(flowStats.phoneStockValue).toLocaleString()}`}
+                      />
+                      <div
+                        className="bg-[#0071e3] h-full"
+                        style={{
+                          width: `${flowStats.totalStockValuation > 0 ? (flowStats.bulkStockValue / flowStats.totalStockValuation) * 100 : 50}%`
+                        }}
+                        title={`Bulk: Rs. ${Math.round(flowStats.bulkStockValue).toLocaleString()}`}
+                      />
+                    </div>
+
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center text-[#86868b]">
+                        <span className="flex items-center gap-1.5 font-medium">
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#af52de]"></span>
+                          <span>Phones Holding:</span>
+                        </span>
+                        <span className="font-bold text-[#af52de] tabular-nums">
+                          Rs. {Math.round(flowStats.phoneStockValue).toLocaleString()} ({flowStats.totalStockValuation > 0 ? ((flowStats.phoneStockValue / flowStats.totalStockValuation) * 100).toFixed(0) : 0}%)
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[#86868b]">
+                        <span className="flex items-center gap-1.5 font-medium">
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#0071e3]"></span>
+                          <span>Bulk Products Holding:</span>
+                        </span>
+                        <span className="font-bold text-[#0071e3] tabular-nums">
+                          Rs. {Math.round(flowStats.bulkStockValue).toLocaleString()} ({flowStats.totalStockValuation > 0 ? ((flowStats.bulkStockValue / flowStats.totalStockValuation) * 100).toFixed(0) : 0}%)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
+                    <span className="text-[#86868b] font-medium">Period Total Inward Outflow:</span>
+                    <span className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                      Rs. {Math.round(flowStats.bulkPurchasedCost + flowStats.phonePurchasedCost).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Product Stock Velocity & Flow Matrix Table */}
+              <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] overflow-hidden">
+                <div className="p-4 border-b border-black/[0.04] dark:border-white/[0.06] flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                  <div>
+                    <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm flex items-center gap-2">
+                      <span className="w-2 h-4 bg-[#0071e3] rounded-full"></span>
+                      <span>Product Stock Velocity & Inflow/Outflow Matrix</span>
+                    </h3>
+                    <p className="text-[11px] text-[#86868b] mt-0.5">
+                      Units purchased vs sold, net movement delta, and current inventory valuation.
+                    </p>
+                  </div>
+
+                  {/* Segment Switcher in Flow Tab */}
+                  <div className="bg-[#f5f5f7] dark:bg-[#2c2c2e] p-0.5 rounded-full flex items-center border border-black/[0.06] dark:border-white/[0.08]">
+                    {[
+                      { id: 'all', label: 'All Items' },
+                      { id: 'products', label: '📦 Bulk Only' },
+                      { id: 'phones', label: '📱 Phones Only' }
+                    ].map(seg => (
+                      <button
+                        key={seg.id}
+                        type="button"
+                        onClick={() => setCatalogSegment(seg.id)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold transition cursor-pointer ${
+                          catalogSegment === seg.id
+                            ? 'bg-white dark:bg-[#1c1c1e] text-[#0071e3] shadow-xs'
+                            : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                        }`}
+                      >
+                        {seg.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 border-b border-black/[0.04] dark:border-white/[0.06] text-[#86868b] uppercase text-[10px] font-semibold tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3 w-10">#</th>
+                        <th className="px-5 py-3">Product Name</th>
+                        <th className="px-3 py-3 text-center">Type</th>
+                        <th className="px-4 py-3">Category</th>
+                        <th className="px-3 py-3 text-center">Purchased (In)</th>
+                        <th className="px-3 py-3 text-center">Sold (Out)</th>
+                        <th className="px-3 py-3 text-center">Net Delta</th>
+                        <th className="px-4 py-3 text-right">Revenue</th>
+                        <th className="px-4 py-3 text-right">Profit</th>
+                        <th className="px-3 py-3 text-right">Margin</th>
+                        <th className="px-4 py-3 text-center">Stock on Hand</th>
+                        <th className="px-4 py-3 text-center">Velocity</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+                      {filteredProducts.map((p, idx) => {
+                        const isHighVelocity = p.qty >= 5
+                        const isSteady = p.qty >= 1 && p.qty < 5
+                        const isSlow = p.qty === 0 && Number(p.stock) > 0
+                        return (
+                          <tr key={p.name} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition">
+                            <td className="px-4 py-3 text-[#86868b] font-medium">{idx + 1}</td>
+                            <td className="px-5 py-3">
+                              <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] block">
+                                {p.name}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                p.item_type === 'phone'
+                                  ? 'bg-[#af52de]/10 text-[#af52de]'
+                                  : 'bg-[#0071e3]/10 text-[#0071e3]'
+                              }`}>
+                                {p.item_type === 'phone' ? '📱 Mobile' : '📦 Bulk'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-[#86868b]">{p.category}</td>
+                            <td className="px-3 py-3 text-center font-bold text-[#0071e3]">
+                              {p.inwardQty ? `+${p.inwardQty}` : '—'}
+                            </td>
+                            <td className="px-3 py-3 text-center font-bold text-[#34c759]">
+                              {p.qty > 0 ? p.qty : '—'}
+                            </td>
+                            <td className="px-3 py-3 text-center font-bold">
+                              <span className={
+                                (p.netMovement ?? 0) > 0
+                                  ? 'text-[#0071e3]'
+                                  : (p.netMovement ?? 0) < 0
+                                    ? 'text-[#ff9500]'
+                                    : 'text-[#86868b]'
+                              }>
+                                {(p.netMovement ?? 0) > 0 ? `+${p.netMovement}` : p.netMovement ?? 0}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                              Rs. {Math.round(p.revenue).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-[#34c759] tabular-nums">
+                              Rs. {Math.round(p.profit).toLocaleString()}
+                            </td>
+                            <td className="px-3 py-3 text-right font-medium">
+                              {p.revenue > 0 ? `${p.margin.toFixed(1)}%` : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-center font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
+                              {p.stock} pcs
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {isHighVelocity ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#34c759]/10 text-[#34c759]">
+                                  ⚡ High Velocity
+                                </span>
+                              ) : isSteady ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0071e3]/10 text-[#0071e3]">
+                                  🟢 Steady
+                                </span>
+                              ) : isSlow ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ff9500]/10 text-[#ff9500]">
+                                  🟡 Slow Moving
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-black/5 dark:bg-white/10 text-[#86868b]">
+                                  ⚪ Out of Stock
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
                   </table>
                 </div>
               </div>

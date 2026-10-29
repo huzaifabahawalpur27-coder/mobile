@@ -74,6 +74,10 @@ function Dashboard() {
     todayCreditSales: 0,
     todayOnlineSales: 0,
     todayItemsSold: 0,
+    todayBulkSold: 0,
+    todayBulkRevenue: 0,
+    todayPhonesSold: 0,
+    todayPhonesRevenue: 0,
     monthlySales: 0,
     totalReceivables: 0,
     debtorsCount: 0,
@@ -82,6 +86,7 @@ function Dashboard() {
     phonesInStock: 0,
     phonesValuation: 0,
     productsValuation: 0,
+    productsStockTotal: 0,
     totalStockValuation: 0,
     planInfo: null,
     topDebtors: [],
@@ -288,6 +293,10 @@ function Dashboard() {
 
     let todayCOGS = 0
     let todayItemsSold = 0
+    let todayBulkSold = 0
+    let todayBulkRevenue = 0
+    let todayPhonesSold = 0
+    let todayPhonesRevenue = 0
     const todayProdMap = {}
 
     todaySalesList.forEach(s => {
@@ -298,12 +307,23 @@ function Dashboard() {
           const cost = Number(i.cost_price || 0) * netQty
           todayCOGS += cost
 
+          const isPhone = Boolean(i.phone_id || i.imei_snapshot || i.item_type === 'phone')
+          const itemRev = Number(i.unit_price || i.price || 0) * netQty
+
+          if (isPhone) {
+            todayPhonesSold += netQty
+            todayPhonesRevenue += itemRev
+          } else {
+            todayBulkSold += netQty
+            todayBulkRevenue += itemRev
+          }
+
           const pName = String(i.product_name || i.products?.name || 'Item').trim()
           if (!todayProdMap[pName]) {
-            todayProdMap[pName] = { name: pName, qty: 0, revenue: 0 }
+            todayProdMap[pName] = { name: pName, qty: 0, revenue: 0, isPhone }
           }
           todayProdMap[pName].qty += netQty
-          todayProdMap[pName].revenue += (Number(i.unit_price || i.price || 0) * netQty)
+          todayProdMap[pName].revenue += itemRev
         }
       })
     })
@@ -336,6 +356,7 @@ function Dashboard() {
     const inStockPhones = phonesList.filter(p => p.status === 'in_stock')
     const phonesValuation = inStockPhones.reduce((sum, p) => sum + Number(p.cost_price || 0), 0)
     const productsValuation = productList.reduce((sum, p) => sum + (Number(p.cost_price || 0) * Math.max(0, Number(p.stock_quantity || 0))), 0)
+    const productsStockTotal = productList.reduce((sum, p) => sum + Math.max(0, Number(p.stock_quantity || 0)), 0)
     const totalStockValuation = phonesValuation + productsValuation
 
     const lowStockList = productList
@@ -375,6 +396,10 @@ function Dashboard() {
       todayCreditSales,
       todayOnlineSales,
       todayItemsSold,
+      todayBulkSold,
+      todayBulkRevenue,
+      todayPhonesSold,
+      todayPhonesRevenue,
       monthlySales: monthlyTotal,
       totalReceivables,
       debtorsCount: debtors.length,
@@ -383,6 +408,7 @@ function Dashboard() {
       phonesInStock: inStockPhones.length,
       phonesValuation,
       productsValuation,
+      productsStockTotal,
       totalStockValuation,
       planInfo: config,
       topDebtors,
@@ -404,8 +430,10 @@ function Dashboard() {
         supabase.from('purchases').select('total_amount, payment_type').eq('shop_id', user.shop_id).gte('created_at', today.toISOString())
       ])
       const todayExpenses = (expRes.data || []).reduce((s, e) => s + Number(e.amount || 0), 0)
-      const todayCashPurchases = (purRes.data || []).filter(p => p.payment_type === 'cash').reduce((s, p) => s + Number(p.total_amount || 0), 0)
-      const todayCreditPurchases = (purRes.data || []).filter(p => p.payment_type !== 'cash').reduce((s, p) => s + Number(p.total_amount || 0), 0)
+      const purchasesList = purRes.data || []
+      const todayCashPurchases = purchasesList.filter(p => p.payment_type === 'cash').reduce((s, p) => s + Number(p.total_amount || 0), 0)
+      const todayBankPurchases = purchasesList.filter(p => ['bank', 'online'].includes(String(p.payment_type || '').toLowerCase())).reduce((s, p) => s + Number(p.total_amount || 0), 0)
+      const todayCreditPurchases = purchasesList.filter(p => p.payment_type === 'credit').reduce((s, p) => s + Number(p.total_amount || 0), 0)
 
       setEodData({
         cashSales: stats.todayCashSales,
@@ -415,6 +443,7 @@ function Dashboard() {
         profit: stats.todayProfit,
         expenses: todayExpenses,
         cashPurchases: todayCashPurchases,
+        bankPurchases: todayBankPurchases,
         creditPurchases: todayCreditPurchases,
         netCash: stats.todayCashSales - todayExpenses - todayCashPurchases
       })
@@ -546,7 +575,11 @@ function Dashboard() {
             color="text-[#0071e3]"
             bgTint="bg-[#0071e3]/10"
             badge="Today"
-            subValue={`Cash: Rs. ${Math.round(stats.todayCashSales).toLocaleString()}`}
+            subValue={
+              stats.todayItemsSold > 0
+                ? `${stats.todayPhonesSold} phones • ${stats.todayBulkSold} bulk pcs`
+                : `Cash: Rs. ${Math.round(stats.todayCashSales).toLocaleString()}`
+            }
             onClick={() => navigate('/sales')}
           />
 
@@ -742,7 +775,7 @@ function Dashboard() {
               <div className="flex justify-between items-center p-2.5 rounded-[14px] bg-[#0071e3]/5 border border-[#0071e3]/10">
                 <span className="text-[#1d1d1f] dark:text-[#f5f5f7] flex items-center gap-2 font-medium">
                   <Package size={13} className="text-[#0071e3]" />
-                  <span>General Catalog Items</span>
+                  <span>Bulk Accessories ({stats.productsStockTotal || 0} pcs)</span>
                 </span>
                 <span className="font-bold text-[#0071e3] tabular-nums">
                   Rs. {Math.round(stats.productsValuation).toLocaleString()}
