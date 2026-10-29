@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import { supabase } from '../services/supabase'
@@ -24,10 +25,22 @@ function Purchases() {
   const [saving, setSaving] = useState(false)
   const [discount, setDiscount] = useState(0)
 
-  // Bank Accounts state
+  // Bank & Cash Accounts state
   const [bankAccounts, setBankAccounts] = useState([])
   const [selectedBankAccountId, setSelectedBankAccountId] = useState('')
+  const [selectedCashVaultId, setSelectedCashVaultId] = useState('')
   const [showBankModal, setShowBankModal] = useState(false)
+
+  const cashVaults = bankAccounts.filter(a =>
+    a.bank_name?.toLowerCase().includes('cash') ||
+    a.account_name?.toLowerCase().includes('cash') ||
+    a.account_number === 'CASH'
+  )
+  const bankOnlyAccounts = bankAccounts.filter(a =>
+    !a.bank_name?.toLowerCase().includes('cash') &&
+    !a.account_name?.toLowerCase().includes('cash') &&
+    a.account_number !== 'CASH'
+  )
 
   // Hold Purchase
   const [heldPurchases, setHeldPurchases] = useState([])
@@ -43,8 +56,13 @@ function Purchases() {
     try {
       const list = await getBankAccounts(user.shop_id)
       setBankAccounts(list)
-      const def = list.find(a => a.is_default)
-      if (def && !selectedBankAccountId) setSelectedBankAccountId(String(def.id))
+      const defBank = list.find(a => a.is_default && !a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash') && a.account_number !== 'CASH')
+        || list.find(a => !a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash') && a.account_number !== 'CASH')
+      if (defBank && !selectedBankAccountId) setSelectedBankAccountId(String(defBank.id))
+
+      const defCash = list.find(a => a.is_default && (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash') || a.account_number === 'CASH'))
+        || list.find(a => a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash') || a.account_number === 'CASH')
+      if (defCash && !selectedCashVaultId) setSelectedCashVaultId(String(defCash.id))
     } catch (e) {
       console.warn('Purchases fetchBankAccounts warning:', e)
     }
@@ -262,15 +280,21 @@ function Purchases() {
     const selectedBank = effectivePaymentType === 'bank' && selectedBankAccountId
       ? bankAccounts.find(b => String(b.id) === String(selectedBankAccountId))
       : null
+    const selectedCash = effectivePaymentType === 'cash' && selectedCashVaultId
+      ? bankAccounts.find(b => String(b.id) === String(selectedCashVaultId))
+      : null
     const paymentDetailsObj = selectedBank ? {
       bank_account_id: selectedBank.id,
       bank_name: selectedBank.bank_name,
       account_name: selectedBank.account_name
-    } : null
+    } : (selectedCash ? {
+      cash_account_id: selectedCash.id,
+      account_name: selectedCash.account_name
+    } : null)
 
     const paymentNote = selectedBank 
       ? `[Paid via ${selectedBank.bank_name ? `${selectedBank.bank_name} - ` : ''}${selectedBank.account_name}]`
-      : (effectivePaymentType === 'bank' ? `[Paid via Bank Transfer]` : `[Paid via Cash in Hand]`)
+      : (effectivePaymentType === 'bank' ? `[Paid via Bank Transfer]` : (selectedCash ? `[Paid via ${selectedCash.account_name}]` : `[Paid via Cash in Hand]`))
 
     const purchaseData = {
       shop_id: user.shop_id,
@@ -393,11 +417,11 @@ function Purchases() {
           }
         } else if (effectivePaymentType === 'cash') {
           try {
-            const cashAcc = await findOrCreateAccountForPayment({ shopId: user.shop_id, method: 'cash', accounts: bankAccounts })
-            if (cashAcc) {
+            const targetCashId = selectedCashVaultId || (await findOrCreateAccountForPayment({ shopId: user.shop_id, method: 'cash', accounts: bankAccounts }))?.id
+            if (targetCashId) {
               await deductBankBalance({
                 shopId: user.shop_id,
-                accountId: Number(cashAcc.id),
+                accountId: Number(targetCashId),
                 amount: total,
                 purchaseId: purchase.id,
                 description: `Cash Purchase PR-${String(purchase.id).slice(-6)}`
@@ -460,7 +484,7 @@ function Purchases() {
           await db.supplier_payments.add(paymentData)
           await addToSyncQueue('supplier_payments', 'INSERT', paymentData)
 
-          if (selectedBankAccountId) {
+          if (effectivePaymentType === 'bank' && selectedBankAccountId) {
             try {
               await deductBankBalance({
                 shopId: user.shop_id,
@@ -472,6 +496,22 @@ function Purchases() {
               fetchBankAccounts()
             } catch (bankErr) {
               console.warn('Offline bank deduction error:', bankErr)
+            }
+          } else if (effectivePaymentType === 'cash') {
+            try {
+              const targetCashId = selectedCashVaultId || (await findOrCreateAccountForPayment({ shopId: user.shop_id, method: 'cash', accounts: bankAccounts }))?.id
+              if (targetCashId) {
+                await deductBankBalance({
+                  shopId: user.shop_id,
+                  accountId: Number(targetCashId),
+                  amount: total,
+                  purchaseId: offlineId,
+                  description: `Cash Purchase PR-${String(offlineId).slice(-6)}`
+                })
+                fetchBankAccounts()
+              }
+            } catch (cErr) {
+              console.warn('Offline cash deduction error:', cErr)
             }
           }
         }
@@ -548,9 +588,17 @@ function Purchases() {
           {/* LEFT: Products */}
           <div className="flex-1 flex flex-col gap-3 min-w-0">
             {/* Header */}
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-bold text-gray-800">Accessories Catalog</h2>
-              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{cart.length} items in cart</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-bold text-gray-800">Accessories Catalog</h2>
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{cart.length} items in cart</span>
+              </div>
+              <Link
+                to="/add-product"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
+              >
+                <span>+</span> Add New Product
+              </Link>
             </div>
 
         {/* Search + Filters */}
@@ -697,6 +745,26 @@ function Purchases() {
           </button>
         </div>
 
+        {/* Cash Vault Selector (for Cash purchases) */}
+        {paymentType === 'cash' && cashVaults.length > 0 && (
+          <div className="shrink-0 rounded-xl p-2.5 space-y-1.5 border transition bg-emerald-50/90 border-emerald-300 ring-2 ring-emerald-100">
+            <span className="text-[11px] font-bold text-emerald-900 block">
+              💵 Deduct From Cash Drawer / Vault:
+            </span>
+            <select
+              value={selectedCashVaultId}
+              onChange={e => setSelectedCashVaultId(e.target.value)}
+              className="w-full px-2 py-1.5 border border-emerald-300 rounded-lg text-xs bg-white font-bold outline-none text-slate-800"
+            >
+              {cashVaults.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.account_name} (Rs. {Number(c.current_balance || 0).toLocaleString()})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Bank Account Selector (for Bank purchases) */}
         {paymentType === 'bank' && (
           <div className="shrink-0 rounded-xl p-2.5 space-y-1.5 border transition bg-blue-50/90 border-blue-300 ring-2 ring-blue-100">
@@ -711,7 +779,7 @@ function Purchases() {
               </button>
             </div>
 
-            {bankAccounts.length === 0 ? (
+            {bankOnlyAccounts.length === 0 ? (
               <div className="bg-white p-2 rounded-lg border border-blue-200 space-y-1">
                 <p className="text-[11px] text-gray-600 font-medium">No bank account linked yet.</p>
                 <button
@@ -726,12 +794,12 @@ function Purchases() {
               <select
                 value={selectedBankAccountId}
                 onChange={e => setSelectedBankAccountId(e.target.value)}
-                className="w-full px-2 py-1.5 border border-blue-300 rounded-lg text-xs bg-white font-bold outline-none"
+                className="w-full px-2 py-1.5 border border-blue-300 rounded-lg text-xs bg-white font-bold outline-none text-slate-800"
               >
-                <option value="">{paymentType === 'bank' ? '-- Select Bank Account --' : '-- No Account (Cash Drawer) --'}</option>
-                {bankAccounts.map(b => (
+                <option value="">-- Select Bank Account --</option>
+                {bankOnlyAccounts.map(b => (
                   <option key={b.id} value={b.id}>
-                    {b.bank_name ? `${b.bank_name} - ` : ''}{b.account_name} (Rs. {b.current_balance.toLocaleString()}) {b.is_default ? '★' : ''}
+                    {b.bank_name ? `${b.bank_name} - ` : ''}{b.account_name} (Rs. {Number(b.current_balance || 0).toLocaleString()}) {b.is_default ? '★' : ''}
                   </option>
                 ))}
               </select>

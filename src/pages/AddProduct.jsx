@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom'
 import { db, addToSyncQueue } from '../services/db'
 import { recordAuditLog } from '../services/auditService'
 import { getShopPreset, getPricingConfig } from '../utils/businessPresets'
+import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment } from '../services/bankService'
+import BankAccountModal from '../components/BankAccountModal'
 
 function AddProduct() {
   const { user } = useAuth()
@@ -27,6 +29,26 @@ function AddProduct() {
   const [loading, setLoading] = useState(false)
   const [showNewBrandInput, setShowNewBrandInput] = useState(false)
   const [newBrandName, setNewBrandName] = useState('')
+
+  // Bank & Payment state for initial purchase
+  const [bankAccounts, setBankAccounts] = useState([])
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState('')
+  const [selectedCashVaultId, setSelectedCashVaultId] = useState('')
+  const [paymentType, setPaymentType] = useState('cash') // 'cash' | 'bank' | 'credit'
+  const [showBankModal, setShowBankModal] = useState(false)
+  const [skipInitialPurchase, setSkipInitialPurchase] = useState(false)
+
+  const cashVaults = bankAccounts.filter(a =>
+    a.bank_name?.toLowerCase().includes('cash') ||
+    a.account_name?.toLowerCase().includes('cash') ||
+    a.account_number === 'CASH'
+  )
+  const bankOnlyAccounts = bankAccounts.filter(a =>
+    !a.bank_name?.toLowerCase().includes('cash') &&
+    !a.account_name?.toLowerCase().includes('cash') &&
+    a.account_number !== 'CASH'
+  )
+
   const [form, setForm] = useState({
     name: '',
     sku: '',
@@ -42,8 +64,26 @@ function AddProduct() {
     status: 'active'
   })
 
+  const fetchBankAccounts = async () => {
+    if (!user?.shop_id) return
+    try {
+      const list = await getBankAccounts(user.shop_id)
+      setBankAccounts(list)
+      const defBank = list.find(a => a.is_default && !a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash') && a.account_number !== 'CASH')
+        || list.find(a => !a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash') && a.account_number !== 'CASH')
+      if (defBank && !selectedBankAccountId) setSelectedBankAccountId(String(defBank.id))
+
+      const defCash = list.find(a => a.is_default && (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash') || a.account_number === 'CASH'))
+        || list.find(a => a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash') || a.account_number === 'CASH')
+      if (defCash && !selectedCashVaultId) setSelectedCashVaultId(String(defCash.id))
+    } catch (e) {
+      console.warn('AddProduct fetchBankAccounts warning:', e)
+    }
+  }
+
   useEffect(() => {
     fetchData()
+    fetchBankAccounts()
   }, [])
 
   const fetchData = async () => {
@@ -216,6 +256,22 @@ function AddProduct() {
       return isNaN(n) ? def : n
     }
 
+    const stockQtyNum = toNumOrZero(form.stock_quantity, 0)
+    const costPriceNum = toNumOrZero(form.cost_price, 0)
+    const initialPurchaseTotal = stockQtyNum > 0 && costPriceNum > 0 ? (stockQtyNum * costPriceNum) : 0
+    const isInitialPurchase = initialPurchaseTotal > 0 && !skipInitialPurchase
+
+    if (isInitialPurchase) {
+      if (paymentType === 'credit' && !form.supplier_id) {
+        setLoading(false)
+        return alert('Please select a Supplier above to record this initial purchase on Credit!')
+      }
+      if (paymentType === 'bank' && !selectedBankAccountId) {
+        setLoading(false)
+        return alert('Please select a Bank Account for Bank payment!')
+      }
+    }
+
     const localId = crypto.randomUUID()
     const productData = {
       ...form,
@@ -224,9 +280,9 @@ function AddProduct() {
       category_id: toIntOrNull(form.category_id),
       supplier_id: toIntOrNull(form.supplier_id),
       unit_id: toIntOrNull(form.unit_id),
-      cost_price: toNumOrZero(form.cost_price, 0),
+      cost_price: costPriceNum,
       sale_price: toNumOrZero(form.sale_price, 0),
-      stock_quantity: toNumOrZero(form.stock_quantity, 0),
+      stock_quantity: stockQtyNum,
       c_rate: toNumOrZero(form.c_rate, 0),
       low_stock_threshold: toNumOrZero(form.low_stock_threshold, 10)
     }
@@ -255,6 +311,137 @@ function AddProduct() {
         await db.products.put(inserted[0])
       }
 
+      // Record initial stock purchase and deduct from account / update supplier
+      if (isInitialPurchase) {
+        const prodId = (inserted && inserted[0]?.id) || productData.id
+        const isImmediatePaid = paymentType === 'cash' || paymentType === 'bank'
+        const effectivePaymentType = paymentType
+        const selectedBank = effectivePaymentType === 'bank' && selectedBankAccountId
+          ? bankAccounts.find(b => String(b.id) === String(selectedBankAccountId))
+          : null
+        const selectedCash = effectivePaymentType === 'cash' && selectedCashVaultId
+          ? bankAccounts.find(b => String(b.id) === String(selectedCashVaultId))
+          : null
+
+        const paymentDetailsObj = selectedBank ? {
+          bank_account_id: selectedBank.id,
+          bank_name: selectedBank.bank_name,
+          account_name: selectedBank.account_name
+        } : (selectedCash ? {
+          cash_account_id: selectedCash.id,
+          account_name: selectedCash.account_name
+        } : null)
+
+        const paymentNote = selectedBank 
+          ? `[Paid via ${selectedBank.bank_name ? `${selectedBank.bank_name} - ` : ''}${selectedBank.account_name}]`
+          : (effectivePaymentType === 'cash' 
+            ? (selectedCash ? `[Paid via ${selectedCash.account_name}]` : `[Paid via Cash in Hand]`)
+            : `[Purchased on Credit]`)
+
+        const purchaseData = {
+          shop_id: user.shop_id,
+          supplier_id: toIntOrNull(form.supplier_id),
+          total_amount: initialPurchaseTotal,
+          net_amount: initialPurchaseTotal,
+          paid_amount: isImmediatePaid ? initialPurchaseTotal : 0,
+          amount_paid: isImmediatePaid ? initialPurchaseTotal : 0,
+          payment_type: effectivePaymentType,
+          payment_method: effectivePaymentType,
+          payment_details: paymentDetailsObj,
+          remarks: paymentNote,
+          notes: paymentNote,
+          status: 'completed'
+        }
+
+        try {
+          let { data: purchase, error: pError } = await supabase.from('purchases').insert([purchaseData]).select().single()
+          if (pError && (pError.message?.includes('column') || pError.code === 'PGRST204')) {
+            const minimalPurchase = {
+              shop_id: user.shop_id,
+              supplier_id: toIntOrNull(form.supplier_id),
+              total_amount: initialPurchaseTotal,
+              amount_paid: isImmediatePaid ? initialPurchaseTotal : 0,
+              payment_method: effectivePaymentType,
+              payment_type: effectivePaymentType,
+              payment_details: paymentDetailsObj,
+              remarks: paymentNote
+            }
+            const res = await supabase.from('purchases').insert([minimalPurchase]).select().single()
+            purchase = res.data
+            pError = res.error
+          }
+
+          if (purchase) {
+            const purchaseItem = {
+              purchase_id: purchase.id,
+              product_id: toIntOrNull(prodId),
+              product_name: form.name,
+              quantity: stockQtyNum,
+              unit_price: costPriceNum,
+              cost_price: costPriceNum,
+              total_price: initialPurchaseTotal,
+              subtotal: initialPurchaseTotal
+            }
+            let { data: resItems, error: itemsError } = await supabase.from('purchase_items').insert([purchaseItem]).select()
+            if (itemsError && (itemsError.message?.includes('column') || itemsError.code === 'PGRST204')) {
+              const minimalItem = {
+                purchase_id: purchase.id,
+                product_id: toIntOrNull(prodId),
+                quantity: stockQtyNum,
+                cost_price: costPriceNum,
+                subtotal: initialPurchaseTotal
+              }
+              const res = await supabase.from('purchase_items').insert([minimalItem]).select()
+              resItems = res.data
+            }
+
+            await db.purchases.put(purchase).catch(() => {})
+            if (resItems) await db.purchase_items.bulkPut(resItems).catch(() => {})
+
+            if (effectivePaymentType === 'bank' && selectedBankAccountId) {
+              await deductBankBalance({
+                shopId: user.shop_id,
+                accountId: Number(selectedBankAccountId),
+                amount: initialPurchaseTotal,
+                purchaseId: purchase.id,
+                description: `Initial Stock Purchase PR-${String(purchase.id).slice(-6)}: ${form.name}`
+              }).catch(err => console.warn('AddProduct bank deduction error:', err))
+            } else if (effectivePaymentType === 'cash') {
+              const targetCashId = selectedCashVaultId || (await findOrCreateAccountForPayment({ shopId: user.shop_id, method: 'cash', accounts: bankAccounts }))?.id
+              if (targetCashId) {
+                await deductBankBalance({
+                  shopId: user.shop_id,
+                  accountId: Number(targetCashId),
+                  amount: initialPurchaseTotal,
+                  purchaseId: purchase.id,
+                  description: `Initial Stock Cash Purchase PR-${String(purchase.id).slice(-6)}: ${form.name}`
+                }).catch(err => console.warn('AddProduct cash deduction error:', err))
+              }
+            } else if (effectivePaymentType === 'credit' && form.supplier_id) {
+              const supplier = suppliers.find(s => String(s.id) === String(form.supplier_id))
+              const newBalance = (supplier?.outstanding_balance || 0) + initialPurchaseTotal
+              await supabase.from('suppliers').update({ outstanding_balance: newBalance }).eq('id', form.supplier_id).catch(() => {})
+              await db.suppliers.update(form.supplier_id, { outstanding_balance: newBalance }).catch(() => {})
+            }
+
+            if (isImmediatePaid && form.supplier_id) {
+              const paymentData = {
+                shop_id: user.shop_id,
+                supplier_id: toIntOrNull(form.supplier_id),
+                amount: initialPurchaseTotal,
+                payment_type: 'payment',
+                payment_method: effectivePaymentType,
+                note: paymentNote
+              }
+              await supabase.from('supplier_payments').insert([paymentData]).catch(() => {})
+              await db.supplier_payments.add(paymentData).catch(() => {})
+            }
+          }
+        } catch (pErr) {
+          console.warn('Initial purchase recording error:', pErr)
+        }
+      }
+
       await recordAuditLog(
         'PRODUCT_ADDED',
         'products',
@@ -272,6 +459,65 @@ function AddProduct() {
         // Offline: Save to Local DB and Queue Sync
         await db.products.add(productData)
         await addToSyncQueue('products', 'INSERT', productData)
+
+        if (isInitialPurchase) {
+          const offlinePurchaseId = crypto.randomUUID()
+          const isImmediatePaid = paymentType === 'cash' || paymentType === 'bank'
+          const offlinePurchaseData = {
+            id: offlinePurchaseId,
+            shop_id: user.shop_id,
+            supplier_id: toIntOrNull(form.supplier_id),
+            total_amount: initialPurchaseTotal,
+            net_amount: initialPurchaseTotal,
+            paid_amount: isImmediatePaid ? initialPurchaseTotal : 0,
+            amount_paid: isImmediatePaid ? initialPurchaseTotal : 0,
+            payment_type: paymentType,
+            payment_method: paymentType,
+            status: 'completed'
+          }
+          await db.purchases.add(offlinePurchaseData).catch(() => {})
+          await addToSyncQueue('purchases', 'INSERT', offlinePurchaseData).catch(() => {})
+
+          const offlineItem = {
+            id: crypto.randomUUID(),
+            purchase_id: offlinePurchaseId,
+            product_id: productData.id,
+            product_name: form.name,
+            quantity: stockQtyNum,
+            unit_price: costPriceNum,
+            cost_price: costPriceNum,
+            total_price: initialPurchaseTotal
+          }
+          await db.purchase_items.add(offlineItem).catch(() => {})
+          await addToSyncQueue('purchase_items', 'INSERT', offlineItem).catch(() => {})
+
+          if (paymentType === 'credit' && form.supplier_id) {
+            const supplier = suppliers.find(s => String(s.id) === String(form.supplier_id))
+            const newBalance = (supplier?.outstanding_balance || 0) + initialPurchaseTotal
+            await db.suppliers.update(form.supplier_id, { outstanding_balance: newBalance }).catch(() => {})
+            await addToSyncQueue('suppliers', 'UPDATE', { id: form.supplier_id, outstanding_balance: newBalance }).catch(() => {})
+          } else if (paymentType === 'bank' && selectedBankAccountId) {
+            await deductBankBalance({
+              shopId: user.shop_id,
+              accountId: Number(selectedBankAccountId),
+              amount: initialPurchaseTotal,
+              purchaseId: offlinePurchaseId,
+              description: `Initial Stock Purchase PR-${offlinePurchaseId.slice(-6)}: ${form.name}`
+            }).catch(() => {})
+          } else if (paymentType === 'cash') {
+            const targetCashId = selectedCashVaultId || (await findOrCreateAccountForPayment({ shopId: user.shop_id, method: 'cash', accounts: bankAccounts }))?.id
+            if (targetCashId) {
+              await deductBankBalance({
+                shopId: user.shop_id,
+                accountId: Number(targetCashId),
+                amount: initialPurchaseTotal,
+                purchaseId: offlinePurchaseId,
+                description: `Initial Stock Cash Purchase PR-${offlinePurchaseId.slice(-6)}: ${form.name}`
+              }).catch(() => {})
+            }
+          }
+        }
+
         await recordAuditLog(
           'PRODUCT_ADDED',
           'products',
@@ -502,6 +748,164 @@ function AddProduct() {
             </div>
           </div>
 
+          {/* Initial Stock Purchase & Payment Workflow */}
+          {parseFloat(form.stock_quantity) > 0 && parseFloat(form.cost_price) > 0 && (
+            <div className="bg-blue-50/80 border-2 border-blue-200 rounded-xl p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-blue-200 pb-2.5">
+                <div>
+                  <h3 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+                    <span>💳</span> Initial Stock Purchase & Payment
+                  </h3>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Total Outlay: {parseFloat(form.stock_quantity)} units × Rs. {parseFloat(form.cost_price)} ={' '}
+                    <strong className="text-blue-700 font-extrabold text-sm">
+                      Rs. {(parseFloat(form.stock_quantity) * parseFloat(form.cost_price)).toLocaleString()}
+                    </strong>
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none bg-white px-2.5 py-1 rounded-lg border border-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={skipInitialPurchase}
+                    onChange={e => setSkipInitialPurchase(e.target.checked)}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Catalog Only (No financial deduction)</span>
+                </label>
+              </div>
+
+              {!skipInitialPurchase && (
+                <div className="space-y-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">Payment Method *</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentType('cash')}
+                        className={`py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          paymentType === 'cash'
+                            ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300'
+                            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span>💵 Cash</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentType('bank')
+                          if (!selectedBankAccountId && bankOnlyAccounts.length > 0) {
+                            const def = bankOnlyAccounts.find(b => b.is_default) || bankOnlyAccounts[0]
+                            if (def) setSelectedBankAccountId(String(def.id))
+                          }
+                        }}
+                        className={`py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          paymentType === 'bank'
+                            ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span>🏦 Bank</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentType('credit')}
+                        className={`py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          paymentType === 'credit'
+                            ? 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-300'
+                            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span>📒 Credit</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Cash Vault Selector */}
+                  {paymentType === 'cash' && (
+                    <div className="p-3 bg-white rounded-lg border border-emerald-200 space-y-1">
+                      <label className="block text-xs font-bold text-emerald-900">
+                        Deduct From Cash Drawer / Vault:
+                      </label>
+                      {cashVaults.length > 0 ? (
+                        <select
+                          value={selectedCashVaultId}
+                          onChange={e => setSelectedCashVaultId(e.target.value)}
+                          className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          {cashVaults.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.account_name} (Current: Rs. {Number(c.current_balance || 0).toLocaleString()})
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-xs text-gray-500">Deducts automatically from Primary Cash Drawer</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Bank Account Selector */}
+                  {paymentType === 'bank' && (
+                    <div className="p-3 bg-white rounded-lg border border-blue-200 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs font-bold text-blue-900">
+                        <span>Deduct From Bank Account:</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowBankModal(true)}
+                          className="text-blue-600 hover:underline text-[11px]"
+                        >
+                          + Add Bank
+                        </button>
+                      </div>
+                      {bankOnlyAccounts.length > 0 ? (
+                        <select
+                          value={selectedBankAccountId}
+                          onChange={e => setSelectedBankAccountId(e.target.value)}
+                          className="w-full px-3 py-2 border border-blue-300 rounded-lg text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">-- Select Bank Account --</option>
+                          {bankOnlyAccounts.map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.bank_name ? `${b.bank_name} - ` : ''}{b.account_name} (Balance: Rs. {Number(b.current_balance || 0).toLocaleString()}) {b.is_default ? '★' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="p-2 bg-blue-50 rounded text-xs text-blue-800 flex items-center justify-between">
+                          <span>No bank account linked.</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowBankModal(true)}
+                            className="px-2 py-1 bg-blue-600 text-white rounded font-bold text-[10px]"
+                          >
+                            Add Account
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Credit Notice */}
+                  {paymentType === 'credit' && (
+                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-xs text-amber-800">
+                      {form.supplier_id ? (
+                        <p>
+                          ⚠️ <strong>Rs. {(parseFloat(form.stock_quantity) * parseFloat(form.cost_price)).toLocaleString()}</strong> will be added to the outstanding debt of{' '}
+                          <strong>{suppliers.find(s => String(s.id) === String(form.supplier_id))?.name || 'Selected Supplier'}</strong>.
+                        </p>
+                      ) : (
+                        <p className="text-red-600 font-bold">
+                          ⚠️ Please select a Supplier in the form above to record this initial purchase on Credit!
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="block text-gray-700 font-medium mb-1">Status</label>
             <select
@@ -532,6 +936,17 @@ function AddProduct() {
 
         </form>
       </div>
+
+      <BankAccountModal
+        isOpen={showBankModal}
+        onClose={() => {
+          setShowBankModal(false)
+          fetchBankAccounts()
+        }}
+        onSuccess={() => {
+          fetchBankAccounts()
+        }}
+      />
     </div>
   )
 }
