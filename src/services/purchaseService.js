@@ -556,7 +556,7 @@ export async function returnPhoneToSupplier({
         created_at: now
       }
       if (navigator.onLine) {
-        await supabase.from('supplier_payments').insert([returnEntry]).catch(() => {})
+        try { await supabase.from('supplier_payments').insert([returnEntry]) } catch (_) {}
       } else {
         await addToSyncQueue('supplier_payments', 'INSERT', returnEntry).catch(() => {})
       }
@@ -588,7 +588,7 @@ export async function returnPhoneToSupplier({
         created_at: now
       }
       if (navigator.onLine) {
-        await supabase.from('supplier_payments').insert([returnEntry]).catch(() => {})
+        try { await supabase.from('supplier_payments').insert([returnEntry]) } catch (_) {}
       } else {
         await addToSyncQueue('supplier_payments', 'INSERT', returnEntry).catch(() => {})
       }

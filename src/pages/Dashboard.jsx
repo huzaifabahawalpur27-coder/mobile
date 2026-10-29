@@ -288,6 +288,17 @@ function Dashboard() {
     phonesList,
     config
   }) => {
+    // Lookups for accurate phone & product cost fallback
+    const phoneCostMap = (phonesList || []).reduce((acc, p) => {
+      acc[p.id] = Number(p.cost_price || 0)
+      return acc
+    }, {})
+    const productCostMap = (productList || []).reduce((acc, p) => {
+      if (p.id) acc[p.id] = Number(p.cost_price || 0)
+      if (p.name) acc[p.name] = Number(p.cost_price || 0)
+      return acc
+    }, {})
+
     // 1. Today's Financials
     const todayTotal = todaySalesList.reduce((sum, s) => sum + (Number(s.total_amount || 0) - Number(s.discount || 0)), 0)
 
@@ -304,11 +315,18 @@ function Dashboard() {
         const netQty = Math.max(0, Number(i.quantity || 1) - Number(i.returned_qty || 0))
         if (netQty > 0) {
           todayItemsSold += netQty
-          const cost = Number(i.cost_price || 0) * netQty
-          todayCOGS += cost
-
           const isPhone = Boolean(i.phone_id || i.imei_snapshot || i.item_type === 'phone')
           const itemRev = Number(i.unit_price || i.price || 0) * netQty
+
+          const pName = String(i.product_name || i.products?.name || 'Item').trim()
+          const unitCost = Number(
+            (Number(i.cost_price) > 0 ? i.cost_price : null) ??
+            (i.phone_id ? phoneCostMap[i.phone_id] : null) ??
+            (i.product_id ? productCostMap[i.product_id] : null) ??
+            (productCostMap[pName] || 0)
+          )
+          const cost = unitCost * netQty
+          todayCOGS += cost
 
           if (isPhone) {
             todayPhonesSold += netQty
@@ -318,7 +336,6 @@ function Dashboard() {
             todayBulkRevenue += itemRev
           }
 
-          const pName = String(i.product_name || i.products?.name || 'Item').trim()
           if (!todayProdMap[pName]) {
             todayProdMap[pName] = { name: pName, qty: 0, revenue: 0, isPhone }
           }
@@ -577,7 +594,7 @@ function Dashboard() {
             badge="Today"
             subValue={
               stats.todayItemsSold > 0
-                ? `${stats.todayPhonesSold} phones • ${stats.todayBulkSold} bulk pcs`
+                ? `${stats.todayPhonesSold} phones • ${stats.todayBulkSold} accessories`
                 : `Cash: Rs. ${Math.round(stats.todayCashSales).toLocaleString()}`
             }
             onClick={() => navigate('/sales')}
@@ -775,7 +792,7 @@ function Dashboard() {
               <div className="flex justify-between items-center p-2.5 rounded-[14px] bg-[#0071e3]/5 border border-[#0071e3]/10">
                 <span className="text-[#1d1d1f] dark:text-[#f5f5f7] flex items-center gap-2 font-medium">
                   <Package size={13} className="text-[#0071e3]" />
-                  <span>Bulk Accessories ({stats.productsStockTotal || 0} pcs)</span>
+                  <span>Accessories ({stats.productsStockTotal || 0} pcs)</span>
                 </span>
                 <span className="font-bold text-[#0071e3] tabular-nums">
                   Rs. {Math.round(stats.productsValuation).toLocaleString()}

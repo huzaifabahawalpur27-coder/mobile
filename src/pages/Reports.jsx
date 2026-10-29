@@ -207,24 +207,7 @@ function Reports() {
   }
 
   const processData = ({ sales, items, expenses, purchases, liveProducts, catList, phones }) => {
-    // 1. Overall Financials
-    const grossSales = sales.reduce((sum, s) => sum + Number(s.total_amount || s.net_amount || 0), 0)
-    const totalDiscount = sales.reduce((sum, s) => sum + Number(s.discount || 0), 0)
-    const netSalesValue = grossSales - totalDiscount
-
-    const costOfSales = items.reduce((sum, i) => {
-      const qty = Number(i.quantity || i.qty || 1) - Number(i.returned_qty || 0)
-      return sum + (Number(i.cost_price || 0) * qty)
-    }, 0)
-
-    const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
-    const totalPurchases = purchases.reduce((sum, p) => sum + Number(p.total_amount || 0), 0)
-    const grossProfit = netSalesValue - costOfSales
-    const netProfit = grossProfit - totalExpenses
-
-    let totalUnitsSold = 0
-
-    // 2. Build Lookups for Product Names and Inventory Stock
+    // 1. Build Lookups for Product Names, Costs and Inventory Stock
     const phoneMap = (phones || []).reduce((acc, p) => {
       const pName = `${p.brand || ''} ${p.model || ''}${p.storage ? ` ${p.storage}` : ''}`.trim()
       acc[p.id] = {
@@ -247,7 +230,8 @@ function Reports() {
     }, {})
 
     const productCostMap = (liveProducts || []).reduce((acc, p) => {
-      acc[p.name] = Number(p.cost_price || 0)
+      if (p.name) acc[p.name] = Number(p.cost_price || 0)
+      if (p.id) acc[p.id] = Number(p.cost_price || 0)
       return acc
     }, {})
 
@@ -257,7 +241,7 @@ function Reports() {
       stockMap[pName] = (stockMap[pName] || 0) + 1
     })
 
-    // 3. INWARD FLOW (PURCHASES) BREAKDOWN
+    // 2. INWARD FLOW (PURCHASES) BREAKDOWN
     let bulkPurchasedUnits = 0
     let bulkPurchasedCost = 0
     let bulkPurchasedCash = 0
@@ -310,7 +294,8 @@ function Reports() {
       }
     })
 
-    // 4. OUTWARD FLOW (SALES) & PRODUCT AGGREGATION
+    // 3. OUTWARD FLOW (SALES) & PRODUCT AGGREGATION
+    let totalUnitsSold = 0
     let bulkSoldUnits = 0
     let bulkSoldRevenue = 0
     let bulkSoldCost = 0
@@ -356,7 +341,12 @@ function Reports() {
 
       const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
       const unitPrice = Number(i.unit_price ?? i.price ?? (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0)
-      const costPrice = Number(i.cost_price ?? (i.phone_id ? phoneMap[i.phone_id]?.cost : productCostMap[name] || 0) ?? 0)
+      const costPrice = Number(
+        (Number(i.cost_price) > 0 ? i.cost_price : null) ??
+        (i.phone_id ? phoneMap[i.phone_id]?.cost : null) ??
+        (i.product_id ? productCostMap[i.product_id] : null) ??
+        (productCostMap[name] || 0)
+      )
       const lineRev = Number(i.line_total ?? i.subtotal ?? (qty * unitPrice))
       const lineCost = qty * costPrice
       const lineProfit = lineRev - lineCost
@@ -432,6 +422,16 @@ function Reports() {
         netMovement
       }
     })
+
+    // 4. Overall Financials (Fully Consistent & Accurate COGS & Profit)
+    const grossSales = sales.reduce((sum, s) => sum + Number(s.total_amount || s.net_amount || 0), 0)
+    const totalDiscount = sales.reduce((sum, s) => sum + Number(s.discount || 0), 0)
+    const netSalesValue = Math.max(0, grossSales - totalDiscount)
+    const costOfSales = phoneSoldCost + bulkSoldCost
+    const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
+    const totalPurchases = purchases.reduce((sum, p) => sum + Number(p.total_amount || 0), 0)
+    const grossProfit = netSalesValue - costOfSales
+    const netProfit = grossProfit - totalExpenses
 
     // 5. Stock Valuations
     const bulkStockUnits = (liveProducts || []).reduce((sum, p) => sum + Math.max(0, Number(p.stock_quantity || 0)), 0)
@@ -559,7 +559,7 @@ function Reports() {
     const dataToExport = filteredProducts.map((p, idx) => ({
       'Rank': idx + 1,
       'Product Name': p.name,
-      'Type': p.item_type === 'phone' ? 'Mobile Phone' : 'Bulk Product / Accessory',
+      'Type': p.item_type === 'phone' ? 'Mobile Phone' : 'Accessory',
       'Category': p.category,
       'Inward (Purchased)': p.inwardQty || 0,
       'Outward (Sold)': p.qty,
@@ -1017,7 +1017,7 @@ function Reports() {
                   <div className="bg-[#f5f5f7] dark:bg-[#2c2c2e] p-0.5 rounded-full flex items-center border border-black/[0.06] dark:border-white/[0.08]">
                     {[
                       { id: 'all', label: 'All Items' },
-                      { id: 'products', label: '📦 Bulk Products' },
+                      { id: 'products', label: '🔌 Accessories' },
                       { id: 'phones', label: '📱 Mobile Phones' }
                     ].map(seg => (
                       <button
@@ -1116,7 +1116,7 @@ function Reports() {
                                 ? 'bg-[#af52de]/10 text-[#af52de]'
                                 : 'bg-[#0071e3]/10 text-[#0071e3]'
                             }`}>
-                              {p.item_type === 'phone' ? '📱 Mobile' : '📦 Bulk'}
+                              {p.item_type === 'phone' ? '📱 Mobile' : '🔌 Accessory'}
                             </span>
                           </td>
 
@@ -1265,7 +1265,7 @@ function Reports() {
             <div className="space-y-6">
               {/* Dual-Flow Comparative Cards */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                {/* 1. Bulk Products & Accessories Flow Card */}
+                {/* 1. Accessories Flow Card */}
                 <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] p-5 sm:p-6 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between mb-4">
@@ -1275,13 +1275,13 @@ function Reports() {
                         </div>
                         <div>
                           <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm leading-tight">
-                            Bulk Products Flow
+                            Accessories Flow
                           </h3>
-                          <span className="text-[11px] text-[#86868b]">Accessories, Cables, Parts</span>
+                          <span className="text-[11px] text-[#86868b]">Chargers, Covers, Cables & Parts</span>
                         </div>
                       </div>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0071e3]/10 text-[#0071e3]">
-                        Fast Flow
+                        High Volume
                       </span>
                     </div>
 
@@ -1466,7 +1466,7 @@ function Reports() {
                         style={{
                           width: `${flowStats.totalStockValuation > 0 ? (flowStats.bulkStockValue / flowStats.totalStockValuation) * 100 : 50}%`
                         }}
-                        title={`Bulk: Rs. ${Math.round(flowStats.bulkStockValue).toLocaleString()}`}
+                        title={`Accessories: Rs. ${Math.round(flowStats.bulkStockValue).toLocaleString()}`}
                       />
                     </div>
 
@@ -1483,7 +1483,7 @@ function Reports() {
                       <div className="flex justify-between items-center text-[#86868b]">
                         <span className="flex items-center gap-1.5 font-medium">
                           <span className="w-2.5 h-2.5 rounded-full bg-[#0071e3]"></span>
-                          <span>Bulk Products Holding:</span>
+                          <span>Accessories Holding:</span>
                         </span>
                         <span className="font-bold text-[#0071e3] tabular-nums">
                           Rs. {Math.round(flowStats.bulkStockValue).toLocaleString()} ({flowStats.totalStockValuation > 0 ? ((flowStats.bulkStockValue / flowStats.totalStockValuation) * 100).toFixed(0) : 0}%)
@@ -1518,7 +1518,7 @@ function Reports() {
                   <div className="bg-[#f5f5f7] dark:bg-[#2c2c2e] p-0.5 rounded-full flex items-center border border-black/[0.06] dark:border-white/[0.08]">
                     {[
                       { id: 'all', label: 'All Items' },
-                      { id: 'products', label: '📦 Bulk Only' },
+                      { id: 'products', label: '🔌 Accessories Only' },
                       { id: 'phones', label: '📱 Phones Only' }
                     ].map(seg => (
                       <button
@@ -1574,7 +1574,7 @@ function Reports() {
                                   ? 'bg-[#af52de]/10 text-[#af52de]'
                                   : 'bg-[#0071e3]/10 text-[#0071e3]'
                               }`}>
-                                {p.item_type === 'phone' ? '📱 Mobile' : '📦 Bulk'}
+                                {p.item_type === 'phone' ? '📱 Mobile' : '🔌 Accessory'}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-[#86868b]">{p.category}</td>

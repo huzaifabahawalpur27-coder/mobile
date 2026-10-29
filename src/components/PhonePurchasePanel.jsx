@@ -663,22 +663,26 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
             total_price: costVal,
             subtotal: costVal
           }
-          await supabase.from('purchase_items').insert([itemRecord]).catch(() => {})
+          try {
+            await supabase.from('purchase_items').insert([itemRecord])
+          } catch (_) {}
         }
 
 
 
         // 4. Record Supplier Payment if paid > 0
         if (effectivePaid > 0) {
-          await supabase.from('supplier_payments').insert([{
-            shop_id: user.shop_id,
-            branch_id: user.branch_id || null,
-            supplier_id: parseInt(supplierId),
-            amount: effectivePaid,
-            payment_method: effectivePaymentType,
-            payment_type: 'payment',
-            description: `Payment for Phone Purchase PR-${purchaseId} (${effectivePaymentType})`
-          }]).catch(() => {})
+          try {
+            await supabase.from('supplier_payments').insert([{
+              shop_id: user.shop_id,
+              branch_id: user.branch_id || null,
+              supplier_id: parseInt(supplierId),
+              amount: effectivePaid,
+              payment_method: effectivePaymentType,
+              payment_type: 'payment',
+              description: `Payment for Phone Purchase PR-${purchaseId} (${effectivePaymentType})`
+            }])
+          } catch (_) {}
         }
 
         rpcData = {
@@ -697,8 +701,12 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           remarks: effectiveNotes || null,
           notes: effectiveNotes || null
         }
-        await supabase.from('purchases').update(pUpdates).eq('id', rpcData.purchase_id).catch(() => {})
-        await db.purchases?.update(rpcData.purchase_id, pUpdates).catch(() => {})
+        try {
+          await supabase.from('purchases').update(pUpdates).eq('id', rpcData.purchase_id)
+        } catch (_) {}
+        try {
+          await db.purchases?.update(rpcData.purchase_id, pUpdates)
+        } catch (_) {}
       }
 
       // Cache phones locally in Dexie

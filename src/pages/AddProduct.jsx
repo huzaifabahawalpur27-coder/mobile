@@ -420,8 +420,12 @@ function AddProduct() {
             } else if (effectivePaymentType === 'credit' && form.supplier_id) {
               const supplier = suppliers.find(s => String(s.id) === String(form.supplier_id))
               const newBalance = (supplier?.outstanding_balance || 0) + initialPurchaseTotal
-              await supabase.from('suppliers').update({ outstanding_balance: newBalance }).eq('id', form.supplier_id).catch(() => {})
-              await db.suppliers.update(form.supplier_id, { outstanding_balance: newBalance }).catch(() => {})
+              try {
+                await supabase.from('suppliers').update({ outstanding_balance: newBalance }).eq('id', form.supplier_id)
+              } catch (_) {}
+              try {
+                await db.suppliers.update(form.supplier_id, { outstanding_balance: newBalance })
+              } catch (_) {}
             }
 
             if (isImmediatePaid && form.supplier_id) {
@@ -433,8 +437,12 @@ function AddProduct() {
                 payment_method: effectivePaymentType,
                 note: paymentNote
               }
-              await supabase.from('supplier_payments').insert([paymentData]).catch(() => {})
-              await db.supplier_payments.add(paymentData).catch(() => {})
+              try {
+                await supabase.from('supplier_payments').insert([paymentData])
+              } catch (_) {}
+              try {
+                await db.supplier_payments.add(paymentData)
+              } catch (_) {}
             }
           }
         } catch (pErr) {

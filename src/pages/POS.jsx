@@ -1178,11 +1178,11 @@ function POS() {
         if (saleType === 'sale') {
           for (const item of cart) {
             if (item.phone_id) {
-              await supabase.from('phones').update({ status: 'sold' }).eq('id', item.phone_id).catch(() => {})
+              try { await supabase.from('phones').update({ status: 'sold' }).eq('id', item.phone_id) } catch (_) {}
               if (db.phones) await db.phones.update(item.phone_id, { status: 'sold' }).catch(() => {})
             } else {
               const newStock = item.stock_quantity - item.qty
-              await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.id).catch(() => {})
+              try { await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.id) } catch (_) {}
               await db.products.update(item.id, { stock_quantity: newStock }).catch(() => {})
             }
           }
