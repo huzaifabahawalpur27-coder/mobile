@@ -9,6 +9,7 @@ export default function ProductDetailModal({
   unitName = '',
   supplierName = '',
   onEdit,
+  onEditPrice,
   onPrintBarcode,
   userRole = 'admin'
 }) {
@@ -274,27 +275,48 @@ export default function ProductDetailModal({
                   onClose()
                   onPrintBarcode(product)
                 }}
-                className="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold text-xs flex items-center gap-1.5 transition border border-indigo-200 dark:border-indigo-800"
+                className="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold text-xs flex items-center gap-1.5 transition border border-indigo-200 dark:border-indigo-800 cursor-pointer"
               >
                 <Printer size={15} />
                 <span>Print Barcode</span>
               </button>
             )}
 
-            <Link
-              to={`/edit-product/${product.id}`}
-              onClick={onClose}
-              className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-bold text-xs flex items-center gap-1.5 transition border border-blue-200 dark:border-blue-800"
+            {/* Edit Price Button (Primary Action) */}
+            <button
+              type="button"
+              onClick={() => {
+                onClose()
+                if (onEditPrice) {
+                  onEditPrice(product)
+                } else if (onEdit) {
+                  onEdit(product)
+                }
+              }}
+              className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 font-bold text-xs flex items-center gap-1.5 transition border border-emerald-200 dark:border-emerald-800 cursor-pointer"
+              title="Edit selling price & purchase cost"
             >
-              <Edit size={15} />
-              <span>Full Edit</span>
-            </Link>
+              <DollarSign size={15} />
+              <span>Edit Price</span>
+            </button>
+
+            {/* Full Edit for General Products / Accessories */}
+            {product.item_type !== 'phone' && (
+              <Link
+                to={`/edit-product/${product.id}`}
+                onClick={onClose}
+                className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-bold text-xs flex items-center gap-1.5 transition border border-blue-200 dark:border-blue-800"
+              >
+                <Edit size={15} />
+                <span>Full Edit</span>
+              </Link>
+            )}
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 font-bold text-xs transition"
+            className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 font-bold text-xs transition cursor-pointer"
           >
             Close
           </button>

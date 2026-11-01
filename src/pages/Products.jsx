@@ -9,6 +9,7 @@ import { recordAuditLog } from '../services/auditService'
 import PasswordModal from '../components/PasswordModal'
 import BarcodeLabelModal from '../components/BarcodeLabelModal'
 import ProductDetailModal from '../components/ProductDetailModal'
+import EditPriceModal from '../components/EditPriceModal'
 import { hasFeature } from '../utils/featureGate'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 
@@ -19,6 +20,7 @@ function Products() {
   const [units, setUnits] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [detailProduct, setDetailProduct] = useState(null)
+  const [priceModalItem, setPriceModalItem] = useState(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -1132,7 +1134,15 @@ function Products() {
                       >
                         🏷️
                       </button>
-                      {!isPhone && (
+                      {isPhone ? (
+                        <button
+                          onClick={() => setPriceModalItem(item.raw_item || item)}
+                          title="Edit Phone Price"
+                          className="rounded-lg bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 text-xs font-bold text-emerald-700 transition flex items-center gap-1 cursor-pointer"
+                        >
+                          💰 Price
+                        </button>
+                      ) : (
                         <button
                           onClick={() => { setInlineEditId(item.id); setInlineForm({ ...item }) }}
                           className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-600"
@@ -1399,7 +1409,15 @@ function Products() {
                           >
                             🏷️
                           </button>
-                          {!isPhone && (
+                          {isPhone ? (
+                            <button
+                              onClick={() => setPriceModalItem(item.raw_item || item)}
+                              title="Edit Phone Price"
+                              className="px-2 py-1 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition font-bold text-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              💰 Price
+                            </button>
+                          ) : (
                             <button
                               onClick={() => { setInlineEditId(item.id); setInlineForm({ ...item }) }}
                               title="Inline Edit"
@@ -1613,11 +1631,14 @@ function Products() {
           categoryName={detailProduct.item_type === 'phone' ? 'Mobile Phones' : (categories.find(c => c.id === detailProduct.category_id)?.name || detailProduct.categories?.name)}
           unitName={detailProduct.item_type === 'phone' ? 'Device' : units.find(u => u.id === detailProduct.unit_id)?.name}
           supplierName={detailProduct.supplier_name || suppliers.find(s => s.id === detailProduct.supplier_id)?.name}
+          onEditPrice={(prod) => {
+            setDetailProduct(null)
+            setPriceModalItem(prod.raw_item || prod)
+          }}
           onEdit={(prod) => {
             setDetailProduct(null)
             if (prod.item_type === 'phone') {
-              // Phones are edited in stock inventory / purchases
-              alert('Mobile phone serial & IMEI records are managed through Inventory.')
+              setPriceModalItem(prod.raw_item || prod)
             } else {
               setInlineEditId(prod.id)
               setInlineForm({ ...prod })
@@ -1628,6 +1649,24 @@ function Products() {
             setShowBarcodeModal(true)
           }}
           userRole={user?.role}
+        />
+      )}
+
+      {/* Edit Price Modal for Phones & Products */}
+      {priceModalItem && (
+        <EditPriceModal
+          isOpen={!!priceModalItem}
+          onClose={() => setPriceModalItem(null)}
+          item={priceModalItem}
+          userRole={user?.role}
+          onSuccess={(updated) => {
+            if (priceModalItem.item_type === 'phone' || priceModalItem.imei_1) {
+              setPhones(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p))
+            } else {
+              setProducts(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p))
+            }
+            fetchProducts()
+          }}
         />
       )}
     </div>

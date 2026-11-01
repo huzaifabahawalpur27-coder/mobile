@@ -26,6 +26,8 @@ function EditProduct() {
   const [brandCategoryMap, setBrandCategoryMap] = useState({})
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+  const [isPhoneItem, setIsPhoneItem] = useState(false)
   const [showNewBrandInput, setShowNewBrandInput] = useState(false)
   const [newBrandName, setNewBrandName] = useState('')
   const [form, setForm] = useState({
@@ -49,11 +51,15 @@ function EditProduct() {
 
   const fetchData = async () => {
     try {
+      setNotFound(false)
       if (!navigator.onLine) throw new Error('Offline')
+
+      const numId = parseInt(id, 10)
+      const queryId = !isNaN(numId) ? numId : id
 
       // Fetch product and relationships
       const fetchPromise = Promise.all([
-        supabase.from('products').select('*').eq('id', id).eq('shop_id', user.shop_id).maybeSingle(),
+        supabase.from('products').select('*').eq('id', queryId).eq('shop_id', user.shop_id).maybeSingle(),
         supabase.from('categories').select('*').eq('shop_id', user.shop_id).order('name'),
         supabase.from('suppliers').select('*').eq('shop_id', user.shop_id).order('name'),
         supabase.from('brands').select('*').eq('shop_id', user.shop_id).order('name'),
@@ -63,9 +69,40 @@ function EditProduct() {
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
       const [prodResult, catResult, supResult, brandResult, unitResult] = await Promise.race([fetchPromise, timeoutPromise])
 
-      if (prodResult.error || !prodResult.data) throw new Error('Product not found')
+      let product = prodResult.data
+      let phoneDetected = false
 
-      const product = prodResult.data
+      if (!product) {
+        // Check if this ID belongs to a mobile phone in phones table
+        const { data: phoneRow } = await supabase
+          .from('phones')
+          .select('*')
+          .eq('id', queryId)
+          .eq('shop_id', user.shop_id)
+          .maybeSingle()
+
+        if (phoneRow) {
+          phoneDetected = true
+          setIsPhoneItem(true)
+          product = {
+            name: `${phoneRow.brand || ''} ${phoneRow.model || ''} ${phoneRow.storage || ''} ${phoneRow.color || ''}`.trim() || 'Mobile Phone',
+            sku: phoneRow.imei_1 || '',
+            brand: phoneRow.brand || '',
+            category_id: '',
+            supplier_id: phoneRow.supplier_id || '',
+            unit_id: '',
+            c_rate: 0,
+            cost_price: phoneRow.cost_price || 0,
+            sale_price: phoneRow.sale_price || phoneRow.selling_price || 0,
+            stock_quantity: phoneRow.status === 'in_stock' ? 1 : 0,
+            low_stock_threshold: '1',
+            status: phoneRow.status === 'in_stock' ? 'active' : phoneRow.status
+          }
+        }
+      }
+
+      if (!product) throw new Error('Product not found')
+
       if (unitResult?.data) { setUnits(unitResult.data); try { await db.units.bulkPut(JSON.parse(JSON.stringify(unitResult.data))) } catch (_) {} }
       setForm({
         name: product.name || '',
@@ -82,24 +119,22 @@ function EditProduct() {
         status: product.status || 'active'
       })
 
-      const sid = String(user.shop_id)
-
       if (catResult.data) {
         setCategories(catResult.data)
-        await db.categories.bulkPut(JSON.parse(JSON.stringify(catResult.data)))
+        await db.categories.bulkPut(JSON.parse(JSON.stringify(catResult.data))).catch(() => {})
       }
       if (supResult.data) {
         setSuppliers(supResult.data)
-        await db.suppliers.bulkPut(JSON.parse(JSON.stringify(supResult.data)))
+        await db.suppliers.bulkPut(JSON.parse(JSON.stringify(supResult.data))).catch(() => {})
       }
       if (brandResult.data) {
         setBrands(brandResult.data)
-        await db.brands.bulkPut(JSON.parse(JSON.stringify(brandResult.data)))
+        await db.brands.bulkPut(JSON.parse(JSON.stringify(brandResult.data))).catch(() => {})
       }
 
       // Load brand-category map
       const sid2 = String(user.shop_id)
-      const lBrandCats = await db.brand_categories.toArray().catch(() => [])
+      const lBrandCats = await db.brand_categories?.toArray ? await db.brand_categories.toArray().catch(() => []) : []
       const myBrandCats = lBrandCats.filter(x => String(x.shop_id) === sid2)
       const bcMap = {}
       myBrandCats.forEach(bc => {
@@ -109,50 +144,69 @@ function EditProduct() {
       setBrandCategoryMap(bcMap)
 
     } catch (e) {
-      console.log('EditProduct: Fetching from local DB (Offline)')
+      console.log('EditProduct: Fetching from local DB (Offline / Fallback)', e)
       try {
-        const localProd = await db.products.get(id)
-        if (localProd) {
-            setForm({
-                name: localProd.name || '',
-                sku: localProd.sku || '',
-                brand: localProd.brand || '',
-                category_id: localProd.category_id || '',
-                supplier_id: localProd.supplier_id || '',
-                unit_id: localProd.unit_id || '',
-                c_rate: localProd.c_rate || '',
-                cost_price: localProd.cost_price || '',
-                sale_price: localProd.sale_price || '',
-                stock_quantity: localProd.stock_quantity || '',
-                low_stock_threshold: localProd.low_stock_threshold || '10',
-                status: localProd.status || 'active'
-            })
+        const numId = parseInt(id, 10)
+        let localProd = (await db.products.get(id)) || (!isNaN(numId) ? await db.products.get(numId) : null)
+
+        if (!localProd && db.phones) {
+          const localPhone = (await db.phones.get(id)) || (!isNaN(numId) ? await db.phones.get(numId) : null)
+          if (localPhone) {
+            setIsPhoneItem(true)
+            localProd = {
+              name: `${localPhone.brand || ''} ${localPhone.model || ''} ${localPhone.storage || ''} ${localPhone.color || ''}`.trim() || 'Mobile Phone',
+              sku: localPhone.imei_1 || '',
+              brand: localPhone.brand || '',
+              category_id: '',
+              supplier_id: localPhone.supplier_id || '',
+              unit_id: '',
+              c_rate: 0,
+              cost_price: localPhone.cost_price || 0,
+              sale_price: localPhone.sale_price || localPhone.selling_price || 0,
+              stock_quantity: localPhone.status === 'in_stock' ? 1 : 0,
+              low_stock_threshold: '1',
+              status: localPhone.status === 'in_stock' ? 'active' : localPhone.status
+            }
+          }
         }
+
+        if (localProd) {
+          setForm({
+            name: localProd.name || '',
+            sku: localProd.sku || '',
+            brand: localProd.brand || '',
+            category_id: localProd.category_id || '',
+            supplier_id: localProd.supplier_id || '',
+            unit_id: localProd.unit_id || '',
+            c_rate: localProd.c_rate || '',
+            cost_price: localProd.cost_price || '',
+            sale_price: localProd.sale_price || '',
+            stock_quantity: localProd.stock_quantity || '',
+            low_stock_threshold: localProd.low_stock_threshold || '10',
+            status: localProd.status || 'active'
+          })
+        } else {
+          setNotFound(true)
+        }
+
         const offlineSid = String(user.shop_id)
-        const lUnits = await db.units.toArray().catch(() => [])
+        const lUnits = await db.units?.toArray ? await db.units.toArray().catch(() => []) : []
         setUnits(lUnits.filter(x => String(x.shop_id) === offlineSid))
 
         const [lCats, lSups, lBrands] = await Promise.all([
-          db.categories.toArray(),
-          db.suppliers.toArray(),
-          db.brands.toArray()
+          db.categories.toArray().catch(() => []),
+          db.suppliers.toArray().catch(() => []),
+          db.brands.toArray().catch(() => [])
         ])
         setCategories(lCats.filter(x => String(x.shop_id) === offlineSid))
         setSuppliers(lSups.filter(x => String(x.shop_id) === offlineSid))
         setBrands(lBrands.filter(x => String(x.shop_id) === offlineSid))
-        const lBrandCats = await db.brand_categories.toArray().catch(() => [])
-        const myBrandCats = lBrandCats.filter(x => String(x.shop_id) === offlineSid)
-        const bcMap = {}
-        myBrandCats.forEach(bc => {
-          if (!bcMap[bc.brand_id]) bcMap[bc.brand_id] = []
-          bcMap[bc.brand_id].push(bc.category_id)
-        })
-        setBrandCategoryMap(bcMap)
       } catch (err) {
         console.error('Local DB EditProduct Error:', err)
+        setNotFound(true)
       }
     } finally {
-        setFetching(false)
+      setFetching(false)
     }
   }
 
@@ -224,6 +278,40 @@ function EditProduct() {
       return isNaN(n) ? def : n
     }
 
+    if (isPhoneItem) {
+      const phoneUpdates = {
+        sale_price: toNumOrZero(form.sale_price, 0),
+        selling_price: toNumOrZero(form.sale_price, 0),
+        expected_sale_price: toNumOrZero(form.sale_price, 0),
+        cost_price: toNumOrZero(form.cost_price, 0),
+        updated_at: new Date().toISOString()
+      }
+      try {
+        if (db.phones) {
+          await db.phones.update(id, phoneUpdates).catch(async () => {
+            const numId = parseInt(id, 10)
+            if (!isNaN(numId)) await db.phones.update(numId, phoneUpdates).catch(() => {})
+          })
+        }
+        if (navigator.onLine) {
+          const numId = parseInt(id, 10)
+          const queryId = !isNaN(numId) ? numId : id
+          const { error } = await supabase.from('phones').update(phoneUpdates).eq('id', queryId)
+          if (error) throw error
+        } else {
+          await addToSyncQueue('phones', 'UPDATE', { id, ...phoneUpdates })
+        }
+        alert('Phone price and details updated successfully!')
+        navigate('/products')
+        return
+      } catch (err) {
+        alert('Error updating phone: ' + (err.message || String(err)))
+        return
+      } finally {
+        setLoading(false)
+      }
+    }
+
     const updatedProductData = {
       ...form,
       category_id: toIntOrNull(form.category_id),
@@ -276,7 +364,27 @@ function EditProduct() {
   }
 
   if (fetching) {
-      return <div className="text-gray-500 p-6">Loading product data...</div>
+    return <div className="text-gray-500 p-6">Loading product data...</div>
+  }
+
+  if (notFound) {
+    return (
+      <div className="p-8 max-w-md mx-auto text-center mt-12 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="w-14 h-14 bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl font-black">
+          ⚠️
+        </div>
+        <h2 className="text-lg font-black text-gray-900 dark:text-gray-100">Item Not Found</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-5">
+          The requested record ID ({id}) could not be located in your catalog or inventory.
+        </p>
+        <button
+          onClick={() => navigate('/products')}
+          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition cursor-pointer"
+        >
+          ← Return to Products Catalog
+        </button>
+      </div>
+    )
   }
 
   return (

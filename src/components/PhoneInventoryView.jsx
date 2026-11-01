@@ -6,11 +6,12 @@ import {
   Smartphone, Search, Copy, Check, Filter, History,
   ShieldCheck, AlertTriangle, X, ChevronDown, ChevronUp,
   Layers, HardDrive, Sparkles, Tag, Eye, EyeOff,
-  Printer, FileText, RotateCcw, CreditCard
+  Printer, FileText, RotateCcw, CreditCard, DollarSign
 } from 'lucide-react'
 import PhoneStockPrintModal from './PhoneStockPrintModal'
 import PhoneReturnModal from './PhoneReturnModal'
 import EditPurchasePaymentModal from './EditPurchasePaymentModal'
+import EditPriceModal from './EditPriceModal'
 
 // Normalize PTA statuses from various formats to standard keys
 export const normalizePtaStatus = (status) => {
@@ -109,6 +110,9 @@ export default function PhoneInventoryView() {
 
   // Edit Purchase Payment Modal
   const [purchaseToEdit, setPurchaseToEdit] = useState(null)
+
+  // Edit Phone Price Modal
+  const [phoneToEditPrice, setPhoneToEditPrice] = useState(null)
 
   // Role check: Only owner, admin, manager can view purchase cost & margins
   const canViewCost = ['owner', 'admin', 'manager', 'superadmin'].includes(user?.role)
@@ -970,6 +974,14 @@ export default function PhoneInventoryView() {
                                 </div>
 
                                 <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                                  {/* Edit Price Button */}
+                                  <button
+                                    onClick={() => setPhoneToEditPrice(phone)}
+                                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1 transition"
+                                    title="Edit phone sale & purchase price"
+                                  >
+                                    <DollarSign className="w-3 h-3" /> Edit Price
+                                  </button>
                                   {phone.status === 'in_stock' && (
                                     <>
                                       <button
@@ -1122,6 +1134,13 @@ export default function PhoneInventoryView() {
 
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setPhoneToEditPrice(p)}
+                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer whitespace-nowrap transition"
+                            title="Edit phone selling & cost price"
+                          >
+                            <DollarSign className="w-3 h-3" /> Price
+                          </button>
                           {p.status === 'in_stock' && (
                             <>
                               <button
@@ -1228,6 +1247,13 @@ export default function PhoneInventoryView() {
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      <button
+                        onClick={() => setPhoneToEditPrice(p)}
+                        className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                        title="Edit price"
+                      >
+                        <DollarSign className="w-2.5 h-2.5" /> Price
+                      </button>
                       {p.status === 'in_stock' && (
                         <>
                           <button
@@ -1482,6 +1508,20 @@ export default function PhoneInventoryView() {
         purchase={purchaseToEdit}
         onUpdated={fetchPhones}
       />
+
+      {/* Edit Phone Price Modal */}
+      {phoneToEditPrice && (
+        <EditPriceModal
+          isOpen={!!phoneToEditPrice}
+          onClose={() => setPhoneToEditPrice(null)}
+          item={phoneToEditPrice}
+          userRole={user?.role}
+          onSuccess={(updatedPhone) => {
+            setPhones(prev => prev.map(p => p.id === updatedPhone.id ? { ...p, ...updatedPhone } : p))
+            fetchPhones()
+          }}
+        />
+      )}
     </div>
   )
 }
