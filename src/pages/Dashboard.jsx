@@ -13,9 +13,6 @@ import {
   Package,
   AlertTriangle,
   Smartphone,
-  Users,
-  Target,
-  ArrowUpRight,
   Clock,
   RefreshCw,
   Moon,
@@ -23,15 +20,21 @@ import {
   FileText,
   Banknote,
   ChevronRight,
-  CheckCircle2,
-  Sparkles
+  Sparkles,
+  DollarSign,
+  Percent,
+  Activity,
+  Layers,
+  Receipt,
+  Wallet,
+  ArrowUpRight
 } from 'lucide-react'
 
 // Apple HIG Widget Stat Card
 const AppleWidget = ({ title, value, icon, color, bgTint, subValue, badge, onClick }) => (
   <div
     onClick={onClick}
-    className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 rounded-[22px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-200 group flex flex-col justify-between"
+    className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 rounded-[22px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-200 group flex flex-col justify-between cursor-pointer"
   >
     <div>
       <div className="flex justify-between items-start mb-3">
@@ -45,7 +48,7 @@ const AppleWidget = ({ title, value, icon, color, bgTint, subValue, badge, onCli
         )}
       </div>
       <h3 className="text-[#86868b] text-[11px] font-semibold uppercase tracking-wider">{title}</h3>
-      <p className="text-[22px] sm:text-[25px] font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tracking-tight mt-1">
+      <p className="text-[22px] sm:text-[25px] font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tracking-tight mt-1 tabular-nums">
         {typeof value === 'number' && title.toLowerCase().includes('rs')
           ? `Rs. ${Math.round(value).toLocaleString()}`
           : value}
@@ -54,7 +57,7 @@ const AppleWidget = ({ title, value, icon, color, bgTint, subValue, badge, onCli
 
     {subValue && (
       <div className="pt-2 mt-2 border-t border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between text-[11px]">
-        <span className="text-[#86868b] font-medium">{subValue}</span>
+        <span className="text-[#86868b] font-medium truncate">{subValue}</span>
         <span className="text-gray-300 dark:text-gray-600 group-hover:text-[#0071e3] transition">→</span>
       </div>
     )}
@@ -68,8 +71,10 @@ function Dashboard() {
 
   const [stats, setStats] = useState({
     todaySales: 0,
+    todayCOGS: 0,
     todayProfit: 0,
     todayProfitMargin: 0,
+    todayNetProfit: 0,
     todayCashSales: 0,
     todayCreditSales: 0,
     todayOnlineSales: 0,
@@ -78,9 +83,16 @@ function Dashboard() {
     todayBulkRevenue: 0,
     todayPhonesSold: 0,
     todayPhonesRevenue: 0,
+    todayOrdersCount: 0,
+    todayAOV: 0,
+    todayExpenses: 0,
+    todayPurchasesCost: 0,
+    todayPurchasedUnits: 0,
+    todayPurchasedPhones: 0,
+    todayPurchasedBulk: 0,
+    todayNetCashDrawer: 0,
     monthlySales: 0,
-    totalReceivables: 0,
-    debtorsCount: 0,
+    monthlyOrdersCount: 0,
     lowStockCount: 0,
     productCount: 0,
     phonesInStock: 0,
@@ -89,7 +101,6 @@ function Dashboard() {
     productsStockTotal: 0,
     totalStockValuation: 0,
     planInfo: null,
-    topDebtors: [],
     recentSales: [],
     topSellingToday: [],
     lowStockItems: []
@@ -128,7 +139,7 @@ function Dashboard() {
       if (!navigator.onLine) throw new Error('Offline')
 
       const fetchPromise = Promise.all([
-        // 1. Today's sales with full items metadata
+        // 1. Today's sales with full line-item metadata
         supabase
           .from('sales')
           .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_id, sale_items(id, sale_id, phone_id, product_id, product_name, cost_price, price, unit_price, line_total, subtotal, quantity, returned_qty, imei_snapshot, products(id, name, cost_price, category_id, categories(name))), customers(name)')
@@ -139,7 +150,7 @@ function Dashboard() {
         // 2. Monthly sales
         supabase
           .from('sales')
-          .select('total_amount, discount, created_at')
+          .select('id, total_amount, discount, created_at')
           .eq('shop_id', user.shop_id)
           .eq('sale_type', 'sale')
           .gte('created_at', monthISO),
@@ -161,25 +172,33 @@ function Dashboard() {
           .order('created_at', { ascending: false })
           .limit(6),
 
-        // 5. Customers
-        supabase
-          .from('customers')
-          .select('id, name, phone, outstanding_balance')
-          .eq('shop_id', user.shop_id),
-
-        // 6. Products
+        // 5. Products catalog & inventory
         supabase
           .from('products')
           .select('id, name, stock_quantity, low_stock_threshold, cost_price, sale_price')
           .eq('shop_id', user.shop_id),
 
-        // 7. Phones (Mobile Inventory)
+        // 6. Mobile Phones inventory
         supabase
           .from('phones')
           .select('id, brand, model, storage, color, status, cost_price, sale_price')
           .eq('shop_id', user.shop_id),
 
-        // 8. Shop config (with graceful fallback if RPC is missing)
+        // 7. Today's Expenses
+        supabase
+          .from('expenses')
+          .select('id, amount, category, created_at')
+          .eq('shop_id', user.shop_id)
+          .gte('created_at', todayISO),
+
+        // 8. Today's Inward Purchases
+        supabase
+          .from('purchases')
+          .select('id, total_amount, payment_type, item_type, total_items, created_at, purchase_items(id, quantity, product_name)')
+          .eq('shop_id', user.shop_id)
+          .gte('created_at', todayISO),
+
+        // 9. Shop config
         supabase
           .rpc('get_shop_config', { p_shop_id: user.shop_id })
           .then(r => (r?.error || !r?.data)
@@ -190,7 +209,7 @@ function Dashboard() {
       ])
 
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4500))
-      const [todayRes, monthRes, weekRes, recentRes, custRes, prodRes, phonesRes, shopConfigRes] = await Promise.race([
+      const [todayRes, monthRes, weekRes, recentRes, prodRes, phonesRes, expRes, purRes, shopConfigRes] = await Promise.race([
         fetchPromise,
         timeoutPromise
       ])
@@ -221,30 +240,34 @@ function Dashboard() {
       const monthSalesList = monthRes.data || []
       const weekSalesList = weekRes.data || []
       const recentSalesList = recentRes.data || []
-      const custList = custRes.data || []
       const productList = prodRes.data || []
       const phonesList = phonesRes.data || []
+      const todayExpensesList = expRes.data || []
+      const todayPurchasesList = purRes.data || []
 
       processDashboardData({
         todaySalesList,
         monthSalesList,
         weekSalesList,
         recentSalesList,
-        custList,
         productList,
         phonesList,
+        todayExpensesList,
+        todayPurchasesList,
         config
       })
     } catch (err) {
       console.warn('Dashboard: calculating from local DB...', err)
       try {
         const sidStr = String(user.shop_id)
-        const [lSales, lCustomers, lProducts, lPhones, lItems] = await Promise.all([
+        const [lSales, lProducts, lPhones, lItems, lExpenses, lPurchases, lPurchaseItems] = await Promise.all([
           db.sales.toArray().catch(() => []),
-          db.customers.toArray().catch(() => []),
           db.products.toArray().catch(() => []),
           db.phones ? db.phones.toArray().catch(() => []) : Promise.resolve([]),
-          db.sale_items.toArray().catch(() => [])
+          db.sale_items.toArray().catch(() => []),
+          db.expenses ? db.expenses.toArray().catch(() => []) : Promise.resolve([]),
+          db.purchases ? db.purchases.toArray().catch(() => []) : Promise.resolve([]),
+          db.purchase_items ? db.purchase_items.toArray().catch(() => []) : Promise.resolve([])
         ])
 
         const mySales = lSales.filter(s => String(s.shop_id) === sidStr && s.sale_type === 'sale')
@@ -255,9 +278,19 @@ function Dashboard() {
         const monthSalesList = mySales.filter(s => new Date(s.created_at) >= firstDayOfMonth)
         const weekSalesList = mySales.filter(s => new Date(s.created_at) >= sevenDaysAgo)
         const recentSalesList = [...mySales].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6)
-        const custList = lCustomers.filter(c => String(c.shop_id) === sidStr)
         const productList = lProducts.filter(p => String(p.shop_id) === sidStr)
         const phonesList = (lPhones || []).filter(p => String(p.shop_id) === sidStr)
+        const todayExpensesList = (lExpenses || []).filter(e => String(e.shop_id) === sidStr && new Date(e.created_at) >= today)
+
+        const pItemsByPId = (lPurchaseItems || []).reduce((acc, pi) => {
+          if (!acc[pi.purchase_id]) acc[pi.purchase_id] = []
+          acc[pi.purchase_id].push(pi)
+          return acc
+        }, {})
+        const todayPurchasesList = (lPurchases || []).filter(p => String(p.shop_id) === sidStr && new Date(p.created_at) >= today).map(p => ({
+          ...p,
+          purchase_items: pItemsByPId[p.id] || []
+        }))
         const config = JSON.parse(localStorage.getItem('plan_limits') || '{}')
 
         processDashboardData({
@@ -265,9 +298,10 @@ function Dashboard() {
           monthSalesList,
           weekSalesList,
           recentSalesList,
-          custList,
           productList,
           phonesList,
+          todayExpensesList,
+          todayPurchasesList,
           config
         })
       } catch (fallbackErr) {
@@ -283,9 +317,10 @@ function Dashboard() {
     monthSalesList,
     weekSalesList,
     recentSalesList,
-    custList,
     productList,
     phonesList,
+    todayExpensesList,
+    todayPurchasesList,
     config
   }) => {
     // Lookups for accurate phone & product cost and naming (unified with Reports)
@@ -305,7 +340,7 @@ function Dashboard() {
       return acc
     }, {})
 
-    // 1. Today's Financials
+    // 1. Today's Sales Financials & Line-Item Aggregation
     let todayPhonesCost = 0
     let todayBulkCost = 0
     let todayItemsSold = 0
@@ -332,7 +367,7 @@ function Dashboard() {
           }
         }
 
-        // Determine product name cleanly without exposing IMEI
+        // Determine product name cleanly without exposing raw IMEI
         let name = ''
         if (i.product_name && i.product_name.trim()) {
           name = i.product_name.trim()
@@ -383,10 +418,11 @@ function Dashboard() {
         }
 
         if (!todayProdMap[name]) {
-          todayProdMap[name] = { name, qty: 0, revenue: 0, isPhone }
+          todayProdMap[name] = { name, qty: 0, revenue: 0, cost: 0, isPhone }
         }
         todayProdMap[name].qty += netQty
         todayProdMap[name].revenue += lineRev
+        todayProdMap[name].cost += lineCost
       })
     })
 
@@ -399,6 +435,8 @@ function Dashboard() {
     const todayCOGS = todayPhonesCost + todayBulkCost
     const todayProfit = todayNetSales - todayCOGS
     const todayProfitMargin = todayNetSales > 0 ? (todayProfit / todayNetSales) * 100 : 0
+    const todayOrdersCount = todaySalesList.length
+    const todayAOV = todayOrdersCount > 0 ? todayGrossSales / todayOrdersCount : 0
 
     // Payment breakdowns
     const todayCashSales = todaySalesList
@@ -413,15 +451,47 @@ function Dashboard() {
       .filter(s => s.payment_type === 'credit')
       .reduce((sum, s) => sum + (Number(s.total_amount || 0) - Number(s.discount || 0)), 0)
 
-    // 2. Month-to-date total
+    // 2. Today's Expenses
+    const todayExpenses = (todayExpensesList || []).reduce((sum, e) => sum + Number(e.amount || 0), 0)
+    const todayNetProfit = todayProfit - todayExpenses
+
+    // 3. Today's Purchases / Inward Procurement
+    let todayPurchasesCost = 0
+    let todayCashPurchases = 0
+    let todayPurchasedUnits = 0
+    let todayPurchasedPhones = 0
+    let todayPurchasedBulk = 0
+
+    ;(todayPurchasesList || []).forEach(p => {
+      const pCost = Number(p.total_amount || 0)
+      todayPurchasesCost += pCost
+      if (String(p.payment_type || '').toLowerCase() === 'cash') {
+        todayCashPurchases += pCost
+      }
+
+      const isBulk = Boolean((p.purchase_items && p.purchase_items.length > 0) || (p.item_type && p.item_type !== 'phone'))
+      if (isBulk) {
+        let pQty = 0
+        if (p.purchase_items && p.purchase_items.length > 0) {
+          pQty = p.purchase_items.reduce((s, pi) => s + Number(pi.quantity || 1), 0)
+        } else {
+          pQty = Number(p.total_items || 1)
+        }
+        todayPurchasedBulk += pQty
+        todayPurchasedUnits += pQty
+      } else {
+        todayPurchasedPhones += 1
+        todayPurchasedUnits += 1
+      }
+    })
+
+    const todayNetCashDrawer = todayCashSales - todayExpenses - todayCashPurchases
+
+    // 4. Month-to-date total
     const monthlyTotal = monthSalesList.reduce((sum, s) => sum + (Number(s.total_amount || 0) - Number(s.discount || 0)), 0)
+    const monthlyOrdersCount = monthSalesList.length
 
-    // 3. Customer Receivables
-    const debtors = custList.filter(c => Number(c.outstanding_balance || 0) > 0)
-    const totalReceivables = debtors.reduce((sum, c) => sum + Number(c.outstanding_balance || 0), 0)
-    const topDebtors = [...debtors].sort((a, b) => Number(b.outstanding_balance) - Number(a.outstanding_balance)).slice(0, 5)
-
-    // 4. Inventory Valuations & Low Stock
+    // 5. Inventory Valuations & Stock Health
     const inStockPhones = phonesList.filter(p => p.status === 'in_stock')
     const phonesValuation = inStockPhones.reduce((sum, p) => sum + Number(p.cost_price || 0), 0)
     const productsValuation = productList.reduce((sum, p) => sum + (Number(p.cost_price || 0) * Math.max(0, Number(p.stock_quantity || 0))), 0)
@@ -432,7 +502,7 @@ function Dashboard() {
       .filter(p => Number(p.stock_quantity || 0) <= Number(p.low_stock_threshold || 5))
       .sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity))
 
-    // 5. 7-Day Trend Chart
+    // 6. 7-Day Trend Chart
     const daysArr = []
     for (let i = 6; i >= 0; i--) {
       const d = new Date()
@@ -452,8 +522,13 @@ function Dashboard() {
     })
     setWeeklyTrend(daysArr)
 
-    // 6. Top Selling Products Today
+    // 7. Top Selling Products Today
     const topProducts = Object.values(todayProdMap)
+      .map(p => ({
+        ...p,
+        profit: p.revenue - p.cost,
+        margin: p.revenue > 0 ? ((p.revenue - p.cost) / p.revenue) * 100 : 0
+      }))
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5)
 
@@ -462,6 +537,7 @@ function Dashboard() {
       todayCOGS,
       todayProfit,
       todayProfitMargin,
+      todayNetProfit,
       todayCashSales,
       todayCreditSales,
       todayOnlineSales,
@@ -470,9 +546,16 @@ function Dashboard() {
       todayBulkRevenue,
       todayPhonesSold,
       todayPhonesRevenue,
+      todayOrdersCount,
+      todayAOV,
+      todayExpenses,
+      todayPurchasesCost,
+      todayPurchasedUnits,
+      todayPurchasedPhones,
+      todayPurchasedBulk,
+      todayNetCashDrawer,
       monthlySales: monthlyTotal,
-      totalReceivables,
-      debtorsCount: debtors.length,
+      monthlyOrdersCount,
       lowStockCount: lowStockList.length,
       productCount: productList.length,
       phonesInStock: inStockPhones.length,
@@ -481,10 +564,9 @@ function Dashboard() {
       productsStockTotal,
       totalStockValuation,
       planInfo: config,
-      topDebtors,
       recentSales: recentSalesList,
       topSellingToday: topProducts,
-      lowStockItems: lowStockList.slice(0, 4)
+      lowStockItems: lowStockList.slice(0, 5)
     })
   }
 
@@ -587,6 +669,10 @@ function Dashboard() {
     return weeklyTrend.reduce((sum, d) => sum + d.amount, 0)
   }, [weeklyTrend])
 
+  const weeklyAvg = useMemo(() => {
+    return weeklyTrend.length > 0 ? weeklyTotal / weeklyTrend.length : 0
+  }, [weeklyTotal, weeklyTrend])
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-[-apple-system,BlinkMacSystemFont,'SF_Pro_Display','SF_Pro_Text','Plus_Jakarta_Sans',sans-serif]">
       {/*  Apple Native Title & Actions Header */}
@@ -602,10 +688,10 @@ function Dashboard() {
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
-            Overview
+            Store Intelligence
           </h1>
           <p className="text-[#86868b] text-xs sm:text-sm mt-0.5 font-normal">
-            Real-time store performance, product sales velocity, and inventory valuation.
+            Real-time sales velocity, gross margins, cash in drawer, and inventory asset valuation.
           </p>
         </div>
 
@@ -629,7 +715,7 @@ function Dashboard() {
         </div>
       </div>
 
-      {/*  Apple Control Center KPI Widgets */}
+      {/*  Apple Control Center Primary KPI Widgets (6 Core Financial Metrics) */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 animate-pulse">
           {[1, 2, 3, 4, 5, 6].map(i => (
@@ -638,6 +724,7 @@ function Dashboard() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+          {/* 1. Today's Gross Sales */}
           <AppleWidget
             title="Today's Sales (Rs)"
             value={stats.todaySales}
@@ -646,71 +733,155 @@ function Dashboard() {
             bgTint="bg-[#0071e3]/10"
             badge="Today"
             subValue={
-              stats.todayItemsSold > 0
-                ? `${stats.todayPhonesSold} phones • ${stats.todayBulkSold} accessories`
-                : `Cash: Rs. ${Math.round(stats.todayCashSales).toLocaleString()}`
+              stats.todayOrdersCount > 0
+                ? `${stats.todayOrdersCount} orders • Avg: Rs. ${Math.round(stats.todayAOV).toLocaleString()}`
+                : 'No sales yet'
             }
             onClick={() => navigate('/sales')}
           />
 
+          {/* 2. Today's Gross Profit */}
           <AppleWidget
             title="Today's Profit (Rs)"
             value={stats.todayProfit}
             icon={<TrendingUp size={20} />}
             color="text-[#34c759]"
             bgTint="bg-[#34c759]/10"
-            badge="Gross"
-            subValue={`${stats.todayProfitMargin.toFixed(1)}% margin`}
+            badge={`${stats.todayProfitMargin.toFixed(1)}%`}
+            subValue={
+              stats.todayExpenses > 0
+                ? `Net: Rs. ${Math.round(stats.todayNetProfit).toLocaleString()}`
+                : `${stats.todayProfitMargin.toFixed(1)}% gross margin`
+            }
             onClick={() => navigate('/reports')}
           />
 
+          {/* 3. Items Sold Today */}
           <AppleWidget
-            title="Month Sales (Rs)"
-            value={stats.monthlySales}
-            icon={<CreditCard size={20} />}
+            title="Units Sold Today"
+            value={`${stats.todayItemsSold} Pcs`}
+            icon={<ShoppingBag size={20} />}
             color="text-[#5856d6]"
             bgTint="bg-[#5856d6]/10"
-            badge="MTD"
-            subValue="Monthly velocity"
+            badge="Volume"
+            subValue={`${stats.todayPhonesSold} phones • ${stats.todayBulkSold} accessories`}
             onClick={() => navigate('/reports')}
           />
 
+          {/* 4. Today's Inward Purchases / Procurement */}
           <AppleWidget
-            title="Receivables (Rs)"
-            value={stats.totalReceivables}
-            icon={<Users size={20} />}
+            title="Purchases Today (Rs)"
+            value={stats.todayPurchasesCost}
+            icon={<CreditCard size={20} />}
             color="text-[#ff9500]"
             bgTint="bg-[#ff9500]/10"
-            badge="Khata"
-            subValue={`${stats.debtorsCount} pending accounts`}
-            onClick={() => navigate('/customer-ledger')}
+            badge="Stock In"
+            subValue={
+              stats.todayPurchasedUnits > 0
+                ? `${stats.todayPurchasedPhones} phones • ${stats.todayPurchasedBulk} acc`
+                : 'No purchases today'
+            }
+            onClick={() => navigate('/purchases')}
           />
 
+          {/* 5. Inventory Asset Valuation */}
           <AppleWidget
-            title="Phones in Stock"
-            value={`${stats.phonesInStock} Units`}
+            title="Total Stock Value (Rs)"
+            value={stats.totalStockValuation}
             icon={<Smartphone size={20} />}
             color="text-[#af52de]"
             bgTint="bg-[#af52de]/10"
-            badge="Mobile"
-            subValue={`Cost: Rs. ${Math.round(stats.phonesValuation).toLocaleString()}`}
+            badge="Asset"
+            subValue={`${stats.phonesInStock} phones • ${stats.productsStockTotal} accessories`}
             onClick={() => navigate('/products')}
           />
 
+          {/* 6. Month-to-Date (MTD) Sales */}
           <AppleWidget
-            title="Low Stock Alerts"
-            value={stats.lowStockCount}
-            icon={<AlertTriangle size={20} />}
-            color={stats.lowStockCount > 0 ? 'text-[#ff3b30]' : 'text-[#34c759]'}
-            bgTint={stats.lowStockCount > 0 ? 'bg-[#ff3b30]/10' : 'bg-[#34c759]/10'}
-            badge="Alert"
-            subValue={stats.lowStockCount > 0 ? `${stats.lowStockCount} need reorder` : 'All healthy'}
-            onClick={() => navigate('/products')}
+            title="Month Sales (Rs)"
+            value={stats.monthlySales}
+            icon={<Activity size={20} />}
+            color="text-[#0071e3]"
+            bgTint="bg-[#0071e3]/10"
+            badge="MTD"
+            subValue={`${stats.monthlyOrdersCount} orders this month`}
+            onClick={() => navigate('/reports')}
           />
         </div>
       )}
 
-      {/*  Middle Analytics Row: 7-Day Velocity Chart & Apple Activity Daily Goal */}
+      {/*  Real-Time Cash Flow & Operational Health Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+        {/* 1. Cash Inflow */}
+        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Cash Collected</span>
+            <span className="text-base font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+              Rs. {Math.round(stats.todayCashSales).toLocaleString()}
+            </span>
+          </div>
+          <div className="w-8 h-8 rounded-[12px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center font-bold text-xs">
+            💵
+          </div>
+        </div>
+
+        {/* 2. Digital / Bank Inflow */}
+        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Digital / Bank</span>
+            <span className="text-base font-bold text-[#0071e3] tabular-nums">
+              Rs. {Math.round(stats.todayOnlineSales).toLocaleString()}
+            </span>
+          </div>
+          <div className="w-8 h-8 rounded-[12px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center font-bold text-xs">
+            💳
+          </div>
+        </div>
+
+        {/* 3. Operating Expenses */}
+        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Today's Expenses</span>
+            <span className="text-base font-bold text-[#ff3b30] tabular-nums">
+              Rs. {Math.round(stats.todayExpenses).toLocaleString()}
+            </span>
+          </div>
+          <div className="w-8 h-8 rounded-[12px] bg-[#ff3b30]/10 text-[#ff3b30] flex items-center justify-center font-bold text-xs">
+            💸
+          </div>
+        </div>
+
+        {/* 4. Net Cash in Drawer */}
+        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Net Drawer Cash</span>
+            <span className={`text-base font-bold tabular-nums ${stats.todayNetCashDrawer >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}`}>
+              Rs. {Math.round(stats.todayNetCashDrawer).toLocaleString()}
+            </span>
+          </div>
+          <div className="w-8 h-8 rounded-[12px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center font-bold text-xs">
+            <Wallet size={16} />
+          </div>
+        </div>
+
+        {/* 5. Low Stock Alert Watchlist */}
+        <div
+          onClick={() => navigate('/products')}
+          className="col-span-2 sm:col-span-4 lg:col-span-1 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between cursor-pointer hover:border-[#ff9500]/40 transition"
+        >
+          <div>
+            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Catalog Health</span>
+            <span className={`text-base font-bold tabular-nums ${stats.lowStockCount > 0 ? 'text-[#ff9500]' : 'text-[#34c759]'}`}>
+              {stats.lowStockCount > 0 ? `${stats.lowStockCount} Reorders Due` : 'Stock Healthy'}
+            </span>
+          </div>
+          <div className={`w-8 h-8 rounded-[12px] flex items-center justify-center ${stats.lowStockCount > 0 ? 'bg-[#ff9500]/10 text-[#ff9500]' : 'bg-[#34c759]/10 text-[#34c759]'}`}>
+            <AlertTriangle size={16} />
+          </div>
+        </div>
+      </div>
+
+      {/*  Middle Analytics Row: 7-Day Velocity Chart & Inventory Capital Split */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Apple Stocks-style 7-Day Sales Trend (2 Columns) */}
         <div className="lg:col-span-2 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
@@ -721,14 +892,25 @@ function Dashboard() {
                   <span className="w-2 h-2 bg-[#0071e3] rounded-full"></span>
                   <span>7-Day Sales Velocity</span>
                 </h3>
-                <p className="text-[#86868b] text-xs mt-0.5">Rolling daily revenue performance</p>
+                <p className="text-[#86868b] text-xs mt-0.5">
+                  Daily revenue velocity • Avg: Rs. {Math.round(weeklyAvg).toLocaleString()}/day
+                </p>
               </div>
 
-              <div className="text-left sm:text-right">
-                <span className="text-[10px] font-semibold uppercase text-[#86868b] tracking-wider block">7-Day Total</span>
-                <span className="text-lg font-bold text-[#1d1d1f] dark:text-[#f5f5f7]">
-                  Rs. {Math.round(weeklyTotal).toLocaleString()}
-                </span>
+              <div className="flex items-center gap-4 text-left sm:text-right">
+                <div>
+                  <span className="text-[10px] font-semibold uppercase text-[#86868b] tracking-wider block">7-Day Total</span>
+                  <span className="text-base sm:text-lg font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                    Rs. {Math.round(weeklyTotal).toLocaleString()}
+                  </span>
+                </div>
+                <Link
+                  to="/reports"
+                  className="text-xs font-semibold text-[#0071e3] hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  <span>Daily Breakdown</span>
+                  <ChevronRight size={13} />
+                </Link>
               </div>
             </div>
 
@@ -778,32 +960,32 @@ function Dashboard() {
             </div>
           </div>
 
-          {/* iOS Payment Channels Inflow Row */}
+          {/* Quick Metrics Bar Under Velocity Chart */}
           <div className="grid grid-cols-3 gap-2.5 pt-4 border-t border-black/[0.04] dark:border-white/[0.06] mt-3">
             <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.04] text-center border border-black/[0.02] dark:border-white/[0.04]">
-              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Cash Inflow</span>
-              <span className="text-xs sm:text-sm font-bold text-[#1d1d1f] dark:text-[#f5f5f7] mt-0.5 block">
-                Rs. {Math.round(stats.todayCashSales).toLocaleString()}
+              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Average Ticket (AOV)</span>
+              <span className="text-xs sm:text-sm font-bold text-[#1d1d1f] dark:text-[#f5f5f7] mt-0.5 block tabular-nums">
+                Rs. {Math.round(stats.todayAOV).toLocaleString()}
               </span>
             </div>
 
             <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.04] text-center border border-black/[0.02] dark:border-white/[0.04]">
-              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Digital / Bank</span>
-              <span className="text-xs sm:text-sm font-bold text-[#0071e3] mt-0.5 block">
-                Rs. {Math.round(stats.todayOnlineSales).toLocaleString()}
+              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Phones Sold (Today)</span>
+              <span className="text-xs sm:text-sm font-bold text-[#af52de] mt-0.5 block tabular-nums">
+                {stats.todayPhonesSold} Units • Rs. {Math.round(stats.todayPhonesRevenue).toLocaleString()}
               </span>
             </div>
 
             <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.04] text-center border border-black/[0.02] dark:border-white/[0.04]">
-              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Credit (Khata)</span>
-              <span className="text-xs sm:text-sm font-bold text-[#ff9500] mt-0.5 block">
-                Rs. {Math.round(stats.todayCreditSales).toLocaleString()}
+              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Accessories Sold</span>
+              <span className="text-xs sm:text-sm font-bold text-[#0071e3] mt-0.5 block tabular-nums">
+                {stats.todayBulkSold} Pcs • Rs. {Math.round(stats.todayBulkRevenue).toLocaleString()}
               </span>
             </div>
           </div>
         </div>
 
-        {/*  Apple Stock Valuation & Asset Wealth Card */}
+        {/*  Apple Stock Valuation & Capital Asset Distribution Card */}
         <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3.5">
@@ -813,14 +995,14 @@ function Dashboard() {
                 </div>
                 <div>
                   <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-[15px] leading-tight">Stock Valuation</h3>
-                  <p className="text-[11px] text-[#86868b]">Inventory worth at cost basis</p>
+                  <p className="text-[11px] text-[#86868b]">Cost basis inventory investment</p>
                 </div>
               </div>
               <button
-                onClick={() => navigate('/inventory')}
+                onClick={() => navigate('/products')}
                 className="text-xs text-[#0071e3] font-semibold hover:underline cursor-pointer"
               >
-                Stock View →
+                Catalog →
               </button>
             </div>
 
@@ -829,6 +1011,24 @@ function Dashboard() {
               <span className="text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-white mt-0.5 block tabular-nums">
                 Rs. {Math.round(stats.totalStockValuation).toLocaleString()}
               </span>
+            </div>
+
+            {/* Asset Allocation Ratio Bar */}
+            <div className="w-full h-2 bg-[#e5e5ea] dark:bg-[#2c2c2e] rounded-full overflow-hidden flex mb-3">
+              <div
+                className="bg-[#af52de] h-full"
+                style={{
+                  width: `${stats.totalStockValuation > 0 ? (stats.phonesValuation / stats.totalStockValuation) * 100 : 50}%`
+                }}
+                title={`Phones: Rs. ${Math.round(stats.phonesValuation).toLocaleString()}`}
+              />
+              <div
+                className="bg-[#0071e3] h-full"
+                style={{
+                  width: `${stats.totalStockValuation > 0 ? (stats.productsValuation / stats.totalStockValuation) * 100 : 50}%`
+                }}
+                title={`Accessories: Rs. ${Math.round(stats.productsValuation).toLocaleString()}`}
+              />
             </div>
 
             <div className="space-y-2 text-xs">
@@ -855,7 +1055,7 @@ function Dashboard() {
               <div className="flex justify-between items-center p-2.5 rounded-[14px] bg-[#34c759]/5 border border-[#34c759]/10">
                 <span className="text-[#1d1d1f] dark:text-[#f5f5f7] flex items-center gap-2 font-medium">
                   <AlertTriangle size={13} className={stats.lowStockCount > 0 ? 'text-[#ff9500]' : 'text-[#34c759]'} />
-                  <span>Stock Health</span>
+                  <span>Stock Reorder Health</span>
                 </span>
                 <span className={`font-bold tabular-nums ${stats.lowStockCount > 0 ? 'text-[#ff9500]' : 'text-[#34c759]'}`}>
                   {stats.lowStockCount > 0 ? `${stats.lowStockCount} items low` : 'All Healthy'}
@@ -868,15 +1068,15 @@ function Dashboard() {
             onClick={() => navigate('/products')}
             className="w-full mt-3 py-2 bg-white dark:bg-[#2c2c2e] hover:bg-[#f5f5f7] dark:hover:bg-[#3a3a3c] border border-black/[0.08] dark:border-white/[0.1] text-[#1d1d1f] dark:text-[#f5f5f7] text-xs font-semibold rounded-full shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
           >
-            <span>Manage Catalog & Products</span>
+            <span>Manage Catalog & Stock</span>
             <ChevronRight size={13} />
           </button>
         </div>
       </div>
 
-      {/*  Bottom Row: Product Velocity & Transactions Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Top Moving Products Today */}
+      {/*  Bottom Row: Top Movers, Live Activity, and Reorder Watchlist */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* 1. Top Moving Products Today */}
         <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-4">
@@ -885,7 +1085,7 @@ function Dashboard() {
                   <Sparkles size={16} className="text-[#ff9500]" />
                   <span>Top Moving Products Today</span>
                 </h3>
-                <p className="text-[#86868b] text-xs">Fastest velocity items by Product Name</p>
+                <p className="text-[#86868b] text-xs">Fastest velocity items sold today</p>
               </div>
               <Link to="/reports" className="text-xs text-[#0071e3] font-semibold hover:underline flex items-center gap-0.5">
                 <span>View Report</span>
@@ -905,13 +1105,22 @@ function Dashboard() {
                         {idx + 1}
                       </span>
                       <div>
-                        <h4 className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-xs sm:text-sm">{p.name}</h4>
-                        <span className="text-[11px] text-[#86868b]">{p.qty} units sold today</span>
+                        <h4 className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-xs sm:text-sm truncate max-w-[160px] sm:max-w-[200px]" title={p.name}>
+                          {p.name}
+                        </h4>
+                        <span className="text-[11px] text-[#86868b]">
+                          {p.qty} {p.isPhone ? 'phones' : 'pcs'} • Profit: Rs. {Math.round(p.profit).toLocaleString()}
+                        </span>
                       </div>
                     </div>
-                    <span className="font-bold text-xs sm:text-sm text-[#1d1d1f] dark:text-white">
-                      Rs. {Math.round(p.revenue).toLocaleString()}
-                    </span>
+                    <div className="text-right">
+                      <span className="font-bold text-xs sm:text-sm text-[#1d1d1f] dark:text-white block tabular-nums">
+                        Rs. {Math.round(p.revenue).toLocaleString()}
+                      </span>
+                      <span className="text-[10px] font-semibold text-[#34c759]">
+                        {p.margin.toFixed(0)}% margin
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -922,47 +1131,24 @@ function Dashboard() {
             )}
           </div>
 
-          {/* Urgent Low Stock Alerts */}
-          {stats.lowStockItems.length > 0 && (
-            <div className="mt-5 pt-4 border-t border-black/[0.04] dark:border-white/[0.06]">
-              <div className="flex justify-between items-center mb-2.5">
-                <span className="text-xs font-semibold text-[#ff3b30] flex items-center gap-1">
-                  <AlertTriangle size={13} /> Low Stock Warnings
-                </span>
-                <Link to="/products" className="text-[11px] text-[#0071e3] font-medium hover:underline">
-                  Manage Catalog →
-                </Link>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {stats.lowStockItems.map(item => (
-                  <div
-                    key={item.id}
-                    className="p-2.5 rounded-[14px] bg-[#ff3b30]/5 border border-[#ff3b30]/15 flex justify-between items-center text-xs"
-                  >
-                    <span className="font-medium text-[#1d1d1f] dark:text-gray-200 truncate max-w-[120px]" title={item.name}>
-                      {item.name}
-                    </span>
-                    <span className="font-bold text-[#ff3b30] px-2 py-0.5 rounded-full bg-white dark:bg-[#1c1c1e] text-[11px] shadow-2xs">
-                      {item.stock_quantity} left
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
+            <span className="text-[#86868b] font-medium">Period Total Units:</span>
+            <span className="font-bold text-[#0071e3] tabular-nums">
+              {stats.todayItemsSold} Items Sold Today
+            </span>
+          </div>
         </div>
 
-        {/* Live Recent Transactions Feed */}
+        {/* 2. Live Recent Transactions Feed */}
         <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-4">
               <div>
                 <h3 className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-[15px] flex items-center gap-1.5">
                   <Clock size={16} className="text-[#0071e3]" />
-                  <span>Recent Sales Activity</span>
+                  <span>Recent Checkout Activity</span>
                 </h3>
-                <p className="text-[#86868b] text-xs">Live checkout transactions</p>
+                <p className="text-[#86868b] text-xs">Live store order stream</p>
               </div>
               <Link to="/sales" className="text-xs text-[#0071e3] font-semibold hover:underline flex items-center gap-0.5">
                 <span>All Orders</span>
@@ -983,17 +1169,17 @@ function Dashboard() {
                   return (
                     <div key={s.id} className="py-2.5 flex items-center justify-between hover:bg-[#f5f5f7]/60 dark:hover:bg-white/[0.03] px-2 rounded-[14px] transition">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#f5f5f7] dark:bg-white/10 text-[#0071e3] font-bold text-xs flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-full bg-[#f5f5f7] dark:bg-white/10 text-[#0071e3] font-bold text-xs flex items-center justify-center shrink-0">
                           #{s.id}
                         </div>
-                        <div>
-                          <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-xs block">{custName}</span>
+                        <div className="truncate max-w-[120px] sm:max-w-[150px]">
+                          <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-xs block truncate">{custName}</span>
                           <span className="text-[11px] text-[#86868b]">{timeStr}</span>
                         </div>
                       </div>
 
                       <div className="text-right">
-                        <span className="font-bold text-xs sm:text-sm text-[#1d1d1f] dark:text-[#f5f5f7] block">
+                        <span className="font-bold text-xs sm:text-sm text-[#1d1d1f] dark:text-[#f5f5f7] block tabular-nums">
                           Rs. {Math.round(netAmount).toLocaleString()}
                         </span>
                         <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full inline-block ${
@@ -1017,34 +1203,65 @@ function Dashboard() {
             )}
           </div>
 
-          {/* Top Outstanding Customers (Debtors) */}
-          {stats.topDebtors.length > 0 && (
-            <div className="mt-5 pt-4 border-t border-black/[0.04] dark:border-white/[0.06]">
-              <div className="flex justify-between items-center mb-2.5">
-                <span className="text-xs font-semibold text-[#ff9500] flex items-center gap-1">
-                  <Users size={13} /> Customer Ledger Balances
-                </span>
-                <Link to="/customer-ledger" className="text-[11px] text-[#0071e3] font-medium hover:underline">
-                  Full Ledger →
-                </Link>
-              </div>
+          <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
+            <span className="text-[#86868b] font-medium">Total Orders Today:</span>
+            <span className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+              {stats.todayOrdersCount} Invoices
+            </span>
+          </div>
+        </div>
 
-              <div className="space-y-1.5">
-                {stats.topDebtors.slice(0, 3).map(c => (
-                  <Link
-                    key={c.id}
-                    to={`/customers/${c.id}`}
-                    className="flex justify-between items-center px-2 py-1.5 rounded-[12px] hover:bg-[#f5f5f7] dark:hover:bg-white/[0.03] text-xs transition"
+        {/* 3. Reorder Watchlist & Low Stock Alerts (Replacing Old Debtors/Receivables) */}
+        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-[15px] flex items-center gap-1.5">
+                  <AlertTriangle size={16} className={stats.lowStockCount > 0 ? 'text-[#ff3b30]' : 'text-[#34c759]'} />
+                  <span>Reorder & Critical Stock</span>
+                </h3>
+                <p className="text-[#86868b] text-xs">Items nearing depletion or zero stock</p>
+              </div>
+              <Link to="/products" className="text-xs text-[#0071e3] font-semibold hover:underline flex items-center gap-0.5">
+                <span>Manage</span>
+                <ChevronRight size={13} />
+              </Link>
+            </div>
+
+            {stats.lowStockItems.length > 0 ? (
+              <div className="space-y-2">
+                {stats.lowStockItems.map(item => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-[16px] bg-[#ff3b30]/5 border border-[#ff3b30]/15 flex justify-between items-center text-xs hover:bg-[#ff3b30]/10 transition"
                   >
-                    <span className="font-medium text-[#1d1d1f] dark:text-gray-300">{c.name}</span>
-                    <span className="font-bold text-[#ff3b30]">
-                      Rs. {Math.round(Number(c.outstanding_balance)).toLocaleString()}
+                    <div className="truncate max-w-[170px]">
+                      <span className="font-semibold text-[#1d1d1f] dark:text-gray-200 block truncate" title={item.name}>
+                        {item.name}
+                      </span>
+                      <span className="text-[11px] text-[#86868b]">
+                        Cost: Rs. {Math.round(Number(item.cost_price || 0)).toLocaleString()} • Threshold: {item.low_stock_threshold || 5}
+                      </span>
+                    </div>
+                    <span className="font-bold text-[#ff3b30] px-2.5 py-1 rounded-full bg-white dark:bg-[#1c1c1e] text-xs shadow-2xs tabular-nums">
+                      {item.stock_quantity} left
                     </span>
-                  </Link>
+                  </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="py-9 text-center text-[#34c759] text-xs font-semibold bg-[#34c759]/5 border border-[#34c759]/15 rounded-[18px]">
+                ✓ All catalog inventory levels are healthy!
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
+            <span className="text-[#86868b] font-medium">Reorder Items:</span>
+            <span className={`font-bold tabular-nums ${stats.lowStockCount > 0 ? 'text-[#ff3b30]' : 'text-[#34c759]'}`}>
+              {stats.lowStockCount} Items Below Threshold
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1086,14 +1303,14 @@ function Dashboard() {
           </Link>
 
           <Link
-            to="/customers"
+            to="/purchases"
             className="flex flex-col items-center justify-center p-4 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] rounded-[22px] hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)] active:scale-95 transition-all text-center group cursor-pointer"
           >
-            <div className="w-12 h-12 rounded-[16px] bg-gradient-to-tr from-[#ea580c] to-[#fb923c] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(234,88,12,0.3)] transition-transform group-hover:scale-105 mb-2">
-              <Users size={22} />
+            <div className="w-12 h-12 rounded-[16px] bg-gradient-to-tr from-[#0d9488] to-[#2dd4bf] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(13,148,136,0.3)] transition-transform group-hover:scale-105 mb-2">
+              <CreditCard size={22} />
             </div>
-            <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Customers</span>
-            <span className="text-[10px] text-[#86868b]">Ledger & Khata</span>
+            <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Purchases</span>
+            <span className="text-[10px] text-[#86868b]">Stock Procurement</span>
           </Link>
 
           <Link
@@ -1104,18 +1321,18 @@ function Dashboard() {
               <FileText size={22} />
             </div>
             <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Reports & P&L</span>
-            <span className="text-[10px] text-[#86868b]">Sales Analysis</span>
+            <span className="text-[10px] text-[#86868b]">Daily & Weekly Trends</span>
           </Link>
 
           <Link
-            to="/purchases"
+            to="/customers"
             className="flex flex-col items-center justify-center p-4 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] rounded-[22px] hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)] active:scale-95 transition-all text-center group cursor-pointer"
           >
-            <div className="w-12 h-12 rounded-[16px] bg-gradient-to-tr from-[#0d9488] to-[#2dd4bf] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(13,148,136,0.3)] transition-transform group-hover:scale-105 mb-2">
-              <CreditCard size={22} />
+            <div className="w-12 h-12 rounded-[16px] bg-gradient-to-tr from-[#ea580c] to-[#fb923c] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(234,88,12,0.3)] transition-transform group-hover:scale-105 mb-2">
+              <Receipt size={22} />
             </div>
-            <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Purchases</span>
-            <span className="text-[10px] text-[#86868b]">Stock Procurement</span>
+            <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Customers</span>
+            <span className="text-[10px] text-[#86868b]">Customer Profiles</span>
           </Link>
         </div>
       </div>

@@ -258,6 +258,12 @@ function AddProduct() {
 
     const stockQtyNum = toNumOrZero(form.stock_quantity, 0)
     const costPriceNum = toNumOrZero(form.cost_price, 0)
+
+    if (!form.cost_price || costPriceNum <= 0) {
+      setLoading(false)
+      return alert('Cost Price is compulsory and must be greater than 0!')
+    }
+
     const initialPurchaseTotal = stockQtyNum > 0 && costPriceNum > 0 ? (stockQtyNum * costPriceNum) : 0
     const isInitialPurchase = initialPurchaseTotal > 0 && !skipInitialPurchase
 
@@ -702,15 +708,14 @@ function AddProduct() {
               />
             </div>
             <div>
-              <label className="block text-gray-700 font-medium mb-1">Sale / Selling Price *</label>
+              <label className="block text-gray-700 font-medium mb-1">Sale / Selling Price <span className="text-gray-400 text-sm font-normal">(optional - set at POS)</span></label>
               <input
                 type="number"
                 name="sale_price"
                 value={form.sale_price}
                 onChange={handleChange}
-                required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="0"
+                placeholder="Optional (can be entered at POS)"
               />
             </div>
           </div>

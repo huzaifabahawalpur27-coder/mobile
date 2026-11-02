@@ -401,6 +401,12 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
       return
     }
 
+    const costNum = parseFloat(phoneForm.cost_price)
+    if (!phoneForm.cost_price || isNaN(costNum) || costNum <= 0) {
+      setErrorMsg('Cost Price is compulsory and must be greater than 0!')
+      return
+    }
+
     if (imei2 && imei1 === imei2) {
       setErrorMsg('IMEI 1 and IMEI 2 cannot be identical!')
       return
@@ -1514,7 +1520,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Target Sale (Rs.)</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Target Sale (Rs.) <span className="text-gray-400 font-normal lowercase">(optional)</span></label>
                 <input
                   type="number"
                   min="0"

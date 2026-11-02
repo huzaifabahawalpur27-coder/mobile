@@ -272,6 +272,11 @@ function Purchases() {
     if (cart.length === 0) return alert('Please add products to cart before completing purchase!')
     if (!supplierId) return alert('Please select a supplier first!')
 
+    const invalidCostItem = cart.find(i => !i.purchase_price || parseFloat(i.purchase_price) <= 0)
+    if (invalidCostItem) {
+      return alert(`Cost Price is compulsory! "${invalidCostItem.name}" has an invalid cost price. Please enter a valid cost price greater than 0.`)
+    }
+
     setSaving(true)
     // Sanitize integer FK — offline-created suppliers have UUID ids
     const toIntOrNull = (v) => { const n = parseInt(v); return isNaN(n) ? null : n }

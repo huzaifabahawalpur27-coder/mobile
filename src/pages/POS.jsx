@@ -137,6 +137,19 @@ function POS() {
     return 'two_stage'
   })
   const [showTenderSheet, setShowTenderSheet] = useState(false)
+  const openTenderSheetSafe = () => {
+    if (cart.length === 0) return
+    const zeroPriceItem = cart.find(i => {
+      const p = i.custom_price !== undefined && i.custom_price !== '' ? parseFloat(i.custom_price) : parseFloat(i.sale_price)
+      return isNaN(p) || p <= 0
+    })
+    if (zeroPriceItem) {
+      alert(`⚠️ Selling price must be entered for "${zeroPriceItem.name || zeroPriceItem.model || 'Item'}"! Please enter a valid selling price greater than 0 before proceeding to payment.`)
+      return
+    }
+    setShowTenderSheet(true)
+  }
+
 
   const switchPosLayout = (newLayout) => {
     setPosLayout(newLayout)
@@ -176,7 +189,11 @@ function POS() {
       if (e.key === 'F4') {
         e.preventDefault()
         if (cart.length > 0 && saleType === 'sale') {
-          setShowTenderSheet(prev => !prev)
+          if (showTenderSheet) {
+            setShowTenderSheet(false)
+          } else {
+            openTenderSheetSafe()
+          }
         }
       }
       if (e.key === 'Escape' && showTenderSheet) {
@@ -591,9 +608,13 @@ function POS() {
       } else if (e.key === 'F4') {
         e.preventDefault()
         if (cart.length > 0) {
-          setShowTenderSheet(prev => !prev)
-          setPaymentType('cash')
-          if (!receivedAmount) setReceivedAmount(total.toString())
+          if (showTenderSheet) {
+            setShowTenderSheet(false)
+          } else {
+            openTenderSheetSafe()
+            setPaymentType('cash')
+            if (!receivedAmount) setReceivedAmount(total.toString())
+          }
         }
       } else if (e.key === 'F9' || (e.ctrlKey && e.key === 'Enter')) {
         e.preventDefault()
@@ -712,6 +733,10 @@ function POS() {
   }
 
   const updatePrice = (id, price) => {
+    if (price === '') {
+      setCart(prev => prev.map(i => i.id === id ? { ...i, custom_price: '' } : i))
+      return
+    }
     const num = parseFloat(price)
     if (isNaN(num) || num < 0) return
     setCart(prev => prev.map(i => i.id === id ? { ...i, custom_price: num } : i))
@@ -943,6 +968,15 @@ function POS() {
   const handleCompleteSale = async () => {
     if (cart.length === 0) {
       alert('Cart khali hai! Pehle item add karein.')
+      return
+    }
+
+    const zeroPriceItem = cart.find(i => {
+      const p = i.custom_price !== undefined && i.custom_price !== '' ? parseFloat(i.custom_price) : parseFloat(i.sale_price)
+      return isNaN(p) || p <= 0
+    })
+    if (zeroPriceItem) {
+      alert(`⚠️ Selling price must be entered for "${zeroPriceItem.name || zeroPriceItem.model || 'Item'}"! Please set the selling price greater than 0 before completing the sale.`)
       return
     }
 
@@ -1183,8 +1217,19 @@ function POS() {
         if (saleType === 'sale') {
           for (const item of cart) {
             if (item.phone_id) {
-              try { await supabase.from('phones').update({ status: 'sold' }).eq('id', item.phone_id) } catch (_) {}
-              if (db.phones) await db.phones.update(item.phone_id, { status: 'sold' }).catch(() => {})
+              const phoneSoldPrice = parseFloat(item.custom_price) || 0
+              try {
+                await supabase.from('phones').update({
+                  status: 'sold',
+                  sale_price: phoneSoldPrice,
+                  sold_at: new Date().toISOString()
+                }).eq('id', item.phone_id)
+              } catch (_) {}
+              if (db.phones) await db.phones.update(item.phone_id, {
+                status: 'sold',
+                sale_price: phoneSoldPrice,
+                sold_at: new Date().toISOString()
+              }).catch(() => {})
             } else {
               const newStock = item.stock_quantity - item.qty
               try { await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.id) } catch (_) {}
@@ -1264,8 +1309,15 @@ function POS() {
       if (saleType === 'sale') {
         for (const item of cart) {
           if (item.phone_id) {
-            if (db.phones) await db.phones.update(item.phone_id, { status: 'sold' }).catch(() => {})
-            await addToSyncQueue('phones', 'UPDATE', { id: item.phone_id, status: 'sold' }).catch(() => {})
+            const phoneSoldPrice = parseFloat(item.custom_price) || 0
+            const pUpdate = {
+              id: item.phone_id,
+              status: 'sold',
+              sale_price: phoneSoldPrice,
+              sold_at: new Date().toISOString()
+            }
+            if (db.phones) await db.phones.update(item.phone_id, pUpdate).catch(() => {})
+            await addToSyncQueue('phones', 'UPDATE', pUpdate).catch(() => {})
           } else {
             const newStock = (item.stock_quantity || 1) - item.qty
             await db.products.update(item.id, { stock_quantity: newStock }).catch(() => {})
@@ -2021,20 +2073,35 @@ function POS() {
 
                     <div className="flex items-center gap-1 mt-0.5 text-[10px]">
                       <span className="font-bold text-slate-400 uppercase">Unit:</span>
-                      <div className="flex items-center bg-white border border-blue-200 rounded px-1 py-0.2 shadow-2xs" title="Editable Unit Price">
+                      <div className={`flex items-center bg-white border rounded px-1.5 py-0.5 shadow-2xs transition-all ${
+                        Number(item.custom_price || 0) <= 0
+                          ? 'border-amber-500 ring-2 ring-amber-300 bg-amber-50/60'
+                          : 'border-blue-200'
+                      }`} title="Editable Unit Price">
                         <span className="font-bold text-slate-400 mr-0.5">Rs.</span>
                         <input
                           type="number"
-                          value={item.custom_price}
+                          value={item.custom_price === 0 || item.custom_price === '0' ? '' : item.custom_price}
+                          placeholder="Price *"
                           onChange={e => updatePrice(item.id, e.target.value)}
-                          className="w-14 text-xs font-bold text-blue-700 outline-none p-0 bg-transparent"
+                          className={`w-16 text-xs font-bold outline-none p-0 bg-transparent ${
+                            Number(item.custom_price || 0) <= 0
+                              ? 'text-amber-800 placeholder-amber-500 font-extrabold'
+                              : 'text-blue-700'
+                          }`}
                         />
                       </div>
 
-                      {isPrivileged && itemProfit !== 0 && (
-                        <span className={`font-bold px-1 py-0.2 rounded ${itemProfit < 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          {itemProfit < 0 ? '⚠️ -' : '+'}{Math.abs(itemProfit).toFixed(0)}
+                      {Number(item.custom_price || 0) <= 0 ? (
+                        <span className="bg-amber-500 text-white font-black text-[9px] px-1.5 py-0.5 rounded shadow-xs uppercase tracking-wider">
+                          Enter Price *
                         </span>
+                      ) : (
+                        isPrivileged && itemProfit !== 0 && (
+                          <span className={`font-bold px-1 py-0.2 rounded ${itemProfit < 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                            {itemProfit < 0 ? '⚠️ -' : '+'}{Math.abs(itemProfit).toFixed(0)}
+                          </span>
+                        )
                       )}
                     </div>
                   </div>
@@ -2263,7 +2330,7 @@ function POS() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setShowTenderSheet(true)}
+                  onClick={openTenderSheetSafe}
                   disabled={cart.length === 0}
                   className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-sm rounded-xl transition shadow-lg shadow-blue-200 active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
                 >
@@ -2602,7 +2669,7 @@ function POS() {
               </button>
               <button
                 type="button"
-                onClick={saleType === 'quotation' ? handleCompleteSale : () => setShowTenderSheet(true)}
+                onClick={saleType === 'quotation' ? handleCompleteSale : openTenderSheetSafe}
                 disabled={saving || cart.length === 0}
                 className={`flex-1 py-2.5 text-white text-sm font-black rounded-xl transition duration-150 shadow-md active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 ${
                   saleType === 'quotation'
@@ -2850,7 +2917,7 @@ function POS() {
               {/* Complete Sale Primary Action */}
               <button
                 type="button"
-                onClick={saleType === 'quotation' ? handleCompleteSale : () => setShowTenderSheet(true)}
+                onClick={saleType === 'quotation' ? handleCompleteSale : openTenderSheetSafe}
                 disabled={saving || cart.length === 0}
                 className={`px-4 py-2.5 text-white text-sm font-black rounded-xl transition shadow-md active:scale-95 disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0 ${
                   saleType === 'quotation'
@@ -3645,8 +3712,13 @@ function POS() {
                         {item.brand && <p className="text-xs text-gray-400">{item.brand}</p>}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <input type="number" value={item.custom_price} onChange={e => updatePrice(item.id, e.target.value)}
-                          className="w-24 px-2 py-1 border rounded text-center font-semibold text-blue-600 focus:ring-1 focus:ring-blue-500 outline-none" />
+                        <div className="flex flex-col items-center">
+                          <input type="number" value={item.custom_price === 0 || item.custom_price === '0' ? '' : item.custom_price} placeholder="Price *" onChange={e => updatePrice(item.id, e.target.value)}
+                            className={`w-24 px-2 py-1 border rounded text-center font-semibold outline-none ${Number(item.custom_price || 0) <= 0 ? 'border-amber-500 ring-2 ring-amber-300 text-amber-800 bg-amber-50' : 'text-blue-600 focus:ring-1 focus:ring-blue-500'}`} />
+                          {Number(item.custom_price || 0) <= 0 && (
+                            <span className="text-[10px] font-black text-amber-600 mt-0.5">Enter Price *</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-2">

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Fragment } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -14,7 +14,8 @@ import {
   DollarSign, Package, TrendingUp, BarChart3, PieChart as PieIcon,
   Search, Download, Printer, Award, Zap,
   Calendar, RefreshCw, X, ShoppingBag, Layers, Smartphone,
-  CheckCircle2, AlertTriangle, AlertCircle, ArrowUpRight
+  CheckCircle2, AlertTriangle, AlertCircle, ArrowUpRight,
+  ChevronDown, ChevronUp, ChevronRight, Sparkles, Banknote, CreditCard, Clock
 } from 'lucide-react'
 
 function Reports() {
@@ -23,7 +24,7 @@ function Reports() {
   const [range, setRange] = useState('today') // today, week, month, year, custom, all
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
-  const [activeTab, setActiveTab] = useState('products') // 'products', 'flow', 'overview', 'financials'
+  const [activeTab, setActiveTab] = useState('products') // 'products', 'daily', 'flow', 'overview', 'financials'
   const [catalogSegment, setCatalogSegment] = useState('all') // 'all', 'products', 'phones'
 
   // Product table filters & sorting
@@ -31,6 +32,10 @@ function Reports() {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [stockFilter, setStockFilter] = useState('all') // 'all', 'in_stock', 'low_stock', 'out_of_stock'
   const [sortBy, setSortBy] = useState('revenue') // 'revenue', 'qty', 'profit', 'margin', 'slow_moving'
+
+  // Day-by-Day Breakdown state (for weekly & period analysis)
+  const [dailyBreakdown, setDailyBreakdown] = useState([])
+  const [expandedDayKey, setExpandedDayKey] = useState(null)
 
   const [stats, setStats] = useState({
     grossSales: 0,
@@ -155,7 +160,7 @@ function Reports() {
       if (purchasesRes.data) await db.purchases.bulkPut(JSON.parse(JSON.stringify(purchasesRes.data))).catch(() => {})
       if (phonesRes.data && db.phones) await db.phones.bulkPut(JSON.parse(JSON.stringify(phonesRes.data))).catch(() => {})
 
-      processData({ sales, items, expenses, purchases, liveProducts, catList, phones })
+      processData({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate })
     } catch (e) {
       console.warn('Reports: calculating from local DB...', e)
       try {
@@ -201,7 +206,7 @@ function Reports() {
         const phones = (lPhones || []).filter(x => String(x.shop_id) === sid)
         setCategories(catList)
 
-        processData({ sales, items, expenses, purchases, liveProducts, catList, phones })
+        processData({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate })
       } catch (err) {
         console.error('Final Reports Fallback Error:', err)
       } finally {
@@ -212,7 +217,7 @@ function Reports() {
     }
   }
 
-  const processData = ({ sales, items, expenses, purchases, liveProducts, catList, phones }) => {
+  const processData = ({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate }) => {
     // 1. Build Lookups for Product Names, Costs and Inventory Stock
     const phoneMap = (phones || []).reduce((acc, p) => {
       const pName = `${p.brand || ''} ${p.model || ''}${p.storage ? ` ${p.storage}` : ''}`.trim()
@@ -238,6 +243,18 @@ function Reports() {
     const productCostMap = (liveProducts || []).reduce((acc, p) => {
       if (p.name) acc[p.name] = Number(p.cost_price || 0)
       if (p.id) acc[p.id] = Number(p.cost_price || 0)
+      return acc
+    }, {})
+
+    const productSalePriceMap = (liveProducts || []).reduce((acc, p) => {
+      if (p.name && Number(p.sale_price || 0) > 0) acc[p.name] = Number(p.sale_price)
+      if (p.id && Number(p.sale_price || 0) > 0) acc[p.id] = Number(p.sale_price)
+      return acc
+    }, {})
+
+    const phoneSalePriceMap = (phones || []).reduce((acc, p) => {
+      const pName = `${p.brand || ''} ${p.model || ''}${p.storage ? ` ${p.storage}` : ''}`.trim()
+      if (pName && Number(p.sale_price || 0) > 0) acc[pName] = Number(p.sale_price)
       return acc
     }, {})
 
@@ -421,14 +438,15 @@ function Reports() {
           profit: 0,
           stock: Number(p.stock_quantity || 0),
           inwardQty: inwardByProductName[pName] || 0,
-          unitCost: Number(p.cost_price || 0)
+          unitCost: Number(p.cost_price || 0),
+          catalogPrice: Number(p.sale_price || 0)
         }
       }
     })
 
     const compiledProducts = Object.values(prodMap).map(p => {
-      const margin = p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0
-      const avgPrice = p.qty > 0 ? p.revenue / p.qty : 0
+      const margin = p.revenue > 0 ? (p.profit / p.revenue) * 100 : null
+      const avgPrice = p.qty > 0 ? p.revenue / p.qty : (p.catalogPrice || 0)
       const avgCost = p.qty > 0 ? p.cost / p.qty : p.unitCost
       const netMovement = Number(p.inwardQty || 0) - Number(p.qty || 0)
       return {
@@ -527,6 +545,244 @@ function Reports() {
       catMap[p.category] = (catMap[p.category] || 0) + Math.max(0, p.profit)
     })
     setCategoryData(Object.entries(catMap).map(([name, value]) => ({ name, value })).filter(c => c.value > 0))
+
+    // 9. Day-by-Day Breakdown (Weekly & Period Daily Matrix)
+    const getLocalDateKey = (isoStr) => {
+      if (!isoStr) return ''
+      const d = new Date(isoStr)
+      if (isNaN(d.getTime())) return ''
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+
+    const dailyDays = []
+    if (range === 'week') {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date()
+        d.setDate(d.getDate() - i)
+        d.setHours(0, 0, 0, 0)
+        const k = getLocalDateKey(d)
+        dailyDays.push({
+          dateKey: k,
+          dateObj: d,
+          dayName: d.toLocaleDateString('en-PK', { weekday: 'short' }),
+          fullDate: d.toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric' }),
+          ordersCount: 0,
+          phonesSold: 0,
+          phonesRevenue: 0,
+          phonesCost: 0,
+          bulkSold: 0,
+          bulkRevenue: 0,
+          bulkCost: 0,
+          totalUnits: 0,
+          grossSales: 0,
+          discount: 0,
+          netSales: 0,
+          cogs: 0,
+          grossProfit: 0,
+          margin: 0,
+          expenses: 0,
+          netProfit: 0,
+          cashSales: 0,
+          onlineSales: 0,
+          creditSales: 0,
+          purchases: 0
+        })
+      }
+    } else if (range === 'today') {
+      const d = new Date()
+      d.setHours(0, 0, 0, 0)
+      const k = getLocalDateKey(d)
+      dailyDays.push({
+        dateKey: k,
+        dateObj: d,
+        dayName: d.toLocaleDateString('en-PK', { weekday: 'short' }),
+        fullDate: d.toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric' }),
+        ordersCount: 0,
+        phonesSold: 0,
+        phonesRevenue: 0,
+        phonesCost: 0,
+        bulkSold: 0,
+        bulkRevenue: 0,
+        bulkCost: 0,
+        totalUnits: 0,
+        grossSales: 0,
+        discount: 0,
+        netSales: 0,
+        cogs: 0,
+        grossProfit: 0,
+        margin: 0,
+        expenses: 0,
+        netProfit: 0,
+        cashSales: 0,
+        onlineSales: 0,
+        creditSales: 0,
+        purchases: 0
+      })
+    } else {
+      // Month, custom, year, all: generate slots between startDate and endDate
+      const cur = new Date(startDate)
+      cur.setHours(0, 0, 0, 0)
+      const endLimit = new Date(endDate)
+      endLimit.setHours(23, 59, 59, 999)
+      const maxDays = 60
+      let count = 0
+      while (cur <= endLimit && count < maxDays) {
+        const d = new Date(cur)
+        const k = getLocalDateKey(d)
+        dailyDays.push({
+          dateKey: k,
+          dateObj: d,
+          dayName: d.toLocaleDateString('en-PK', { weekday: 'short' }),
+          fullDate: d.toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric' }),
+          ordersCount: 0,
+          phonesSold: 0,
+          phonesRevenue: 0,
+          phonesCost: 0,
+          bulkSold: 0,
+          bulkRevenue: 0,
+          bulkCost: 0,
+          totalUnits: 0,
+          grossSales: 0,
+          discount: 0,
+          netSales: 0,
+          cogs: 0,
+          grossProfit: 0,
+          margin: 0,
+          expenses: 0,
+          netProfit: 0,
+          cashSales: 0,
+          onlineSales: 0,
+          creditSales: 0,
+          purchases: 0
+        })
+        cur.setDate(cur.getDate() + 1)
+        count++
+      }
+    }
+
+    const dayMap = dailyDays.reduce((acc, d) => {
+      acc[d.dateKey] = d
+      return acc
+    }, {})
+
+    // Map sales to daily entries
+    sales.forEach(s => {
+      const k = getLocalDateKey(s.created_at)
+      const day = dayMap[k]
+      if (day) {
+        day.ordersCount += 1
+        day.discount += Number(s.discount || 0)
+        const netAmt = Number(s.total_amount || 0) - Number(s.discount || 0)
+        const pType = String(s.payment_type || 'cash').toLowerCase()
+        if (pType === 'cash') day.cashSales += netAmt
+        else if (pType === 'credit') day.creditSales += netAmt
+        else day.onlineSales += netAmt
+      }
+    })
+
+    // Map line items to daily entries
+    const saleDateMap = sales.reduce((acc, s) => {
+      acc[s.id] = s.created_at
+      return acc
+    }, {})
+
+    items.forEach(i => {
+      const qty = Number(i.quantity || i.qty || 1) - Number(i.returned_qty || 0)
+      if (qty <= 0) return
+      const itemDate = i.sales?.created_at || saleDateMap[i.sale_id] || i.created_at
+      const k = getLocalDateKey(itemDate)
+      const day = dayMap[k]
+      if (!day) return
+
+      let snap = null
+      if (i.imei_snapshot) {
+        if (typeof i.imei_snapshot === 'object') snap = i.imei_snapshot
+        else if (typeof i.imei_snapshot === 'string') {
+          try { snap = JSON.parse(i.imei_snapshot) } catch (_) {}
+        }
+      }
+
+      let name = ''
+      if (i.product_name && i.product_name.trim()) name = i.product_name.trim()
+      else if (i.products?.name) name = i.products.name.trim()
+      else if (i.phone_id && phoneMap[i.phone_id]?.name) name = phoneMap[i.phone_id].name
+      else if (snap && (snap.brand || snap.model)) {
+        name = `${snap.brand || ''} ${snap.model || ''}${snap.storage ? ` ${snap.storage}` : ''}`.trim()
+      } else if (i.brand && i.model) name = `${i.brand} ${i.model}`.trim()
+      name = name.replace(/\s*\(?IMEI[:\s]+[0-9/,\s]+\)?/gi, '').trim() || 'Uncategorized Product'
+
+      const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
+
+      const unitPrice = Number(
+        (Number(i.unit_price) > 0 ? i.unit_price : null) ??
+        (Number(i.price) > 0 ? i.price : null) ??
+        (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0
+      )
+      const costPrice = Number(
+        (Number(i.cost_price) > 0 ? i.cost_price : null) ??
+        (i.phone_id ? phoneMap[i.phone_id]?.cost : null) ??
+        (i.product_id ? productCostMap[i.product_id] : null) ??
+        (productCostMap[name] || 0)
+      )
+
+      let lineRev = Number(
+        (Number(i.line_total) > 0 ? i.line_total : null) ??
+        (Number(i.subtotal) > 0 ? i.subtotal : null) ??
+        (qty * unitPrice)
+      )
+      if (lineRev <= 0 && Number(i.price || 0) > 0) {
+        lineRev = qty * Number(i.price)
+      }
+      const lineCost = qty * costPrice
+
+      if (isPhone) {
+        day.phonesSold += qty
+        day.phonesRevenue += lineRev
+        day.phonesCost += lineCost
+      } else {
+        day.bulkSold += qty
+        day.bulkRevenue += lineRev
+        day.bulkCost += lineCost
+      }
+    })
+
+    // Map expenses to daily entries
+    expenses.forEach(e => {
+      const k = getLocalDateKey(e.created_at)
+      if (dayMap[k]) {
+        dayMap[k].expenses += Number(e.amount || 0)
+      }
+    })
+
+    // Map purchases to daily entries
+    purchases.forEach(p => {
+      const k = getLocalDateKey(p.created_at)
+      if (dayMap[k]) {
+        dayMap[k].purchases += Number(p.total_amount || 0)
+      }
+    })
+
+    // Finalize daily totals
+    dailyDays.forEach(d => {
+      const itemsRev = d.phonesRevenue + d.bulkRevenue
+      if (itemsRev > 0) {
+        d.grossSales = itemsRev
+      } else {
+        const salesOnDay = sales.filter(s => getLocalDateKey(s.created_at) === d.dateKey)
+        d.grossSales = salesOnDay.reduce((sum, s) => sum + Number(s.total_amount || 0), 0)
+      }
+      d.netSales = Math.max(0, d.grossSales - d.discount)
+      d.totalUnits = d.phonesSold + d.bulkSold
+      d.cogs = d.phonesCost + d.bulkCost
+      d.grossProfit = d.netSales - d.cogs
+      d.margin = d.netSales > 0 ? (d.grossProfit / d.netSales) * 100 : 0
+      d.netProfit = d.grossProfit - d.expenses
+    })
+
+    setDailyBreakdown(dailyDays)
   }
 
   // Filtered & Sorted Product List
@@ -574,6 +830,149 @@ function Reports() {
     return [...productList].sort((a, b) => b.profit - a.profit)[0]
   }, [productList])
 
+  // Daily Summary Highlights (for Weekly & Period Analysis)
+  const dailySummary = useMemo(() => {
+    if (!dailyBreakdown || dailyBreakdown.length === 0) {
+      return { peakSalesDay: null, peakProfitDay: null, avgDailySales: 0, avgDailyProfit: 0 }
+    }
+    const sortedBySales = [...dailyBreakdown].sort((a, b) => b.grossSales - a.grossSales)
+    const sortedByProfit = [...dailyBreakdown].sort((a, b) => b.grossProfit - a.grossProfit)
+    const totalSales = dailyBreakdown.reduce((s, d) => s + d.grossSales, 0)
+    const totalProfit = dailyBreakdown.reduce((s, d) => s + d.grossProfit, 0)
+    const totalDays = dailyBreakdown.length || 1
+
+    return {
+      peakSalesDay: sortedBySales[0]?.grossSales > 0 ? sortedBySales[0] : null,
+      peakProfitDay: sortedByProfit[0]?.grossProfit > 0 ? sortedByProfit[0] : null,
+      avgDailySales: totalSales / totalDays,
+      avgDailyProfit: totalProfit / totalDays
+    }
+  }, [dailyBreakdown])
+
+  // Export Day-by-Day Report to Excel
+  const handleExportDailyReport = () => {
+    const dataToExport = dailyBreakdown.map((d, idx) => ({
+      '#': idx + 1,
+      'Date': d.dateKey,
+      'Day': d.dayName,
+      'Full Date': d.fullDate,
+      'Invoices / Orders': d.ordersCount,
+      'Phones Sold': d.phonesSold,
+      'Accessories Sold': d.bulkSold,
+      'Total Units Sold': d.totalUnits,
+      'Gross Revenue (Rs.)': Math.round(d.grossSales),
+      'Discounts (Rs.)': Math.round(d.discount),
+      'Net Sales (Rs.)': Math.round(d.netSales),
+      'Cost of Goods (Rs.)': Math.round(d.cogs),
+      'Gross Profit (Rs.)': Math.round(d.grossProfit),
+      'Margin (%)': `${d.margin.toFixed(1)}%`,
+      'Operating Expenses (Rs.)': Math.round(d.expenses),
+      'Net Profit (Rs.)': Math.round(d.netProfit),
+      'Cash Sales (Rs.)': Math.round(d.cashSales),
+      'Digital / Bank (Rs.)': Math.round(d.onlineSales),
+      'Credit Sales (Rs.)': Math.round(d.creditSales),
+      'Inward Purchases (Rs.)': Math.round(d.purchases)
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Daily Breakdown')
+    XLSX.writeFile(wb, `Daily_Breakdown_${range.toUpperCase()}_${new Date().toLocaleDateString()}.xlsx`)
+  }
+
+  // Printable Day-by-Day Summary
+  const handlePrintDailyReport = () => {
+    const branding = getShopBranding(user?.shop_id)
+    const header = brandedA4Header(branding, 'Weekly & Daily Business Performance Report', `Period: ${range.toUpperCase()}`)
+    const dailyRows = dailyBreakdown.map((d, idx) => `
+      <tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:bold;">${idx + 1}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600;">${d.fullDate}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${d.ordersCount}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${d.phonesSold}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${d.bulkSold}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">Rs. ${Math.round(d.grossSales).toLocaleString()}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">Rs. ${Math.round(d.cogs).toLocaleString()}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:#059669;">Rs. ${Math.round(d.grossProfit).toLocaleString()}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${d.margin.toFixed(1)}%</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;color:#dc2626;">Rs. ${Math.round(d.expenses).toLocaleString()}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:${d.netProfit >= 0 ? '#2563eb' : '#dc2626'};">Rs. ${Math.round(d.netProfit).toLocaleString()}</td>
+      </tr>
+    `).join('')
+
+    const totalOrders = dailyBreakdown.reduce((s, d) => s + d.ordersCount, 0)
+    const totalPhones = dailyBreakdown.reduce((s, d) => s + d.phonesSold, 0)
+    const totalBulk = dailyBreakdown.reduce((s, d) => s + d.bulkSold, 0)
+    const totalRev = dailyBreakdown.reduce((s, d) => s + d.grossSales, 0)
+    const totalCogs = dailyBreakdown.reduce((s, d) => s + d.cogs, 0)
+    const totalGrossProf = dailyBreakdown.reduce((s, d) => s + d.grossProfit, 0)
+    const totalExp = dailyBreakdown.reduce((s, d) => s + d.expenses, 0)
+    const totalNetProf = dailyBreakdown.reduce((s, d) => s + d.netProfit, 0)
+
+    printHTML(`
+      <html><head><title>Daily Report - ${range.toUpperCase()}</title>
+      <style>
+        @page{size:A4 portrait;margin:12mm}
+        *{box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #1e293b; padding: 0; line-height: 1.5; }
+        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+        .stat-item { border: 1px solid #e2e8f0; background: #f8fafc; padding: 10px; border-radius: 8px; }
+        .stat-label { color: #64748b; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        .stat-value { font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 3px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+        th { background: #1e293b; color: #fff; padding: 7px 8px; text-align: left; font-size: 10px; text-transform: uppercase; }
+        th:not(:first-child):not(:nth-child(2)) { text-align: right; }
+        th:nth-child(3), th:nth-child(4), th:nth-child(5) { text-align: center; }
+        tfoot td { font-weight: bold; background: #f1f5f9; padding: 8px; border-top: 2px solid #cbd5e1; }
+      </style></head><body>
+      ${header}
+
+      <div class="stat-grid">
+        <div class="stat-item"><div class="stat-label">Total Revenue</div><div class="stat-value">Rs. ${totalRev.toLocaleString()}</div></div>
+        <div class="stat-item"><div class="stat-label">Total Orders</div><div class="stat-value">${totalOrders} Invoices</div></div>
+        <div class="stat-item"><div class="stat-label">Cost of Goods (COGS)</div><div class="stat-value">Rs. ${totalCogs.toLocaleString()}</div></div>
+        <div class="stat-item"><div class="stat-label">Net Profit</div><div class="stat-value" style="color:#2563eb">Rs. ${totalNetProf.toLocaleString()}</div></div>
+      </div>
+
+      <h3 style="font-size:13px;font-weight:bold;margin:15px 0 6px 0;">Day-by-Day Financial Breakdown</h3>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:30px;">#</th>
+            <th>Date & Day</th>
+            <th style="text-align:center;">Orders</th>
+            <th style="text-align:center;">Phones</th>
+            <th style="text-align:center;">Accessories</th>
+            <th style="text-align:right;">Revenue</th>
+            <th style="text-align:right;">COGS</th>
+            <th style="text-align:right;">Gross Profit</th>
+            <th style="text-align:right;">Margin</th>
+            <th style="text-align:right;">Expenses</th>
+            <th style="text-align:right;">Net Profit</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${dailyRows}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2">Period Totals:</td>
+            <td style="text-align:center;">${totalOrders}</td>
+            <td style="text-align:center;">${totalPhones}</td>
+            <td style="text-align:center;">${totalBulk}</td>
+            <td style="text-align:right;">Rs. ${totalRev.toLocaleString()}</td>
+            <td style="text-align:right;">Rs. ${totalCogs.toLocaleString()}</td>
+            <td style="text-align:right;color:#059669;">Rs. ${totalGrossProf.toLocaleString()}</td>
+            <td style="text-align:right;">${totalRev > 0 ? ((totalGrossProf / totalRev) * 100).toFixed(1) : 0}%</td>
+            <td style="text-align:right;color:#dc2626;">Rs. ${totalExp.toLocaleString()}</td>
+            <td style="text-align:right;color:#2563eb;">Rs. ${totalNetProf.toLocaleString()}</td>
+          </tr>
+        </tfoot>
+      </table>
+      </body></html>
+    `)
+  }
+
   // Export Product Sales Report to Excel
   const handleExportProductReport = () => {
     const dataToExport = filteredProducts.map((p, idx) => ({
@@ -584,12 +983,12 @@ function Reports() {
       'Inward (Purchased)': p.inwardQty || 0,
       'Outward (Sold)': p.qty,
       'Net Movement': p.netMovement ?? ((p.inwardQty || 0) - p.qty),
-      'Avg Selling Price (Rs.)': Math.round(p.avgPrice),
+      'Avg Selling Price (Rs.)': p.qty > 0 ? Math.round(p.avgPrice) : (p.catalogPrice > 0 ? Math.round(p.catalogPrice) : '—'),
       'Avg Cost (Rs.)': Math.round(p.avgCost),
-      'Total Revenue (Rs.)': Math.round(p.revenue),
-      'Cost of Goods (Rs.)': Math.round(p.cost),
-      'Gross Profit (Rs.)': Math.round(p.profit),
-      'Margin (%)': `${p.margin.toFixed(1)}%`,
+      'Total Revenue (Rs.)': p.qty > 0 ? Math.round(p.revenue) : '—',
+      'Cost of Goods (Rs.)': p.qty > 0 ? Math.round(p.cost) : '—',
+      'Gross Profit (Rs.)': p.qty > 0 ? Math.round(p.profit) : '—',
+      'Margin (%)': p.qty > 0 && p.margin !== null ? `${p.margin.toFixed(1)}%` : '—',
       'In-Stock Qty': p.stock,
     }))
 
@@ -609,10 +1008,10 @@ function Reports() {
         <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600;">${p.name}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#666;">${p.category}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;font-weight:bold;">${p.qty}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">Rs. ${Math.round(p.avgPrice).toLocaleString()}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">Rs. ${Math.round(p.revenue).toLocaleString()}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">Rs. ${Math.round(p.profit).toLocaleString()}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:${p.margin >= 20 ? '#059669' : '#d97706'}">${p.margin.toFixed(1)}%</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${p.qty > 0 ? `Rs. ${Math.round(p.avgPrice).toLocaleString()}` : (p.catalogPrice > 0 ? `Rs. ${Math.round(p.catalogPrice).toLocaleString()}` : '—')}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${p.qty > 0 ? `Rs. ${Math.round(p.revenue).toLocaleString()}` : '—'}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${p.qty > 0 ? `Rs. ${Math.round(p.profit).toLocaleString()}` : '—'}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:${p.qty > 0 && p.margin >= 20 ? '#059669' : '#666'}">${p.qty > 0 && p.margin !== null ? `${p.margin.toFixed(1)}%` : '—'}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${p.stock}</td>
       </tr>
     `).join('')
@@ -727,21 +1126,21 @@ function Reports() {
 
           {/* Action Pills */}
           <button
-            onClick={handleExportProductReport}
+            onClick={activeTab === 'daily' ? handleExportDailyReport : handleExportProductReport}
             className="px-3.5 py-2 bg-white dark:bg-[#1c1c1e] hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e] active:scale-[0.98] text-[#1d1d1f] dark:text-[#f5f5f7] text-xs font-semibold rounded-full border border-black/[0.08] dark:border-white/[0.1] shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Download Product Sales Analysis in Excel (.xlsx)"
+            title={activeTab === 'daily' ? 'Download Daily Breakdown in Excel (.xlsx)' : 'Download Product Sales Analysis in Excel (.xlsx)'}
           >
             <Download size={13} className="text-[#34c759]" />
-            <span>Excel</span>
+            <span>{activeTab === 'daily' ? 'Daily Excel' : 'Excel'}</span>
           </button>
 
           <button
-            onClick={handlePrintSummary}
+            onClick={activeTab === 'daily' ? handlePrintDailyReport : handlePrintSummary}
             className="px-3.5 py-2 bg-[#0071e3] hover:bg-[#0077ed] active:scale-[0.98] text-white text-xs font-semibold rounded-full shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Print Executive A4 / Thermal Summary"
+            title={activeTab === 'daily' ? 'Print Daily Breakdown Report' : 'Print Executive A4 / Thermal Summary'}
           >
             <Printer size={13} />
-            <span>Print Report</span>
+            <span>{activeTab === 'daily' ? 'Print Daily' : 'Print Report'}</span>
           </button>
         </div>
       </div>
@@ -892,6 +1291,29 @@ function Reports() {
             </div>
           </div>
 
+          {/* Weekly 7-Day Quick Callout Pill */}
+          {range === 'week' && activeTab !== 'daily' && (
+            <div className="bg-[#0071e3]/10 dark:bg-[#0071e3]/15 border border-[#0071e3]/20 rounded-[20px] p-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-base">📅</span>
+                <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
+                  Weekly 7-Day breakdown is ready.
+                </span>
+                <span className="text-[#86868b] hidden sm:inline">
+                  Inspect day-by-day revenue velocity, phone vs accessory volume, gross profit, and operating expenses.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('daily')}
+                className="px-3.5 py-1.5 bg-[#0071e3] text-white rounded-full text-xs font-semibold hover:bg-[#0077ed] transition shrink-0 cursor-pointer shadow-xs flex items-center gap-1"
+              >
+                <span>View Daily Breakdown Table</span>
+                <span>→</span>
+              </button>
+            </div>
+          )}
+
           {/*  Authentic iOS Segmented Control Tab Switcher */}
           <div className="bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 p-1 rounded-full flex flex-wrap gap-1 backdrop-blur-md border border-black/[0.04] dark:border-white/[0.06] shadow-xs w-fit">
             <button
@@ -904,6 +1326,23 @@ function Reports() {
             >
               <Package size={13} className={activeTab === 'products' ? 'text-[#0071e3]' : ''} />
               <span>Product Sales & Profit ({filteredProducts.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('daily')}
+              className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'daily'
+                  ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
+                  : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+              }`}
+            >
+              <Calendar size={13} className={activeTab === 'daily' ? 'text-[#0071e3]' : ''} />
+              <span>📅 Daily Breakdown ({dailyBreakdown.length} Days)</span>
+              {range === 'week' && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#0071e3]/15 text-[#0071e3] text-[9px] font-bold">
+                  Weekly
+                </span>
+              )}
             </button>
 
             <button
@@ -1180,37 +1619,51 @@ function Reports() {
 
                           {/* Avg Price */}
                           <td className="px-4 py-3 text-right text-[#86868b] font-medium tabular-nums">
-                            Rs. {Math.round(p.avgPrice).toLocaleString()}
+                            {p.qty > 0 ? (
+                              `Rs. ${Math.round(p.avgPrice).toLocaleString()}`
+                            ) : p.catalogPrice > 0 ? (
+                              <span title="Catalog / Target Price">Rs. {Math.round(p.catalogPrice).toLocaleString()}</span>
+                            ) : (
+                              <span className="text-slate-400 text-xs italic" title="Not sold in this period; price set at POS">—</span>
+                            )}
                           </td>
 
                           {/* Total Revenue */}
                           <td className="px-5 py-3 text-right font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
-                            Rs. {Math.round(p.revenue).toLocaleString()}
+                            {p.qty > 0 ? `Rs. ${Math.round(p.revenue).toLocaleString()}` : <span className="text-slate-400 font-normal">—</span>}
                           </td>
 
                           {/* Cost */}
                           <td className="px-4 py-3 text-right text-[#86868b] font-medium tabular-nums">
-                            Rs. {Math.round(p.cost).toLocaleString()}
+                            {p.qty > 0 ? `Rs. ${Math.round(p.cost).toLocaleString()}` : <span className="text-slate-400 font-normal">—</span>}
                           </td>
 
                           {/* Gross Profit */}
                           <td className="px-5 py-3 text-right font-bold tabular-nums">
-                            <span className={p.profit >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}>
-                              Rs. {Math.round(p.profit).toLocaleString()}
-                            </span>
+                            {p.qty > 0 ? (
+                              <span className={p.profit >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}>
+                                Rs. {Math.round(p.profit).toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-normal">—</span>
+                            )}
                           </td>
 
                           {/* Margin % */}
                           <td className="px-4 py-3 text-right">
-                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                              p.margin >= 25
-                                ? 'bg-[#34c759]/10 text-[#34c759]'
-                                : p.margin >= 10
-                                  ? 'bg-[#ff9500]/10 text-[#ff9500]'
-                                  : 'bg-[#ff3b30]/10 text-[#ff3b30]'
-                            }`}>
-                              {p.margin.toFixed(1)}%
-                            </span>
+                            {p.qty > 0 && p.margin !== null ? (
+                              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                p.margin >= 25
+                                  ? 'bg-[#34c759]/10 text-[#34c759]'
+                                  : p.margin >= 10
+                                    ? 'bg-[#ff9500]/10 text-[#ff9500]'
+                                    : 'bg-[#ff3b30]/10 text-[#ff3b30]'
+                              }`}>
+                                {p.margin.toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-normal">—</span>
+                            )}
                           </td>
 
                           {/* In-Stock */}
@@ -1271,6 +1724,437 @@ function Reports() {
                           <td className="px-4 py-3 text-center text-[#1d1d1f] dark:text-[#f5f5f7]">
                             {filteredProducts.reduce((s, p) => s + (Number(p.stock) || 0), 0)} Pcs
                           </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: DAILY BREAKDOWN (WEEKLY & PERIOD DAY-BY-DAY ANALYSIS) */}
+          {activeTab === 'daily' && (
+            <div className="space-y-6">
+              {/* Daily Performance Champions (4 Apple Cards) */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                {/* 1. Peak Sales Day */}
+                <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Peak Sales Day</span>
+                    <div className="w-7 h-7 rounded-[9px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center font-bold text-xs">
+                      🏆
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-lg sm:text-xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                      {dailySummary.peakSalesDay ? `Rs. ${Math.round(dailySummary.peakSalesDay.grossSales).toLocaleString()}` : '—'}
+                    </div>
+                    <p className="text-[11px] text-[#0071e3] mt-1 font-semibold truncate">
+                      {dailySummary.peakSalesDay ? `${dailySummary.peakSalesDay.dayName} (${dailySummary.peakSalesDay.fullDate})` : 'No sales recorded'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Most Profitable Day */}
+                <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Best Profit Day</span>
+                    <div className="w-7 h-7 rounded-[9px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center font-bold text-xs">
+                      📈
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-lg sm:text-xl font-bold tracking-tight text-[#34c759] tabular-nums">
+                      {dailySummary.peakProfitDay ? `Rs. ${Math.round(dailySummary.peakProfitDay.grossProfit).toLocaleString()}` : '—'}
+                    </div>
+                    <p className="text-[11px] text-[#34c759] mt-1 font-semibold truncate">
+                      {dailySummary.peakProfitDay ? `${dailySummary.peakProfitDay.dayName} • ${dailySummary.peakProfitDay.margin.toFixed(1)}% margin` : 'No profit recorded'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 3. Daily Average Revenue */}
+                <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Daily Avg Sales</span>
+                    <div className="w-7 h-7 rounded-[9px] bg-[#5856d6]/10 text-[#5856d6] flex items-center justify-center">
+                      <BarChart3 size={14} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-lg sm:text-xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                      Rs. {Math.round(dailySummary.avgDailySales).toLocaleString()}
+                    </div>
+                    <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">
+                      Across {dailyBreakdown.length} days
+                    </p>
+                  </div>
+                </div>
+
+                {/* 4. Daily Average Profit */}
+                <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Daily Avg Profit</span>
+                    <div className="w-7 h-7 rounded-[9px] bg-[#af52de]/10 text-[#af52de] flex items-center justify-center">
+                      <TrendingUp size={14} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-lg sm:text-xl font-bold tracking-tight text-[#af52de] tabular-nums">
+                      Rs. {Math.round(dailySummary.avgDailyProfit).toLocaleString()}
+                    </div>
+                    <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">
+                      {dailySummary.avgDailySales > 0 ? `${((dailySummary.avgDailyProfit / dailySummary.avgDailySales) * 100).toFixed(1)}% avg margin` : '—'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Day-by-Day Visual Velocity Chart */}
+              <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-xs p-5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+                  <div>
+                    <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm flex items-center gap-2">
+                      <span className="w-2 h-4 bg-[#0071e3] rounded-full"></span>
+                      <span>Daily Sales vs. Profit Velocity</span>
+                    </h3>
+                    <p className="text-[11px] text-[#86868b] mt-0.5">
+                      Day-by-day comparison of gross revenue, cost of goods, and gross profit.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs font-semibold">
+                    <span className="flex items-center gap-1.5 text-[#0071e3]">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#0071e3]"></span> Sales
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[#34c759]">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#34c759]"></span> Profit
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[#ff9500]">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#ff9500]"></span> COGS
+                    </span>
+                  </div>
+                </div>
+
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={dailyBreakdown}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(128,128,128,0.12)" />
+                      <XAxis dataKey="dayName" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#86868b', fontWeight: 600 }} />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fill: '#86868b' }}
+                        tickFormatter={v => v >= 1000 ? `${Math.round(v / 1000)}k` : v}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#1d1d1f',
+                          color: '#fff',
+                          borderRadius: '14px',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          fontSize: '11px',
+                          boxShadow: '0 8px 30px rgba(0,0,0,0.15)'
+                        }}
+                        formatter={(val, name) => [`Rs. ${Number(val).toLocaleString()}`, name]}
+                      />
+                      <Bar dataKey="grossSales" fill="#0071e3" radius={[5, 5, 0, 0]} name="Sales" />
+                      <Bar dataKey="cogs" fill="#ff9500" radius={[5, 5, 0, 0]} name="COGS" />
+                      <Bar dataKey="grossProfit" fill="#34c759" radius={[5, 5, 0, 0]} name="Gross Profit" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Day-by-Day Comprehensive Data Table */}
+              <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] overflow-hidden">
+                <div className="p-4 border-b border-black/[0.04] dark:border-white/[0.06] flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                  <div>
+                    <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm flex items-center gap-2">
+                      <span className="w-2 h-4 bg-[#34c759] rounded-full"></span>
+                      <span>Daily Breakdown Matrix ({dailyBreakdown.length} Days)</span>
+                    </h3>
+                    <p className="text-[11px] text-[#86868b] mt-0.5">
+                      Full audit of each day's orders, device flow, revenue, margins, expenses, and net profit.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleExportDailyReport}
+                      className="px-3 py-1.5 bg-[#f5f5f7] dark:bg-[#2c2c2e] hover:bg-[#e5e5ea] text-[#1d1d1f] dark:text-white rounded-full text-xs font-semibold border border-black/[0.06] dark:border-white/[0.08] transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Download size={12} className="text-[#34c759]" />
+                      <span>Export (.xlsx)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePrintDailyReport}
+                      className="px-3 py-1.5 bg-[#0071e3] text-white rounded-full text-xs font-semibold hover:bg-[#0077ed] transition flex items-center gap-1 cursor-pointer shadow-xs"
+                    >
+                      <Printer size={12} />
+                      <span>Print Table</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 border-b border-black/[0.04] dark:border-white/[0.06] text-[#86868b] uppercase text-[10px] font-semibold tracking-wider">
+                      <tr>
+                        <th className="px-3 py-3 w-8 text-center">#</th>
+                        <th className="px-4 py-3">Date & Day</th>
+                        <th className="px-3 py-3 text-center">Invoices</th>
+                        <th className="px-3 py-3 text-center">Phones (Out)</th>
+                        <th className="px-3 py-3 text-center">Acc (Out)</th>
+                        <th className="px-3 py-3 text-center">Total Units</th>
+                        <th className="px-4 py-3 text-right">Revenue (Rs.)</th>
+                        <th className="px-4 py-3 text-right">COGS (Rs.)</th>
+                        <th className="px-4 py-3 text-right">Gross Profit</th>
+                        <th className="px-3 py-3 text-right">Margin %</th>
+                        <th className="px-4 py-3 text-right">Expenses</th>
+                        <th className="px-4 py-3 text-right">Net Profit</th>
+                        <th className="px-4 py-3 text-center">Payment Split</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+                      {dailyBreakdown.map((d, idx) => {
+                        const isExpanded = expandedDayKey === d.dateKey
+                        const hasSales = d.grossSales > 0
+                        return (
+                          <Fragment key={d.dateKey}>
+                            <tr
+                              onClick={() => setExpandedDayKey(isExpanded ? null : d.dateKey)}
+                              className={`hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition cursor-pointer ${
+                                isExpanded ? 'bg-[#0071e3]/5 dark:bg-[#0071e3]/10' : ''
+                              }`}
+                            >
+                              <td className="px-3 py-3.5 text-center text-[#86868b] font-medium">{idx + 1}</td>
+                              <td className="px-4 py-3.5">
+                                <div className="flex items-center gap-2">
+                                  <span className={`w-7 h-7 rounded-[8px] flex items-center justify-center font-bold text-[11px] ${
+                                    d.dayName === 'Sun' ? 'bg-[#ff3b30]/10 text-[#ff3b30]' : 'bg-[#0071e3]/10 text-[#0071e3]'
+                                  }`}>
+                                    {d.dayName}
+                                  </span>
+                                  <div>
+                                    <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] block">
+                                      {d.fullDate}
+                                    </span>
+                                    <span className="text-[10px] text-[#86868b] block">{d.dateKey}</span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="px-3 py-3.5 text-center font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                                {d.ordersCount > 0 ? `${d.ordersCount}` : '—'}
+                              </td>
+
+                              <td className="px-3 py-3.5 text-center font-bold text-[#af52de] tabular-nums">
+                                {d.phonesSold > 0 ? `${d.phonesSold}` : '—'}
+                              </td>
+
+                              <td className="px-3 py-3.5 text-center font-bold text-[#0071e3] tabular-nums">
+                                {d.bulkSold > 0 ? `${d.bulkSold}` : '—'}
+                              </td>
+
+                              <td className="px-3 py-3.5 text-center font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                                {d.totalUnits > 0 ? `${d.totalUnits} pcs` : '—'}
+                              </td>
+
+                              <td className="px-4 py-3.5 text-right font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                                {hasSales ? `Rs. ${Math.round(d.grossSales).toLocaleString()}` : '—'}
+                              </td>
+
+                              <td className="px-4 py-3.5 text-right font-medium text-[#86868b] tabular-nums">
+                                {d.cogs > 0 ? `Rs. ${Math.round(d.cogs).toLocaleString()}` : '—'}
+                              </td>
+
+                              <td className="px-4 py-3.5 text-right font-bold text-[#34c759] tabular-nums">
+                                {d.grossProfit !== 0 ? `Rs. ${Math.round(d.grossProfit).toLocaleString()}` : '—'}
+                              </td>
+
+                              <td className="px-3 py-3.5 text-right">
+                                {d.margin > 0 ? (
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    d.margin >= 20 ? 'bg-[#34c759]/10 text-[#34c759]' : d.margin >= 10 ? 'bg-[#ff9500]/10 text-[#ff9500]' : 'bg-[#ff3b30]/10 text-[#ff3b30]'
+                                  }`}>
+                                    {d.margin.toFixed(1)}%
+                                  </span>
+                                ) : '—'}
+                              </td>
+
+                              <td className="px-4 py-3.5 text-right font-medium text-[#ff3b30] tabular-nums">
+                                {d.expenses > 0 ? `- Rs. ${Math.round(d.expenses).toLocaleString()}` : '—'}
+                              </td>
+
+                              <td className="px-4 py-3.5 text-right font-bold tabular-nums">
+                                <span className={d.netProfit > 0 ? 'text-[#0071e3]' : d.netProfit < 0 ? 'text-[#ff3b30]' : 'text-[#86868b]'}>
+                                  {d.netProfit !== 0 ? `Rs. ${Math.round(d.netProfit).toLocaleString()}` : '—'}
+                                </span>
+                              </td>
+
+                              <td className="px-4 py-3.5 text-center">
+                                <div className="flex items-center justify-center gap-1 text-[10px]">
+                                  {d.cashSales > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded bg-[#34c759]/10 text-[#34c759] font-semibold" title={`Cash: Rs. ${Math.round(d.cashSales).toLocaleString()}`}>
+                                      💵 {Math.round(d.cashSales / 1000)}k
+                                    </span>
+                                  )}
+                                  {d.onlineSales > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded bg-[#0071e3]/10 text-[#0071e3] font-semibold" title={`Digital: Rs. ${Math.round(d.onlineSales).toLocaleString()}`}>
+                                      💳 {Math.round(d.onlineSales / 1000)}k
+                                    </span>
+                                  )}
+                                  {d.creditSales > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded bg-[#ff9500]/10 text-[#ff9500] font-semibold" title={`Credit: Rs. ${Math.round(d.creditSales).toLocaleString()}`}>
+                                      📒 {Math.round(d.creditSales / 1000)}k
+                                    </span>
+                                  )}
+                                  {!d.cashSales && !d.onlineSales && !d.creditSales && (
+                                    <span className="text-[#86868b]">None</span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+
+                            {/* Expanded Day Details Drawer */}
+                            {isExpanded && (
+                              <tr className="bg-[#f5f5f7]/80 dark:bg-white/[0.03]">
+                                <td colSpan="13" className="px-6 py-4">
+                                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                                    <div className="p-3 bg-white dark:bg-[#1c1c1e] rounded-[16px] border border-black/[0.04] dark:border-white/[0.06]">
+                                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">📱 Phone Sales</span>
+                                      <span className="font-bold text-sm text-[#af52de] mt-1 block">
+                                        {d.phonesSold} Units • Rs. {Math.round(d.phonesRevenue).toLocaleString()}
+                                      </span>
+                                      <span className="text-[11px] text-[#86868b]">
+                                        Cost: Rs. {Math.round(d.phonesCost).toLocaleString()} • Profit: Rs. {Math.round(d.phonesRevenue - d.phonesCost).toLocaleString()}
+                                      </span>
+                                    </div>
+
+                                    <div className="p-3 bg-white dark:bg-[#1c1c1e] rounded-[16px] border border-black/[0.04] dark:border-white/[0.06]">
+                                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">🔌 Accessories Sales</span>
+                                      <span className="font-bold text-sm text-[#0071e3] mt-1 block">
+                                        {d.bulkSold} Pcs • Rs. {Math.round(d.bulkRevenue).toLocaleString()}
+                                      </span>
+                                      <span className="text-[11px] text-[#86868b]">
+                                        Cost: Rs. {Math.round(d.bulkCost).toLocaleString()} • Profit: Rs. {Math.round(d.bulkRevenue - d.bulkCost).toLocaleString()}
+                                      </span>
+                                    </div>
+
+                                    <div className="p-3 bg-white dark:bg-[#1c1c1e] rounded-[16px] border border-black/[0.04] dark:border-white/[0.06]">
+                                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">💸 Outflows & Expenses</span>
+                                      <span className="font-bold text-sm text-[#ff3b30] mt-1 block">
+                                        Rs. {Math.round(d.expenses).toLocaleString()}
+                                      </span>
+                                      <span className="text-[11px] text-[#86868b]">
+                                        Purchases made on day: Rs. {Math.round(d.purchases).toLocaleString()}
+                                      </span>
+                                    </div>
+
+                                    <div className="p-3 bg-white dark:bg-[#1c1c1e] rounded-[16px] border border-black/[0.04] dark:border-white/[0.06]">
+                                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">💰 Day Drawer Settlement</span>
+                                      <span className={`font-bold text-sm mt-1 block ${
+                                        (d.cashSales - d.expenses) >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'
+                                      }`}>
+                                        Rs. {Math.round(d.cashSales - d.expenses).toLocaleString()}
+                                      </span>
+                                      <span className="text-[11px] text-[#86868b]">
+                                        Net Cash Flow (Cash Sales - Expenses)
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        )
+                      })}
+                    </tbody>
+
+                    {/* Table Totals & Averages Footer */}
+                    {dailyBreakdown.length > 0 && (
+                      <tfoot className="bg-[#f5f5f7]/95 dark:bg-[#2c2c2e]/95 font-bold text-xs border-t-2 border-black/[0.08] dark:border-white/[0.08]">
+                        {/* 1. Period Totals Row */}
+                        <tr>
+                          <td colSpan="2" className="px-4 py-3 text-[#86868b] uppercase text-[10px] tracking-wider">
+                            Period Totals ({dailyBreakdown.length} Days):
+                          </td>
+                          <td className="px-3 py-3 text-center text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                            {dailyBreakdown.reduce((s, d) => s + d.ordersCount, 0)}
+                          </td>
+                          <td className="px-3 py-3 text-center text-[#af52de] tabular-nums">
+                            {dailyBreakdown.reduce((s, d) => s + d.phonesSold, 0)}
+                          </td>
+                          <td className="px-3 py-3 text-center text-[#0071e3] tabular-nums">
+                            {dailyBreakdown.reduce((s, d) => s + d.bulkSold, 0)}
+                          </td>
+                          <td className="px-3 py-3 text-center text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                            {dailyBreakdown.reduce((s, d) => s + d.totalUnits, 0)} pcs
+                          </td>
+                          <td className="px-4 py-3 text-right text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                            Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.grossSales, 0)).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right text-[#86868b] tabular-nums">
+                            Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.cogs, 0)).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right text-[#34c759] tabular-nums">
+                            Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.grossProfit, 0)).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-3 text-right text-[#34c759]">
+                            {(() => {
+                              const rev = dailyBreakdown.reduce((s, d) => s + d.grossSales, 0)
+                              const prof = dailyBreakdown.reduce((s, d) => s + d.grossProfit, 0)
+                              return rev > 0 ? `${((prof / rev) * 100).toFixed(1)}%` : '—'
+                            })()}
+                          </td>
+                          <td className="px-4 py-3 text-right text-[#ff3b30] tabular-nums">
+                            Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.expenses, 0)).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right text-[#0071e3] tabular-nums">
+                            Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.netProfit, 0)).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-center text-[#86868b]">
+                            {dailyBreakdown.length} days
+                          </td>
+                        </tr>
+
+                        {/* 2. Daily Average Row */}
+                        <tr className="text-[11px] text-[#86868b] border-t border-black/[0.04] dark:border-white/[0.04]">
+                          <td colSpan="2" className="px-4 py-2 font-medium">
+                            Daily Average Run-Rate:
+                          </td>
+                          <td className="px-3 py-2 text-center tabular-nums">
+                            {(dailyBreakdown.reduce((s, d) => s + d.ordersCount, 0) / (dailyBreakdown.length || 1)).toFixed(1)}/day
+                          </td>
+                          <td className="px-3 py-2 text-center text-[#af52de] tabular-nums">
+                            {(dailyBreakdown.reduce((s, d) => s + d.phonesSold, 0) / (dailyBreakdown.length || 1)).toFixed(1)}/day
+                          </td>
+                          <td className="px-3 py-2 text-center text-[#0071e3] tabular-nums">
+                            {(dailyBreakdown.reduce((s, d) => s + d.bulkSold, 0) / (dailyBreakdown.length || 1)).toFixed(1)}/day
+                          </td>
+                          <td className="px-3 py-2 text-center tabular-nums">
+                            {(dailyBreakdown.reduce((s, d) => s + d.totalUnits, 0) / (dailyBreakdown.length || 1)).toFixed(1)} pcs
+                          </td>
+                          <td className="px-4 py-2 text-right font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+                            Rs. {Math.round(dailySummary.avgDailySales).toLocaleString()}/d
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.cogs, 0) / (dailyBreakdown.length || 1)).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-2 text-right font-semibold text-[#34c759] tabular-nums">
+                            Rs. {Math.round(dailySummary.avgDailyProfit).toLocaleString()}/d
+                          </td>
+                          <td className="px-3 py-2 text-right text-[#86868b]">—</td>
+                          <td className="px-4 py-2 text-right text-[#ff3b30] tabular-nums">
+                            Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.expenses, 0) / (dailyBreakdown.length || 1)).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-2 text-right font-semibold text-[#0071e3] tabular-nums">
+                            Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.netProfit, 0) / (dailyBreakdown.length || 1)).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-2 text-center">—</td>
                         </tr>
                       </tfoot>
                     )}
