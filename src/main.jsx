@@ -4,6 +4,39 @@ import './index.css'
 import App from './App.jsx'
 import './services/syncService'
 
+// ── Vite dynamic chunk import error recovery ─────────────────────────────
+// When a new deployment is pushed to production, old chunk hashes 404 (MIME text/html).
+// This catches the error and cleanly reloads the page once to pull the fresh HTML & chunk manifest.
+if (typeof window !== 'undefined') {
+  window.addEventListener('vite:preloadError', (event) => {
+    console.warn('[EdgeX] New deployment detected or chunk failed to load. Reloading...', event)
+    const lastReload = parseInt(sessionStorage.getItem('edgex_chunk_reload') || '0', 10)
+    const now = Date.now()
+    if (now - lastReload > 6000) {
+      sessionStorage.setItem('edgex_chunk_reload', String(now))
+      window.location.reload()
+    }
+  })
+
+  window.addEventListener('error', (event) => {
+    const msg = String(event?.message || '')
+    if (
+      msg.includes('Failed to fetch dynamically imported module') ||
+      msg.includes('Expected a JavaScript-or-Wasm module script') ||
+      msg.includes('error loading dynamically imported module')
+    ) {
+      console.warn('[EdgeX] Stale chunk script error detected. Reloading for newest deployment...', msg)
+      const lastReload = parseInt(sessionStorage.getItem('edgex_chunk_reload') || '0', 10)
+      const now = Date.now()
+      if (now - lastReload > 6000) {
+        sessionStorage.setItem('edgex_chunk_reload', String(now))
+        window.location.reload()
+      }
+    }
+  })
+}
+
+
 // ── RLS error interceptor ─────────────────────────────────────────────────
 if (typeof window !== 'undefined') {
   const originalAlert = window.alert;

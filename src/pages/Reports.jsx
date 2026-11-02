@@ -445,7 +445,7 @@ function Reports() {
     })
 
     const compiledProducts = Object.values(prodMap).map(p => {
-      const margin = p.revenue > 0 ? (p.profit / p.revenue) * 100 : null
+      const margin = p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0
       const avgPrice = p.qty > 0 ? p.revenue / p.qty : (p.catalogPrice || 0)
       const avgCost = p.qty > 0 ? p.cost / p.qty : p.unitCost
       const netMovement = Number(p.inwardQty || 0) - Number(p.qty || 0)
@@ -816,18 +816,21 @@ function Reports() {
 
   // Top Product Highlights
   const topRevenueProduct = useMemo(() => {
-    if (productList.length === 0) return null
-    return [...productList].sort((a, b) => b.revenue - a.revenue)[0]
+    const sold = productList.filter(p => Number(p.qty || 0) > 0 && Number(p.revenue || 0) > 0)
+    if (sold.length === 0) return null
+    return [...sold].sort((a, b) => b.revenue - a.revenue)[0]
   }, [productList])
 
   const topUnitsProduct = useMemo(() => {
-    if (productList.length === 0) return null
-    return [...productList].sort((a, b) => b.qty - a.qty)[0]
+    const sold = productList.filter(p => Number(p.qty || 0) > 0)
+    if (sold.length === 0) return null
+    return [...sold].sort((a, b) => b.qty - a.qty)[0]
   }, [productList])
 
   const topProfitProduct = useMemo(() => {
-    if (productList.length === 0) return null
-    return [...productList].sort((a, b) => b.profit - a.profit)[0]
+    const sold = productList.filter(p => Number(p.qty || 0) > 0 && Number(p.profit || 0) > 0)
+    if (sold.length === 0) return null
+    return [...sold].sort((a, b) => b.profit - a.profit)[0]
   }, [productList])
 
   // Daily Summary Highlights (for Weekly & Period Analysis)
@@ -865,7 +868,7 @@ function Reports() {
       'Net Sales (Rs.)': Math.round(d.netSales),
       'Cost of Goods (Rs.)': Math.round(d.cogs),
       'Gross Profit (Rs.)': Math.round(d.grossProfit),
-      'Margin (%)': `${d.margin.toFixed(1)}%`,
+      'Margin (%)': `${(d.margin ?? 0).toFixed(1)}%`,
       'Operating Expenses (Rs.)': Math.round(d.expenses),
       'Net Profit (Rs.)': Math.round(d.netProfit),
       'Cash Sales (Rs.)': Math.round(d.cashSales),
@@ -894,7 +897,7 @@ function Reports() {
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">Rs. ${Math.round(d.grossSales).toLocaleString()}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">Rs. ${Math.round(d.cogs).toLocaleString()}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:#059669;">Rs. ${Math.round(d.grossProfit).toLocaleString()}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${d.margin.toFixed(1)}%</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${(d.margin ?? 0).toFixed(1)}%</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;color:#dc2626;">Rs. ${Math.round(d.expenses).toLocaleString()}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:${d.netProfit >= 0 ? '#2563eb' : '#dc2626'};">Rs. ${Math.round(d.netProfit).toLocaleString()}</td>
       </tr>
@@ -988,7 +991,7 @@ function Reports() {
       'Total Revenue (Rs.)': p.qty > 0 ? Math.round(p.revenue) : '—',
       'Cost of Goods (Rs.)': p.qty > 0 ? Math.round(p.cost) : '—',
       'Gross Profit (Rs.)': p.qty > 0 ? Math.round(p.profit) : '—',
-      'Margin (%)': p.qty > 0 && p.margin !== null ? `${p.margin.toFixed(1)}%` : '—',
+      'Margin (%)': p.qty > 0 ? `${(p.margin ?? 0).toFixed(1)}%` : '—',
       'In-Stock Qty': p.stock,
     }))
 
@@ -1011,7 +1014,7 @@ function Reports() {
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${p.qty > 0 ? `Rs. ${Math.round(p.avgPrice).toLocaleString()}` : (p.catalogPrice > 0 ? `Rs. ${Math.round(p.catalogPrice).toLocaleString()}` : '—')}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${p.qty > 0 ? `Rs. ${Math.round(p.revenue).toLocaleString()}` : '—'}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${p.qty > 0 ? `Rs. ${Math.round(p.profit).toLocaleString()}` : '—'}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:${p.qty > 0 && p.margin >= 20 ? '#059669' : '#666'}">${p.qty > 0 && p.margin !== null ? `${p.margin.toFixed(1)}%` : '—'}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:${p.qty > 0 && p.margin >= 20 ? '#059669' : '#666'}">${p.qty > 0 ? `${(p.margin ?? 0).toFixed(1)}%` : '—'}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${p.stock}</td>
       </tr>
     `).join('')
@@ -1439,7 +1442,7 @@ function Reports() {
                           {topProfitProduct.name}
                         </h4>
                         <span className="text-xs font-bold text-[#af52de] mt-0.5 block">
-                          Rs. {Math.round(topProfitProduct.profit).toLocaleString()} <span className="text-[11px] font-normal text-[#86868b]">({topProfitProduct.margin.toFixed(1)}% margin)</span>
+                          Rs. {Math.round(topProfitProduct.profit).toLocaleString()} <span className="text-[11px] font-normal text-[#86868b]">({(topProfitProduct.margin ?? 0).toFixed(1)}% margin)</span>
                         </span>
                       </div>
                       <div className="w-10 h-10 rounded-[12px] bg-[#af52de]/10 text-[#af52de] flex items-center justify-center shrink-0">
@@ -1659,7 +1662,7 @@ function Reports() {
                                     ? 'bg-[#ff9500]/10 text-[#ff9500]'
                                     : 'bg-[#ff3b30]/10 text-[#ff3b30]'
                               }`}>
-                                {p.margin.toFixed(1)}%
+                                {(p.margin ?? 0).toFixed(1)}%
                               </span>
                             ) : (
                               <span className="text-slate-400 font-normal">—</span>
@@ -1769,7 +1772,7 @@ function Reports() {
                       {dailySummary.peakProfitDay ? `Rs. ${Math.round(dailySummary.peakProfitDay.grossProfit).toLocaleString()}` : '—'}
                     </div>
                     <p className="text-[11px] text-[#34c759] mt-1 font-semibold truncate">
-                      {dailySummary.peakProfitDay ? `${dailySummary.peakProfitDay.dayName} • ${dailySummary.peakProfitDay.margin.toFixed(1)}% margin` : 'No profit recorded'}
+                      {dailySummary.peakProfitDay ? `${dailySummary.peakProfitDay.dayName} • ${(dailySummary.peakProfitDay.margin ?? 0).toFixed(1)}% margin` : 'No profit recorded'}
                     </p>
                   </div>
                 </div>
@@ -1980,7 +1983,7 @@ function Reports() {
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                     d.margin >= 20 ? 'bg-[#34c759]/10 text-[#34c759]' : d.margin >= 10 ? 'bg-[#ff9500]/10 text-[#ff9500]' : 'bg-[#ff3b30]/10 text-[#ff3b30]'
                                   }`}>
-                                    {d.margin.toFixed(1)}%
+                                    {(d.margin ?? 0).toFixed(1)}%
                                   </span>
                                 ) : '—'}
                               </td>
@@ -2224,7 +2227,7 @@ function Reports() {
                         <div className="flex justify-between items-center mt-2 text-[11px]">
                           <span className="text-[#86868b]">Gross Profit & Margin:</span>
                           <span className="font-bold text-[#34c759]">
-                            Rs. {Math.round(flowStats.bulkSoldProfit).toLocaleString()} ({flowStats.bulkSoldMargin.toFixed(1)}%)
+                            Rs. {Math.round(flowStats.bulkSoldProfit).toLocaleString()} ({(flowStats.bulkSoldMargin ?? 0).toFixed(1)}%)
                           </span>
                         </div>
                       </div>
@@ -2304,7 +2307,7 @@ function Reports() {
                         <div className="flex justify-between items-center mt-2 text-[11px]">
                           <span className="text-[#86868b]">Gross Profit & Margin:</span>
                           <span className="font-bold text-[#34c759]">
-                            Rs. {Math.round(flowStats.phoneSoldProfit).toLocaleString()} ({flowStats.phoneSoldMargin.toFixed(1)}%)
+                            Rs. {Math.round(flowStats.phoneSoldProfit).toLocaleString()} ({(flowStats.phoneSoldMargin ?? 0).toFixed(1)}%)
                           </span>
                         </div>
                       </div>

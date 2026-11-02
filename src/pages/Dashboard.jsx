@@ -747,11 +747,11 @@ function Dashboard() {
             icon={<TrendingUp size={20} />}
             color="text-[#34c759]"
             bgTint="bg-[#34c759]/10"
-            badge={`${stats.todayProfitMargin.toFixed(1)}%`}
+            badge={`${(stats.todayProfitMargin ?? 0).toFixed(1)}%`}
             subValue={
               stats.todayExpenses > 0
                 ? `Net: Rs. ${Math.round(stats.todayNetProfit).toLocaleString()}`
-                : `${stats.todayProfitMargin.toFixed(1)}% gross margin`
+                : `${(stats.todayProfitMargin ?? 0).toFixed(1)}% gross margin`
             }
             onClick={() => navigate('/reports')}
           />
@@ -1118,7 +1118,7 @@ function Dashboard() {
                         Rs. {Math.round(p.revenue).toLocaleString()}
                       </span>
                       <span className="text-[10px] font-semibold text-[#34c759]">
-                        {p.margin.toFixed(0)}% margin
+                        {(p.margin ?? 0).toFixed(0)}% margin
                       </span>
                     </div>
                   </div>
