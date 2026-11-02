@@ -676,7 +676,7 @@ function Purchases() {
       )}
 
       {/* RIGHT: Cart */}
-      <div className={`${showMobileCart ? 'fixed inset-0 z-50 w-full flex' : 'hidden md:flex'} md:static md:w-96 flex-col gap-2 bg-white rounded-xl shadow-lg p-4 h-[calc(100vh-80px)] md:h-full border border-gray-100 overflow-hidden`}>
+      <div className={`${showMobileCart ? 'fixed inset-0 z-50 w-full flex' : 'hidden md:flex'} md:static md:w-96 flex-col gap-2 bg-white rounded-xl shadow-lg p-4 h-[calc(100dvh-80px)] md:h-full border border-gray-100 overflow-hidden`}>
 
         {/* Mobile close button */}
         <button onClick={() => setShowMobileCart(false)} className="md:hidden self-end text-gray-400 hover:text-gray-700 text-2xl font-bold mb-1">✕</button>

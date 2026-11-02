@@ -205,10 +205,14 @@ export const reconcileOfflineProducts = async (shopId) => {
     }
 };
 
-export const syncOfflineData = async () => {
-    if (!navigator.onLine) return;
+let isSyncing = false;
 
-    const queue = await db.sync_queue.toArray();
+export const syncOfflineData = async () => {
+    if (!navigator.onLine || isSyncing) return;
+    isSyncing = true;
+
+    try {
+        const queue = await db.sync_queue.toArray();
     if (queue.length === 0) {
         // Even if queue is empty, reconcile offline products that might have had their queue dropped
         try {
@@ -620,7 +624,16 @@ export const syncOfflineData = async () => {
                 const retries = (item.retry_count || 0) + 1;
                 // If permanent missing table or exceeded max retries, remove to prevent queue stalls
                 if (retries >= 5 || ['PGRST205', '42P01'].includes(error.code) || (retries >= 3 && ['PGRST204', '42703', '22P02'].includes(error.code)) || (retries >= 3 && String(error.status) === '400') || error.message?.includes('Could not find')) {
-                    console.warn(`Removing un-syncable item ${item.id} after ${retries} attempts.`);
+                    console.warn(`Archiving un-syncable item ${item.id} to dead-letter after ${retries} attempts.`);
+                    try {
+                        await db.sync_dead_letter?.add({
+                            table: item.table,
+                            action: item.action,
+                            data: item.data,
+                            error: error?.message || String(error),
+                            failed_at: new Date().toISOString()
+                        });
+                    } catch (_) {}
                     await db.sync_queue.delete(item.id);
                 } else {
                     await db.sync_queue.update(item.id, { retry_count: retries });
@@ -639,6 +652,9 @@ export const syncOfflineData = async () => {
     try {
         window.dispatchEvent(new CustomEvent('sync_completed'));
     } catch (_) {}
+    } finally {
+        isSyncing = false;
+    }
 };
 
 // Periodically check for sync if online

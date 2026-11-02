@@ -148,13 +148,15 @@ export async function updatePurchasePaymentMethod({
     if (navigator.onLine) {
       const { error: insErr } = await supabase.from('supplier_payments').insert([paymentEntry])
       if (insErr) {
-        await supabase.from('supplier_payments').insert([{
-          shop_id: shopId,
-          supplier_id: supplierId,
-          amount: totalAmount,
-          description: paymentEntry.note,
-          created_at: now
-        }]).catch(() => {})
+        try {
+          await supabase.from('supplier_payments').insert([{
+            shop_id: shopId,
+            supplier_id: supplierId,
+            amount: totalAmount,
+            description: paymentEntry.note,
+            created_at: now
+          }])
+        } catch (_) {}
       }
     } else {
       await addToSyncQueue('supplier_payments', 'INSERT', paymentEntry).catch(() => {})
@@ -207,13 +209,15 @@ export async function updatePurchasePaymentMethod({
     if (navigator.onLine) {
       const { error: revErr } = await supabase.from('supplier_payments').insert([reversalEntry])
       if (revErr) {
-        await supabase.from('supplier_payments').insert([{
-          shop_id: shopId,
-          supplier_id: supplierId,
-          amount: totalAmount,
-          description: reversalEntry.note,
-          created_at: now
-        }]).catch(() => {})
+        try {
+          await supabase.from('supplier_payments').insert([{
+            shop_id: shopId,
+            supplier_id: supplierId,
+            amount: totalAmount,
+            description: reversalEntry.note,
+            created_at: now
+          }])
+        } catch (_) {}
       }
     } else {
       await addToSyncQueue('supplier_payments', 'INSERT', reversalEntry).catch(() => {})
@@ -342,14 +346,15 @@ export async function updatePurchasePaymentMethod({
   // 5. Update Supplier Balance if Changed
   if (supplierId && newSupplierBal !== currentBal) {
     if (navigator.onLine) {
-      await supabase
-        .from('suppliers')
-        .update({
-          outstanding_balance: newSupplierBal,
-          balance: newSupplierBal
-        })
-        .eq('id', supplierId)
-        .catch(() => {})
+      try {
+        await supabase
+          .from('suppliers')
+          .update({
+            outstanding_balance: newSupplierBal,
+            balance: newSupplierBal
+          })
+          .eq('id', supplierId)
+      } catch (_) {}
     } else {
       await addToSyncQueue('suppliers', 'UPDATE', {
         id: supplierId,
@@ -507,11 +512,12 @@ export async function returnPhoneToSupplier({
       const newBal = curBal - costPrice
 
       if (navigator.onLine) {
-        await supabase
-          .from('suppliers')
-          .update({ outstanding_balance: newBal, balance: newBal })
-          .eq('id', supplierId)
-          .catch(() => {})
+        try {
+          await supabase
+            .from('suppliers')
+            .update({ outstanding_balance: newBal, balance: newBal })
+            .eq('id', supplierId)
+        } catch (_) {}
       } else {
         await addToSyncQueue('suppliers', 'UPDATE', { id: supplierId, outstanding_balance: newBal, balance: newBal }).catch(() => {})
       }
@@ -530,13 +536,15 @@ export async function returnPhoneToSupplier({
       if (navigator.onLine) {
         const { error: insErr } = await supabase.from('supplier_payments').insert([returnEntry])
         if (insErr) {
-          await supabase.from('supplier_payments').insert([{
-            shop_id: shopId,
-            supplier_id: supplierId,
-            amount: costPrice,
-            description: returnEntry.note,
-            created_at: now
-          }]).catch(() => {})
+          try {
+            await supabase.from('supplier_payments').insert([{
+              shop_id: shopId,
+              supplier_id: supplierId,
+              amount: costPrice,
+              description: returnEntry.note,
+              created_at: now
+            }])
+          } catch (_) {}
         }
       } else {
         await addToSyncQueue('supplier_payments', 'INSERT', returnEntry).catch(() => {})
@@ -598,22 +606,24 @@ export async function returnPhoneToSupplier({
 
   // 3. Log History in phone_history
   if (navigator.onLine) {
-    await supabase.from('phone_history').insert([{
-      phone_id: phone.id,
-      shop_id: shopId,
-      action: 'RETURNED_TO_SUPPLIER',
-      previous_status: phone.status,
-      new_status: 'returned',
-      actor_id: user?.id,
-      details: {
-        reason,
-        settlement_type: settlementType,
-        supplier_id: supplierId,
-        cost_price: costPrice,
-        notes
-      },
-      created_at: now
-    }]).catch(() => {})
+    try {
+      await supabase.from('phone_history').insert([{
+        phone_id: phone.id,
+        shop_id: shopId,
+        action: 'RETURNED_TO_SUPPLIER',
+        previous_status: phone.status,
+        new_status: 'returned',
+        actor_id: user?.id,
+        details: {
+          reason,
+          settlement_type: settlementType,
+          supplier_id: supplierId,
+          cost_price: costPrice,
+          notes
+        },
+        created_at: now
+      }])
+    } catch (_) {}
   }
 
   // 4. Audit Log

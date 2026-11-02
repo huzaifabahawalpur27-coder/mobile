@@ -406,6 +406,12 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
       return
     }
 
+    // Prevent re-purchasing device that is already in-stock
+    if (historyMatch && historyMatch.status === 'in_stock') {
+      setErrorMsg(`Device with IMEI ${imei1} (${historyMatch.brand} ${historyMatch.model}) is already IN STOCK in your inventory!`)
+      return
+    }
+
     // Check duplicate in current cart
     const existsInCart = phoneCart.some(p =>
       p.imei_1 === imei1 ||
@@ -488,6 +494,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
     setSubmitting(true)
     setErrorMsg('')
     setSuccessMsg('')
+    const savedPhonesList = []
 
     try {
       const phonesPayload = phoneCart.map(p => ({
@@ -604,68 +611,125 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         if (pRes.error) throw pRes.error
         purchaseId = pRes.data.id
 
-        // 2. Insert Phones & Purchase Items
+        // 2. Insert or Re-activate Phones & Purchase Items (handles Customer Buy-Backs)
         for (const phoneItem of phoneCart) {
           const cleanCondition = normalizeCondition(phoneItem.condition)
           const cleanPta = phoneItem.pta_status || 'approved'
           const costVal = parseFloat(phoneItem.cost_price) || 0
           const saleVal = parseFloat(phoneItem.sale_price) || 0
+          const imei1Val = phoneItem.imei_1?.trim()
+          const imei2Val = phoneItem.imei_2?.trim() || null
 
-          const phoneRecord = {
-            shop_id: user.shop_id,
-            branch_id: user.branch_id || null,
-            imei_1: phoneItem.imei_1?.trim(),
-            imei_2: phoneItem.imei_2?.trim() || null,
-            brand: phoneItem.brand?.trim() || 'Unknown',
-            model: phoneItem.model?.trim() || 'Unknown Phone',
-            storage: phoneItem.storage || null,
-            color: phoneItem.color || null,
-            condition: cleanCondition,
-            pta_status: cleanPta,
-            cost_price: costVal,
-            sale_price: saleVal,
-            selling_price: saleVal,
-            expected_sale_price: saleVal,
-            supplier_id: parseInt(supplierId),
-            purchase_id: purchaseId,
-            status: 'in_stock',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
+          // Check if phone already exists in this shop (e.g. previously sold device being bought back)
+          let existingPhone = null
+          try {
+            const { data: exData } = await supabase
+              .from('phones')
+              .select('*')
+              .eq('shop_id', user.shop_id)
+              .eq('imei_1', imei1Val)
+              .maybeSingle()
+            if (exData) existingPhone = exData
+          } catch (_) {}
 
-          let phoneRes = await supabase.from('phones').insert([phoneRecord]).select().single()
-          if (phoneRes.error) {
-            // Retry with core columns
-            const corePhone = {
-              shop_id: user.shop_id,
-              imei_1: phoneItem.imei_1?.trim(),
-              brand: phoneItem.brand?.trim() || 'Unknown',
-              model: phoneItem.model?.trim() || 'Unknown Phone',
+          let savedPhone = null
+
+          if (existingPhone) {
+            if (existingPhone.status === 'in_stock') {
+              throw new Error(`Phone with IMEI ${imei1Val} (${existingPhone.brand} ${existingPhone.model}) is already IN STOCK in your inventory.`)
+            }
+
+            // Previously sold or returned device -> Re-activate to 'in_stock'
+            const phoneUpdate = {
+              branch_id: user.branch_id || null,
+              brand: phoneItem.brand?.trim() || existingPhone.brand,
+              model: phoneItem.model?.trim() || existingPhone.model,
+              storage: phoneItem.storage || existingPhone.storage,
+              color: phoneItem.color || existingPhone.color,
+              condition: cleanCondition,
+              pta_status: cleanPta,
               cost_price: costVal,
               sale_price: saleVal,
+              selling_price: saleVal,
+              expected_sale_price: saleVal,
               supplier_id: parseInt(supplierId),
               purchase_id: purchaseId,
-              status: 'in_stock'
+              status: 'in_stock',
+              sold_at: null,
+              sale_id: null,
+              notes: phoneItem.notes || null,
+              updated_at: new Date().toISOString()
             }
-            phoneRes = await supabase.from('phones').insert([corePhone]).select().single()
+
+            const { data: uData, error: uErr } = await supabase
+              .from('phones')
+              .update(phoneUpdate)
+              .eq('id', existingPhone.id)
+              .select()
+              .single()
+
+            if (uErr) throw uErr
+            savedPhone = uData || { ...existingPhone, ...phoneUpdate }
+          } else {
+            // New phone never seen before
+            const phoneRecord = {
+              shop_id: user.shop_id,
+              branch_id: user.branch_id || null,
+              imei_1: imei1Val,
+              imei_2: imei2Val,
+              brand: phoneItem.brand?.trim() || 'Unknown',
+              model: phoneItem.model?.trim() || 'Unknown Phone',
+              storage: phoneItem.storage || null,
+              color: phoneItem.color || null,
+              condition: cleanCondition,
+              pta_status: cleanPta,
+              cost_price: costVal,
+              sale_price: saleVal,
+              selling_price: saleVal,
+              expected_sale_price: saleVal,
+              supplier_id: parseInt(supplierId),
+              purchase_id: purchaseId,
+              status: 'in_stock',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
+
+            let phoneRes = await supabase.from('phones').insert([phoneRecord]).select().single()
+            if (phoneRes.error) {
+              const corePhone = {
+                shop_id: user.shop_id,
+                imei_1: imei1Val,
+                brand: phoneItem.brand?.trim() || 'Unknown',
+                model: phoneItem.model?.trim() || 'Unknown Phone',
+                cost_price: costVal,
+                sale_price: saleVal,
+                supplier_id: parseInt(supplierId),
+                purchase_id: purchaseId,
+                status: 'in_stock'
+              }
+              phoneRes = await supabase.from('phones').insert([corePhone]).select().single()
+            }
+
+            if (phoneRes.error) throw phoneRes.error
+            savedPhone = phoneRes.data
           }
 
-          if (phoneRes.error) throw phoneRes.error
-          const savedPhone = phoneRes.data
-
-          // Insert Purchase Item
-          const itemRecord = {
-            purchase_id: purchaseId,
-            phone_id: savedPhone.id,
-            quantity: 1,
-            unit_price: costVal,
-            cost_price: costVal,
-            total_price: costVal,
-            subtotal: costVal
+          if (savedPhone) {
+            savedPhonesList.push(savedPhone)
+            // Insert Purchase Item
+            const itemRecord = {
+              purchase_id: purchaseId,
+              phone_id: savedPhone.id,
+              quantity: 1,
+              unit_price: costVal,
+              cost_price: costVal,
+              total_price: costVal,
+              subtotal: costVal
+            }
+            try {
+              await supabase.from('purchase_items').insert([itemRecord])
+            } catch (_) {}
           }
-          try {
-            await supabase.from('purchase_items').insert([itemRecord])
-          } catch (_) {}
         }
 
 
@@ -709,19 +773,23 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         } catch (_) {}
       }
 
-      // Cache phones locally in Dexie
+      // Cache phones locally in Dexie with authentic database IDs
       try {
-        const cachedPhones = phoneCart.map(p => ({
-          ...p,
-          shop_id: user.shop_id,
-          branch_id: user.branch_id,
-          supplier_id: parseInt(supplierId),
-          purchase_id: rpcData.purchase_id,
-          condition: normalizeCondition(p.condition),
-          pta_status: p.pta_status,
-          status: 'in_stock'
-        }))
-        await db.phones.bulkPut(cachedPhones)
+        if (db.phones) {
+          const toCache = (typeof savedPhonesList !== 'undefined' && savedPhonesList.length > 0)
+            ? savedPhonesList
+            : phoneCart.map(p => ({
+                ...p,
+                shop_id: user.shop_id,
+                branch_id: user.branch_id,
+                supplier_id: parseInt(supplierId),
+                purchase_id: rpcData.purchase_id,
+                condition: normalizeCondition(p.condition),
+                pta_status: p.pta_status,
+                status: 'in_stock'
+              }))
+          await db.phones.bulkPut(toCache)
+        }
       } catch (cacheErr) {
         console.warn('Local Dexie cache notice:', cacheErr)
       }
@@ -904,16 +972,24 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
             {/* 🌟 Buy-Back / Previous Store Sale History Card */}
             {historyMatch && (
-              <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-yellow-500/10 border border-amber-300/80 dark:border-amber-500/40 rounded-[18px] p-4 text-xs shadow-xs animate-in fade-in duration-300">
+              <div className={`border rounded-[18px] p-4 text-xs shadow-xs animate-in fade-in duration-300 ${
+                historyMatch.status === 'in_stock'
+                  ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-300 dark:border-rose-800'
+                  : 'bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-yellow-500/10 border-amber-300/80 dark:border-amber-500/40'
+              }`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-start gap-2.5">
-                    <span className="text-2xl shrink-0">🌟</span>
+                    <span className="text-2xl shrink-0">{historyMatch.status === 'in_stock' ? '⚠️' : '🌟'}</span>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white uppercase tracking-wider">
-                          Device Sold by Us Before (Buy-Back)
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold text-white uppercase tracking-wider ${
+                          historyMatch.status === 'in_stock' ? 'bg-rose-600' : 'bg-amber-500'
+                        }`}>
+                          {historyMatch.status === 'in_stock' ? 'Already In Stock' : 'Device Sold by Us Before (Buy-Back)'}
                         </span>
-                        <span className="text-[10px] text-gray-500 font-semibold">• Specs Auto-Filled</span>
+                        <span className="text-[10px] text-gray-500 font-semibold">
+                          {historyMatch.status === 'in_stock' ? '• Cannot be purchased again' : '• Specs Auto-Filled & Ready for Buy-Back'}
+                        </span>
                       </div>
                       <h4 className="font-bold text-gray-900 dark:text-white text-sm mt-1">
                         {historyMatch.brand} {historyMatch.model} {historyMatch.storage} {historyMatch.color ? `(${historyMatch.color})` : ''}

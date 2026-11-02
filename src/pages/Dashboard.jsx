@@ -128,10 +128,10 @@ function Dashboard() {
       if (!navigator.onLine) throw new Error('Offline')
 
       const fetchPromise = Promise.all([
-        // 1. Today's sales with items
+        // 1. Today's sales with full items metadata
         supabase
           .from('sales')
-          .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_id, sale_items(product_name, cost_price, quantity, returned_qty, products(name)), customers(name)')
+          .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_id, sale_items(id, sale_id, phone_id, product_id, product_name, cost_price, price, unit_price, line_total, subtotal, quantity, returned_qty, imei_snapshot, products(id, name, cost_price, category_id, categories(name))), customers(name)')
           .eq('shop_id', user.shop_id)
           .eq('sale_type', 'sale')
           .gte('created_at', todayISO),
@@ -288,11 +288,17 @@ function Dashboard() {
     phonesList,
     config
   }) => {
-    // Lookups for accurate phone & product cost fallback
-    const phoneCostMap = (phonesList || []).reduce((acc, p) => {
-      acc[p.id] = Number(p.cost_price || 0)
+    // Lookups for accurate phone & product cost and naming (unified with Reports)
+    const phoneMap = (phonesList || []).reduce((acc, p) => {
+      const pName = `${p.brand || ''} ${p.model || ''}${p.storage ? ` ${p.storage}` : ''}`.trim()
+      acc[p.id] = {
+        name: pName || 'Mobile Phone',
+        cost: Number(p.cost_price || 0),
+        price: Number(p.sale_price || 0)
+      }
       return acc
     }, {})
+
     const productCostMap = (productList || []).reduce((acc, p) => {
       if (p.id) acc[p.id] = Number(p.cost_price || 0)
       if (p.name) acc[p.name] = Number(p.cost_price || 0)
@@ -300,9 +306,8 @@ function Dashboard() {
     }, {})
 
     // 1. Today's Financials
-    const todayTotal = todaySalesList.reduce((sum, s) => sum + (Number(s.total_amount || 0) - Number(s.discount || 0)), 0)
-
-    let todayCOGS = 0
+    let todayPhonesCost = 0
+    let todayBulkCost = 0
     let todayItemsSold = 0
     let todayBulkSold = 0
     let todayBulkRevenue = 0
@@ -313,41 +318,85 @@ function Dashboard() {
     todaySalesList.forEach(s => {
       (s.sale_items || []).forEach(i => {
         const netQty = Math.max(0, Number(i.quantity || 1) - Number(i.returned_qty || 0))
-        if (netQty > 0) {
-          todayItemsSold += netQty
-          const isPhone = Boolean(i.phone_id || i.imei_snapshot || i.item_type === 'phone')
-          const itemRev = Number(i.unit_price || i.price || 0) * netQty
+        if (netQty <= 0) return
 
-          const pName = String(i.product_name || i.products?.name || 'Item').trim()
-          const unitCost = Number(
-            (Number(i.cost_price) > 0 ? i.cost_price : null) ??
-            (i.phone_id ? phoneCostMap[i.phone_id] : null) ??
-            (i.product_id ? productCostMap[i.product_id] : null) ??
-            (productCostMap[pName] || 0)
-          )
-          const cost = unitCost * netQty
-          todayCOGS += cost
+        todayItemsSold += netQty
 
-          if (isPhone) {
-            todayPhonesSold += netQty
-            todayPhonesRevenue += itemRev
-          } else {
-            todayBulkSold += netQty
-            todayBulkRevenue += itemRev
+        // Parse imei_snapshot if present
+        let snap = null
+        if (i.imei_snapshot) {
+          if (typeof i.imei_snapshot === 'object') {
+            snap = i.imei_snapshot
+          } else if (typeof i.imei_snapshot === 'string') {
+            try { snap = JSON.parse(i.imei_snapshot) } catch (_) {}
           }
-
-          if (!todayProdMap[pName]) {
-            todayProdMap[pName] = { name: pName, qty: 0, revenue: 0, isPhone }
-          }
-          todayProdMap[pName].qty += netQty
-          todayProdMap[pName].revenue += itemRev
         }
+
+        // Determine product name cleanly without exposing IMEI
+        let name = ''
+        if (i.product_name && i.product_name.trim()) {
+          name = i.product_name.trim()
+        } else if (i.products?.name) {
+          name = i.products.name.trim()
+        } else if (i.phone_id && phoneMap[i.phone_id]?.name) {
+          name = phoneMap[i.phone_id].name
+        } else if (snap && (snap.brand || snap.model)) {
+          name = `${snap.brand || ''} ${snap.model || ''}${snap.storage ? ` ${snap.storage}` : ''}`.trim()
+        } else if (i.brand && i.model) {
+          name = `${i.brand} ${i.model}`.trim()
+        }
+        name = name.replace(/\s*\(?IMEI[:\s]+[0-9/,\s]+\)?/gi, '').trim() || 'Uncategorized Product'
+
+        const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
+
+        const unitPrice = Number(
+          (Number(i.unit_price) > 0 ? i.unit_price : null) ??
+          (Number(i.price) > 0 ? i.price : null) ??
+          (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0
+        )
+        const costPrice = Number(
+          (Number(i.cost_price) > 0 ? i.cost_price : null) ??
+          (i.phone_id ? phoneMap[i.phone_id]?.cost : null) ??
+          (i.product_id ? productCostMap[i.product_id] : null) ??
+          (productCostMap[name] || 0)
+        )
+
+        let lineRev = Number(
+          (Number(i.line_total) > 0 ? i.line_total : null) ??
+          (Number(i.subtotal) > 0 ? i.subtotal : null) ??
+          (netQty * unitPrice)
+        )
+        if (lineRev <= 0 && Number(s.total_amount || 0) > 0 && (s.sale_items?.length || 1) === 1) {
+          lineRev = Number(s.total_amount || 0)
+        }
+
+        const lineCost = netQty * costPrice
+
+        if (isPhone) {
+          todayPhonesSold += netQty
+          todayPhonesRevenue += lineRev
+          todayPhonesCost += lineCost
+        } else {
+          todayBulkSold += netQty
+          todayBulkRevenue += lineRev
+          todayBulkCost += lineCost
+        }
+
+        if (!todayProdMap[name]) {
+          todayProdMap[name] = { name, qty: 0, revenue: 0, isPhone }
+        }
+        todayProdMap[name].qty += netQty
+        todayProdMap[name].revenue += lineRev
       })
     })
 
     const todayItemsRevenue = todayPhonesRevenue + todayBulkRevenue
+    const todayGrossSales = todayItemsRevenue > 0
+      ? todayItemsRevenue
+      : todaySalesList.reduce((sum, s) => sum + Number(s.total_amount || s.net_amount || 0), 0)
     const todayTotalDiscount = todaySalesList.reduce((sum, s) => sum + Number(s.discount || 0), 0)
-    const todayNetSales = todayItemsRevenue > 0 ? Math.max(0, todayItemsRevenue - todayTotalDiscount) : todayTotal
+    const todayNetSales = Math.max(0, todayGrossSales - todayTotalDiscount)
+    const todayCOGS = todayPhonesCost + todayBulkCost
     const todayProfit = todayNetSales - todayCOGS
     const todayProfitMargin = todayNetSales > 0 ? (todayProfit / todayNetSales) * 100 : 0
 
@@ -409,7 +458,8 @@ function Dashboard() {
       .slice(0, 5)
 
     setStats({
-      todaySales: todayTotal,
+      todaySales: todayGrossSales,
+      todayCOGS,
       todayProfit,
       todayProfitMargin,
       todayCashSales,

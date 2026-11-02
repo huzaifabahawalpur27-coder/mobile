@@ -87,9 +87,11 @@ function Brands() {
         if (error) throw error
         brandId = data?.[0]?.id
         if (brandId && missingItem.categoryIds.length > 0) {
-          await supabase.from('brand_categories').insert(
-            missingItem.categoryIds.map(cId => ({ brand_id: brandId, category_id: Number(cId), shop_id: user.shop_id }))
-          ).catch(() => {})
+          try {
+            await supabase.from('brand_categories').insert(
+              missingItem.categoryIds.map(cId => ({ brand_id: brandId, category_id: Number(cId), shop_id: user.shop_id }))
+            )
+          } catch (_) {}
         }
       } else {
         brandId = crypto.randomUUID()
@@ -117,9 +119,11 @@ function Brands() {
           const { data } = await supabase.from('brands').insert([payload]).select()
           const bId = data?.[0]?.id
           if (bId && item.categoryIds.length > 0) {
-            await supabase.from('brand_categories').insert(
-              item.categoryIds.map(cId => ({ brand_id: bId, category_id: Number(cId), shop_id: user.shop_id }))
-            ).catch(() => {})
+            try {
+              await supabase.from('brand_categories').insert(
+                item.categoryIds.map(cId => ({ brand_id: bId, category_id: Number(cId), shop_id: user.shop_id }))
+              )
+            } catch (_) {}
           }
         } else {
           const bId = crypto.randomUUID()

@@ -319,6 +319,11 @@ db.version(17).stores({
   whatsapp_queue: 'id, shop_id, recipient_phone, status, message_type, created_at'
 });
 
+// v18: sync_dead_letter store for preserving failed offline actions
+db.version(18).stores({
+  sync_dead_letter: '++id, table, action, failed_at'
+});
+
 export const addToSyncQueue = async (table, action, data) => {
   await db.sync_queue.add({
     table,

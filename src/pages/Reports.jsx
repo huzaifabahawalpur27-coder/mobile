@@ -346,14 +346,25 @@ function Reports() {
       name = name.replace(/\s*\(?IMEI[:\s]+[0-9/,\s]+\)?/gi, '').trim() || 'Uncategorized Product'
 
       const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
-      const unitPrice = Number(i.unit_price ?? i.price ?? (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0)
+      const unitPrice = Number(
+        (Number(i.unit_price) > 0 ? i.unit_price : null) ??
+        (Number(i.price) > 0 ? i.price : null) ??
+        (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0
+      )
       const costPrice = Number(
         (Number(i.cost_price) > 0 ? i.cost_price : null) ??
         (i.phone_id ? phoneMap[i.phone_id]?.cost : null) ??
         (i.product_id ? productCostMap[i.product_id] : null) ??
         (productCostMap[name] || 0)
       )
-      const lineRev = Number(i.line_total ?? i.subtotal ?? (qty * unitPrice))
+      let lineRev = Number(
+        (Number(i.line_total) > 0 ? i.line_total : null) ??
+        (Number(i.subtotal) > 0 ? i.subtotal : null) ??
+        (qty * unitPrice)
+      )
+      if (lineRev <= 0 && Number(i.price || 0) > 0) {
+        lineRev = qty * Number(i.price)
+      }
       const lineCost = qty * costPrice
       const lineProfit = lineRev - lineCost
       const categoryName = i.products?.categories?.name ||

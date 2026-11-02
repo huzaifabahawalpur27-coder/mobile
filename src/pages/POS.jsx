@@ -1160,9 +1160,14 @@ function POS() {
           const minimalItems = cart.map(i => ({
             sale_id: sale.id,
             product_id: i.phone_id ? null : toIntOrNull(i.id),
+            phone_id: i.phone_id || null,
+            product_name: i.name || null,
             quantity: i.qty,
             price: i.custom_price,
+            unit_price: i.custom_price,
+            cost_price: i.cost_price || 0,
             subtotal: i.custom_price * i.qty,
+            line_total: i.custom_price * i.qty,
             returned_qty: 0
           }))
           const retryItems = await supabase.from('sale_items').insert(minimalItems).select()
@@ -1194,10 +1199,12 @@ function POS() {
             if (balanceIncrease !== 0) {
               const customer = customers.find(c => String(c.id) === String(customerId))
               const newBalance = (customer?.outstanding_balance ?? customer?.balance ?? 0) + balanceIncrease
-              await supabase.from('customers').update({ 
-                outstanding_balance: newBalance,
-                balance: newBalance 
-              }).eq('id', customerId).catch(() => {})
+              try {
+                await supabase.from('customers').update({ 
+                  outstanding_balance: newBalance,
+                  balance: newBalance 
+                }).eq('id', customerId)
+              } catch (_) {}
               await db.customers.update(customerId, { 
                 outstanding_balance: newBalance, 
                 balance: newBalance 
@@ -3488,7 +3495,7 @@ function POS() {
               <h2 className="text-xl font-bold text-gray-800">⏸️ Held Bills</h2>
               <button onClick={() => setShowHeldCarts(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
-            <div className="max-height-[400px] overflow-y-auto space-y-3">
+            <div className="max-h-[400px] overflow-y-auto space-y-3">
               {heldCarts.map(held => (
                 <div key={held.id} className="p-4 border rounded-xl hover:border-blue-400 hover:bg-blue-50 transition cursor-pointer group" onClick={() => handleResumeCart(held)}>
                   <div className="flex justify-between items-start mb-2">

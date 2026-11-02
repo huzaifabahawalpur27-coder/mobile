@@ -1298,10 +1298,7 @@ function Settings() {
                       saved.print_template = t.id
                       localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(saved))
                       if (navigator.onLine) {
-                        supabase.rpc('update_shop_settings', {
-                          p_shop_id: Number(sid),
-                          p_print_template: t.id
-                        }).catch(err => console.warn('Could not sync print template choice:', err))
+                        supabase.rpc('update_shop_settings', { p_shop_id: Number(sid), p_print_template: t.id }).then(() => {}, err => console.warn('Could not sync print template choice:', err))
                       }
                     }
                   }}
@@ -1566,10 +1563,7 @@ function Settings() {
                         saved.print_template = previewTemplateId
                         localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(saved))
                         if (navigator.onLine) {
-                          supabase.rpc('update_shop_settings', {
-                            p_shop_id: Number(sid),
-                            p_print_template: previewTemplateId
-                          }).catch(err => console.warn('Could not sync print template choice:', err))
+                          supabase.rpc('update_shop_settings', { p_shop_id: Number(sid), p_print_template: previewTemplateId }).then(() => {}, err => console.warn('Could not sync print template choice:', err))
                         }
                       }
                       setPreviewTemplateId(null)
