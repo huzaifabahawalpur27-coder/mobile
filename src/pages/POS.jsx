@@ -95,7 +95,10 @@ function POS() {
     ? Math.round((subtotal * (parseFloat(discountPercent) || 0)) / 100 * 100) / 100
     : parseFloat(discount) || 0
   const total = Math.max(0, subtotal - totalDiscount)
-  const totalProfit = cart.reduce((sum, i) => sum + (i.custom_price - (i.cost_price || 0)) * i.qty, 0) - totalDiscount
+  const totalProfit = cart.reduce((sum, i) => {
+    const itemTotalCost = (Number(i.cost_price) || 0) + (Number(i.additional_costs) || 0)
+    return sum + ((Number(i.custom_price) || 0) - itemTotalCost) * (Number(i.qty) || 1)
+  }, 0) - totalDiscount
   const [saving, setSaving] = useState(false)
   const [lastReceipt, setLastReceipt] = useState(null)
   const [showQuotationSearch, setShowQuotationSearch] = useState(false)
@@ -353,18 +356,59 @@ function POS() {
   useEffect(() => {
     fetchHeldCarts()
     
-    // Listen for cross-tab settings updates
+    // Listen for cross-tab and in-tab phone/inventory updates
     const handleSync = () => {
-      console.log('POS: Syncing settings from storage/focus change...')
+      console.log('POS: Syncing settings and data from storage/focus change...')
       fetchAll()
     }
-    
+
+    const handlePhonesSync = async () => {
+      console.log('POS: Instant phone update received, syncing phones...')
+      if (!user?.shop_id) return
+      const sid = String(user.shop_id)
+      try {
+        if (db.phones) {
+          const lPhones = await db.phones.toArray().catch(() => [])
+          const myPhones = lPhones.filter(x => String(x.shop_id) === sid && x.status === 'in_stock')
+          if (myPhones.length > 0) {
+            setPhones(deduplicatePhones(myPhones))
+          }
+        }
+        if (navigator.onLine) {
+          const { data: phData } = await supabase.from('phones').select('*').eq('shop_id', user.shop_id).eq('status', 'in_stock').order('created_at', { ascending: false })
+          if (phData && db.phones) {
+            const allLocalPhones = await db.phones.toArray().catch(() => [])
+            const oldPhoneIds = allLocalPhones.filter(x => String(x.shop_id) === sid).map(x => x.id)
+            if (oldPhoneIds.length > 0) await db.phones.bulkDelete(oldPhoneIds).catch(() => {})
+            await db.phones.bulkPut(JSON.parse(JSON.stringify(phData))).catch(() => {})
+            setPhones(deduplicatePhones(phData))
+          }
+        }
+      } catch (err) {
+        console.warn('POS: handlePhonesSync error:', err)
+      }
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchAll()
+      }
+    }
+
     window.addEventListener('storage', handleSync)
     window.addEventListener('focus', handleSync)
+    window.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('phones-updated', handlePhonesSync)
+    window.addEventListener('inventory-updated', handleSync)
+    window.addEventListener('products-updated', handleSync)
     
     return () => {
       window.removeEventListener('storage', handleSync)
       window.removeEventListener('focus', handleSync)
+      window.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('phones-updated', handlePhonesSync)
+      window.removeEventListener('inventory-updated', handleSync)
+      window.removeEventListener('products-updated', handleSync)
     }
   }, [])
 
@@ -1186,7 +1230,9 @@ function POS() {
             brand: i.brand,
             model: i.model,
             condition: i.condition,
-            pta_status: i.pta_status
+            pta_status: i.pta_status,
+            cost_price: Number(i.cost_price || 0),
+            additional_costs: Number(i.additional_costs || 0)
           } : null
         }))
         let { data: resItems, error: itemsError } = await supabase.from('sale_items').insert(items).select()
@@ -1290,13 +1336,15 @@ function POS() {
         line_total: i.custom_price * i.qty,
         returned_qty: 0,
         imei_snapshot: i.item_type === 'phone' ? {
-          imei_1: i.imei_1,
-          imei_2: i.imei_2,
-          brand: i.brand,
-          model: i.model,
-          condition: i.condition,
-          pta_status: i.pta_status
-        } : null
+            imei_1: i.imei_1,
+            imei_2: i.imei_2,
+            brand: i.brand,
+            model: i.model,
+            condition: i.condition,
+            pta_status: i.pta_status,
+            cost_price: Number(i.cost_price || 0),
+            additional_costs: Number(i.additional_costs || 0)
+          } : null
       }))
 
       try {
@@ -2048,7 +2096,8 @@ function POS() {
           )}
           {cart.map(item => {
             const isPhone = item.item_type === 'phone'
-            const itemProfit = (item.custom_price - (item.cost_price || 0)) * item.qty
+            const totalItemUnitCost = (Number(item.cost_price) || 0) + (Number(item.additional_costs) || 0)
+            const itemProfit = (Number(item.custom_price || 0) - totalItemUnitCost) * item.qty
             return (
               <div key={item.id} className={`group bg-white hover:bg-blue-50/40 border ${isPhone ? 'border-emerald-300 bg-emerald-50/15' : 'border-blue-100 hover:border-blue-300'} rounded-lg px-2 py-1 transition duration-150 shadow-2xs`}>
                 <div className="flex items-center justify-between gap-1.5">

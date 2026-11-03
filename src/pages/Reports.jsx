@@ -45,6 +45,7 @@ function Reports() {
     netProfit: 0,
     totalDiscount: 0,
     purchases: 0,
+    totalDirectCosts: 0,
     totalUnitsSold: 0
   })
 
@@ -132,7 +133,7 @@ function Reports() {
         supabase.from('purchases').select('*, purchase_items(*)').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO),
         supabase.from('products').select('id, name, stock_quantity, cost_price, sale_price, category_id, categories(name)').eq('shop_id', user.shop_id),
         supabase.from('categories').select('*').eq('shop_id', user.shop_id),
-        supabase.from('phones').select('id, brand, model, storage, color, status, cost_price, sale_price').eq('shop_id', user.shop_id)
+        supabase.from('phones').select('id, brand, model, storage, color, status, cost_price, sale_price, additional_costs').eq('shop_id', user.shop_id)
       ])
 
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
@@ -221,9 +222,13 @@ function Reports() {
     // 1. Build Lookups for Product Names, Costs and Inventory Stock
     const phoneMap = (phones || []).reduce((acc, p) => {
       const pName = `${p.brand || ''} ${p.model || ''}${p.storage ? ` ${p.storage}` : ''}`.trim()
+      const baseCost = Number(p.cost_price || 0)
+      const directCost = Number(p.additional_costs || 0)
       acc[p.id] = {
         name: pName || 'Mobile Phone',
-        cost: Number(p.cost_price || 0),
+        baseCost,
+        directCost,
+        cost: baseCost + directCost,
         price: Number(p.sale_price || 0)
       }
       return acc
@@ -363,16 +368,20 @@ function Reports() {
       name = name.replace(/\s*\(?IMEI[:\s]+[0-9/,\s]+\)?/gi, '').trim() || 'Uncategorized Product'
 
       const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
+      const phoneInfo = i.phone_id ? phoneMap[i.phone_id] : null
+      const directCost = Number((Number(i.additional_costs) > 0 ? i.additional_costs : null) ?? (phoneInfo ? phoneInfo.directCost : (snap?.additional_costs || 0)) ?? 0)
+      const baseCost = Number(
+        (Number(i.cost_price) > 0 ? i.cost_price : null) ??
+        (phoneInfo ? phoneInfo.baseCost : null) ??
+        (i.product_id ? productCostMap[i.product_id] : null) ??
+        (productCostMap[name] || 0)
+      )
+      const totalUnitCost = baseCost + directCost
+      const costPrice = totalUnitCost
       const unitPrice = Number(
         (Number(i.unit_price) > 0 ? i.unit_price : null) ??
         (Number(i.price) > 0 ? i.price : null) ??
-        (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0
-      )
-      const costPrice = Number(
-        (Number(i.cost_price) > 0 ? i.cost_price : null) ??
-        (i.phone_id ? phoneMap[i.phone_id]?.cost : null) ??
-        (i.product_id ? productCostMap[i.product_id] : null) ??
-        (productCostMap[name] || 0)
+        (phoneInfo ? phoneInfo.price : 0) ?? 0
       )
       let lineRev = Number(
         (Number(i.line_total) > 0 ? i.line_total : null) ??
@@ -382,7 +391,7 @@ function Reports() {
       if (lineRev <= 0 && Number(i.price || 0) > 0) {
         lineRev = qty * Number(i.price)
       }
-      const lineCost = qty * costPrice
+      const lineCost = qty * totalUnitCost
       const lineProfit = lineRev - lineCost
       const categoryName = i.products?.categories?.name ||
         catNameById[String(i.products?.category_id)] ||
@@ -408,6 +417,8 @@ function Reports() {
           qty: 0,
           revenue: 0,
           cost: 0,
+          baseCost: 0,
+          directCost: 0,
           profit: 0,
           stock: stockMap[name] ?? 0,
           inwardQty: inwardByProductName[name] || 0,
@@ -418,6 +429,8 @@ function Reports() {
       prodMap[name].qty += qty
       prodMap[name].revenue += lineRev
       prodMap[name].cost += lineCost
+      prodMap[name].baseCost = (prodMap[name].baseCost || 0) + (qty * baseCost)
+      prodMap[name].directCost = (prodMap[name].directCost || 0) + (qty * directCost)
       prodMap[name].profit += lineProfit
       if (categoryName !== 'General') prodMap[name].category = categoryName
     })
@@ -449,12 +462,16 @@ function Reports() {
       const avgPrice = p.qty > 0 ? p.revenue / p.qty : (p.catalogPrice || 0)
       const avgCost = p.qty > 0 ? p.cost / p.qty : p.unitCost
       const netMovement = Number(p.inwardQty || 0) - Number(p.qty || 0)
+      const directCost = p.directCost || 0
+      const baseCost = p.baseCost || 0
       return {
         ...p,
         margin,
         avgPrice,
         avgCost,
-        netMovement
+        netMovement,
+        directCost,
+        baseCost
       }
     })
 
@@ -476,7 +493,7 @@ function Reports() {
     const bulkStockValue = (liveProducts || []).reduce((sum, p) => sum + (Number(p.cost_price || 0) * Math.max(0, Number(p.stock_quantity || 0))), 0)
     const inStockPhones = (phones || []).filter(p => p.status === 'in_stock')
     const phoneStockUnits = inStockPhones.length
-    const phoneStockValue = inStockPhones.reduce((sum, p) => sum + Number(p.cost_price || 0), 0)
+    const phoneStockValue = inStockPhones.reduce((sum, p) => sum + Number(p.cost_price || 0) + Number(p.additional_costs || 0), 0)
     const totalStockValuation = bulkStockValue + phoneStockValue
 
     const bulkSoldMargin = bulkSoldRevenue > 0 ? (bulkSoldProfit / bulkSoldRevenue) * 100 : 0
@@ -512,6 +529,8 @@ function Reports() {
 
     setProductList(compiledProducts)
 
+    const totalDirectCosts = Object.values(prodMap).reduce((s, p) => s + (p.directCost || 0), 0)
+
     setStats({
       grossSales,
       costOfSales,
@@ -520,6 +539,7 @@ function Reports() {
       netProfit,
       totalDiscount,
       purchases: totalPurchases,
+      totalDirectCosts,
       totalUnitsSold
     })
 
@@ -1239,7 +1259,9 @@ function Reports() {
                 <div className="text-xl sm:text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                   Rs. {stats.costOfSales.toLocaleString()}
                 </div>
-                <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">Stock purchase basis</p>
+                <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">
+                  {stats.totalDirectCosts > 0 ? `Incl. Rs. ${stats.totalDirectCosts.toLocaleString()} direct cost` : 'Stock purchase basis'}
+                </p>
               </div>
             </div>
 
@@ -1638,7 +1660,16 @@ function Reports() {
 
                           {/* Cost */}
                           <td className="px-4 py-3 text-right text-[#86868b] font-medium tabular-nums">
-                            {p.qty > 0 ? `Rs. ${Math.round(p.cost).toLocaleString()}` : <span className="text-slate-400 font-normal">—</span>}
+                            {p.qty > 0 ? (
+                              <div>
+                                <div>Rs. {Math.round(p.cost).toLocaleString()}</div>
+                                {p.directCost > 0 && (
+                                  <div className="text-[10px] text-amber-600 font-semibold" title="Direct costs (courier/repair/tax) included in total cost">
+                                    +Rs. {Math.round(p.directCost).toLocaleString()} Direct Cost
+                                  </div>
+                                )}
+                              </div>
+                            ) : <span className="text-slate-400 font-normal">—</span>}
                           </td>
 
                           {/* Gross Profit */}
@@ -2681,6 +2712,12 @@ function Reports() {
                     <span className="text-[#86868b] font-medium">Cost of Goods Sold (COGS)</span>
                     <span className="font-semibold text-[#ff9500] tabular-nums">- Rs. {stats.costOfSales.toLocaleString()}</span>
                   </div>
+                  {stats.totalDirectCosts > 0 && (
+                    <div className="flex justify-between items-center pb-2.5 border-b border-black/[0.04] dark:border-white/[0.06] text-xs">
+                      <span className="text-amber-600 font-medium pl-3">↳ of which Direct Costs (Courier/Tax)</span>
+                      <span className="font-semibold text-amber-600 tabular-nums">Rs. {stats.totalDirectCosts.toLocaleString()}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center p-2.5 rounded-[14px] bg-[#34c759]/5 border border-[#34c759]/10">
                     <span className="text-[#34c759] font-semibold text-sm">Gross Business Profit</span>
                     <span className="font-bold text-[#34c759] text-sm tabular-nums">Rs. {stats.grossProfit.toLocaleString()}</span>

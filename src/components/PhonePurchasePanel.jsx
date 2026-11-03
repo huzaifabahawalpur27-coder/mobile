@@ -500,7 +500,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
     setSubmitting(true)
     setErrorMsg('')
     setSuccessMsg('')
-    const savedPhonesList = []
+    const savedPhonesList = []; const savedItemsList = [];
 
     try {
       const phonesPayload = phoneCart.map(p => ({
@@ -540,82 +540,105 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         account_name: selectedBank.account_name
       } : null
 
-      // Call Atomic PostgreSQL RPC (primary 7-param signature, with graceful fallback to 6-param signature if schema cache differs)
-      let rpcData, rpcError
-      const primaryRes = await supabase.rpc('record_phone_purchase', {
-        p_supplier_id: parseInt(supplierId),
-        p_branch_id: user.branch_id || null,
-        p_phones: phonesPayload,
-        p_total_amount: totalCost,
-        p_paid_amount: effectivePaid,
-        p_payment_type: effectivePaymentType,
-        p_notes: effectiveNotes || null
-      })
+      // Pre-check for customer buy-backs (phones previously sold or in database)
+      const imeiList = phoneCart.map(p => p.imei_1?.trim()).filter(Boolean)
+      let hasBuyBacks = false
+      try {
+        const { data: exPhones } = await supabase
+          .from('phones')
+          .select('id, imei_1, status, brand, model')
+          .eq('shop_id', user.shop_id)
+          .in('imei_1', imeiList)
 
-      if (primaryRes.error && (primaryRes.error.code === 'PGRST202' || primaryRes.error.message?.includes('schema cache'))) {
-        console.warn('Falling back to legacy record_phone_purchase signature...', primaryRes.error.message)
-        const fallbackRes = await supabase.rpc('record_phone_purchase', {
+        if (exPhones && exPhones.length > 0) {
+          const inStock = exPhones.find(p => p.status === 'in_stock')
+          if (inStock) {
+            throw new Error(`Device with IMEI ${inStock.imei_1} (${inStock.brand} ${inStock.model}) is already IN STOCK in your inventory!`)
+          }
+          // Devices exist in database but were previously sold/returned -> Customer Buy-Back
+          hasBuyBacks = true
+        }
+      } catch (chkErr) {
+        if (chkErr.message?.includes('already IN STOCK')) throw chkErr
+      }
+
+      let rpcData = null, rpcError = null
+      if (!hasBuyBacks) {
+        // Only call RPC if there are NO customer buy-backs (new devices only)
+        const primaryRes = await supabase.rpc('record_phone_purchase', {
           p_supplier_id: parseInt(supplierId),
+          p_branch_id: user.branch_id || null,
           p_phones: phonesPayload,
           p_total_amount: totalCost,
           p_paid_amount: effectivePaid,
-          p_payment_method: effectivePaymentType,
-          p_remarks: effectiveNotes || null
+          p_payment_type: effectivePaymentType,
+          p_notes: effectiveNotes || null
         })
-        rpcData = fallbackRes.data
-        rpcError = fallbackRes.error
-      } else {
-        rpcData = primaryRes.data
-        rpcError = primaryRes.error
-      }
 
-      // Check for real duplicate IMEI conflict
-      if (rpcData && !rpcData.success && rpcData.error?.includes('already exists')) {
-        throw new Error(rpcData.error)
+        if (primaryRes.error && (primaryRes.error.code === 'PGRST202' || primaryRes.error.message?.includes('schema cache'))) {
+          console.warn('Falling back to legacy record_phone_purchase signature...', primaryRes.error.message)
+          const fallbackRes = await supabase.rpc('record_phone_purchase', {
+            p_supplier_id: parseInt(supplierId),
+            p_phones: phonesPayload,
+            p_total_amount: totalCost,
+            p_paid_amount: effectivePaid,
+            p_payment_method: effectivePaymentType,
+            p_remarks: effectiveNotes || null
+          })
+          rpcData = fallbackRes.data
+          rpcError = fallbackRes.error
+        } else {
+          rpcData = primaryRes.data
+          rpcError = primaryRes.error
+        }
+      } else {
+        // Customer buy-backs present: bypass restrictive RPC to directly handle reactivations & purchase items
+        rpcData = { success: false, buyback: true }
       }
 
       // If RPC failed due to session, cache, or schema mismatch, execute resilient direct table insert
       if (rpcError || (rpcData && !rpcData.success)) {
         console.warn('PhonePurchasePanel: RPC failed (' + (rpcError?.message || rpcData?.error) + '). Falling back to direct database insert...')
         
-        // 1. Insert Purchase Record
-        let purchaseId = null
-        const purchaseRecord = {
-          shop_id: user.shop_id,
-          branch_id: user.branch_id || null,
-          user_id: user.id || null,
-          supplier_id: parseInt(supplierId),
-          total_amount: totalCost,
-          net_amount: totalCost,
-          paid_amount: effectivePaid,
-          amount_paid: effectivePaid,
-          payment_method: effectivePaymentType,
-          payment_type: effectivePaymentType,
-          payment_details: paymentDetailsObj,
-          remarks: effectiveNotes || null,
-          notes: effectiveNotes || null,
-          status: 'completed',
-          created_at: new Date().toISOString()
-        }
-        
-        let pRes = await supabase.from('purchases').insert([purchaseRecord]).select().single()
-        if (pRes.error) {
-          // Retry with core columns
-          const corePurchase = {
+        // 1. Insert or Reuse Purchase Record
+        let purchaseId = rpcData?.purchase_id || null
+        if (!purchaseId) {
+          const purchaseRecord = {
             shop_id: user.shop_id,
+            branch_id: user.branch_id || null,
+            user_id: user.id || null,
             supplier_id: parseInt(supplierId),
             total_amount: totalCost,
+            net_amount: totalCost,
+            paid_amount: effectivePaid,
             amount_paid: effectivePaid,
             payment_method: effectivePaymentType,
             payment_type: effectivePaymentType,
             payment_details: paymentDetailsObj,
-            remarks: effectiveNotes || null
+            remarks: effectiveNotes || null,
+            notes: effectiveNotes || null,
+            status: 'completed',
+            created_at: new Date().toISOString()
           }
-          pRes = await supabase.from('purchases').insert([corePurchase]).select().single()
+          
+          let pRes = await supabase.from('purchases').insert([purchaseRecord]).select().single()
+          if (pRes.error) {
+            const corePurchase = {
+              shop_id: user.shop_id,
+              supplier_id: parseInt(supplierId),
+              total_amount: totalCost,
+              amount_paid: effectivePaid,
+              payment_method: effectivePaymentType,
+              payment_type: effectivePaymentType,
+              payment_details: paymentDetailsObj,
+              remarks: effectiveNotes || null
+            }
+            pRes = await supabase.from('purchases').insert([corePurchase]).select().single()
+          }
+          
+          if (pRes.error) throw pRes.error
+          purchaseId = pRes.data.id
         }
-        
-        if (pRes.error) throw pRes.error
-        purchaseId = pRes.data.id
 
         // 2. Insert or Re-activate Phones & Purchase Items (handles Customer Buy-Backs)
         for (const phoneItem of phoneCart) {
@@ -655,6 +678,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
               condition: cleanCondition,
               pta_status: cleanPta,
               cost_price: costVal,
+              additional_costs: parseFloat(phoneItem.additional_costs) || 0,
               sale_price: saleVal,
               selling_price: saleVal,
               expected_sale_price: saleVal,
@@ -690,6 +714,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
               condition: cleanCondition,
               pta_status: cleanPta,
               cost_price: costVal,
+              additional_costs: parseFloat(phoneItem.additional_costs) || 0,
               sale_price: saleVal,
               selling_price: saleVal,
               expected_sale_price: saleVal,
@@ -708,6 +733,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 brand: phoneItem.brand?.trim() || 'Unknown',
                 model: phoneItem.model?.trim() || 'Unknown Phone',
                 cost_price: costVal,
+                additional_costs: parseFloat(phoneItem.additional_costs) || 0,
                 sale_price: saleVal,
                 supplier_id: parseInt(supplierId),
                 purchase_id: purchaseId,
@@ -722,18 +748,54 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
           if (savedPhone) {
             savedPhonesList.push(savedPhone)
-            // Insert Purchase Item
+            const phoneDisplayName = `${savedPhone.brand} ${savedPhone.model}${savedPhone.storage ? ` ${savedPhone.storage}` : ''}`.trim()
+            // Insert Purchase Item with explicit product_name & imei_list
             const itemRecord = {
               purchase_id: purchaseId,
               phone_id: savedPhone.id,
+              product_name: phoneDisplayName,
               quantity: 1,
               unit_price: costVal,
               cost_price: costVal,
-              total_price: costVal,
-              subtotal: costVal
+              additional_costs: parseFloat(phoneItem.additional_costs) || 0,
+              total_price: costVal + (parseFloat(phoneItem.additional_costs) || 0),
+              subtotal: costVal + (parseFloat(phoneItem.additional_costs) || 0),
+              imei_list: [savedPhone.imei_1]
             }
             try {
-              await supabase.from('purchase_items').insert([itemRecord])
+              const { data: piData } = await supabase.from('purchase_items').insert([itemRecord]).select()
+              if (piData && piData[0]) savedItemsList.push(piData[0])
+            } catch (piErr) {
+              try {
+                const { data: minPi } = await supabase.from('purchase_items').insert([{
+                  purchase_id: purchaseId,
+                  phone_id: savedPhone.id,
+                  quantity: 1,
+                  cost_price: costVal,
+                  subtotal: costVal
+                }]).select()
+                if (minPi && minPi[0]) savedItemsList.push(minPi[0])
+              } catch (_) {}
+            }
+
+            // Insert phone_history audit entry
+            try {
+              await supabase.from('phone_history').insert([{
+                phone_id: savedPhone.id,
+                shop_id: user.shop_id,
+                branch_id: user.branch_id || null,
+                action: existingPhone ? 'BUY_BACK' : 'PURCHASED',
+                previous_status: existingPhone ? existingPhone.status : null,
+                new_status: 'in_stock',
+                user_id: user.id || null,
+                details: {
+                  purchase_id: purchaseId,
+                  supplier_id: parseInt(supplierId),
+                  cost_price: costVal,
+                  imei_1: savedPhone.imei_1,
+                  is_buyback: Boolean(existingPhone)
+                }
+              }])
             } catch (_) {}
           }
         }
@@ -779,7 +841,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         } catch (_) {}
       }
 
-      // Cache phones locally in Dexie with authentic database IDs
+      // Cache phones and full purchases locally in Dexie with authentic database IDs
       try {
         if (db.phones) {
           const toCache = (typeof savedPhonesList !== 'undefined' && savedPhonesList.length > 0)
@@ -795,6 +857,38 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 status: 'in_stock'
               }))
           await db.phones.bulkPut(toCache)
+        }
+        if (db.purchases && rpcData?.purchase_id) {
+          const fullItems = (typeof savedItemsList !== 'undefined' && savedItemsList.length > 0)
+            ? savedItemsList
+            : (savedPhonesList || []).map(ph => ({
+                id: `pi-${ph.id}`,
+                purchase_id: rpcData.purchase_id,
+                phone_id: ph.id,
+                product_name: `${ph.brand} ${ph.model}${ph.storage ? ` ${ph.storage}` : ''}`.trim(),
+                quantity: 1,
+                unit_price: ph.cost_price || 0,
+                cost_price: ph.cost_price || 0,
+                total_price: ph.cost_price || 0,
+                subtotal: ph.cost_price || 0,
+                phones: ph,
+                imei_list: [ph.imei_1]
+              }))
+          const fullPurchase = {
+            id: rpcData.purchase_id,
+            shop_id: user.shop_id,
+            supplier_id: parseInt(supplierId),
+            total_amount: totalCost,
+            paid_amount: effectivePaid,
+            payment_type: effectivePaymentType,
+            payment_method: effectivePaymentType,
+            created_at: new Date().toISOString(),
+            purchase_items: fullItems
+          }
+          await db.purchases.put(fullPurchase).catch(() => {})
+          if (db.purchase_items && fullItems.length > 0) {
+            await db.purchase_items.bulkPut(fullItems).catch(() => {})
+          }
         }
       } catch (cacheErr) {
         console.warn('Local Dexie cache notice:', cacheErr)
@@ -859,6 +953,15 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
       setPhoneCart([])
       setPaidAmount('')
       setPurchaseNotes('')
+
+      // Instant broadcast to POS, Inventory, and other tabs
+      try {
+        localStorage.setItem('phones_updated_at', String(Date.now()))
+        window.dispatchEvent(new CustomEvent('phones-updated', { detail: { timestamp: Date.now() } }))
+        window.dispatchEvent(new CustomEvent('inventory-updated', { detail: { timestamp: Date.now() } }))
+      } catch (evtErr) {
+        console.warn('Phone purchase event dispatch error:', evtErr)
+      }
 
       if (onPurchaseComplete) {
         onPurchaseComplete(rpcData)

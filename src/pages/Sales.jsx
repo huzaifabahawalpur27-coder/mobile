@@ -32,8 +32,13 @@ const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
   const specs = ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null, ph.condition ? ph.condition.toUpperCase() : null].filter(Boolean).join(' • ') : null
   const imei = ph ? (ph.imei_1 || ph.imei || ph.imei1 || (typeof it.imei_snapshot === 'string' && !it.imei_snapshot.startsWith('{') ? it.imei_snapshot : null)) : null
   const imei2 = ph ? (ph.imei_2 || ph.imei2 || null) : null
-  const price = it.unit_price ?? (it.price ?? (it.subtotal || 0))
-  const qty = it.quantity || 1
+  const price = Number(it.unit_price ?? (it.price ?? (it.subtotal || 0)))
+  const qty = Number(it.quantity || 1)
+  const baseCost = Number(it.cost_price ?? (ph?.cost_price ?? (snap?.cost_price ?? (prod?.cost_price ?? 0))))
+  const directCost = Number(it.additional_costs ?? (ph?.additional_costs ?? (snap?.additional_costs ?? 0)))
+  const totalCost = baseCost + directCost
+  const profit = (price - totalCost) * qty
+  const margin = price > 0 ? ((price - totalCost) / price) * 100 : 0
 
   return {
     ...it,
@@ -44,7 +49,12 @@ const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
     imei2,
     status: ph?.status || null,
     unit_price: price,
-    quantity: qty
+    quantity: qty,
+    base_cost: baseCost,
+    direct_cost: directCost,
+    total_cost: totalCost,
+    profit,
+    margin
   }
 }
 
@@ -790,11 +800,36 @@ function Sales() {
                                     )}
                                   </div>
                                 )}
-                                <div className="flex justify-between items-center pt-1 border-t border-gray-100 text-[11px]">
-                                  <span className="text-gray-500">
-                                    Qty: {netQty} {returnedQty > 0 && <span className="text-red-500 font-bold">(-{returnedQty})</span>}
-                                  </span>
-                                  <span className="font-bold text-gray-900">Rs. {Number(rate).toLocaleString()}</span>
+                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-[11px]">
+                                  <div>
+                                    <span className="text-gray-400 block text-[10px]">Purchase Cost</span>
+                                    <span className="font-semibold text-gray-700">Rs. {Number(it.base_cost || 0).toLocaleString()}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 block text-[10px]">Direct Cost (Courier)</span>
+                                    <span className={`font-semibold ${Number(it.direct_cost) > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
+                                      Rs. {Number(it.direct_cost || 0).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 block text-[10px]">Total Cost</span>
+                                    <span className="font-bold text-gray-800">Rs. {Number(it.total_cost || 0).toLocaleString()}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 block text-[10px]">Sale Price (Qty {netQty})</span>
+                                    <span className="font-bold text-blue-700">Rs. {Number(rate).toLocaleString()}</span>
+                                  </div>
+                                </div>
+                                <div className="flex justify-between items-center pt-1.5 border-t border-dashed border-gray-200 text-[11px]">
+                                  <span className="text-gray-500 font-medium">Profit / Margin:</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`font-black ${(it.profit || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                      {(it.profit || 0) >= 0 ? '+' : ''}Rs. {Math.round(it.profit || 0).toLocaleString()}
+                                    </span>
+                                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${(it.profit || 0) >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                      {Number(it.margin || 0).toFixed(1)}%
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             )
@@ -964,14 +999,36 @@ function Sales() {
                                           )}
                                         </div>
 
-                                        <div className="flex items-center justify-between border-t border-gray-100 pt-2 mt-1 text-xs">
-                                          <span className="text-gray-500">
-                                            Qty: <span className="font-semibold text-gray-800">{netQty}</span>
-                                            {returnedQty > 0 && <span className="text-red-500 font-bold ml-1">(-{returnedQty})</span>}
-                                          </span>
-                                          <span className="font-black text-gray-900">
-                                            Rs. {Number(rate).toLocaleString()}
-                                          </span>
+                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-xs">
+                                          <div>
+                                            <span className="text-gray-400 block text-[10px]">Purchase Cost</span>
+                                            <span className="font-semibold text-gray-700">Rs. {Number(it.base_cost || 0).toLocaleString()}</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400 block text-[10px]">Direct Cost (Courier)</span>
+                                            <span className={`font-semibold ${Number(it.direct_cost) > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
+                                              Rs. {Number(it.direct_cost || 0).toLocaleString()}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400 block text-[10px]">Total Cost</span>
+                                            <span className="font-bold text-gray-800">Rs. {Number(it.total_cost || 0).toLocaleString()}</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400 block text-[10px]">Sale Price (Qty {netQty})</span>
+                                            <span className="font-bold text-blue-700">Rs. {Number(rate).toLocaleString()}</span>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center justify-between border-t border-dashed border-gray-200 pt-1.5 text-xs">
+                                          <span className="text-gray-500 font-medium">Profit & Margin:</span>
+                                          <div className="flex items-center gap-1.5">
+                                            <span className={`font-black ${(it.profit || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                              {(it.profit || 0) >= 0 ? '+' : ''}Rs. {Math.round(it.profit || 0).toLocaleString()}
+                                            </span>
+                                            <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${(it.profit || 0) >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                              {Number(it.margin || 0).toFixed(1)}%
+                                            </span>
+                                          </div>
                                         </div>
                                       </div>
                                     )
@@ -1020,11 +1077,13 @@ function Sales() {
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="px-3 py-2 text-left text-xs text-gray-500 whitespace-nowrap">Product / Phone</th>
-                            <th className="px-3 py-2 text-right text-xs text-gray-500 whitespace-nowrap">Orig. Qty</th>
-                            <th className="px-3 py-2 text-right text-xs text-red-400 whitespace-nowrap">Returned</th>
+                            <th className="px-3 py-2 text-right text-xs text-gray-500 whitespace-nowrap">Purchase Cost</th>
+                            <th className="px-3 py-2 text-right text-xs text-amber-600 whitespace-nowrap">Direct Cost</th>
+                            <th className="px-3 py-2 text-right text-xs text-gray-700 whitespace-nowrap">Total Cost</th>
+                            <th className="px-3 py-2 text-right text-xs text-gray-500 whitespace-nowrap">Sale Rate</th>
                             <th className="px-3 py-2 text-right text-xs text-green-600 whitespace-nowrap">Net Qty</th>
-                            <th className="px-3 py-2 text-right text-xs text-gray-500 whitespace-nowrap">Rate</th>
                             <th className="px-3 py-2 text-right text-xs text-gray-500 whitespace-nowrap">Net Amount</th>
+                            <th className="px-3 py-2 text-right text-xs text-emerald-600 whitespace-nowrap">Profit</th>
                             <th className="px-3 py-2 text-center text-xs text-gray-500 whitespace-nowrap">Return Qty</th>
                           </tr>
                         </thead>
@@ -1033,6 +1092,9 @@ function Sales() {
                             const returnedQty = item.returned_qty || 0
                             const netQty = item.quantity - returnedQty
                             const netAmount = netQty * Number(item.unit_price)
+                            const lineTotalCost = netQty * Number(item.total_cost || 0)
+                            const lineProfit = netAmount - lineTotalCost
+                            const lineMargin = netAmount > 0 ? (lineProfit / netAmount) * 100 : 0
                             const maxReturn = netQty
                             const fullyReturned = netQty <= 0
                             return (
@@ -1058,19 +1120,26 @@ function Sales() {
                                     </div>
                                   )}
                                 </td>
-                                <td className="px-3 py-2 text-right text-gray-400 whitespace-nowrap">{item.quantity}</td>
-                                <td className="px-3 py-2 text-right text-red-500 font-medium whitespace-nowrap">
-                                  {returnedQty > 0 ? `- ${returnedQty}` : '—'}
+                                <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap font-medium">Rs. {Number(item.base_cost || 0).toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right whitespace-nowrap font-medium text-amber-600">
+                                  {Number(item.direct_cost || 0) > 0 ? `Rs. ${Number(item.direct_cost).toLocaleString()}` : '—'}
                                 </td>
-                                <td className="px-3 py-2 text-right font-bold text-gray-800 whitespace-nowrap">{netQty}</td>
-                                <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">Rs. {Number(item.unit_price).toFixed(0)}</td>
+                                <td className="px-3 py-2 text-right text-gray-800 whitespace-nowrap font-bold">Rs. {Number(item.total_cost || 0).toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right text-blue-700 whitespace-nowrap font-semibold">Rs. {Number(item.unit_price).toFixed(0)}</td>
+                                <td className="px-3 py-2 text-right font-bold text-gray-800 whitespace-nowrap">
+                                  {netQty}
+                                  {returnedQty > 0 && <span className="text-[10px] text-red-500 block">(-{returnedQty} ret)</span>}
+                                </td>
                                 <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">
                                   Rs. {netAmount.toFixed(0)}
-                                  {returnedQty > 0 && (
-                                    <div className="text-[10px] text-gray-400 font-normal">
-                                      orig: Rs. {(item.quantity * Number(item.unit_price)).toFixed(0)}
-                                    </div>
-                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right whitespace-nowrap font-bold">
+                                  <div className={lineProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                                    {lineProfit >= 0 ? '+' : ''}Rs. {Math.round(lineProfit).toLocaleString()}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400 font-normal">
+                                    {lineMargin.toFixed(1)}% margin
+                                  </div>
                                 </td>
                                 <td className="px-3 py-2 text-center whitespace-nowrap">
                                   {maxReturn > 0 ? (
@@ -1086,6 +1155,41 @@ function Sales() {
                         </tbody>
                       </table>
                     </div>
+
+                    {/* Full Financial Profit & Cost Breakdown */}
+                    {(() => {
+                      const netRev = Math.max(0, Number(selectedSale.total_amount || 0) - Number(selectedSale.discount || 0))
+                      const totalBaseCost = saleItems.reduce((s, it) => s + (Number(it.base_cost || 0) * Math.max(0, it.quantity - (it.returned_qty || 0))), 0)
+                      const totalDirectCost = saleItems.reduce((s, it) => s + (Number(it.direct_cost || 0) * Math.max(0, it.quantity - (it.returned_qty || 0))), 0)
+                      const totalCOGS = totalBaseCost + totalDirectCost
+                      const netProfit = netRev - totalCOGS
+                      const overallMargin = netRev > 0 ? (netProfit / netRev) * 100 : 0
+
+                      return (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 bg-blue-50/60 p-3 rounded-xl border border-blue-100 text-xs">
+                          <div>
+                            <span className="text-gray-500 block text-[10px] uppercase font-bold">Net Sale Amount</span>
+                            <span className="font-black text-gray-900 text-sm">Rs. {netRev.toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 block text-[10px] uppercase font-bold">Direct Cost (Courier)</span>
+                            <span className={`font-black text-sm ${totalDirectCost > 0 ? 'text-amber-600' : 'text-gray-600'}`}>
+                              Rs. {totalDirectCost.toLocaleString()}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 block text-[10px] uppercase font-bold">Total Cost (COGS)</span>
+                            <span className="font-black text-gray-800 text-sm">Rs. {totalCOGS.toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 block text-[10px] uppercase font-bold">Net Profit</span>
+                            <span className={`font-black text-sm ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {netProfit >= 0 ? '+' : ''}Rs. {Math.round(netProfit).toLocaleString()} ({overallMargin.toFixed(1)}%)
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:justify-between sm:items-center">
                       <div className="text-sm text-gray-600">

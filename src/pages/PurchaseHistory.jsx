@@ -25,8 +25,11 @@ const normalizePurchaseItem = (it, phonesPool = [], productsPool = []) => {
     const specs = ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null, ph.condition ? ph.condition.toUpperCase() : null].filter(Boolean).join(' • ') : null
     const imei = ph ? (ph.imei_1 || ph.imei || ph.imei1 || null) : null
     const imei2 = ph ? (ph.imei_2 || ph.imei2 || null) : null
-    const price = it.unit_price ?? (it.cost_price ?? (it.price ?? 0))
-    const qty = it.quantity || 1
+    const baseCost = Number(it.cost_price ?? (ph?.cost_price ?? (it.unit_price ?? (it.price ?? 0))))
+    const directCost = Number(it.additional_costs ?? (ph?.additional_costs ?? 0))
+    const totalCost = baseCost + directCost
+    const salePrice = Number(ph?.sale_price || ph?.selling_price || 0)
+    const qty = Number(it.quantity || 1)
 
     return {
         ...it,
@@ -36,7 +39,11 @@ const normalizePurchaseItem = (it, phonesPool = [], productsPool = []) => {
         imei,
         imei2,
         status: ph?.status || null,
-        unit_price: price,
+        base_cost: baseCost,
+        direct_cost: directCost,
+        total_cost: totalCost,
+        sale_price: salePrice,
+        unit_price: baseCost,
         quantity: qty
     }
 }
@@ -155,12 +162,30 @@ function PurchaseHistory() {
                     continue
                 }
                 seenKeys.add(dupKey)
-                const itemsForP = item.purchase_items && item.purchase_items.length > 0
+                let itemsForP = item.purchase_items && item.purchase_items.length > 0
                     ? item.purchase_items
                     : lItems.filter(i => i.purchase_id === item.id)
+                if ((!itemsForP || itemsForP.length === 0) && lPhones && lPhones.length > 0) {
+                    const matchedPhones = lPhones.filter(ph => ph.purchase_id === item.id)
+                    if (matchedPhones.length > 0) {
+                        itemsForP = matchedPhones.map(ph => ({
+                            id: `ph-item-${ph.id}`,
+                            purchase_id: item.id,
+                            phone_id: ph.id,
+                            product_name: `${ph.brand} ${ph.model}${ph.storage ? ` ${ph.storage}` : ''}`.trim(),
+                            quantity: 1,
+                            unit_price: ph.cost_price || 0,
+                            cost_price: ph.cost_price || 0,
+                            total_price: ph.cost_price || 0,
+                            subtotal: ph.cost_price || 0,
+                            phones: ph,
+                            imei_list: [ph.imei_1]
+                        }))
+                    }
+                }
                 deduplicated.push({
                     ...item,
-                    purchase_items: itemsForP.map(it => normalizePurchaseItem(it, lPhones, lProducts))
+                    purchase_items: (itemsForP || []).map(it => normalizePurchaseItem(it, lPhones, lProducts))
                 })
             }
             setPurchases(deduplicated)
@@ -184,12 +209,30 @@ function PurchaseHistory() {
                         continue
                     }
                     seenKeys.add(dupKey)
-                    const itemsForP = item.purchase_items && item.purchase_items.length > 0
+                    let itemsForP = item.purchase_items && item.purchase_items.length > 0
                         ? item.purchase_items
                         : lItems.filter(i => i.purchase_id === item.id)
+                    if ((!itemsForP || itemsForP.length === 0) && lPhones && lPhones.length > 0) {
+                        const matchedPhones = lPhones.filter(ph => ph.purchase_id === item.id)
+                        if (matchedPhones.length > 0) {
+                            itemsForP = matchedPhones.map(ph => ({
+                                id: `ph-item-${ph.id}`,
+                                purchase_id: item.id,
+                                phone_id: ph.id,
+                                product_name: `${ph.brand} ${ph.model}${ph.storage ? ` ${ph.storage}` : ''}`.trim(),
+                                quantity: 1,
+                                unit_price: ph.cost_price || 0,
+                                cost_price: ph.cost_price || 0,
+                                total_price: ph.cost_price || 0,
+                                subtotal: ph.cost_price || 0,
+                                phones: ph,
+                                imei_list: [ph.imei_1]
+                            }))
+                        }
+                    }
                     deduplicated.push({
                         ...item,
-                        purchase_items: itemsForP.map(it => normalizePurchaseItem(it, lPhones, lProducts))
+                        purchase_items: (itemsForP || []).map(it => normalizePurchaseItem(it, lPhones, lProducts))
                     })
                 }
                 setPurchases(deduplicated)
@@ -214,9 +257,32 @@ function PurchaseHistory() {
             const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
 
             if (error) throw error
-            if (data) {
-                const cleanData = JSON.parse(JSON.stringify(data)).map(it => normalizePurchaseItem(it))
-                await db.purchase_items.bulkPut(cleanData)
+            let itemsToDisplay = data && data.length > 0 ? data : []
+
+            if (itemsToDisplay.length === 0 && navigator.onLine) {
+                try {
+                    const { data: linkedPh } = await supabase.from('phones').select('*').eq('purchase_id', purchase.id)
+                    if (linkedPh && linkedPh.length > 0) {
+                        itemsToDisplay = linkedPh.map(ph => ({
+                            id: `ph-item-${ph.id}`,
+                            purchase_id: purchase.id,
+                            phone_id: ph.id,
+                            product_name: `${ph.brand} ${ph.model}${ph.storage ? ` ${ph.storage}` : ''}`.trim(),
+                            quantity: 1,
+                            unit_price: ph.cost_price || 0,
+                            cost_price: ph.cost_price || 0,
+                            total_price: ph.cost_price || 0,
+                            subtotal: ph.cost_price || 0,
+                            phones: ph,
+                            imei_list: [ph.imei_1]
+                        }))
+                    }
+                } catch (_) {}
+            }
+
+            if (itemsToDisplay.length > 0) {
+                const cleanData = JSON.parse(JSON.stringify(itemsToDisplay)).map(it => normalizePurchaseItem(it))
+                await db.purchase_items.bulkPut(cleanData).catch(() => {})
                 setPurchaseItems(cleanData)
             } else {
                 setPurchaseItems((purchase.purchase_items || []).map(it => normalizePurchaseItem(it)))
@@ -740,9 +806,27 @@ function PurchaseHistory() {
                                                                         )}
                                                                     </div>
                                                                 )}
-                                                                <div className="flex justify-between items-center pt-1 border-t border-gray-100 text-[11px]">
-                                                                    <span className="text-gray-400">Qty: {qty}</span>
-                                                                    <span className="font-bold text-gray-900">Rs. {Number(cost).toLocaleString()}</span>
+                                                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-[11px]">
+                                                                    <div>
+                                                                        <span className="text-gray-400 block text-[10px]">Purchase Price</span>
+                                                                        <span className="font-semibold text-gray-700">Rs. {Number(it.base_cost || 0).toLocaleString()}</span>
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className="text-gray-400 block text-[10px]">Direct Cost (Courier)</span>
+                                                                        <span className={`font-semibold ${Number(it.direct_cost) > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'}`}>
+                                                                            Rs. {Number(it.direct_cost || 0).toLocaleString()}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className="text-gray-400 block text-[10px]">Total Cost</span>
+                                                                        <span className="font-bold text-gray-900">Rs. {Number(it.total_cost || 0).toLocaleString()}</span>
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className="text-gray-400 block text-[10px]">Target Sale Price</span>
+                                                                        <span className="font-semibold text-blue-700">
+                                                                            {it.sale_price > 0 ? `Rs. ${Number(it.sale_price).toLocaleString()}` : '—'}
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         )
@@ -909,11 +993,26 @@ function PurchaseHistory() {
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
-                                                                                <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs">
-                                                                                    <span className="text-gray-400 font-medium">Qty: {qty}</span>
-                                                                                    <div className="text-right">
-                                                                                        <span className="text-gray-400 text-[10px] mr-1">Cost:</span>
-                                                                                        <span className="font-black text-gray-900">Rs. {Number(cost).toLocaleString()}</span>
+                                                                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-xs">
+                                                                                    <div>
+                                                                                        <span className="text-gray-400 block text-[10px]">Purchase Price</span>
+                                                                                        <span className="font-semibold text-gray-700">Rs. {Number(it.base_cost || 0).toLocaleString()}</span>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <span className="text-gray-400 block text-[10px]">Direct Cost (Courier)</span>
+                                                                                        <span className={`font-semibold ${Number(it.direct_cost) > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'}`}>
+                                                                                            Rs. {Number(it.direct_cost || 0).toLocaleString()}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <span className="text-gray-400 block text-[10px]">Total Cost</span>
+                                                                                        <span className="font-bold text-gray-900">Rs. {Number(it.total_cost || 0).toLocaleString()}</span>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <span className="text-gray-400 block text-[10px]">Target Sale Price</span>
+                                                                                        <span className="font-semibold text-blue-700">
+                                                                                            {it.sale_price > 0 ? `Rs. ${Number(it.sale_price).toLocaleString()}` : '—'}
+                                                                                        </span>
                                                                                     </div>
                                                                                 </div>
                                                                             </div>
@@ -954,12 +1053,38 @@ function PurchaseHistory() {
                             </div>
 
                             {/* Info Grid */}
-                            <div className="grid grid-cols-2 gap-4 mb-4 bg-gray-50 p-4 rounded-xl border border-gray-100 text-sm">
-                                <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Supplier</span> <b>{selectedPurchase.suppliers?.name || 'Unknown'}</b></p>
-                                <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Date</span> <b>{new Date(selectedPurchase.created_at).toLocaleString('en-PK')}</b></p>
-                                <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Total Amount</span> <b className="text-lg">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b></p>
-                                <p><span className="text-gray-400 font-medium uppercase text-[10px] block">Payment Type</span>
-                                    <span className="flex items-center gap-2 mt-0.5">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 bg-gray-50 p-4 rounded-xl border border-gray-100 text-sm">
+                                <div>
+                                    <span className="text-gray-400 font-medium uppercase text-[10px] block">Supplier Info</span>
+                                    <b className="text-gray-900 block">{selectedPurchase.suppliers?.name || 'Direct / Walk-in Supplier'}</b>
+                                    {selectedPurchase.suppliers?.phone && (
+                                        <span className="text-xs text-blue-700 block font-medium">📞 {selectedPurchase.suppliers.phone}</span>
+                                    )}
+                                    {selectedPurchase.suppliers?.address && (
+                                        <span className="text-[11px] text-gray-500 block">📍 {selectedPurchase.suppliers.address}</span>
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 font-medium uppercase text-[10px] block">Purchase Date</span>
+                                    <b className="text-gray-800">{new Date(selectedPurchase.created_at).toLocaleString('en-PK')}</b>
+                                    {selectedPurchase.remarks && (
+                                        <p className="text-[11px] text-gray-500 italic mt-0.5 truncate" title={selectedPurchase.remarks}>
+                                            Note: {selectedPurchase.remarks}
+                                        </p>
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 font-medium uppercase text-[10px] block">Total Amount</span>
+                                    <b className="text-lg text-gray-900">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b>
+                                    {selectedPurchase.paid_amount != null && (
+                                        <span className="text-xs text-gray-500 block">
+                                            Paid: Rs. {Number(selectedPurchase.paid_amount).toLocaleString()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 font-medium uppercase text-[10px] block">Payment Method</span>
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                         <b className={`uppercase px-2 py-0.5 rounded text-xs ${
                                             selectedPurchase.payment_type === 'cash'
                                                 ? 'bg-green-100 text-green-800'
@@ -974,11 +1099,10 @@ function PurchaseHistory() {
                                             onClick={() => setPurchaseToEditPayment(selectedPurchase)}
                                             className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 text-xs font-bold border border-purple-200 hover:bg-purple-100 transition cursor-pointer"
                                         >
-                                            ✏️ Change Method
+                                            ✏️ Edit
                                         </button>
-                                    </span>
-                                    {selectedPurchase.paid_amount != null && <span className="text-xs text-gray-400 ml-2">(Paid: Rs. {Number(selectedPurchase.paid_amount).toLocaleString()})</span>}
-                                </p>
+                                    </div>
+                                </div>
                             </div>
 
                             {loadingItems ? (
@@ -990,8 +1114,11 @@ function PurchaseHistory() {
                                             <thead className="bg-gray-50">
                                                 <tr>
                                                     <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Product</th>
-                                                    <th className="px-4 py-3 text-right text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Qty</th>
-                                                    <th className="px-4 py-3 text-right text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Rate</th>
+                                                    <th className="px-3 py-3 text-right text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Purchase Price</th>
+                                                    <th className="px-3 py-3 text-right text-xs text-amber-600 uppercase font-bold whitespace-nowrap">Direct Cost</th>
+                                                    <th className="px-3 py-3 text-right text-xs text-gray-700 uppercase font-bold whitespace-nowrap">Total Cost</th>
+                                                    <th className="px-3 py-3 text-right text-xs text-blue-700 uppercase font-bold whitespace-nowrap">Target Sale</th>
+                                                    <th className="px-3 py-3 text-right text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Qty</th>
                                                     <th className="px-4 py-3 text-right text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Amount</th>
                                                     <th className="px-4 py-3 text-center text-xs text-gray-500 uppercase font-bold bg-orange-50 whitespace-nowrap">Ret. Qty</th>
                                                 </tr>
@@ -1019,12 +1146,19 @@ function PurchaseHistory() {
                                                                     </div>
                                                                 )}
                                                             </td>
-                                                            <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">
+                                                            <td className="px-3 py-3 text-right text-gray-700 whitespace-nowrap font-medium">Rs. {Number(item.base_cost || item.unit_price || 0).toLocaleString()}</td>
+                                                            <td className="px-3 py-3 text-right whitespace-nowrap font-medium text-amber-600">
+                                                                {Number(item.direct_cost || 0) > 0 ? `Rs. ${Number(item.direct_cost).toLocaleString()}` : '—'}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-right text-gray-900 whitespace-nowrap font-bold">Rs. {Number(item.total_cost || item.unit_price || 0).toLocaleString()}</td>
+                                                            <td className="px-3 py-3 text-right text-blue-700 whitespace-nowrap font-medium">
+                                                                {Number(item.sale_price || 0) > 0 ? `Rs. ${Number(item.sale_price).toLocaleString()}` : '—'}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-right text-gray-600 whitespace-nowrap">
                                                                 {item.quantity}
                                                                 {item.returned_qty > 0 && <span className="text-xs text-red-500 ml-1 block">(-{item.returned_qty} ret)</span>}
                                                             </td>
-                                                            <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">Rs. {Number(item.unit_price).toFixed(0)}</td>
-                                                            <td className="px-4 py-3 text-right font-medium text-gray-800 whitespace-nowrap">Rs. {Number(item.total_price || item.line_total).toFixed(0)}</td>
+                                                            <td className="px-4 py-3 text-right font-medium text-gray-800 whitespace-nowrap">Rs. {Number(item.total_price || item.line_total || ((item.total_cost || item.unit_price || 0) * item.quantity)).toFixed(0)}</td>
                                                             <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
                                                                 {maxReturn > 0 ? (
                                                                     <input
@@ -1045,6 +1179,40 @@ function PurchaseHistory() {
                                                 })}
                                             </tbody>
                                         </table>
+
+                                        {/* Purchase Outlay & Direct Cost Summary Banner */}
+                                        {(() => {
+                                            const totalBase = purchaseItems.reduce((s, it) => s + (Number(it.base_cost || it.unit_price || 0) * it.quantity), 0)
+                                            const totalDirect = purchaseItems.reduce((s, it) => s + (Number(it.direct_cost || 0) * it.quantity), 0)
+                                            const totalLanded = totalBase + totalDirect
+                                            const paid = Number(selectedPurchase.paid_amount ?? selectedPurchase.total_amount)
+                                            const balance = Math.max(0, totalLanded - paid)
+
+                                            return (
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 bg-blue-50/60 p-3 rounded-xl border border-blue-100 text-xs">
+                                                    <div>
+                                                        <span className="text-gray-500 block text-[10px] uppercase font-bold">Base Purchase Outlay</span>
+                                                        <span className="font-bold text-gray-800 text-sm">Rs. {totalBase.toLocaleString()}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-500 block text-[10px] uppercase font-bold">Direct Cost (Courier)</span>
+                                                        <span className={`font-bold text-sm ${totalDirect > 0 ? 'text-amber-600' : 'text-gray-600'}`}>
+                                                            Rs. {totalDirect.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-500 block text-[10px] uppercase font-bold">Total Landed Cost</span>
+                                                        <span className="font-black text-gray-900 text-sm">Rs. {totalLanded.toLocaleString()}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-500 block text-[10px] uppercase font-bold">Payment Status</span>
+                                                        <span className={`font-bold text-sm ${balance === 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                                                            {balance === 0 ? 'Fully Paid' : `Due: Rs. ${balance.toLocaleString()}`}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })()}
                                     </div>
                                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-t border-gray-100 pt-4 mt-4 gap-4">
                                         <div className="text-sm">
