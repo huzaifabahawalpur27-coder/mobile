@@ -30,25 +30,47 @@ import {
   ArrowUpRight
 } from 'lucide-react'
 
-// Apple HIG Widget Stat Card
-const AppleWidget = ({ title, value, icon, color, bgTint, subValue, badge, onClick }) => (
+// Apple HIG / Linear SaaS Widget Stat Card
+const AppleWidget = ({ title, hint, value, icon, color, bgTint, subValue, badge, isHero, onClick }) => (
   <div
     onClick={onClick}
-    className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 rounded-[22px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-200 group flex flex-col justify-between cursor-pointer"
+    className={`p-4 sm:p-5 rounded-[22px] transition-all duration-200 group flex flex-col justify-between cursor-pointer relative overflow-hidden ${
+      isHero
+        ? 'bg-gradient-to-br from-emerald-500/[0.08] via-white/95 to-teal-500/[0.04] dark:from-emerald-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95 border-2 border-emerald-500/35 dark:border-emerald-500/45 shadow-[0_4px_20px_rgba(16,185,129,0.12)] hover:shadow-[0_8px_28px_rgba(16,185,129,0.2)] hover:-translate-y-0.5'
+        : 'bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5'
+    }`}
   >
+    {isHero && (
+      <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+    )}
     <div>
-      <div className="flex justify-between items-start mb-3">
+      <div className="flex justify-between items-start mb-2.5">
         <div className={`w-10 h-10 rounded-[14px] flex items-center justify-center ${bgTint} ${color} transition-transform group-hover:scale-105 shadow-2xs`}>
           {icon}
         </div>
         {badge && (
-          <span className="text-[10px] font-semibold tracking-wider px-2.5 py-0.5 rounded-full bg-[#f5f5f7] dark:bg-white/10 text-[#86868b] dark:text-gray-300 border border-black/[0.04] dark:border-white/[0.06]">
+          <span className={`text-[10px] font-bold tracking-wider px-2.5 py-0.5 rounded-full border ${
+            isHero
+              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/25'
+              : 'bg-[#f5f5f7] dark:bg-white/10 text-[#86868b] dark:text-gray-300 border-black/[0.04] dark:border-white/[0.06]'
+          }`}>
             {badge}
           </span>
         )}
       </div>
-      <h3 className="text-[#86868b] text-[11px] font-semibold uppercase tracking-wider">{title}</h3>
-      <p className="text-[22px] sm:text-[25px] font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tracking-tight mt-1 tabular-nums">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <h3 className="text-[#86868b] text-[11px] font-bold uppercase tracking-wider">{title}</h3>
+        {hint && (
+          <span className="text-[10px] font-bold text-[#86868b]/90 dark:text-[#86868b] px-1.5 py-0.5 rounded bg-black/[0.04] dark:bg-white/[0.06]">
+            {hint}
+          </span>
+        )}
+      </div>
+      <p className={`text-[22px] sm:text-[25px] font-black tracking-tight mt-1 tabular-nums ${
+        isHero
+          ? 'text-emerald-600 dark:text-emerald-400'
+          : 'text-[#1d1d1f] dark:text-[#f5f5f7]'
+      }`}>
         {typeof value === 'number' && title.toLowerCase().includes('rs')
           ? `Rs. ${Math.round(value).toLocaleString()}`
           : value}
@@ -58,7 +80,7 @@ const AppleWidget = ({ title, value, icon, color, bgTint, subValue, badge, onCli
     {subValue && (
       <div className="pt-2 mt-2 border-t border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between text-[11px]">
         <span className="text-[#86868b] font-medium truncate">{subValue}</span>
-        <span className="text-gray-300 dark:text-gray-600 group-hover:text-[#0071e3] transition">→</span>
+        <span className={`group-hover:translate-x-0.5 transition-transform ${isHero ? 'text-emerald-500 font-bold' : 'text-gray-400 group-hover:text-[#0071e3]'}`}>→</span>
       </div>
     )}
   </div>
@@ -181,7 +203,7 @@ function Dashboard() {
         // 6. Mobile Phones inventory
         supabase
           .from('phones')
-          .select('id, brand, model, storage, color, status, cost_price, sale_price')
+          .select('id, brand, model, storage, color, status, cost_price, sale_price, additional_costs')
           .eq('shop_id', user.shop_id),
 
         // 7. Today's Expenses
@@ -326,9 +348,13 @@ function Dashboard() {
     // Lookups for accurate phone & product cost and naming (unified with Reports)
     const phoneMap = (phonesList || []).reduce((acc, p) => {
       const pName = `${p.brand || ''} ${p.model || ''}${p.storage ? ` ${p.storage}` : ''}`.trim()
+      const baseCost = Number(p.cost_price || 0)
+      const directCost = Number(p.additional_costs || 0)
       acc[p.id] = {
         name: pName || 'Mobile Phone',
-        cost: Number(p.cost_price || 0),
+        baseCost,
+        directCost,
+        cost: baseCost + directCost,
         price: Number(p.sale_price || 0)
       }
       return acc
@@ -384,16 +410,19 @@ function Dashboard() {
 
         const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
 
+        const phoneInfo = i.phone_id ? phoneMap[i.phone_id] : null
+        const directCost = Number((Number(i.additional_costs) > 0 ? i.additional_costs : null) ?? (phoneInfo ? phoneInfo.directCost : (snap?.additional_costs || 0)) ?? 0)
+        const baseCost = Number(
+          (Number(i.cost_price) > 0 ? i.cost_price : null) ??
+          (phoneInfo ? phoneInfo.baseCost : null) ??
+          (i.product_id ? productCostMap[i.product_id] : null) ??
+          (productCostMap[name] || 0)
+        )
+        const costPrice = baseCost + directCost
         const unitPrice = Number(
           (Number(i.unit_price) > 0 ? i.unit_price : null) ??
           (Number(i.price) > 0 ? i.price : null) ??
-          (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0
-        )
-        const costPrice = Number(
-          (Number(i.cost_price) > 0 ? i.cost_price : null) ??
-          (i.phone_id ? phoneMap[i.phone_id]?.cost : null) ??
-          (i.product_id ? productCostMap[i.product_id] : null) ??
-          (productCostMap[name] || 0)
+          (phoneInfo ? phoneInfo.price : 0) ?? 0
         )
 
         let lineRev = Number(
@@ -493,7 +522,7 @@ function Dashboard() {
 
     // 5. Inventory Valuations & Stock Health
     const inStockPhones = phonesList.filter(p => p.status === 'in_stock')
-    const phonesValuation = inStockPhones.reduce((sum, p) => sum + Number(p.cost_price || 0), 0)
+    const phonesValuation = inStockPhones.reduce((sum, p) => sum + Number(p.cost_price || 0) + Number(p.additional_costs || 0), 0)
     const productsValuation = productList.reduce((sum, p) => sum + (Number(p.cost_price || 0) * Math.max(0, Number(p.stock_quantity || 0))), 0)
     const productsStockTotal = productList.reduce((sum, p) => sum + Math.max(0, Number(p.stock_quantity || 0)), 0)
     const totalStockValuation = phonesValuation + productsValuation
@@ -675,39 +704,67 @@ function Dashboard() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-[-apple-system,BlinkMacSystemFont,'SF_Pro_Display','SF_Pro_Text','Plus_Jakarta_Sans',sans-serif]">
-      {/*  Apple Native Title & Actions Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pt-1 pb-1">
+      {/*  Million-Dollar SaaS Header Strip with Live Activity Indicator */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1 pb-1">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 text-[#1d1d1f] dark:text-[#f5f5f7] border border-black/[0.04] dark:border-white/[0.08]">
-              <span className="text-xs leading-none font-bold text-[#0071e3]"></span>
-              <span>{shopName}</span>
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] border border-black/[0.06] dark:border-white/[0.1] shadow-2xs">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="font-extrabold text-blue-600">📱 {shopName}</span>
             </span>
             <span className="text-xs text-[#86868b] font-medium">
               • {new Date().toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
             Store Intelligence
           </h1>
           <p className="text-[#86868b] text-xs sm:text-sm mt-0.5 font-normal">
-            Real-time sales velocity, gross margins, cash in drawer, and inventory asset valuation.
+            Real-time sales velocity, net earnings, cash register balance, and inventory valuation.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        {/* SaaS Quick Action Control Bar */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/pos"
+            className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-95 text-white text-xs font-bold rounded-full shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <ShoppingBag size={14} />
+            <span>+ New Sale (POS)</span>
+          </Link>
+
+          <Link
+            to="/purchases"
+            className="px-3 py-2 bg-white dark:bg-[#1c1c1e] hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e] active:scale-95 text-[#1d1d1f] dark:text-[#f5f5f7] text-xs font-semibold rounded-full border border-black/[0.08] dark:border-white/[0.1] shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Smartphone size={14} className="text-purple-600" />
+            <span>+ Buy Phone</span>
+          </Link>
+
+          <Link
+            to="/expenses"
+            className="px-3 py-2 bg-white dark:bg-[#1c1c1e] hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e] active:scale-95 text-[#1d1d1f] dark:text-[#f5f5f7] text-xs font-semibold rounded-full border border-black/[0.08] dark:border-white/[0.1] shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <DollarSign size={14} className="text-rose-500" />
+            <span>+ Expense</span>
+          </Link>
+
           <button
             onClick={openEOD}
-            className="px-3.5 py-2 bg-white dark:bg-[#1c1c1e] hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e] active:scale-[0.98] text-[#1d1d1f] dark:text-[#f5f5f7] text-xs font-semibold rounded-full border border-black/[0.08] dark:border-white/[0.1] shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+            className="px-3.5 py-2 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-900 dark:text-amber-300 text-xs font-bold rounded-full border border-amber-200/80 dark:border-amber-700/50 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
           >
-            <Moon size={13} className="text-[#ff9500]" />
+            <Moon size={13} className="text-amber-600" />
             <span>Close Day (EOD)</span>
           </button>
 
           <button
             onClick={fetchDashboardStats}
             disabled={loading}
-            className="w-8.5 h-8.5 flex items-center justify-center bg-white dark:bg-[#1c1c1e] hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e] active:scale-95 border border-black/[0.08] dark:border-white/[0.1] rounded-full transition text-[#1d1d1f] dark:text-[#f5f5f7] cursor-pointer shadow-xs"
+            className="w-8.5 h-8.5 flex items-center justify-center bg-white dark:bg-[#1c1c1e] hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e] active:scale-95 border border-black/[0.08] dark:border-white/[0.1] rounded-full transition text-[#1d1d1f] dark:text-[#f5f5f7] cursor-pointer shadow-2xs"
             title="Refresh Stats"
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
@@ -715,7 +772,7 @@ function Dashboard() {
         </div>
       </div>
 
-      {/*  Apple Control Center Primary KPI Widgets (6 Core Financial Metrics) */}
+      {/*  Apple Control Center Primary KPI Widgets (6 Core Financial Metrics with Hero Net Profit) */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 animate-pulse">
           {[1, 2, 3, 4, 5, 6].map(i => (
@@ -727,6 +784,7 @@ function Dashboard() {
           {/* 1. Today's Gross Sales */}
           <AppleWidget
             title="Today's Sales (Rs)"
+            hint="فروخت"
             value={stats.todaySales}
             icon={<Banknote size={20} />}
             color="text-[#0071e3]"
@@ -740,25 +798,41 @@ function Dashboard() {
             onClick={() => navigate('/sales')}
           />
 
-          {/* 2. Today's Gross Profit */}
+          {/* 2. Today's Net Profit (THE HERO METRIC - Saaf Munafa) */}
           <AppleWidget
-            title="Today's Profit (Rs)"
-            value={stats.todayProfit}
-            icon={<TrendingUp size={20} />}
-            color="text-[#34c759]"
-            bgTint="bg-[#34c759]/10"
-            badge={`${(stats.todayProfitMargin ?? 0).toFixed(1)}%`}
+            isHero={true}
+            title="Net Profit (Rs)"
+            hint="صافی منافع"
+            value={stats.todayNetProfit}
+            icon={<Sparkles size={20} />}
+            color="text-emerald-600 dark:text-emerald-400"
+            bgTint="bg-emerald-500/15"
+            badge="Pure Profit"
             subValue={
-              stats.todayExpenses > 0
-                ? `Net: Rs. ${Math.round(stats.todayNetProfit).toLocaleString()}`
-                : `${(stats.todayProfitMargin ?? 0).toFixed(1)}% gross margin`
+              stats.todaySales > 0
+                ? `Rs. ${Math.round(stats.todayProfit).toLocaleString()} gross − Rs. ${Math.round(stats.todayExpenses).toLocaleString()} exp`
+                : 'Pure profit after all expenses'
             }
             onClick={() => navigate('/reports')}
           />
 
-          {/* 3. Items Sold Today */}
+          {/* 3. Today's Gross Profit */}
+          <AppleWidget
+            title="Gross Profit (Rs)"
+            hint="مارجن"
+            value={stats.todayProfit}
+            icon={<TrendingUp size={20} />}
+            color="text-[#34c759]"
+            bgTint="bg-[#34c759]/10"
+            badge={`${(stats.todayProfitMargin ?? 0).toFixed(1)}% Margin`}
+            subValue={`COGS: Rs. ${Math.round(stats.todayCOGS).toLocaleString()}`}
+            onClick={() => navigate('/reports')}
+          />
+
+          {/* 4. Items Sold Today */}
           <AppleWidget
             title="Units Sold Today"
+            hint="تعداد"
             value={`${stats.todayItemsSold} Pcs`}
             icon={<ShoppingBag size={20} />}
             color="text-[#5856d6]"
@@ -768,9 +842,10 @@ function Dashboard() {
             onClick={() => navigate('/reports')}
           />
 
-          {/* 4. Today's Inward Purchases / Procurement */}
+          {/* 5. Today's Inward Purchases / Procurement */}
           <AppleWidget
             title="Purchases Today (Rs)"
+            hint="خریداری"
             value={stats.todayPurchasesCost}
             icon={<CreditCard size={20} />}
             color="text-[#ff9500]"
@@ -784,9 +859,10 @@ function Dashboard() {
             onClick={() => navigate('/purchases')}
           />
 
-          {/* 5. Inventory Asset Valuation */}
+          {/* 6. Inventory Asset Valuation */}
           <AppleWidget
-            title="Total Stock Value (Rs)"
+            title="Stock Value (Rs)"
+            hint="سرمایہ"
             value={stats.totalStockValuation}
             icon={<Smartphone size={20} />}
             color="text-[#af52de]"
@@ -795,87 +871,88 @@ function Dashboard() {
             subValue={`${stats.phonesInStock} phones • ${stats.productsStockTotal} accessories`}
             onClick={() => navigate('/products')}
           />
-
-          {/* 6. Month-to-Date (MTD) Sales */}
-          <AppleWidget
-            title="Month Sales (Rs)"
-            value={stats.monthlySales}
-            icon={<Activity size={20} />}
-            color="text-[#0071e3]"
-            bgTint="bg-[#0071e3]/10"
-            badge="MTD"
-            subValue={`${stats.monthlyOrdersCount} orders this month`}
-            onClick={() => navigate('/reports')}
-          />
         </div>
       )}
 
       {/*  Real-Time Cash Flow & Operational Health Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
-        {/* 1. Cash Inflow */}
-        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {/* 1. Cash in Drawer (Galla) */}
+        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Cash Collected</span>
-            <span className="text-base font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
-              Rs. {Math.round(stats.todayCashSales).toLocaleString()}
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Cash in Drawer</span>
+              <span className="text-[10px] text-emerald-600 font-bold">(گلہ)</span>
+            </div>
+            <span className={`text-base font-extrabold tabular-nums ${stats.todayNetCashDrawer >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}`}>
+              Rs. {Math.round(stats.todayNetCashDrawer).toLocaleString()}
             </span>
+            <span className="text-[10px] text-[#86868b] block mt-0.5">Cash in hand balance</span>
           </div>
-          <div className="w-8 h-8 rounded-[12px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center font-bold text-xs">
-            💵
+          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center font-bold text-xs shrink-0">
+            <Wallet size={16} />
           </div>
         </div>
 
         {/* 2. Digital / Bank Inflow */}
-        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between">
+        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Digital / Bank</span>
-            <span className="text-base font-bold text-[#0071e3] tabular-nums">
+            <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Digital / Bank</span>
+            <span className="text-base font-extrabold text-[#0071e3] tabular-nums">
               Rs. {Math.round(stats.todayOnlineSales).toLocaleString()}
             </span>
+            <span className="text-[10px] text-[#86868b] block mt-0.5">JazzCash • Bank transfers</span>
           </div>
-          <div className="w-8 h-8 rounded-[12px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center font-bold text-xs">
+          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center font-bold text-xs shrink-0">
             💳
           </div>
         </div>
 
         {/* 3. Operating Expenses */}
-        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between">
+        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Today's Expenses</span>
-            <span className="text-base font-bold text-[#ff3b30] tabular-nums">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Today's Expenses</span>
+              <span className="text-[10px] text-rose-500 font-bold">(خرچے)</span>
+            </div>
+            <span className="text-base font-extrabold text-[#ff3b30] tabular-nums">
               Rs. {Math.round(stats.todayExpenses).toLocaleString()}
             </span>
+            <span className="text-[10px] text-[#86868b] block mt-0.5">Shop running costs</span>
           </div>
-          <div className="w-8 h-8 rounded-[12px] bg-[#ff3b30]/10 text-[#ff3b30] flex items-center justify-center font-bold text-xs">
+          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#ff3b30]/10 text-[#ff3b30] flex items-center justify-center font-bold text-xs shrink-0">
             💸
           </div>
         </div>
 
-        {/* 4. Net Cash in Drawer */}
-        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between">
+        {/* 4. Month Sales (MTD) */}
+        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Net Drawer Cash</span>
-            <span className={`text-base font-bold tabular-nums ${stats.todayNetCashDrawer >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}`}>
-              Rs. {Math.round(stats.todayNetCashDrawer).toLocaleString()}
+            <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Month Sales (MTD)</span>
+            <span className="text-base font-extrabold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+              Rs. {Math.round(stats.monthlySales).toLocaleString()}
             </span>
+            <span className="text-[10px] text-[#86868b] block mt-0.5">{stats.monthlyOrdersCount} orders this month</span>
           </div>
-          <div className="w-8 h-8 rounded-[12px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center font-bold text-xs">
-            <Wallet size={16} />
+          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#5856d6]/10 text-[#5856d6] flex items-center justify-center font-bold text-xs shrink-0">
+            <Activity size={16} />
           </div>
         </div>
 
         {/* 5. Low Stock Alert Watchlist */}
         <div
           onClick={() => navigate('/products')}
-          className="col-span-2 sm:col-span-4 lg:col-span-1 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] flex items-center justify-between cursor-pointer hover:border-[#ff9500]/40 transition"
+          className="col-span-2 sm:col-span-3 lg:col-span-1 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between cursor-pointer hover:border-[#ff9500]/40 transition"
         >
           <div>
-            <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Catalog Health</span>
-            <span className={`text-base font-bold tabular-nums ${stats.lowStockCount > 0 ? 'text-[#ff9500]' : 'text-[#34c759]'}`}>
+            <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Catalog Health</span>
+            <span className={`text-base font-extrabold tabular-nums ${stats.lowStockCount > 0 ? 'text-[#ff9500]' : 'text-[#34c759]'}`}>
               {stats.lowStockCount > 0 ? `${stats.lowStockCount} Reorders Due` : 'Stock Healthy'}
             </span>
+            <span className="text-[10px] text-[#86868b] block mt-0.5">
+              {stats.lowStockCount > 0 ? 'Items below reorder point' : 'All items well-stocked'}
+            </span>
           </div>
-          <div className={`w-8 h-8 rounded-[12px] flex items-center justify-center ${stats.lowStockCount > 0 ? 'bg-[#ff9500]/10 text-[#ff9500]' : 'bg-[#34c759]/10 text-[#34c759]'}`}>
+          <div className={`w-8.5 h-8.5 rounded-[12px] flex items-center justify-center shrink-0 ${stats.lowStockCount > 0 ? 'bg-[#ff9500]/10 text-[#ff9500]' : 'bg-[#34c759]/10 text-[#34c759]'}`}>
             <AlertTriangle size={16} />
           </div>
         </div>
