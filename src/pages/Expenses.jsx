@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue, moveToTrash } from '../services/db'
@@ -78,6 +78,46 @@ function Expenses() {
   const [dateFilter, setDateFilter] = useState('all') // 'all' | 'today' | 'yesterday' | 'this_month' | 'custom'
   const [customDate, setCustomDate] = useState(getTodayDateStr())
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Refs for programmatic calendar picker opening
+  const formDateRef = useRef(null)
+  const filterDateRef = useRef(null)
+
+  const openFormDatePicker = (e) => {
+    e?.preventDefault?.()
+    e?.stopPropagation?.()
+    const el = formDateRef.current
+    if (!el) return
+    try {
+      if (typeof el.showPicker === 'function') {
+        el.showPicker()
+        return
+      }
+    } catch (_err) {
+      console.warn('showPicker error:', _err)
+    }
+    try {
+      el.focus()
+    } catch (_e) {}
+  }
+
+  const openFilterDatePicker = (e) => {
+    e?.preventDefault?.()
+    e?.stopPropagation?.()
+    const el = filterDateRef.current
+    if (!el) return
+    try {
+      if (typeof el.showPicker === 'function') {
+        el.showPicker()
+        return
+      }
+    } catch (_err) {
+      console.warn('showPicker error:', _err)
+    }
+    try {
+      el.focus()
+    } catch (_e) {}
+  }
 
   const categories = ['Rent', 'Electricity', 'Tea/Food', 'Salary', 'Misc', 'Repairing', 'Transport']
 
@@ -606,9 +646,10 @@ function Expenses() {
                 </div>
               </div>
 
-              {/* Explicit DD-MM-YYYY Date Box with Overlaid Native Picker */}
+              {/* Explicit DD-MM-YYYY Date Box with Working Calendar showPicker */}
               <div className="relative">
                 <input
+                  ref={formDateRef}
                   type="date"
                   required
                   value={form.date}
@@ -616,11 +657,15 @@ function Expenses() {
                   onChange={e => {
                     if (e.target.value) setForm(f => ({ ...f, date: e.target.value }))
                   }}
-                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
-                  title="Click to select date from calendar"
+                  className="absolute inset-0 opacity-0 pointer-events-none w-full h-full -z-10"
+                  tabIndex={-1}
+                  aria-hidden="true"
                 />
 
-                <div className="w-full px-4 py-3 bg-white dark:bg-[#2c2c2e] border-2 border-blue-300 dark:border-blue-750 rounded-xl flex items-center justify-between shadow-2xs hover:border-blue-500 transition">
+                <div
+                  onClick={openFormDatePicker}
+                  className="w-full px-4 py-3 bg-white dark:bg-[#2c2c2e] border-2 border-blue-300 dark:border-blue-700/80 rounded-xl flex items-center justify-between shadow-2xs hover:border-blue-500 hover:bg-blue-50/20 dark:hover:bg-blue-950/20 transition cursor-pointer group"
+                >
                   <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
                     <span className="text-base sm:text-lg font-black text-blue-700 dark:text-blue-400 tabular-nums tracking-wider">
                       {formatDateDDMMYYYY(form.date)}
@@ -630,10 +675,14 @@ function Expenses() {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold text-xs shrink-0">
-                    <span className="hidden sm:inline">Change Date</span>
-                    <Calendar size={18} />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={openFormDatePicker}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-lg shadow-2xs transition shrink-0 cursor-pointer"
+                  >
+                    <Calendar size={15} />
+                    <span>Change Date</span>
+                  </button>
                 </div>
               </div>
 
@@ -759,25 +808,32 @@ function Expenses() {
           </div>
         </div>
 
-        {/* Custom Date Input Strip (with explicit DD-MM-YYYY format) */}
+        {/* Custom Date Input Strip (with explicit DD-MM-YYYY format and working picker) */}
         {dateFilter === 'custom' && (
           <div className="pt-2 border-t border-gray-100 dark:border-white/5 flex items-center gap-3 flex-wrap">
             <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Choose Specific Date:</span>
             <div className="relative">
               <input
+                ref={filterDateRef}
                 type="date"
                 value={customDate}
                 max={getTodayDateStr()}
                 onChange={e => {
                   if (e.target.value) setCustomDate(e.target.value)
                 }}
-                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                className="absolute inset-0 opacity-0 pointer-events-none w-full h-full -z-10"
+                tabIndex={-1}
+                aria-hidden="true"
               />
-              <div className="px-3.5 py-1.5 border-2 border-blue-300 dark:border-blue-700 rounded-xl text-xs font-extrabold bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 flex items-center gap-2 hover:border-blue-500 transition cursor-pointer">
+              <button
+                type="button"
+                onClick={openFilterDatePicker}
+                className="px-3.5 py-1.5 border-2 border-blue-300 dark:border-blue-700 rounded-xl text-xs font-extrabold bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 flex items-center gap-2 hover:border-blue-500 transition cursor-pointer"
+              >
                 <span className="tabular-nums tracking-wide">{formatDateDDMMYYYY(customDate)}</span>
                 <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">({formatDateFullHuman(customDate)})</span>
-                <Calendar size={13} className="text-blue-600" />
-              </div>
+                <Calendar size={14} className="text-blue-600 dark:text-blue-400" />
+              </button>
             </div>
             <span className="text-xs text-gray-500">
               Showing records for {formatDateDDMMYYYY(customDate)}
