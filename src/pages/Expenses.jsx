@@ -18,6 +18,39 @@ export const getYesterdayDateStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+export const formatDateDDMMYYYY = (dateStr) => {
+  if (!dateStr) return ''
+  const parts = String(dateStr).slice(0, 10).split('-')
+  if (parts.length === 3) {
+    const [y, m, d] = parts
+    return `${d.padStart(2, '0')}-${m.padStart(2, '0')}-${y}`
+  }
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return String(dateStr)
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+  return `${day}-${month}-${year}`
+}
+
+export const formatDateFullHuman = (dateStr) => {
+  if (!dateStr) return ''
+  let d = null
+  const parts = String(dateStr).slice(0, 10).split('-')
+  if (parts.length === 3) {
+    const [y, m, day] = parts.map(Number)
+    d = new Date(y, m - 1, day)
+  } else {
+    d = new Date(dateStr)
+  }
+  if (!d || isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  })
+}
+
 function Expenses() {
   const { user } = useAuth()
   const [expenses, setExpenses] = useState([])
@@ -359,46 +392,52 @@ function Expenses() {
 
   const formatExpenseDate = (dateVal, createdAtVal) => {
     let d = null
+    let rawDateStr = ''
     if (dateVal) {
-      const [y, m, day] = String(dateVal).split('-').map(Number)
+      rawDateStr = String(dateVal).slice(0, 10)
+      const [y, m, day] = rawDateStr.split('-').map(Number)
       d = new Date(y, m - 1, day)
     } else if (createdAtVal) {
       d = new Date(createdAtVal)
+      if (!isNaN(d.getTime())) {
+        rawDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      }
     }
     if (!d || isNaN(d.getTime())) return '-'
 
     const todayStr = getTodayDateStr()
     const yesterdayStr = getYesterdayDateStr()
-    const expDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const ddMmYyyy = formatDateDDMMYYYY(rawDateStr)
+    const monthText = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
-    const formatted = d.toLocaleDateString('en-PK', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    })
-
-    if (expDateStr === todayStr) {
+    if (rawDateStr === todayStr) {
       return (
-        <span className="inline-flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
             Today
           </span>
-          <span className="font-semibold text-gray-900 dark:text-gray-100">{formatted}</span>
-        </span>
+          <span className="font-extrabold text-gray-900 dark:text-white tabular-nums tracking-wide">{ddMmYyyy}</span>
+          <span className="text-xs text-gray-400 font-medium">({monthText})</span>
+        </div>
       )
     }
-    if (expDateStr === yesterdayStr) {
+    if (rawDateStr === yesterdayStr) {
       return (
-        <span className="inline-flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
             Yesterday
           </span>
-          <span className="font-medium text-gray-700 dark:text-gray-300">{formatted}</span>
-        </span>
+          <span className="font-extrabold text-gray-900 dark:text-white tabular-nums tracking-wide">{ddMmYyyy}</span>
+          <span className="text-xs text-gray-400 font-medium">({monthText})</span>
+        </div>
       )
     }
-    return <span className="font-medium text-gray-700 dark:text-gray-300">{formatted}</span>
+    return (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="font-extrabold text-gray-900 dark:text-white tabular-nums tracking-wide">{ddMmYyyy}</span>
+        <span className="text-xs text-gray-400 font-medium">({monthText})</span>
+      </div>
+    )
   }
 
   if (!hasFeature('expenses')) return <UpgradeWall feature="expenses" />
@@ -527,9 +566,9 @@ function Expenses() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* 1. Date Selector with Quick Past-Date Pills */}
+            {/* 1. Date Selector with Quick Past-Date Pills & Explicit DD-MM-YYYY Display */}
             <div className="bg-gradient-to-br from-blue-50/70 to-indigo-50/40 dark:from-blue-950/30 dark:to-indigo-950/20 p-4 rounded-2xl border border-blue-200/80 dark:border-blue-800/40">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
                 <label className="text-xs font-bold text-blue-950 dark:text-blue-200 uppercase tracking-wider flex items-center gap-1.5">
                   <Calendar size={14} className="text-blue-600 dark:text-blue-400" />
                   <span>Expense Date (خرچے کی تاریخ)</span>
@@ -567,16 +606,41 @@ function Expenses() {
                 </div>
               </div>
 
-              <input
-                type="date"
-                required
-                value={form.date}
-                max={getTodayDateStr()}
-                onChange={e => setForm({ ...form, date: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-[#2c2c2e] border border-blue-200 dark:border-blue-700/60 rounded-xl font-bold text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
-              />
-              <p className="text-[11px] text-blue-800/80 dark:text-blue-300/80 mt-1.5">
-                💡 Tip: Click calendar or pick any previous date if you forgot to add yesterday or past expenses.
+              {/* Explicit DD-MM-YYYY Date Box with Overlaid Native Picker */}
+              <div className="relative">
+                <input
+                  type="date"
+                  required
+                  value={form.date}
+                  max={getTodayDateStr()}
+                  onChange={e => {
+                    if (e.target.value) setForm(f => ({ ...f, date: e.target.value }))
+                  }}
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                  title="Click to select date from calendar"
+                />
+
+                <div className="w-full px-4 py-3 bg-white dark:bg-[#2c2c2e] border-2 border-blue-300 dark:border-blue-750 rounded-xl flex items-center justify-between shadow-2xs hover:border-blue-500 transition">
+                  <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+                    <span className="text-base sm:text-lg font-black text-blue-700 dark:text-blue-400 tabular-nums tracking-wider">
+                      {formatDateDDMMYYYY(form.date)}
+                    </span>
+                    <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-blue-100 text-blue-900 dark:bg-blue-900/50 dark:text-blue-200 border border-blue-200 dark:border-blue-800">
+                      📅 {formatDateFullHuman(form.date)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold text-xs shrink-0">
+                    <span className="hidden sm:inline">Change Date</span>
+                    <Calendar size={18} />
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-blue-900/90 dark:text-blue-300/90 mt-2 flex items-center gap-1.5 flex-wrap">
+                <span>💡 Displayed as:</span>
+                <span className="font-extrabold text-blue-800 dark:text-blue-200 underline">DD-MM-YYYY</span>
+                <span>({formatDateDDMMYYYY(form.date)} = {formatDateFullHuman(form.date)})</span>
               </p>
             </div>
 
@@ -641,8 +705,8 @@ function Expenses() {
                 ) : (
                   <>
                     <span>{editingId ? 'Update Expense' : 'Save Expense (خرچہ محفوظ کریں)'}</span>
-                    <span className="text-blue-200 text-xs">
-                      • {form.date === getTodayDateStr() ? 'For Today' : `For ${form.date}`}
+                    <span className="text-blue-200 text-xs font-medium">
+                      • {formatDateDDMMYYYY(form.date)} ({formatDateFullHuman(form.date)})
                     </span>
                   </>
                 )}
@@ -695,18 +759,28 @@ function Expenses() {
           </div>
         </div>
 
-        {/* Custom Date Input Strip (only if custom is selected) */}
+        {/* Custom Date Input Strip (with explicit DD-MM-YYYY format) */}
         {dateFilter === 'custom' && (
           <div className="pt-2 border-t border-gray-100 dark:border-white/5 flex items-center gap-3 flex-wrap">
             <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Choose Specific Date:</span>
-            <input
-              type="date"
-              value={customDate}
-              onChange={e => setCustomDate(e.target.value)}
-              className="px-3 py-1.5 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-bold bg-blue-50/50 dark:bg-blue-950/30 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="relative">
+              <input
+                type="date"
+                value={customDate}
+                max={getTodayDateStr()}
+                onChange={e => {
+                  if (e.target.value) setCustomDate(e.target.value)
+                }}
+                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+              />
+              <div className="px-3.5 py-1.5 border-2 border-blue-300 dark:border-blue-700 rounded-xl text-xs font-extrabold bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 flex items-center gap-2 hover:border-blue-500 transition cursor-pointer">
+                <span className="tabular-nums tracking-wide">{formatDateDDMMYYYY(customDate)}</span>
+                <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">({formatDateFullHuman(customDate)})</span>
+                <Calendar size={13} className="text-blue-600" />
+              </div>
+            </div>
             <span className="text-xs text-gray-500">
-              Showing records for {customDate}
+              Showing records for {formatDateDDMMYYYY(customDate)}
             </span>
           </div>
         )}
@@ -751,9 +825,9 @@ function Expenses() {
                     <span className="px-2.5 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-md text-[10px] font-black uppercase tracking-wider">
                       {exp.category}
                     </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
                       {formatExpenseDate(exp.date, exp.created_at)}
-                    </span>
+                    </div>
                   </div>
                   <p className="mt-1.5 font-bold text-gray-900 dark:text-white text-sm">
                     {exp.note || exp.description || 'No description'}
@@ -804,7 +878,7 @@ function Expenses() {
                     className="w-4 h-4 rounded text-blue-600"
                   />
                 </th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Expense Date (تاریخ)</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Expense Date (DD-MM-YYYY)</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Category (قسم)</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap min-w-[180px]">Description (تفصیل)</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right whitespace-nowrap">Amount (رقم)</th>
