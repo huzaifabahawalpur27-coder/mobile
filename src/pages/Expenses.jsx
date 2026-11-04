@@ -1,10 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue, moveToTrash } from '../services/db'
 import PasswordModal from '../components/PasswordModal'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
+import { Calendar, Search, Filter, Plus, X, Edit3, Trash2 } from 'lucide-react'
+
+export const getTodayDateStr = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export const getYesterdayDateStr = () => {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 function Expenses() {
   const { user } = useAuth()
@@ -14,7 +26,13 @@ function Expenses() {
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
 
-  const [form, setForm] = useState({ category: 'Misc', amount: '', note: '' })
+  const [form, setForm] = useState({
+    category: 'Misc',
+    amount: '',
+    note: '',
+    date: getTodayDateStr()
+  })
+
   const [summary, setSummary] = useState({ today: 0, monthly: 0 })
   const [selected, setSelected] = useState([])
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -22,6 +40,11 @@ function Expenses() {
   const [monthlyBudget, setMonthlyBudget] = useState(() => Number(localStorage.getItem('monthly_expense_budget') || 0))
   const [editingBudget, setEditingBudget] = useState(false)
   const [budgetInput, setBudgetInput] = useState('')
+
+  // Filter states
+  const [dateFilter, setDateFilter] = useState('all') // 'all' | 'today' | 'yesterday' | 'this_month' | 'custom'
+  const [customDate, setCustomDate] = useState(getTodayDateStr())
+  const [searchQuery, setSearchQuery] = useState('')
 
   const categories = ['Rent', 'Electricity', 'Tea/Food', 'Salary', 'Misc', 'Repairing', 'Transport']
 
@@ -32,7 +55,7 @@ function Expenses() {
   const fetchExpenses = async () => {
     setLoading(true)
     try {
-      if (!navigator.onLine) throw new Error('Offline');
+      if (!navigator.onLine) throw new Error('Offline')
       const fetchPromise = supabase
         .from('expenses')
         .select('*')
@@ -50,44 +73,86 @@ function Expenses() {
         const cleanData = JSON.parse(JSON.stringify(data))
         await db.expenses.bulkPut(cleanData)
       }
-    } catch (e) {
+    } catch (_e) {
       console.log('Expenses: Fetching from local DB (Offline Fallback)')
       try {
         const localData = await db.expenses.toArray()
-        const sorted = localData.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+        const sorted = localData.sort((a, b) => new Date(b.created_at || b.date || 0) - new Date(a.created_at || a.date || 0))
         const filtered = sorted.filter(x => String(x.shop_id) === String(user.shop_id))
         setExpenses(filtered)
         calculateSummary(filtered)
-      } catch (err) { console.error('Local DB Expenses Error:', err) }
+      } catch (err) {
+        console.error('Local DB Expenses Error:', err)
+      }
     } finally {
       setLoading(false)
     }
   }
 
   const calculateSummary = (data) => {
+    const todayStr = getTodayDateStr()
     const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+    const currentMonth = today.getMonth()
+    const currentYear = today.getFullYear()
 
     const todayTotal = data
-      .filter(e => new Date(e.created_at) >= today)
-      .reduce((sum, e) => sum + Number(e.amount), 0)
+      .filter(e => {
+        if (e.date) return String(e.date).slice(0, 10) === todayStr
+        const d = new Date(e.created_at)
+        if (isNaN(d.getTime())) return false
+        const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        return dStr === todayStr
+      })
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
     const monthlyTotal = data
-      .filter(e => new Date(e.created_at) >= firstOfMonth)
-      .reduce((sum, e) => sum + Number(e.amount), 0)
+      .filter(e => {
+        let d = null
+        if (e.date) {
+          const [y, m, day] = String(e.date).split('-').map(Number)
+          d = new Date(y, m - 1, day)
+        } else if (e.created_at) {
+          d = new Date(e.created_at)
+        }
+        if (!d || isNaN(d.getTime())) return false
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+      })
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
     setSummary({ today: todayTotal, monthly: monthlyTotal })
+  }
+
+  const resetForm = () => {
+    setEditingId(null)
+    setForm({
+      category: 'Misc',
+      amount: '',
+      note: '',
+      date: getTodayDateStr()
+    })
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setSaving(true)
+
+    const selectedDateStr = form.date || getTodayDateStr()
+    const isToday = selectedDateStr === getTodayDateStr()
+    const now = new Date()
+    const [y, m, d] = selectedDateStr.split('-').map(Number)
+    // If today, keep the current time; if a past/future date, set to 12:00:00 midday to prevent UTC timezone day-boundary shifts
+    const expenseDate = isToday
+      ? now
+      : new Date(y, m - 1, d, 12, 0, 0)
+    const isoString = expenseDate.toISOString()
+
     const payload = {
-      ...form,
+      category: form.category,
+      amount: parseFloat(form.amount) || 0,
       note: form.note || '',
       description: form.note || '',
-      amount: parseFloat(form.amount) || 0,
+      date: selectedDateStr,
+      created_at: isoString,
       shop_id: user.shop_id
     }
 
@@ -99,7 +164,8 @@ function Expenses() {
             category: payload.category,
             amount: payload.amount,
             description: payload.description,
-            shop_id: payload.shop_id
+            shop_id: payload.shop_id,
+            created_at: payload.created_at
           }
           const retryRes = await supabase.from('expenses').update(minimal).eq('id', editingId)
           error = retryRes.error
@@ -112,21 +178,24 @@ function Expenses() {
             category: payload.category,
             amount: payload.amount,
             description: payload.description,
-            shop_id: payload.shop_id
+            shop_id: payload.shop_id,
+            created_at: payload.created_at
           }
           const retryRes = await supabase.from('expenses').insert([minimal])
           error = retryRes.error
         }
         if (error) throw error
       }
-      setEditingId(null)
-      setForm({ category: 'Misc', amount: '', note: '' })
+
+      resetForm()
       setShowForm(false)
       fetchExpenses()
     } catch (error) {
       const errMsg = error?.message || String(error)
       if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
-        const offlineData = editingId ? { ...payload, id: editingId } : { ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+        const offlineData = editingId
+          ? { ...payload, id: editingId }
+          : { ...payload, id: crypto.randomUUID(), created_at: payload.created_at, date: payload.date }
         const action = editingId ? 'UPDATE' : 'INSERT'
         await addToSyncQueue('expenses', action, offlineData)
         if (editingId) {
@@ -134,8 +203,7 @@ function Expenses() {
         } else {
           await db.expenses.add(offlineData)
         }
-        setEditingId(null)
-        setForm({ category: 'Misc', amount: '', note: '' })
+        resetForm()
         setShowForm(false)
         fetchExpenses()
         alert('Offline mode: Saved locally. Will sync automatically when online. 🔄')
@@ -148,7 +216,22 @@ function Expenses() {
   }
 
   const handleEdit = (exp) => {
-    setForm({ category: exp.category, amount: exp.amount, note: exp.note || '' })
+    let dateStr = getTodayDateStr()
+    if (exp.date) {
+      dateStr = String(exp.date).slice(0, 10)
+    } else if (exp.created_at) {
+      const d = new Date(exp.created_at)
+      if (!isNaN(d.getTime())) {
+        dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      }
+    }
+
+    setForm({
+      category: exp.category || 'Misc',
+      amount: exp.amount ?? '',
+      note: exp.note || exp.description || '',
+      date: dateStr
+    })
     setEditingId(exp.id)
     setShowForm(true)
   }
@@ -217,47 +300,158 @@ function Expenses() {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
+  // Filtered expenses list
+  const filteredExpenses = useMemo(() => {
+    const todayStr = getTodayDateStr()
+    const yesterdayStr = getYesterdayDateStr()
+    const now = new Date()
+    const curMonth = now.getMonth()
+    const curYear = now.getFullYear()
+
+    return expenses.filter(exp => {
+      let dStr = ''
+      let d = null
+      if (exp.date) {
+        dStr = String(exp.date).slice(0, 10)
+        const [y, m, day] = dStr.split('-').map(Number)
+        d = new Date(y, m - 1, day)
+      } else if (exp.created_at) {
+        d = new Date(exp.created_at)
+        if (!isNaN(d.getTime())) {
+          dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        }
+      }
+
+      if (dateFilter === 'today' && dStr !== todayStr) return false
+      if (dateFilter === 'yesterday' && dStr !== yesterdayStr) return false
+      if (dateFilter === 'this_month') {
+        if (!d || d.getMonth() !== curMonth || d.getFullYear() !== curYear) return false
+      }
+      if (dateFilter === 'custom' && customDate) {
+        if (dStr !== customDate) return false
+      }
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        const cat = (exp.category || '').toLowerCase()
+        const note = (exp.note || exp.description || '').toLowerCase()
+        const amt = String(exp.amount || '')
+        if (!cat.includes(q) && !note.includes(q) && !amt.includes(q) && !dStr.includes(q)) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [expenses, dateFilter, customDate, searchQuery])
+
+  const filteredTotal = useMemo(() => {
+    return filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
+  }, [filteredExpenses])
+
   const toggleSelectAll = () => {
-    if (selected.length === expenses.length) {
+    if (selected.length === filteredExpenses.length && filteredExpenses.length > 0) {
       setSelected([])
     } else {
-      setSelected(expenses.map(x => x.id))
+      setSelected(filteredExpenses.map(x => x.id))
     }
+  }
+
+  const formatExpenseDate = (dateVal, createdAtVal) => {
+    let d = null
+    if (dateVal) {
+      const [y, m, day] = String(dateVal).split('-').map(Number)
+      d = new Date(y, m - 1, day)
+    } else if (createdAtVal) {
+      d = new Date(createdAtVal)
+    }
+    if (!d || isNaN(d.getTime())) return '-'
+
+    const todayStr = getTodayDateStr()
+    const yesterdayStr = getYesterdayDateStr()
+    const expDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+    const formatted = d.toLocaleDateString('en-PK', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    })
+
+    if (expDateStr === todayStr) {
+      return (
+        <span className="inline-flex items-center gap-1.5 flex-wrap">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+            Today
+          </span>
+          <span className="font-semibold text-gray-900 dark:text-gray-100">{formatted}</span>
+        </span>
+      )
+    }
+    if (expDateStr === yesterdayStr) {
+      return (
+        <span className="inline-flex items-center gap-1.5 flex-wrap">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+            Yesterday
+          </span>
+          <span className="font-medium text-gray-700 dark:text-gray-300">{formatted}</span>
+        </span>
+      )
+    }
+    return <span className="font-medium text-gray-700 dark:text-gray-300">{formatted}</span>
   }
 
   if (!hasFeature('expenses')) return <UpgradeWall feature="expenses" />
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+      {/* Top Banner / Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">💸 Expenses</h1>
-          <p className="text-gray-500 text-sm">Track your daily business expenditures</p>
+          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
+            <span>💸 Expenses</span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+              خرچے
+            </span>
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-0.5">
+            Track daily mobile shop expenditures and record previous date expenses
+          </p>
         </div>
-        <div className="flex gap-4 w-full sm:w-auto overflow-x-auto pb-1 items-center flex-wrap">
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-center min-w-[120px]">
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Today</p>
-            <p className="text-xl font-bold text-red-600">Rs. {summary.today.toLocaleString()}</p>
+
+        <div className="flex gap-3 w-full sm:w-auto overflow-x-auto pb-1 items-center flex-wrap">
+          {/* Today's Expense Card */}
+          <div className="bg-white dark:bg-[#1c1c1e] p-3.5 sm:p-4 rounded-2xl shadow-2xs border border-gray-200/80 dark:border-white/10 text-center min-w-[125px]">
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Today (آج)</p>
+            <p className="text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums">
+              Rs. {Math.round(summary.today).toLocaleString()}
+            </p>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-center min-w-[120px]">
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">This Month</p>
-            <p className="text-xl font-bold text-gray-800">Rs. {summary.monthly.toLocaleString()}</p>
+
+          {/* This Month's Expense Card */}
+          <div className="bg-white dark:bg-[#1c1c1e] p-3.5 sm:p-4 rounded-2xl shadow-2xs border border-gray-200/80 dark:border-white/10 text-center min-w-[125px]">
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">This Month (اس مہینے)</p>
+            <p className="text-xl font-black text-gray-900 dark:text-white tabular-nums">
+              Rs. {Math.round(summary.monthly).toLocaleString()}
+            </p>
           </div>
 
           {/* Monthly Budget Card */}
           {(() => {
             const pct = monthlyBudget > 0 ? Math.min((summary.monthly / monthlyBudget) * 100, 100) : 0
-            const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-400' : 'bg-green-500'
-            const textColor = pct >= 90 ? 'text-red-600' : pct >= 70 ? 'text-yellow-600' : 'text-green-600'
+            const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-400' : 'bg-emerald-500'
+            const textColor = pct >= 90 ? 'text-red-600' : pct >= 70 ? 'text-amber-600' : 'text-emerald-600'
             return (
-              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 min-w-[180px]">
+              <div className="bg-white dark:bg-[#1c1c1e] p-3.5 sm:p-4 rounded-2xl shadow-2xs border border-gray-200/80 dark:border-white/10 min-w-[170px]">
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Monthly Budget</p>
                   <button
                     onClick={() => { setBudgetInput(monthlyBudget); setEditingBudget(true) }}
-                    className="text-[10px] text-blue-500 hover:text-blue-700 font-bold"
+                    className="text-[10px] text-blue-500 hover:text-blue-700 font-bold cursor-pointer"
                     title="Edit budget"
-                  >✏️</button>
+                  >
+                    ✏️
+                  </button>
                 </div>
                 {editingBudget ? (
                   <div className="flex gap-1 mt-1">
@@ -267,167 +461,410 @@ function Expenses() {
                       onChange={e => setBudgetInput(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') saveBudget(); if (e.key === 'Escape') setEditingBudget(false) }}
                       autoFocus
-                      className="w-24 px-2 py-1 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-24 px-2 py-1 border rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-[#2c2c2e] text-gray-900 dark:text-white"
                       placeholder="Budget..."
                     />
-                    <button onClick={saveBudget} className="px-2 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold">✓</button>
+                    <button onClick={saveBudget} className="px-2 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold cursor-pointer">✓</button>
                   </div>
                 ) : monthlyBudget > 0 ? (
                   <>
-                    <p className={`text-lg font-bold ${textColor}`}>
-                      Rs. {summary.monthly.toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ {monthlyBudget.toLocaleString()}</span>
+                    <p className={`text-base sm:text-lg font-black ${textColor} tabular-nums`}>
+                      Rs. {Math.round(summary.monthly).toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ {monthlyBudget.toLocaleString()}</span>
                     </p>
-                    <div className="w-full bg-gray-100 rounded-full h-2 mt-2">
-                      <div className={`${barColor} h-2 rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+                    <div className="w-full bg-gray-100 dark:bg-white/10 rounded-full h-1.5 mt-1.5">
+                      <div className={`${barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
                     </div>
                     <p className={`text-[10px] font-bold mt-1 ${textColor}`}>{pct.toFixed(0)}% used</p>
                   </>
                 ) : (
-                  <p className="text-sm text-gray-400 italic mt-1">Set a budget ✏️</p>
+                  <p className="text-xs text-gray-400 italic mt-1">Set a budget ✏️</p>
                 )}
               </div>
             )
           })()}
 
-          {selected.length > 0 && (
-            <button
-              onClick={() => requestDelete(selected)}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl transition font-bold text-sm"
-            >
-              🗑️ Delete Selected ({selected.length})
-            </button>
-          )}
+          {/* New Expense Button */}
           <button
-            onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ category: 'Misc', amount: '', note: '' }) }}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition shadow-lg shadow-blue-100 font-bold"
+            onClick={() => {
+              if (showForm) {
+                setShowForm(false)
+                resetForm()
+              } else {
+                resetForm()
+                setShowForm(true)
+              }
+            }}
+            className="px-5 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl shadow-md transition font-bold text-sm flex items-center gap-2 cursor-pointer active:scale-95"
           >
-            {showForm ? 'Cancel' : '+ Add Expense'}
+            {showForm ? <X size={16} /> : <Plus size={16} />}
+            <span>{showForm ? 'Cancel' : '+ Add Expense (نیا خرچہ)'}</span>
           </button>
         </div>
       </div>
 
+      {/* Expense Input / Edit Form */}
       {showForm && (
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-blue-50 max-w-xl mx-auto md:mx-0">
-          <h2 className="font-bold text-gray-800 mb-4">{editingId ? 'Edit Expense' : 'New Expense'}</h2>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white dark:bg-[#1c1c1e] rounded-3xl shadow-xl p-6 sm:p-7 border border-blue-100 dark:border-white/10 max-w-2xl mx-auto transition-all">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-              <select
-                value={form.category}
-                onChange={e => setForm({ ...form, category: e.target.value })}
-                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                {categories.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <h2 className="font-black text-gray-900 dark:text-white text-lg sm:text-xl flex items-center gap-2">
+                <span>{editingId ? 'Edit Expense' : 'Record Expense'}</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
+                  {editingId ? 'خرچہ تبدیل کریں' : 'نیا خرچہ'}
+                </span>
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Select today or any previous date to record shop expenditure
+              </p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
+            <button
+              type="button"
+              onClick={() => { setShowForm(false); resetForm() }}
+              className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* 1. Date Selector with Quick Past-Date Pills */}
+            <div className="bg-gradient-to-br from-blue-50/70 to-indigo-50/40 dark:from-blue-950/30 dark:to-indigo-950/20 p-4 rounded-2xl border border-blue-200/80 dark:border-blue-800/40">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <label className="text-xs font-bold text-blue-950 dark:text-blue-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar size={14} className="text-blue-600 dark:text-blue-400" />
+                  <span>Expense Date (خرچے کی تاریخ)</span>
+                  {form.date !== getTodayDateStr() && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                      Previous Date (پرانی تاریخ)
+                    </span>
+                  )}
+                </label>
+
+                {/* Quick Date Pills */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, date: getTodayDateStr() }))}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      form.date === getTodayDateStr()
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-[#2c2c2e] text-gray-700 dark:text-gray-300 hover:bg-gray-100 border border-gray-200/60 dark:border-white/10'
+                    }`}
+                  >
+                    Today (آج)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, date: getYesterdayDateStr() }))}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      form.date === getYesterdayDateStr()
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-[#2c2c2e] text-gray-700 dark:text-gray-300 hover:bg-gray-100 border border-gray-200/60 dark:border-white/10'
+                    }`}
+                  >
+                    Yesterday (گزشتہ کل)
+                  </button>
+                </div>
+              </div>
+
               <input
-                type="number"
+                type="date"
                 required
-                value={form.amount}
-                onChange={e => setForm({ ...form, amount: e.target.value })}
-                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="0.00"
+                value={form.date}
+                max={getTodayDateStr()}
+                onChange={e => setForm({ ...form, date: e.target.value })}
+                className="w-full px-3.5 py-2.5 bg-white dark:bg-[#2c2c2e] border border-blue-200 dark:border-blue-700/60 rounded-xl font-bold text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
               />
+              <p className="text-[11px] text-blue-800/80 dark:text-blue-300/80 mt-1.5">
+                💡 Tip: Click calendar or pick any previous date if you forgot to add yesterday or past expenses.
+              </p>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Note / Description</label>
-              <textarea
-                value={form.note}
-                onChange={e => setForm({ ...form, note: e.target.value })}
-                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="Description of expenditure..."
-                rows="2"
-              ></textarea>
+
+            {/* 2. Category & Amount Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider mb-1.5">
+                  Category (قسم)
+                </label>
+                <select
+                  value={form.category}
+                  onChange={e => setForm({ ...form, category: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#2c2c2e] border border-gray-200 dark:border-white/10 rounded-xl font-semibold text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider mb-1.5">
+                  Amount (Rs.) (رقم)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Rs.</span>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    step="any"
+                    value={form.amount}
+                    onChange={e => setForm({ ...form, amount: e.target.value })}
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-white dark:bg-[#2c2c2e] border border-gray-200 dark:border-white/10 rounded-xl font-black text-gray-900 dark:text-white text-base focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              {/* Note / Description */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider mb-1.5">
+                  Note / Description (تفصیل)
+                </label>
+                <input
+                  type="text"
+                  value={form.note}
+                  onChange={e => setForm({ ...form, note: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#2c2c2e] border border-gray-200 dark:border-white/10 rounded-xl font-medium text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="e.g. Electricity bill, Staff lunch, Courier fee, Shop cleaning..."
+                />
+              </div>
             </div>
-            <div className="md:col-span-2 pt-2">
+
+            {/* Submit Action */}
+            <div className="pt-2">
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition disabled:opacity-50"
+                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-98 text-white font-black text-sm rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
               >
-                {saving ? 'Saving...' : editingId ? 'Update Expense' : 'Save Expense'}
+                {saving ? (
+                  <span>Saving...</span>
+                ) : (
+                  <>
+                    <span>{editingId ? 'Update Expense' : 'Save Expense (خرچہ محفوظ کریں)'}</span>
+                    <span className="text-blue-200 text-xs">
+                      • {form.date === getTodayDateStr() ? 'For Today' : `For ${form.date}`}
+                    </span>
+                  </>
+                )}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="divide-y divide-gray-100 md:hidden">
+      {/* Filter Bar & Controls */}
+      <div className="bg-white dark:bg-[#1c1c1e] p-4 rounded-2xl shadow-2xs border border-gray-200/80 dark:border-white/10 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          {/* Quick Date Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+              <Filter size={13} />
+              <span>Date:</span>
+            </span>
+            {[
+              { id: 'all', label: 'All (سب)' },
+              { id: 'today', label: 'Today (آج)' },
+              { id: 'yesterday', label: 'Yesterday (کل)' },
+              { id: 'this_month', label: 'This Month (ماہ)' },
+              { id: 'custom', label: 'Select Date 📅' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setDateFilter(tab.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  dateFilter === tab.id
+                    ? 'bg-blue-600 text-white shadow-2xs'
+                    : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search Box */}
+          <div className="relative min-w-[220px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search category or note..."
+              className="w-full pl-9 pr-3 py-1.5 text-xs font-medium bg-gray-50 dark:bg-[#2c2c2e] border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white"
+            />
+          </div>
+        </div>
+
+        {/* Custom Date Input Strip (only if custom is selected) */}
+        {dateFilter === 'custom' && (
+          <div className="pt-2 border-t border-gray-100 dark:border-white/5 flex items-center gap-3 flex-wrap">
+            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Choose Specific Date:</span>
+            <input
+              type="date"
+              value={customDate}
+              onChange={e => setCustomDate(e.target.value)}
+              className="px-3 py-1.5 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-bold bg-blue-50/50 dark:bg-blue-950/30 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <span className="text-xs text-gray-500">
+              Showing records for {customDate}
+            </span>
+          </div>
+        )}
+
+        {/* Filter Summary & Bulk Delete */}
+        <div className="flex items-center justify-between text-xs pt-1 border-t border-gray-100 dark:border-white/5 text-gray-500 flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span>
+              Showing <strong className="text-gray-900 dark:text-white">{filteredExpenses.length}</strong> of {expenses.length} expenses
+            </span>
+            <span>•</span>
+            <span>
+              Total: <strong className="text-rose-600 dark:text-rose-400 font-black">Rs. {Math.round(filteredTotal).toLocaleString()}</strong>
+            </span>
+          </div>
+
+          {selected.length > 0 && (
+            <button
+              onClick={() => requestDelete(selected)}
+              className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              <Trash2 size={13} />
+              <span>Delete Selected ({selected.length})</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Expenses List */}
+      <div className="bg-white dark:bg-[#1c1c1e] rounded-3xl shadow-sm border border-gray-200/80 dark:border-white/10 overflow-hidden">
+        {/* Mobile View: Cards */}
+        <div className="divide-y divide-gray-100 dark:divide-white/5 md:hidden">
           {loading ? (
             <p className="px-6 py-12 text-center text-gray-400">Loading expenses...</p>
-          ) : expenses.length === 0 ? (
-            <p className="px-6 py-12 text-center text-gray-400 italic">No expenses recorded yet.</p>
-          ) : expenses.map(exp => (
-            <div key={exp.id} className={`p-4 ${selected.includes(exp.id) ? 'bg-blue-50' : ''}`}>
+          ) : filteredExpenses.length === 0 ? (
+            <p className="px-6 py-12 text-center text-gray-400 italic">No expenses match your filter.</p>
+          ) : filteredExpenses.map(exp => (
+            <div key={exp.id} className={`p-4 ${selected.includes(exp.id) ? 'bg-blue-50/80 dark:bg-blue-950/40' : ''}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-bold uppercase">
-                    {exp.category}
-                  </span>
-                  <p className="mt-1 font-bold text-gray-900 text-sm">{exp.note || 'No note'}</p>
-                  <p className="mt-1 text-xs text-gray-400">{new Date(exp.created_at).toLocaleDateString('en-PK')}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-md text-[10px] font-black uppercase tracking-wider">
+                      {exp.category}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatExpenseDate(exp.date, exp.created_at)}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 font-bold text-gray-900 dark:text-white text-sm">
+                    {exp.note || exp.description || 'No description'}
+                  </p>
                 </div>
-                <input type="checkbox" checked={selected.includes(exp.id)} onChange={() => toggleSelect(exp.id)} className="mt-1 h-4 w-4 rounded" />
+                <input
+                  type="checkbox"
+                  checked={selected.includes(exp.id)}
+                  onChange={() => toggleSelect(exp.id)}
+                  className="mt-1 h-4 w-4 rounded text-blue-600"
+                />
               </div>
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-lg font-black text-gray-900">Rs. {exp.amount.toLocaleString()}</p>
+              <div className="mt-3 flex items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-white/5">
+                <p className="text-base font-black text-rose-600 dark:text-rose-400 tabular-nums">
+                  Rs. {Number(exp.amount || 0).toLocaleString()}
+                </p>
                 <div className="flex gap-2">
-                  <button onClick={() => handleEdit(exp)} className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-blue-600">Edit</button>
-                  <button onClick={() => requestDelete([exp.id])} className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">Delete</button>
+                  <button
+                    onClick={() => handleEdit(exp)}
+                    className="rounded-lg bg-blue-50 dark:bg-blue-950/60 px-3 py-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Edit3 size={12} />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    onClick={() => requestDelete([exp.id])}
+                    className="rounded-lg bg-rose-50 dark:bg-rose-950/60 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 size={12} />
+                    <span>Delete</span>
+                  </button>
                 </div>
               </div>
             </div>
           ))}
         </div>
+
+        {/* Desktop View: Table */}
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/10">
               <tr>
                 <th className="px-4 py-4 w-10">
                   <input
                     type="checkbox"
-                    checked={selected.length === expenses.length && expenses.length > 0}
+                    checked={selected.length === filteredExpenses.length && filteredExpenses.length > 0}
                     onChange={toggleSelectAll}
-                    className="w-4 h-4 rounded"
+                    className="w-4 h-4 rounded text-blue-600"
                   />
                 </th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Date</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Category</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap min-w-[150px]">Description</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right whitespace-nowrap">Amount</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Expense Date (تاریخ)</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Category (قسم)</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap min-w-[180px]">Description (تفصیل)</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right whitespace-nowrap">Amount (رقم)</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center whitespace-nowrap">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-white/5">
               {loading ? (
-                <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-400">Loading expenses...</td></tr>
-              ) : expenses.length === 0 ? (
-                <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-400 italic">No expenses recorded yet.</td></tr>
-              ) : expenses.map(exp => (
-                <tr key={exp.id} className={`hover:bg-gray-50 transition group ${selected.includes(exp.id) ? 'bg-blue-50' : ''}`}>
+                <tr>
+                  <td colSpan="6" className="px-6 py-12 text-center text-gray-400">Loading expenses...</td>
+                </tr>
+              ) : filteredExpenses.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-12 text-center text-gray-400 italic">No expenses match your selected filter.</td>
+                </tr>
+              ) : filteredExpenses.map(exp => (
+                <tr
+                  key={exp.id}
+                  className={`hover:bg-gray-50/80 dark:hover:bg-white/[0.02] transition group ${
+                    selected.includes(exp.id) ? 'bg-blue-50/70 dark:bg-blue-950/30' : ''
+                  }`}
+                >
                   <td className="px-4 py-4">
                     <input
                       type="checkbox"
                       checked={selected.includes(exp.id)}
                       onChange={() => toggleSelect(exp.id)}
-                      className="w-4 h-4 rounded"
+                      className="w-4 h-4 rounded text-blue-600"
                     />
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{new Date(exp.created_at).toLocaleDateString('en-PK')}</td>
+                  <td className="px-6 py-4 text-sm">
+                    {formatExpenseDate(exp.date, exp.created_at)}
+                  </td>
                   <td className="px-6 py-4">
-                    <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-bold uppercase">
+                    <span className="px-3 py-1 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-full text-xs font-bold uppercase tracking-wider">
                       {exp.category}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 italic">{exp.note || '-'}</td>
-                  <td className="px-6 py-4 text-right font-bold text-gray-900">Rs. {exp.amount.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300 font-medium">
+                    {exp.note || exp.description || <span className="text-gray-400 italic">-</span>}
+                  </td>
+                  <td className="px-6 py-4 text-right font-black text-rose-600 dark:text-rose-400 text-base tabular-nums">
+                    Rs. {Number(exp.amount || 0).toLocaleString()}
+                  </td>
                   <td className="px-6 py-4 text-center">
                     <div className="flex justify-center gap-3 opacity-0 group-hover:opacity-100 transition">
-                      <button onClick={() => handleEdit(exp)} className="text-blue-500 hover:text-blue-700 font-bold text-sm">Edit</button>
-                      <button onClick={() => requestDelete([exp.id])} className="text-red-500 hover:text-red-700 font-bold text-sm">Delete</button>
+                      <button
+                        onClick={() => handleEdit(exp)}
+                        className="text-blue-600 dark:text-blue-400 hover:underline font-bold text-xs flex items-center gap-1 cursor-pointer"
+                      >
+                        <Edit3 size={12} />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        onClick={() => requestDelete([exp.id])}
+                        className="text-rose-600 dark:text-rose-400 hover:underline font-bold text-xs flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 size={12} />
+                        <span>Delete</span>
+                      </button>
                     </div>
                   </td>
                 </tr>
