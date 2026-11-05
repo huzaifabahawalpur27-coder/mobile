@@ -1034,70 +1034,87 @@ function PurchaseHistory() {
 
                 {/* Detail Modal */}
                 {selectedPurchase && (
-                    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
-                        <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[90dvh] overflow-y-auto">
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <h2 className="text-lg font-bold text-gray-800">
-                                        Purchase Invoice PR-{String(selectedPurchase.id).slice(-8)}
-                                    </h2>
-                                    <p className="text-sm text-gray-500">
-                                        {new Date(selectedPurchase.created_at).toLocaleString('en-PK')} |
-                                        {' '}{selectedPurchase.suppliers?.name || 'Unknown'} |
-                                        <span className={selectedPurchase.payment_type === 'cash' ? ' text-green-600' : ' text-orange-600'}>
-                                            {' '}{selectedPurchase.payment_type?.toUpperCase()}
-                                        </span>
-                                    </p>
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+                        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-2xl rounded-[26px] shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-black/[0.08] dark:border-white/[0.12] w-full max-w-3xl max-h-[92dvh] overflow-y-auto flex flex-col p-4 sm:p-6 text-gray-900 dark:text-gray-100">
+                            <div className="flex justify-between items-start mb-4 pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-[14px] bg-[#ff9500]/12 text-[#ff9500] dark:bg-[#ff9500]/25 dark:text-[#ffaa33] flex items-center justify-center font-bold text-lg shrink-0 shadow-2xs">
+                                        📦
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h2 className="text-base sm:text-lg font-black text-[#1d1d1f] dark:text-[#f5f5f7] tracking-tight">
+                                                Purchase Invoice PR-{String(selectedPurchase.id).slice(-8)}
+                                            </h2>
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                                                Inward Stock
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-[#86868b] dark:text-[#98989d] mt-0.5 flex items-center gap-2 flex-wrap">
+                                            <span>{new Date(selectedPurchase.created_at).toLocaleString("en-PK")}</span>
+                                            <span>•</span>
+                                            <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedPurchase.suppliers?.name || "Direct / Walk-in Supplier"}</span>
+                                            <span>•</span>
+                                            <span className="font-bold text-[#ff9500] dark:text-[#ffaa33]">
+                                                {selectedPurchase.payment_type?.toUpperCase()}
+                                            </span>
+                                        </p>
+                                    </div>
                                 </div>
-                                <button onClick={() => setSelectedPurchase(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+                                <button
+                                    onClick={() => setSelectedPurchase(null)}
+                                    className="w-8 h-8 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.1] dark:hover:bg-white/[0.15] text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white flex items-center justify-center transition cursor-pointer text-lg font-bold shrink-0"
+                                >
+                                    ×
+                                </button>
                             </div>
 
                             {/* Info Grid */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 bg-gray-50 p-4 rounded-xl border border-gray-100 text-sm">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4 p-3.5 rounded-[18px] bg-slate-50/80 dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08] text-xs">
                                 <div>
-                                    <span className="text-gray-400 font-medium uppercase text-[10px] block">Supplier Info</span>
-                                    <b className="text-gray-900 block">{selectedPurchase.suppliers?.name || 'Direct / Walk-in Supplier'}</b>
+                                    <span className="text-[#86868b] dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider block">Supplier Info</span>
+                                    <b className="text-gray-900 dark:text-white block mt-0.5">{selectedPurchase.suppliers?.name || "Direct / Walk-in Supplier"}</b>
                                     {selectedPurchase.suppliers?.phone && (
-                                        <span className="text-xs text-blue-700 block font-medium">📞 {selectedPurchase.suppliers.phone}</span>
+                                        <span className="text-[11px] text-[#0071e3] dark:text-[#3894ff] block font-medium mt-0.5">📞 {selectedPurchase.suppliers.phone}</span>
                                     )}
                                     {selectedPurchase.suppliers?.address && (
-                                        <span className="text-[11px] text-gray-500 block">📍 {selectedPurchase.suppliers.address}</span>
+                                        <span className="text-[10px] text-[#86868b] block truncate mt-0.5">📍 {selectedPurchase.suppliers.address}</span>
                                     )}
                                 </div>
                                 <div>
-                                    <span className="text-gray-400 font-medium uppercase text-[10px] block">Purchase Date</span>
-                                    <b className="text-gray-800">{new Date(selectedPurchase.created_at).toLocaleString('en-PK')}</b>
+                                    <span className="text-[#86868b] dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider block">Purchase Date</span>
+                                    <b className="text-gray-800 dark:text-gray-200 block mt-0.5">{new Date(selectedPurchase.created_at).toLocaleString("en-PK")}</b>
                                     {selectedPurchase.remarks && (
-                                        <p className="text-[11px] text-gray-500 italic mt-0.5 truncate" title={selectedPurchase.remarks}>
+                                        <p className="text-[10px] text-[#86868b] italic mt-0.5 truncate" title={selectedPurchase.remarks}>
                                             Note: {selectedPurchase.remarks}
                                         </p>
                                     )}
                                 </div>
                                 <div>
-                                    <span className="text-gray-400 font-medium uppercase text-[10px] block">Total Amount</span>
-                                    <b className="text-lg text-gray-900">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b>
+                                    <span className="text-[#86868b] dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider block">Total Amount</span>
+                                    <b className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b>
                                     {selectedPurchase.paid_amount != null && (
-                                        <span className="text-xs text-gray-500 block">
+                                        <span className="text-[11px] text-[#86868b] block mt-0.5">
                                             Paid: Rs. {Number(selectedPurchase.paid_amount).toLocaleString()}
                                         </span>
                                     )}
                                 </div>
                                 <div>
-                                    <span className="text-gray-400 font-medium uppercase text-[10px] block">Payment Method</span>
-                                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                        <b className={`uppercase px-2 py-0.5 rounded text-xs ${
-                                            selectedPurchase.payment_type === 'cash'
-                                                ? 'bg-green-100 text-green-800'
-                                                : selectedPurchase.payment_type === 'bank'
-                                                    ? 'bg-blue-100 text-blue-800'
-                                                    : 'bg-orange-100 text-orange-800'
-                                        }`}>
-                                            {selectedPurchase.payment_type === 'bank' ? `🏦 Bank${selectedPurchase.payment_details?.bank_name ? ` (${selectedPurchase.payment_details.bank_name})` : ''}` : selectedPurchase.payment_type}
-                                        </b>
+                                    <span className="text-[#86868b] dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider block">Payment Method</span>
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                        <span className={"uppercase px-2 py-0.5 rounded-full text-[10px] font-bold " + (
+                                            selectedPurchase.payment_type === "cash"
+                                                ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300"
+                                                : selectedPurchase.payment_type === "bank"
+                                                    ? "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300"
+                                                    : "bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300"
+                                        )}>
+                                            {selectedPurchase.payment_type === "bank" ? "🏦 Bank" + (selectedPurchase.payment_details?.bank_name ? " (" + selectedPurchase.payment_details.bank_name + ")" : "") : selectedPurchase.payment_type}
+                                        </span>
                                         <button
                                             type="button"
                                             onClick={() => setPurchaseToEditPayment(selectedPurchase)}
-                                            className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 text-xs font-bold border border-purple-200 hover:bg-purple-100 transition cursor-pointer"
+                                            className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-[10px] font-bold hover:bg-purple-200 transition cursor-pointer"
                                         >
                                             ✏️ Edit
                                         </button>
@@ -1106,68 +1123,71 @@ function PurchaseHistory() {
                             </div>
 
                             {loadingItems ? (
-                                <p className="text-center py-8 text-gray-500">Loading items...</p>
+                                <div className="text-center py-12 flex flex-col items-center justify-center gap-2">
+                                    <div className="w-8 h-8 border-2 border-[#ff9500] border-t-transparent rounded-full animate-spin" />
+                                    <p className="text-xs text-[#86868b] font-medium">Loading purchase items...</p>
+                                </div>
                             ) : (
                                 <>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full mb-6">
-                                            <thead className="bg-gray-50">
+                                    <div className="overflow-x-auto rounded-[16px] border border-black/[0.06] dark:border-white/[0.08] mb-4">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-[#f5f5f7] dark:bg-white/[0.04] text-[#86868b] dark:text-gray-400 font-bold uppercase tracking-wider text-[10px]">
                                                 <tr>
-                                                    <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Product</th>
-                                                    <th className="px-3 py-3 text-right text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Purchase Price</th>
-                                                    <th className="px-3 py-3 text-right text-xs text-amber-600 uppercase font-bold whitespace-nowrap">Direct Cost</th>
-                                                    <th className="px-3 py-3 text-right text-xs text-gray-700 uppercase font-bold whitespace-nowrap">Total Cost</th>
-                                                    <th className="px-3 py-3 text-right text-xs text-blue-700 uppercase font-bold whitespace-nowrap">Target Sale</th>
-                                                    <th className="px-3 py-3 text-right text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Qty</th>
-                                                    <th className="px-4 py-3 text-right text-xs text-gray-500 uppercase font-bold whitespace-nowrap">Amount</th>
-                                                    <th className="px-4 py-3 text-center text-xs text-gray-500 uppercase font-bold bg-orange-50 whitespace-nowrap">Ret. Qty</th>
+                                                    <th className="px-3.5 py-2.5 text-left whitespace-nowrap">Product / Item</th>
+                                                    <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Purchase Price</th>
+                                                    <th className="px-3.5 py-2.5 text-right text-amber-600 dark:text-amber-400 whitespace-nowrap">Direct Cost</th>
+                                                    <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Total Cost</th>
+                                                    <th className="px-3.5 py-2.5 text-right text-[#0071e3] dark:text-[#3894ff] whitespace-nowrap">Target Sale</th>
+                                                    <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Qty</th>
+                                                    <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Amount</th>
+                                                    <th className="px-3.5 py-2.5 text-center whitespace-nowrap">Ret. Qty</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-gray-100">
+                                            <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
                                                 {purchaseItems.map((item, idx) => {
                                                     const maxReturn = item.quantity - (item.returned_qty || 0)
                                                     return (
-                                                        <tr key={idx} className="hover:bg-gray-50">
-                                                            <td className="px-4 py-3 text-gray-800">
-                                                                <p className="font-bold text-gray-900 text-sm">
-                                                                    {item.display_name || item.product_name || (item.phones ? `${item.phones.brand && item.phones.brand !== 'Unknown' ? item.phones.brand + ' ' : ''}${item.phones.model || 'Phone'}` : 'Item')}
+                                                        <tr key={idx} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">
+                                                            <td className="px-3.5 py-2.5 text-gray-800 dark:text-gray-200">
+                                                                <p className="font-bold text-gray-900 dark:text-gray-100">
+                                                                    {item.display_name || item.product_name || (item.phones ? ((item.phones.brand && item.phones.brand !== "Unknown" ? item.phones.brand + " " : "") + (item.phones.model || "Phone")) : "Item")}
                                                                 </p>
-                                                                {item.specs && <p className="text-xs text-gray-500 mt-0.5">{item.specs}</p>}
+                                                                {item.specs && <p className="text-[11px] text-[#86868b] mt-0.5">{item.specs}</p>}
                                                                 {(item.imei || item.phones?.imei_1) && (
                                                                     <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                                                        <span className="font-mono text-[11px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.2 rounded font-semibold">
+                                                                        <span className="font-mono text-[10px] bg-[#0071e3]/10 text-[#0071e3] dark:text-[#3894ff] border border-[#0071e3]/20 px-1.5 py-0.2 rounded-md font-semibold">
                                                                             IMEI: {item.imei || item.phones?.imei_1}
                                                                         </span>
                                                                         {(item.imei2 || item.phones?.imei_2) && (
-                                                                            <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
+                                                                            <span className="font-mono text-[10px] bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-black/[0.08] dark:border-white/[0.1] px-1 py-0.2 rounded-md">
                                                                                 IMEI 2: {item.imei2 || item.phones?.imei_2}
                                                                             </span>
                                                                         )}
                                                                     </div>
                                                                 )}
                                                             </td>
-                                                            <td className="px-3 py-3 text-right text-gray-700 whitespace-nowrap font-medium">Rs. {Number(item.base_cost || item.unit_price || 0).toLocaleString()}</td>
-                                                            <td className="px-3 py-3 text-right whitespace-nowrap font-medium text-amber-600">
-                                                                {Number(item.direct_cost || 0) > 0 ? `Rs. ${Number(item.direct_cost).toLocaleString()}` : '—'}
+                                                            <td className="px-3.5 py-2.5 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap font-medium">Rs. {Number(item.base_cost || item.unit_price || 0).toLocaleString()}</td>
+                                                            <td className="px-3.5 py-2.5 text-right whitespace-nowrap font-medium text-amber-600 dark:text-amber-400">
+                                                                {Number(item.direct_cost || 0) > 0 ? "Rs. " + Number(item.direct_cost).toLocaleString() : "—"}
                                                             </td>
-                                                            <td className="px-3 py-3 text-right text-gray-900 whitespace-nowrap font-bold">Rs. {Number(item.total_cost || item.unit_price || 0).toLocaleString()}</td>
-                                                            <td className="px-3 py-3 text-right text-blue-700 whitespace-nowrap font-medium">
-                                                                {Number(item.sale_price || 0) > 0 ? `Rs. ${Number(item.sale_price).toLocaleString()}` : '—'}
+                                                            <td className="px-3.5 py-2.5 text-right text-gray-900 dark:text-white whitespace-nowrap font-bold">Rs. {Number(item.total_cost || item.unit_price || 0).toLocaleString()}</td>
+                                                            <td className="px-3.5 py-2.5 text-right text-[#0071e3] dark:text-[#3894ff] whitespace-nowrap font-bold">
+                                                                {Number(item.sale_price || 0) > 0 ? "Rs. " + Number(item.sale_price).toLocaleString() : "—"}
                                                             </td>
-                                                            <td className="px-3 py-3 text-right text-gray-600 whitespace-nowrap">
+                                                            <td className="px-3.5 py-2.5 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
                                                                 {item.quantity}
-                                                                {item.returned_qty > 0 && <span className="text-xs text-red-500 ml-1 block">(-{item.returned_qty} ret)</span>}
+                                                                {item.returned_qty > 0 && <span className="text-[10px] text-red-500 block">(-{item.returned_qty} ret)</span>}
                                                             </td>
-                                                            <td className="px-4 py-3 text-right font-medium text-gray-800 whitespace-nowrap">Rs. {Number(item.total_price || item.line_total || ((item.total_cost || item.unit_price || 0) * item.quantity)).toFixed(0)}</td>
-                                                            <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                                                            <td className="px-3.5 py-2.5 text-right font-extrabold text-gray-900 dark:text-white whitespace-nowrap">Rs. {Number(item.total_price || item.line_total || ((item.total_cost || item.unit_price || 0) * item.quantity)).toFixed(0)}</td>
+                                                            <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
                                                                 {maxReturn > 0 ? (
                                                                     <input
                                                                         type="number"
                                                                         min="0"
                                                                         max={maxReturn}
-                                                                        value={returnQtys[item.id] || ''}
+                                                                        value={returnQtys[item.id] || ""}
                                                                         onChange={e => setReturnQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                                                        className="w-16 border rounded px-2 py-1 text-center text-sm shadow-inner"
+                                                                        className="w-16 border border-black/[0.1] dark:border-white/[0.15] bg-white dark:bg-[#2c2c2e] rounded-lg px-2 py-1 text-center text-xs font-bold"
                                                                         placeholder="0"
                                                                     />
                                                                 ) : (
@@ -1179,57 +1199,36 @@ function PurchaseHistory() {
                                                 })}
                                             </tbody>
                                         </table>
-
-                                        {/* Purchase Outlay & Direct Cost Summary Banner */}
-                                        {(() => {
-                                            const totalBase = purchaseItems.reduce((s, it) => s + (Number(it.base_cost || it.unit_price || 0) * it.quantity), 0)
-                                            const totalDirect = purchaseItems.reduce((s, it) => s + (Number(it.direct_cost || 0) * it.quantity), 0)
-                                            const totalLanded = totalBase + totalDirect
-                                            const paid = Number(selectedPurchase.paid_amount ?? selectedPurchase.total_amount)
-                                            const balance = Math.max(0, totalLanded - paid)
-
-                                            return (
-                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 bg-blue-50/60 p-3 rounded-xl border border-blue-100 text-xs">
-                                                    <div>
-                                                        <span className="text-gray-500 block text-[10px] uppercase font-bold">Base Purchase Outlay</span>
-                                                        <span className="font-bold text-gray-800 text-sm">Rs. {totalBase.toLocaleString()}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-gray-500 block text-[10px] uppercase font-bold">Direct Cost (Courier)</span>
-                                                        <span className={`font-bold text-sm ${totalDirect > 0 ? 'text-amber-600' : 'text-gray-600'}`}>
-                                                            Rs. {totalDirect.toLocaleString()}
-                                                        </span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-gray-500 block text-[10px] uppercase font-bold">Total Landed Cost</span>
-                                                        <span className="font-black text-gray-900 text-sm">Rs. {totalLanded.toLocaleString()}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-gray-500 block text-[10px] uppercase font-bold">Payment Status</span>
-                                                        <span className={`font-bold text-sm ${balance === 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                                                            {balance === 0 ? 'Fully Paid' : `Due: Rs. ${balance.toLocaleString()}`}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )
-                                        })()}
                                     </div>
-                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-t border-gray-100 pt-4 mt-4 gap-4">
-                                        <div className="text-sm">
-                                            <p className="text-gray-500">Total Amount: <b className="text-gray-800 text-lg">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b></p>
-                                            {selectedPurchase.paid_amount != null && <p className="text-gray-500">Paid Amount: <b className="text-gray-800">Rs. {Number(selectedPurchase.paid_amount).toLocaleString()}</b></p>}
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-t border-black/[0.06] dark:border-white/[0.08] pt-3 mt-2 gap-3">
+                                        <div className="text-xs">
+                                            <p className="text-[#86868b] dark:text-gray-400">
+                                                Total Amount: <b className="text-sm font-black text-gray-900 dark:text-white ml-1">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b>
+                                            </p>
+                                            {selectedPurchase.paid_amount != null && (
+                                                <p className="text-[11px] text-[#86868b] dark:text-gray-400">
+                                                    Paid Amount: <b className="text-gray-800 dark:text-gray-200">Rs. {Number(selectedPurchase.paid_amount).toLocaleString()}</b>
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="flex flex-wrap gap-2">
-                                            <button onClick={() => printPurchase(selectedPurchase, purchaseItems)}
-                                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition">
+                                            <button
+                                                onClick={() => printPurchase(selectedPurchase, purchaseItems)}
+                                                className="px-4 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer flex items-center gap-1.5"
+                                            >
                                                 🖨️ Print Invoice
                                             </button>
-                                            <button onClick={handleReturn} disabled={returning}
-                                                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition disabled:opacity-50">
-                                                {returning ? 'Processing...' : '↩️ Process Return'}
+                                            <button
+                                                onClick={handleReturn}
+                                                disabled={returning}
+                                                className="px-4 py-2 bg-[#ff3b30] hover:bg-[#e0352b] text-white rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                                            >
+                                                {returning ? "Processing..." : "↩️ Process Return"}
                                             </button>
-                                            <button onClick={() => setSelectedPurchase(null)}
-                                                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition">
+                                            <button
+                                                onClick={() => setSelectedPurchase(null)}
+                                                className="px-4 py-2 bg-black/[0.05] dark:bg-white/[0.1] hover:bg-black/[0.08] dark:hover:bg-white/[0.15] text-[#1d1d1f] dark:text-[#f5f5f7] rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer"
+                                            >
                                                 Close
                                             </button>
                                         </div>

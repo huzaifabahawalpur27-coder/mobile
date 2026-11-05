@@ -1175,43 +1175,67 @@ function Sales() {
         {/* Sale Detail Modal */}
         {
           selectedSale && (
-            <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
-              <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[90dvh] overflow-y-auto">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-800">
-                      {selectedSale.sale_type === 'quotation' ? 'Quotation QT-' : 'Invoice #'}
-                      {String(selectedSale.id).slice(-8)}
-                    </h2>
-                    <p className="text-sm text-gray-500">
-                      {new Date(selectedSale.created_at).toLocaleString('en-PK')} |
-                      {selectedSale.customers?.name || selectedSale.customer_name || ' Walk-in'} |
-                      <span className={selectedSale.payment_type === 'cash' ? ' text-green-600' : ' text-orange-600'}>
-                        {' '}{selectedSale.payment_type?.toUpperCase()}
-                      </span>
-                    </p>
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+              <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-2xl rounded-[26px] shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-black/[0.08] dark:border-white/[0.12] w-full max-w-3xl max-h-[92dvh] overflow-y-auto flex flex-col p-4 sm:p-6 text-gray-900 dark:text-gray-100">
+                <div className="flex justify-between items-start mb-4 pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-[14px] bg-[#0071e3]/12 text-[#0071e3] dark:bg-[#0071e3]/25 dark:text-[#3894ff] flex items-center justify-center font-bold text-lg shrink-0 shadow-2xs">
+                      {selectedSale.sale_type === 'quotation' ? '📄' : '🧾'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-base sm:text-lg font-black text-[#1d1d1f] dark:text-[#f5f5f7] tracking-tight">
+                          {selectedSale.sale_type === 'quotation' ? 'Quotation QT-' : 'Invoice #'}
+                          {String(selectedSale.id).slice(-8)}
+                        </h2>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          selectedSale.sale_type === 'quotation' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                        }`}>
+                          {selectedSale.sale_type === 'quotation' ? 'Quotation' : 'Completed Sale'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#86868b] dark:text-[#98989d] mt-0.5 flex items-center gap-2 flex-wrap">
+                        <span>{new Date(selectedSale.created_at).toLocaleString('en-PK')}</span>
+                        <span>•</span>
+                        <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedSale.customers?.name || selectedSale.customer_name || 'Walk-in'}</span>
+                        <span>•</span>
+                        <span className="font-bold text-[#0071e3] dark:text-[#3894ff]">
+                          {selectedSale.payment_type?.toUpperCase()}
+                        </span>
+                      </p>
+                    </div>
                   </div>
-                  <button onClick={() => setSelectedSale(null)} className="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">×</button>
+                  <button
+                    onClick={() => setSelectedSale(null)}
+                    className="w-8 h-8 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.1] dark:hover:bg-white/[0.15] text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white flex items-center justify-center transition cursor-pointer text-lg font-bold shrink-0"
+                  >
+                    ×
+                  </button>
                 </div>
 
-                {loadingItems ? <p className="text-gray-500 text-center py-8">Loading...</p> : (
+                {loadingItems ? (
+                  <div className="text-center py-12 flex flex-col items-center justify-center gap-2">
+                    <div className="w-8 h-8 border-2 border-[#0071e3] border-t-transparent rounded-full animate-spin" />
+                    <p className="text-xs text-[#86868b] font-medium">Loading sale items...</p>
+                  </div>
+                ) : (
                   <>
-                    <div className="overflow-x-auto">
-                      <table className="w-full mb-4 text-sm">
-                        <thead className="bg-gray-50">
+                    <div className="overflow-x-auto rounded-[16px] border border-black/[0.06] dark:border-white/[0.08] mb-4">
+                      <table className="w-full text-xs">
+                        <thead className="bg-[#f5f5f7] dark:bg-white/[0.04] text-[#86868b] dark:text-gray-400 font-bold uppercase tracking-wider text-[10px]">
                           <tr>
-                            <th className="px-3 py-2 text-left text-xs text-gray-500 whitespace-nowrap">Product / Phone</th>
-                            <th className="px-3 py-2 text-right text-xs text-gray-500 whitespace-nowrap">Purchase Cost</th>
-                            <th className="px-3 py-2 text-right text-xs text-amber-600 whitespace-nowrap">Direct Cost</th>
-                            <th className="px-3 py-2 text-right text-xs text-gray-700 whitespace-nowrap">Total Cost</th>
-                            <th className="px-3 py-2 text-right text-xs text-gray-500 whitespace-nowrap">Sale Rate</th>
-                            <th className="px-3 py-2 text-right text-xs text-green-600 whitespace-nowrap">Net Qty</th>
-                            <th className="px-3 py-2 text-right text-xs text-gray-500 whitespace-nowrap">Net Amount</th>
-                            <th className="px-3 py-2 text-right text-xs text-emerald-600 whitespace-nowrap">Profit</th>
-                            <th className="px-3 py-2 text-center text-xs text-gray-500 whitespace-nowrap">Return Qty</th>
+                            <th className="px-3.5 py-2.5 text-left whitespace-nowrap">Product / Phone</th>
+                            <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Purchase Cost</th>
+                            <th className="px-3.5 py-2.5 text-right text-amber-600 dark:text-amber-400 whitespace-nowrap">Direct Cost</th>
+                            <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Total Cost</th>
+                            <th className="px-3.5 py-2.5 text-right text-[#0071e3] dark:text-[#3894ff] whitespace-nowrap">Sale Rate</th>
+                            <th className="px-3.5 py-2.5 text-right text-emerald-600 dark:text-emerald-400 whitespace-nowrap">Net Qty</th>
+                            <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Net Amount</th>
+                            <th className="px-3.5 py-2.5 text-right text-emerald-600 dark:text-emerald-400 whitespace-nowrap">Profit</th>
+                            <th className="px-3.5 py-2.5 text-center whitespace-nowrap">Return Qty</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
                           {saleItems.map(item => {
                             const returnedQty = item.returned_qty || 0
                             const netQty = item.quantity - returnedQty
@@ -1222,55 +1246,70 @@ function Sales() {
                             const maxReturn = netQty
                             const fullyReturned = netQty <= 0
                             return (
-                              <tr key={item.id} className={fullyReturned ? 'bg-red-50/40 opacity-60' : ''}>
-                                <td className="px-3 py-2 text-gray-800">
-                                  <div className="font-bold text-gray-900">
-                                    {item.display_name || item.product_name || 'Item'}
-                                    {fullyReturned && <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold uppercase">Fully Returned</span>}
+                              <tr key={item.id} className={fullyReturned ? "bg-red-500/[0.06] opacity-60" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"}>
+                                <td className="px-3.5 py-2.5 text-gray-800 dark:text-gray-200">
+                                  <div className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
+                                    <span>{item.display_name || item.product_name || "Item"}</span>
+                                    {fullyReturned && (
+                                      <span className="text-[9px] bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-1.5 py-0.2 rounded font-black uppercase">
+                                        Fully Returned
+                                      </span>
+                                    )}
                                   </div>
-                                  {item.specs && <p className="text-xs text-gray-500 mt-0.5">{item.specs}</p>}
+                                  {item.specs && <p className="text-[11px] text-[#86868b] mt-0.5">{item.specs}</p>}
                                   {(item.imei || item.imei2) && (
                                     <div className="flex flex-wrap items-center gap-1 mt-1">
                                       {item.imei && (
-                                        <span className="font-mono text-[10px] bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded">
+                                        <span className="font-mono text-[10px] bg-[#0071e3]/10 text-[#0071e3] dark:text-[#3894ff] border border-[#0071e3]/20 px-1.5 py-0.2 rounded-md font-semibold">
                                           IMEI: {item.imei}
                                         </span>
                                       )}
                                       {item.imei2 && (
-                                        <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
+                                        <span className="font-mono text-[10px] bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-black/[0.08] dark:border-white/[0.1] px-1 py-0.2 rounded-md">
                                           IMEI 2: {item.imei2}
                                         </span>
                                       )}
                                     </div>
                                   )}
                                 </td>
-                                <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap font-medium">Rs. {Number(item.base_cost || 0).toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right whitespace-nowrap font-medium text-amber-600">
-                                  {Number(item.direct_cost || 0) > 0 ? `Rs. ${Number(item.direct_cost).toLocaleString()}` : '—'}
+                                <td className="px-3.5 py-2.5 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap font-medium">
+                                  Rs. {Number(item.base_cost || 0).toLocaleString()}
                                 </td>
-                                <td className="px-3 py-2 text-right text-gray-800 whitespace-nowrap font-bold">Rs. {Number(item.total_cost || 0).toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right text-blue-700 whitespace-nowrap font-semibold">Rs. {Number(item.unit_price).toFixed(0)}</td>
-                                <td className="px-3 py-2 text-right font-bold text-gray-800 whitespace-nowrap">
+                                <td className="px-3.5 py-2.5 text-right whitespace-nowrap font-medium text-amber-600 dark:text-amber-400">
+                                  {Number(item.direct_cost || 0) > 0 ? "Rs. " + Number(item.direct_cost).toLocaleString() : "—"}
+                                </td>
+                                <td className="px-3.5 py-2.5 text-right text-gray-800 dark:text-gray-200 whitespace-nowrap font-bold">
+                                  Rs. {Number(item.total_cost || 0).toLocaleString()}
+                                </td>
+                                <td className="px-3.5 py-2.5 text-right text-[#0071e3] dark:text-[#3894ff] whitespace-nowrap font-bold">
+                                  Rs. {Number(item.unit_price).toFixed(0)}
+                                </td>
+                                <td className="px-3.5 py-2.5 text-right font-bold text-gray-800 dark:text-gray-200 whitespace-nowrap">
                                   {netQty}
                                   {returnedQty > 0 && <span className="text-[10px] text-red-500 block">(-{returnedQty} ret)</span>}
                                 </td>
-                                <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">
+                                <td className="px-3.5 py-2.5 text-right font-extrabold whitespace-nowrap">
                                   Rs. {netAmount.toFixed(0)}
                                 </td>
-                                <td className="px-3 py-2 text-right whitespace-nowrap font-bold">
-                                  <div className={lineProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}>
-                                    {lineProfit >= 0 ? '+' : ''}Rs. {Math.round(lineProfit).toLocaleString()}
+                                <td className="px-3.5 py-2.5 text-right whitespace-nowrap font-bold">
+                                  <div className={lineProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+                                    {lineProfit >= 0 ? "+" : ""}Rs. {Math.round(lineProfit).toLocaleString()}
                                   </div>
                                   <div className="text-[10px] text-gray-400 font-normal">
                                     {lineMargin.toFixed(1)}% margin
                                   </div>
                                 </td>
-                                <td className="px-3 py-2 text-center whitespace-nowrap">
+                                <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
                                   {maxReturn > 0 ? (
-                                    <input type="number" min="0" max={maxReturn}
-                                      value={returnQtys[item.id] || ''}
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={maxReturn}
+                                      value={returnQtys[item.id] || ""}
                                       onChange={e => setReturnQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                      className="w-16 border rounded px-2 py-1 text-center text-sm" placeholder="0" />
+                                      className="w-16 border border-black/[0.1] dark:border-white/[0.15] bg-white dark:bg-[#2c2c2e] rounded-lg px-2 py-1 text-center text-xs font-bold"
+                                      placeholder="0"
+                                    />
                                   ) : <span className="text-xs text-gray-400">Done</span>}
                                 </td>
                               </tr>
@@ -1280,7 +1319,7 @@ function Sales() {
                       </table>
                     </div>
 
-                    {/* Full Financial Profit & Cost Breakdown */}
+                    {/* Full Financial Profit & Cost Breakdown Card */}
                     {(() => {
                       const netRev = Math.max(0, Number(selectedSale.total_amount || 0) - Number(selectedSale.discount || 0))
                       const totalBaseCost = saleItems.reduce((s, it) => s + (Number(it.base_cost || 0) * Math.max(0, it.quantity - (it.returned_qty || 0))), 0)
@@ -1290,70 +1329,81 @@ function Sales() {
                       const overallMargin = netRev > 0 ? (netProfit / netRev) * 100 : 0
 
                       return (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 bg-blue-50/60 p-3 rounded-xl border border-blue-100 text-xs">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 bg-gradient-to-br from-blue-500/[0.07] via-indigo-500/[0.04] to-emerald-500/[0.06] dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-emerald-950/30 p-3.5 rounded-[18px] border border-blue-500/20 dark:border-blue-500/30 text-xs">
                           <div>
-                            <span className="text-gray-500 block text-[10px] uppercase font-bold">Net Sale Amount</span>
-                            <span className="font-black text-gray-900 text-sm">Rs. {netRev.toLocaleString()}</span>
+                            <span className="text-[#86868b] dark:text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Net Sale Amount</span>
+                            <span className="font-black text-gray-900 dark:text-white text-sm">Rs. {netRev.toLocaleString()}</span>
                           </div>
                           <div>
-                            <span className="text-gray-500 block text-[10px] uppercase font-bold">Direct Cost (Courier)</span>
-                            <span className={`font-black text-sm ${totalDirectCost > 0 ? 'text-amber-600' : 'text-gray-600'}`}>
+                            <span className="text-[#86868b] dark:text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Direct Cost (Courier)</span>
+                            <span className={"font-black text-sm " + (totalDirectCost > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-600 dark:text-gray-400")}>
                               Rs. {totalDirectCost.toLocaleString()}
                             </span>
                           </div>
                           <div>
-                            <span className="text-gray-500 block text-[10px] uppercase font-bold">Total Cost (COGS)</span>
-                            <span className="font-black text-gray-800 text-sm">Rs. {totalCOGS.toLocaleString()}</span>
+                            <span className="text-[#86868b] dark:text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Total Cost (COGS)</span>
+                            <span className="font-black text-gray-800 dark:text-gray-200 text-sm">Rs. {totalCOGS.toLocaleString()}</span>
                           </div>
                           <div>
-                            <span className="text-gray-500 block text-[10px] uppercase font-bold">Net Profit</span>
-                            <span className={`font-black text-sm ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {netProfit >= 0 ? '+' : ''}Rs. {Math.round(netProfit).toLocaleString()} ({overallMargin.toFixed(1)}%)
+                            <span className="text-[#86868b] dark:text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Net Profit</span>
+                            <span className={"font-black text-sm " + (netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
+                              {netProfit >= 0 ? "+" : ""}Rs. {Math.round(netProfit).toLocaleString()} ({overallMargin.toFixed(1)}%)
                             </span>
                           </div>
                         </div>
                       )
                     })()}
 
-                    <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:justify-between sm:items-center">
-                      <div className="text-sm text-gray-600">
-                        <p>Total: <b>Rs. {(Number(selectedSale.total_amount) - Number(selectedSale.discount || 0)).toFixed(0)}</b></p>
-                        {selectedSale.discount > 0 && <p className="text-xs text-gray-400">Discount: Rs. {selectedSale.discount}</p>}
+                    <div className="flex flex-col gap-3 border-t border-black/[0.06] dark:border-white/[0.08] pt-3 sm:flex-row sm:justify-between sm:items-center">
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        <p className="text-sm font-black text-gray-900 dark:text-white">
+                          Total: <span className="text-[#0071e3] dark:text-[#3894ff]">Rs. {(Number(selectedSale.total_amount) - Number(selectedSale.discount || 0)).toFixed(0)}</span>
+                        </p>
+                        {selectedSale.discount > 0 && <p className="text-[11px] text-gray-400">Discount: Rs. {selectedSale.discount}</p>}
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                        {selectedSale.sale_type !== 'quotation' && (
-                          <div className="flex flex-wrap items-center gap-3 bg-gray-50 border px-3 py-1.5 rounded-lg sm:mr-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase">Refund Type:</span>
-                            <label className="flex items-center gap-1 text-sm cursor-pointer">
-                              <input type="radio" checked={refundType === 'cash'} onChange={() => setRefundType('cash')} className="w-4 h-4 text-blue-600" />
+                        {selectedSale.sale_type !== "quotation" && (
+                          <div className="flex flex-wrap items-center gap-2.5 bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08] px-3 py-1.5 rounded-xl sm:mr-2">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Refund:</span>
+                            <label className="flex items-center gap-1 text-xs font-semibold cursor-pointer">
+                              <input type="radio" checked={refundType === "cash"} onChange={() => setRefundType("cash")} className="w-3.5 h-3.5 text-blue-600" />
                               💵 Cash
                             </label>
                             {selectedSale.customer_id && (
-                              <label className="flex items-center gap-1 text-sm cursor-pointer">
-                                <input type="radio" checked={refundType === 'credit'} onChange={() => setRefundType('credit')} className="w-4 h-4 text-orange-600" />
+                              <label className="flex items-center gap-1 text-xs font-semibold cursor-pointer">
+                                <input type="radio" checked={refundType === "credit"} onChange={() => setRefundType("credit")} className="w-3.5 h-3.5 text-orange-600" />
                                 📒 Ledger
                               </label>
                             )}
                           </div>
                         )}
-                        {selectedSale.sale_type === 'quotation' && (
-                          <button onClick={() => navigate(`/pos?convertQuote=${selectedSale.id}`)}
-                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition font-bold cursor-pointer">
+                        {selectedSale.sale_type === "quotation" && (
+                          <button
+                            onClick={() => navigate("/pos?convertQuote=" + selectedSale.id)}
+                            className="px-4 py-2 bg-[#5856d6] hover:bg-[#6865e8] text-white rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer"
+                          >
                             🛒 Convert to Sale
                           </button>
                         )}
-                        <button onClick={() => printInvoice(selectedSale, saleItems)}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition cursor-pointer">
-                          🖨️ Print {selectedSale.sale_type === 'quotation' ? 'Quotation' : 'Invoice'}
+                        <button
+                          onClick={() => printInvoice(selectedSale, saleItems)}
+                          className="px-4 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          🖨️ Print {selectedSale.sale_type === "quotation" ? "Quotation" : "Invoice"}
                         </button>
-                        {selectedSale.sale_type !== 'quotation' && (
-                          <button onClick={handleReturn} disabled={returning}
-                            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition disabled:opacity-50 cursor-pointer">
-                            {returning ? 'Processing...' : '↩️ Process Return'}
+                        {selectedSale.sale_type !== "quotation" && (
+                          <button
+                            onClick={handleReturn}
+                            disabled={returning}
+                            className="px-4 py-2 bg-[#ff3b30] hover:bg-[#e0352b] text-white rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 disabled:opacity-50 cursor-pointer"
+                          >
+                            {returning ? "Processing..." : "↩️ Process Return"}
                           </button>
                         )}
-                        <button onClick={() => setSelectedSale(null)}
-                          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition cursor-pointer">
+                        <button
+                          onClick={() => setSelectedSale(null)}
+                          className="px-4 py-2 bg-black/[0.05] dark:bg-white/[0.1] hover:bg-black/[0.08] dark:hover:bg-white/[0.15] text-[#1d1d1f] dark:text-[#f5f5f7] rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer"
+                        >
                           Close
                         </button>
                       </div>
@@ -1362,8 +1412,7 @@ function Sales() {
                 )}
               </div>
             </div>
-          )
-        }
+          )}
       </div>
 
       {showPasswordModal && (

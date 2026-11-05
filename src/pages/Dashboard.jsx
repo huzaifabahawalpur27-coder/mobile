@@ -31,18 +31,38 @@ import {
 } from 'lucide-react'
 
 // Apple HIG / Linear SaaS Widget Stat Card
-const AppleWidget = ({ title, hint, value, icon, color, bgTint, subValue, badge, isHero, onClick }) => (
+const AppleWidget = ({
+  title,
+  hint,
+  value,
+  icon,
+  color,
+  bgTint,
+  subValue,
+  badge,
+  badgeStyle,
+  cardBg,
+  cardBorder,
+  valueColor,
+  glowColor,
+  isHero,
+  onClick
+}) => (
   <div
     onClick={onClick}
-    className={`p-4 sm:p-5 rounded-[22px] transition-all duration-200 group flex flex-col justify-between cursor-pointer relative overflow-hidden ${
-      isHero
-        ? 'bg-gradient-to-br from-emerald-500/[0.08] via-white/95 to-teal-500/[0.04] dark:from-emerald-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95 border-2 border-emerald-500/35 dark:border-emerald-500/45 shadow-[0_4px_20px_rgba(16,185,129,0.12)] hover:shadow-[0_8px_28px_rgba(16,185,129,0.2)] hover:-translate-y-0.5'
-        : 'bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5'
+    className={`p-4 sm:p-5 rounded-[22px] transition-all duration-200 group flex flex-col justify-between cursor-pointer relative overflow-hidden active:scale-[0.98] ${
+      cardBg || (isHero
+        ? 'bg-gradient-to-br from-emerald-500/[0.10] via-white/95 to-teal-500/[0.04] dark:from-emerald-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95'
+        : 'bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl')
+    } ${
+      cardBorder || (isHero
+        ? 'border-2 border-emerald-500/35 dark:border-emerald-500/45 shadow-[0_4px_20px_rgba(16,185,129,0.12)] hover:shadow-[0_8px_28px_rgba(16,185,129,0.2)] hover:-translate-y-0.5'
+        : 'border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5')
     }`}
   >
-    {isHero && (
-      <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-    )}
+    {/* Apple Ambient Specular Glow */}
+    <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl pointer-events-none ${glowColor || (isHero ? 'bg-emerald-500/15' : 'bg-blue-500/10')}`} />
+
     <div>
       <div className="flex justify-between items-start mb-2.5">
         <div className={`w-10 h-10 rounded-[14px] flex items-center justify-center ${bgTint} ${color} transition-transform group-hover:scale-105 shadow-2xs`}>
@@ -50,9 +70,9 @@ const AppleWidget = ({ title, hint, value, icon, color, bgTint, subValue, badge,
         </div>
         {badge && (
           <span className={`text-[10px] font-bold tracking-wider px-2.5 py-0.5 rounded-full border ${
-            isHero
+            badgeStyle || (isHero
               ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/25'
-              : 'bg-[#f5f5f7] dark:bg-white/10 text-[#86868b] dark:text-gray-300 border-black/[0.04] dark:border-white/[0.06]'
+              : 'bg-[#f5f5f7] dark:bg-white/10 text-[#86868b] dark:text-gray-300 border-black/[0.04] dark:border-white/[0.06]')
           }`}>
             {badge}
           </span>
@@ -67,9 +87,7 @@ const AppleWidget = ({ title, hint, value, icon, color, bgTint, subValue, badge,
         )}
       </div>
       <p className={`text-[22px] sm:text-[25px] font-black tracking-tight mt-1 tabular-nums ${
-        isHero
-          ? 'text-emerald-600 dark:text-emerald-400'
-          : 'text-[#1d1d1f] dark:text-[#f5f5f7]'
+        valueColor || (isHero ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#1d1d1f] dark:text-[#f5f5f7]')
       }`}>
         {typeof value === 'number' && title.toLowerCase().includes('rs')
           ? `Rs. ${Math.round(value).toLocaleString()}`
@@ -216,7 +234,7 @@ function Dashboard() {
         // 8. Today's Inward Purchases
         supabase
           .from('purchases')
-          .select('id, total_amount, payment_type, item_type, total_items, created_at, purchase_items(id, quantity, product_name)')
+          .select('id, total_amount, payment_type, created_at, purchase_items(id, quantity, product_name, phone_id, cost_price)')
           .eq('shop_id', user.shop_id)
           .gte('created_at', todayISO),
 
@@ -230,7 +248,7 @@ function Dashboard() {
           .catch(() => ({ data: null }))
       ])
 
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4500))
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
       const [todayRes, monthRes, weekRes, recentRes, prodRes, phonesRes, expRes, purRes, shopConfigRes] = await Promise.race([
         fetchPromise,
         timeoutPromise
@@ -498,16 +516,17 @@ function Dashboard() {
         todayCashPurchases += pCost
       }
 
-      const isBulk = Boolean((p.purchase_items && p.purchase_items.length > 0) || (p.item_type && p.item_type !== 'phone'))
-      if (isBulk) {
-        let pQty = 0
-        if (p.purchase_items && p.purchase_items.length > 0) {
-          pQty = p.purchase_items.reduce((s, pi) => s + Number(pi.quantity || 1), 0)
-        } else {
-          pQty = Number(p.total_items || 1)
-        }
-        todayPurchasedBulk += pQty
-        todayPurchasedUnits += pQty
+      const items = p.purchase_items || []
+      if (items.length > 0) {
+        items.forEach(pi => {
+          const qty = Number(pi.quantity || 1)
+          if (pi.phone_id) {
+            todayPurchasedPhones += qty
+          } else {
+            todayPurchasedBulk += qty
+          }
+          todayPurchasedUnits += qty
+        })
       } else {
         todayPurchasedPhones += 1
         todayPurchasedUnits += 1
@@ -772,24 +791,29 @@ function Dashboard() {
         </div>
       </div>
 
-      {/*  Apple Control Center Primary KPI Widgets (6 Core Financial Metrics with Hero Net Profit) */}
+      {/*  Apple Control Center Primary KPI Widgets (5 Core Financial Metrics with Hero Net Profit) */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 animate-pulse">
-          {[1, 2, 3, 4, 5, 6].map(i => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 animate-pulse">
+          {[1, 2, 3, 4, 5].map(i => (
             <div key={i} className="h-32 bg-[#e5e5ea]/50 dark:bg-[#2c2c2e]/50 rounded-[22px]"></div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-          {/* 1. Today's Gross Sales */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          {/* 1. Today's Gross Sales - Apple Cobalt Blue */}
           <AppleWidget
             title="Today's Sales (Rs)"
             hint="فروخت"
             value={stats.todaySales}
             icon={<Banknote size={20} />}
-            color="text-[#0071e3]"
-            bgTint="bg-[#0071e3]/10"
+            color="text-[#0071e3] dark:text-[#3894ff]"
+            bgTint="bg-[#0071e3]/12 dark:bg-[#0071e3]/25"
+            cardBg="bg-gradient-to-br from-blue-500/[0.08] via-white/95 to-sky-500/[0.03] dark:from-blue-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
+            cardBorder="border border-blue-500/25 dark:border-blue-500/40 hover:border-blue-500/50 shadow-[0_4px_20px_rgba(0,113,227,0.08)] hover:shadow-[0_8px_28px_rgba(0,113,227,0.16)]"
             badge="Today"
+            badgeStyle="bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 font-bold"
+            valueColor="text-[#0071e3] dark:text-[#3894ff]"
+            glowColor="bg-blue-500/10"
             subValue={
               stats.todayOrdersCount > 0
                 ? `${stats.todayOrdersCount} orders • Avg: Rs. ${Math.round(stats.todayAOV).toLocaleString()}`
@@ -798,7 +822,7 @@ function Dashboard() {
             onClick={() => navigate('/sales')}
           />
 
-          {/* 2. Today's Net Profit (THE HERO METRIC - Saaf Munafa) */}
+          {/* 2. Today's Net Profit - Apple Emerald Mint (Hero Card - Pure Profit) */}
           <AppleWidget
             isHero={true}
             title="Net Profit (Rs)"
@@ -806,8 +830,13 @@ function Dashboard() {
             value={stats.todayNetProfit}
             icon={<Sparkles size={20} />}
             color="text-emerald-600 dark:text-emerald-400"
-            bgTint="bg-emerald-500/15"
-            badge="Pure Profit"
+            bgTint="bg-emerald-500/15 dark:bg-emerald-500/25"
+            cardBg="bg-gradient-to-br from-emerald-500/[0.12] via-white/95 to-teal-500/[0.05] dark:from-emerald-950/50 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
+            cardBorder="border-2 border-emerald-500/40 dark:border-emerald-500/50 hover:border-emerald-500/70 shadow-[0_4px_24px_rgba(16,185,129,0.14)] hover:shadow-[0_8px_32px_rgba(16,185,129,0.22)]"
+            badge={stats.todayProfitMargin ? `Pure Profit • ${(stats.todayProfitMargin ?? 0).toFixed(1)}%` : 'Pure Profit'}
+            badgeStyle="bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/35 font-black"
+            valueColor="text-emerald-600 dark:text-emerald-400"
+            glowColor="bg-emerald-500/20"
             subValue={
               stats.todaySales > 0
                 ? `Rs. ${Math.round(stats.todayProfit).toLocaleString()} gross − Rs. ${Math.round(stats.todayExpenses).toLocaleString()} exp`
@@ -816,58 +845,60 @@ function Dashboard() {
             onClick={() => navigate('/reports')}
           />
 
-          {/* 3. Today's Gross Profit */}
-          <AppleWidget
-            title="Gross Profit (Rs)"
-            hint="مارجن"
-            value={stats.todayProfit}
-            icon={<TrendingUp size={20} />}
-            color="text-[#34c759]"
-            bgTint="bg-[#34c759]/10"
-            badge={`${(stats.todayProfitMargin ?? 0).toFixed(1)}% Margin`}
-            subValue={`COGS: Rs. ${Math.round(stats.todayCOGS).toLocaleString()}`}
-            onClick={() => navigate('/reports')}
-          />
-
-          {/* 4. Items Sold Today */}
+          {/* 3. Items Sold Today - Apple Royal Indigo / Violet */}
           <AppleWidget
             title="Units Sold Today"
             hint="تعداد"
             value={`${stats.todayItemsSold} Pcs`}
             icon={<ShoppingBag size={20} />}
-            color="text-[#5856d6]"
-            bgTint="bg-[#5856d6]/10"
+            color="text-[#5856d6] dark:text-[#7d7aff]"
+            bgTint="bg-[#5856d6]/12 dark:bg-[#5856d6]/25"
+            cardBg="bg-gradient-to-br from-indigo-500/[0.08] via-white/95 to-purple-500/[0.03] dark:from-indigo-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
+            cardBorder="border border-indigo-500/25 dark:border-indigo-500/40 hover:border-indigo-500/50 shadow-[0_4px_20px_rgba(99,102,241,0.08)] hover:shadow-[0_8px_28px_rgba(99,102,241,0.16)]"
             badge="Volume"
+            badgeStyle="bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 font-bold"
+            valueColor="text-[#5856d6] dark:text-[#7d7aff]"
+            glowColor="bg-indigo-500/10"
             subValue={`${stats.todayPhonesSold} phones • ${stats.todayBulkSold} accessories`}
-            onClick={() => navigate('/reports')}
+            onClick={() => navigate('/sales')}
           />
 
-          {/* 5. Today's Inward Purchases / Procurement */}
+          {/* 4. Today's Inward Purchases - Apple Sunset Amber / Tangerine */}
           <AppleWidget
             title="Purchases Today (Rs)"
             hint="خریداری"
             value={stats.todayPurchasesCost}
             icon={<CreditCard size={20} />}
-            color="text-[#ff9500]"
-            bgTint="bg-[#ff9500]/10"
+            color="text-[#ff9500] dark:text-[#ffaa33]"
+            bgTint="bg-[#ff9500]/12 dark:bg-[#ff9500]/25"
+            cardBg="bg-gradient-to-br from-amber-500/[0.09] via-white/95 to-orange-500/[0.03] dark:from-amber-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
+            cardBorder="border border-amber-500/25 dark:border-amber-500/40 hover:border-amber-500/50 shadow-[0_4px_20px_rgba(245,158,11,0.08)] hover:shadow-[0_8px_28px_rgba(245,158,11,0.16)]"
             badge="Stock In"
+            badgeStyle="bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30 font-bold"
+            valueColor="text-[#ff9500] dark:text-[#ffaa33]"
+            glowColor="bg-amber-500/10"
             subValue={
-              stats.todayPurchasedUnits > 0
-                ? `${stats.todayPurchasedPhones} phones • ${stats.todayPurchasedBulk} acc`
+              stats.todayPurchasesCost > 0
+                ? `${stats.todayPurchasedPhones} phone${stats.todayPurchasedPhones === 1 ? '' : 's'}${stats.todayPurchasedBulk > 0 ? ` • ${stats.todayPurchasedBulk} acc` : ''}`
                 : 'No purchases today'
             }
-            onClick={() => navigate('/purchases')}
+            onClick={() => navigate('/purchase-history')}
           />
 
-          {/* 6. Inventory Asset Valuation */}
+          {/* 5. Inventory Asset Valuation - Apple Orchid Magenta */}
           <AppleWidget
             title="Stock Value (Rs)"
             hint="سرمایہ"
             value={stats.totalStockValuation}
             icon={<Smartphone size={20} />}
-            color="text-[#af52de]"
-            bgTint="bg-[#af52de]/10"
+            color="text-[#af52de] dark:text-[#c772f9]"
+            bgTint="bg-[#af52de]/12 dark:bg-[#af52de]/25"
+            cardBg="bg-gradient-to-br from-purple-500/[0.08] via-white/95 to-fuchsia-500/[0.03] dark:from-purple-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
+            cardBorder="border border-purple-500/25 dark:border-purple-500/40 hover:border-purple-500/50 shadow-[0_4px_20px_rgba(168,85,247,0.08)] hover:shadow-[0_8px_28px_rgba(168,85,247,0.16)]"
             badge="Asset"
+            badgeStyle="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30 font-bold"
+            valueColor="text-[#af52de] dark:text-[#c772f9]"
+            glowColor="bg-purple-500/10"
             subValue={`${stats.phonesInStock} phones • ${stats.productsStockTotal} accessories`}
             onClick={() => navigate('/products')}
           />
@@ -877,7 +908,10 @@ function Dashboard() {
       {/*  Real-Time Cash Flow & Operational Health Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* 1. Cash in Drawer (Galla) */}
-        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between">
+        <div
+          onClick={() => navigate('/accounts')}
+          className="bg-gradient-to-br from-emerald-500/[0.06] via-white/95 to-emerald-500/[0.02] dark:from-emerald-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-emerald-500/25 dark:border-emerald-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
+        >
           <div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Cash in Drawer</span>
@@ -888,27 +922,33 @@ function Dashboard() {
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">Cash in hand balance</span>
           </div>
-          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center font-bold text-xs shrink-0">
+          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#34c759]/15 text-[#34c759] flex items-center justify-center font-bold text-xs shrink-0">
             <Wallet size={16} />
           </div>
         </div>
 
         {/* 2. Digital / Bank Inflow */}
-        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between">
+        <div
+          onClick={() => navigate('/accounts')}
+          className="bg-gradient-to-br from-sky-500/[0.06] via-white/95 to-blue-500/[0.02] dark:from-sky-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-sky-500/25 dark:border-sky-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
+        >
           <div>
             <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Digital / Bank</span>
-            <span className="text-base font-extrabold text-[#0071e3] tabular-nums">
+            <span className="text-base font-extrabold text-[#0071e3] dark:text-[#3894ff] tabular-nums">
               Rs. {Math.round(stats.todayOnlineSales).toLocaleString()}
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">JazzCash • Bank transfers</span>
           </div>
-          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center font-bold text-xs shrink-0">
+          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#0071e3]/15 text-[#0071e3] flex items-center justify-center font-bold text-xs shrink-0">
             💳
           </div>
         </div>
 
         {/* 3. Operating Expenses */}
-        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between">
+        <div
+          onClick={() => navigate('/expenses')}
+          className="bg-gradient-to-br from-rose-500/[0.06] via-white/95 to-red-500/[0.02] dark:from-rose-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-rose-500/25 dark:border-rose-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
+        >
           <div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Today's Expenses</span>
@@ -919,21 +959,24 @@ function Dashboard() {
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">Shop running costs</span>
           </div>
-          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#ff3b30]/10 text-[#ff3b30] flex items-center justify-center font-bold text-xs shrink-0">
+          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#ff3b30]/15 text-[#ff3b30] flex items-center justify-center font-bold text-xs shrink-0">
             💸
           </div>
         </div>
 
         {/* 4. Month Sales (MTD) */}
-        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between">
+        <div
+          onClick={() => navigate('/sales')}
+          className="bg-gradient-to-br from-teal-500/[0.06] via-white/95 to-teal-500/[0.02] dark:from-teal-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-teal-500/25 dark:border-teal-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
+        >
           <div>
             <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Month Sales (MTD)</span>
-            <span className="text-base font-extrabold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
+            <span className="text-base font-extrabold text-teal-700 dark:text-teal-400 tabular-nums">
               Rs. {Math.round(stats.monthlySales).toLocaleString()}
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">{stats.monthlyOrdersCount} orders this month</span>
           </div>
-          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#5856d6]/10 text-[#5856d6] flex items-center justify-center font-bold text-xs shrink-0">
+          <div className="w-8.5 h-8.5 rounded-[12px] bg-teal-500/15 text-teal-600 flex items-center justify-center font-bold text-xs shrink-0">
             <Activity size={16} />
           </div>
         </div>
@@ -941,7 +984,7 @@ function Dashboard() {
         {/* 5. Low Stock Alert Watchlist */}
         <div
           onClick={() => navigate('/products')}
-          className="col-span-2 sm:col-span-3 lg:col-span-1 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-black/[0.05] dark:border-white/[0.08] shadow-2xs flex items-center justify-between cursor-pointer hover:border-[#ff9500]/40 transition"
+          className="col-span-2 sm:col-span-3 lg:col-span-1 bg-gradient-to-br from-amber-500/[0.06] via-white/95 to-amber-500/[0.02] dark:from-amber-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-amber-500/25 dark:border-amber-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
         >
           <div>
             <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Catalog Health</span>
@@ -952,7 +995,7 @@ function Dashboard() {
               {stats.lowStockCount > 0 ? 'Items below reorder point' : 'All items well-stocked'}
             </span>
           </div>
-          <div className={`w-8.5 h-8.5 rounded-[12px] flex items-center justify-center shrink-0 ${stats.lowStockCount > 0 ? 'bg-[#ff9500]/10 text-[#ff9500]' : 'bg-[#34c759]/10 text-[#34c759]'}`}>
+          <div className={`w-8.5 h-8.5 rounded-[12px] flex items-center justify-center shrink-0 ${stats.lowStockCount > 0 ? 'bg-[#ff9500]/15 text-[#ff9500]' : 'bg-[#34c759]/15 text-[#34c759]'}`}>
             <AlertTriangle size={16} />
           </div>
         </div>
