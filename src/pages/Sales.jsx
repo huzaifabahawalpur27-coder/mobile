@@ -13,25 +13,36 @@ import { getBankAccounts, deductBankBalance } from '../services/bankService'
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
   let snap = null
   if (it.imei_snapshot) {
-    if (typeof it.imei_snapshot === 'object') {
+    if (typeof it.imei_snapshot === 'object' && it.imei_snapshot !== null) {
       snap = it.imei_snapshot
     } else if (typeof it.imei_snapshot === 'string') {
-      try { snap = JSON.parse(it.imei_snapshot) } catch (_) {}
+      try {
+        const parsed = JSON.parse(it.imei_snapshot)
+        if (typeof parsed === 'object' && parsed !== null) snap = parsed
+      } catch (_) {}
     }
   }
-  const ph = it.phones || (phonesPool || []).find(p => p.id === it.phone_id || (it.sale_id && p.sale_id === it.sale_id)) || snap
-  const prod = it.products || (productsPool || []).find(p => p.id === it.product_id)
+
+  const itPhoneId = it.phone_id ? String(it.phone_id) : null
+  const itSaleId = it.sale_id ? String(it.sale_id) : null
+
+  const ph = it.phones || (phonesPool || []).find(p => (itPhoneId && String(p.id) === itPhoneId) || (itSaleId && String(p.sale_id) === itSaleId)) || snap
+  const prod = it.products || (productsPool || []).find(p => it.product_id && String(p.id) === String(it.product_id))
 
   let name = (it.product_name && it.product_name.trim()) || (prod ? prod.name : null)
   if (!name && ph) {
     const brand = ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''
     name = `${brand}${ph.model || 'Smartphone'}`.trim()
   }
+  if (!name && snap) {
+    const brand = snap.brand && snap.brand !== 'Unknown' ? snap.brand + ' ' : ''
+    name = `${brand}${snap.model || 'Smartphone'}`.trim()
+  }
   if (!name) name = 'Item'
 
   const specs = ph ? [ph.storage, ph.color, ph.pta_status ? ph.pta_status.toUpperCase() : null, ph.condition ? ph.condition.toUpperCase() : null].filter(Boolean).join(' • ') : null
-  const imei = ph ? (ph.imei_1 || ph.imei || ph.imei1 || (typeof it.imei_snapshot === 'string' && !it.imei_snapshot.startsWith('{') ? it.imei_snapshot : null)) : null
-  const imei2 = ph ? (ph.imei_2 || ph.imei2 || null) : null
+  const imei = ph ? (ph.imei_1 || ph.imei || ph.imei1 || (typeof it.imei_snapshot === 'string' && !it.imei_snapshot.startsWith('{') ? it.imei_snapshot : null)) : (snap?.imei_1 || null)
+  const imei2 = ph ? (ph.imei_2 || ph.imei2 || null) : (snap?.imei_2 || null)
   const price = Number(it.unit_price ?? (it.price ?? (it.subtotal || 0)))
   const qty = Number(it.quantity || 1)
   const baseCost = Number(it.cost_price ?? (ph?.cost_price ?? (snap?.cost_price ?? (prod?.cost_price ?? 0))))
@@ -123,6 +134,37 @@ function Sales() {
 
     const sid = String(user.shop_id)
 
+    // Helper to recover items for a sale from linked phones if sale_items is empty
+    const recoverSaleItems = (s, explicitItems, phonesPool) => {
+      if (explicitItems && explicitItems.length > 0) return explicitItems
+      if (!phonesPool || phonesPool.length === 0) return []
+      const sIdStr = String(s.id)
+      const linked = phonesPool.filter(p => String(p.sale_id) === sIdStr)
+      if (linked.length === 0) return []
+      return linked.map((ph, idx) => ({
+        id: `rec_${s.id}_${ph.id}_${idx}`,
+        sale_id: s.id,
+        phone_id: ph.id,
+        product_name: `${ph.brand || ''} ${ph.model || 'Smartphone'}`.trim(),
+        quantity: 1,
+        price: Number(ph.sale_price || ph.selling_price || (Number(s.total_amount || 0) / linked.length)),
+        unit_price: Number(ph.sale_price || ph.selling_price || (Number(s.total_amount || 0) / linked.length)),
+        cost_price: Number(ph.cost_price || 0),
+        additional_costs: Number(ph.additional_costs || 0),
+        phones: ph,
+        imei_snapshot: {
+          imei_1: ph.imei_1,
+          imei_2: ph.imei_2,
+          brand: ph.brand,
+          model: ph.model,
+          color: ph.color,
+          storage: ph.storage,
+          condition: ph.condition,
+          pta_status: ph.pta_status
+        }
+      }))
+    }
+
     // ── Step 1: Show local IndexedDB data IMMEDIATELY (instant UI) ────────────
     try {
       const [localData, lItems, lPhones, lProducts] = await Promise.all([
@@ -133,9 +175,13 @@ function Sales() {
       ])
       const filtered = localData.filter(x => String(x.shop_id) === sid)
       const mapped = filtered.map(s => {
-        const items = (s.sale_items && s.sale_items.length > 0)
+        const sIdStr = String(s.id)
+        let items = (s.sale_items && s.sale_items.length > 0)
           ? s.sale_items
-          : lItems.filter(i => i.sale_id === s.id)
+          : lItems.filter(i => String(i.sale_id) === sIdStr)
+
+        items = recoverSaleItems(s, items, lPhones)
+
         return {
           ...s,
           sale_items: items.map(it => normalizeSaleItem(it, lPhones, lProducts))
@@ -163,15 +209,31 @@ function Sales() {
         .eq('shop_id', user.shop_id)
         .order('created_at', { ascending: false })
 
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4000))
-      const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
+      const phonesPromise = supabase
+        .from('phones')
+        .select('id, brand, model, storage, color, condition, pta_status, imei_1, imei_2, cost_price, sale_price, additional_costs, status, sale_id')
+        .eq('shop_id', user.shop_id)
+        .not('sale_id', 'is', null)
 
-      if (error) throw error
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 12000))
+      const [salesRes, phonesRes] = await Promise.race([
+        Promise.all([fetchPromise, phonesPromise]),
+        timeoutPromise
+      ])
+
+      const data = salesRes.data
+      const remotePhones = phonesRes?.data || []
+
+      if (salesRes.error) throw salesRes.error
       if (data) {
-        const cleanData = JSON.parse(JSON.stringify(data)).map(s => ({
-          ...s,
-          sale_items: (s.sale_items || []).map(it => normalizeSaleItem(it))
-        }))
+        const cleanData = JSON.parse(JSON.stringify(data)).map(s => {
+          let items = s.sale_items || []
+          items = recoverSaleItems(s, items, remotePhones)
+          return {
+            ...s,
+            sale_items: items.map(it => normalizeSaleItem(it, remotePhones))
+          }
+        })
         await db.sales.bulkPut(cleanData)
         // Cache sale items into local DB
         const allItems = cleanData.flatMap(s => s.sale_items || [])
@@ -188,18 +250,22 @@ function Sales() {
       ])
       const filtered = localData.filter(x => String(x.shop_id) === sid)
       const mapped = filtered.map(s => {
-        const items = (s.sale_items && s.sale_items.length > 0)
+        const sIdStr = String(s.id)
+        let items = (s.sale_items && s.sale_items.length > 0)
           ? s.sale_items
-          : lItems.filter(i => i.sale_id === s.id)
+          : lItems.filter(i => String(i.sale_id) === sIdStr)
+
+        items = recoverSaleItems(s, items, lPhones.length > 0 ? lPhones : remotePhones)
+
         return {
           ...s,
-          sale_items: items.map(it => normalizeSaleItem(it, lPhones, lProducts))
+          sale_items: items.map(it => normalizeSaleItem(it, lPhones.length > 0 ? lPhones : remotePhones, lProducts))
         }
       })
       const sorted = mapped.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
       setSales(sorted)
-    } catch (e) {
-      console.warn('Sales: Supabase background refresh failed:', e)
+    } catch (err) {
+      console.warn('Sales: Supabase fetch failed, continuing with local DB:', err)
     } finally {
       setLoading(false)
     }
@@ -207,45 +273,103 @@ function Sales() {
 
   const openSale = async (sale) => {
     setSelectedSale(sale)
-    setReturnQtys({})
     setLoadingItems(true)
+    setReturnQtys({})
     try {
-      if (!navigator.onLine) throw new Error('Offline')
-      const fetchPromise = supabase
-        .from('sale_items')
-        .select('*, products(name, stock_quantity), phones(*)')
-        .eq('sale_id', sale.id)
-
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-      const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
-
-      if (error) throw error
       let items = []
-      if (data) {
-        items = JSON.parse(JSON.stringify(data)).map(it => normalizeSaleItem(it))
-        await db.sale_items.bulkPut(items)
-      } else {
-        const localItems = await db.sale_items.where({ sale_id: sale.id }).toArray().catch(() => [])
-        const [lPhones, lProducts] = await Promise.all([
-          db.phones ? db.phones.toArray() : [],
-          db.products ? db.products.toArray() : []
-        ])
-        items = localItems.map(it => normalizeSaleItem(it, lPhones, lProducts))
-      }
-      setSaleItems(items)
-    } catch (e) {
-      console.log('Sale Items: Fetching from local DB (Offline Fallback)')
-      const localItems = await db.sale_items.where({ sale_id: sale.id }).toArray().catch(() => [])
       const [lPhones, lProducts] = await Promise.all([
         db.phones ? db.phones.toArray() : [],
         db.products ? db.products.toArray() : []
       ])
-      const targetItems = localItems.length === 0
-        ? (await db.sale_items.toArray()).filter(i => i.sale_id === sale.id)
-        : localItems
-      setSaleItems(targetItems.map(it => normalizeSaleItem(it, lPhones, lProducts)))
+
+      if (navigator.onLine) {
+        const { data } = await supabase
+          .from('sale_items')
+          .select('*, products(name), phones(*)')
+          .eq('sale_id', sale.id)
+        if (data && data.length > 0) {
+          items = data.map(it => normalizeSaleItem(it, lPhones, lProducts))
+        } else {
+          // If Supabase returned 0 items, check if phones in database are linked by sale_id
+          const { data: remoteLinkedPhones } = await supabase
+            .from('phones')
+            .select('*')
+            .eq('sale_id', sale.id)
+          if (remoteLinkedPhones && remoteLinkedPhones.length > 0) {
+            items = remoteLinkedPhones.map((ph, idx) => normalizeSaleItem({
+              id: `rem_${sale.id}_${ph.id}_${idx}`,
+              sale_id: sale.id,
+              phone_id: ph.id,
+              product_name: `${ph.brand || ''} ${ph.model || 'Smartphone'}`.trim(),
+              quantity: 1,
+              price: Number(ph.sale_price || ph.selling_price || (Number(sale.total_amount || 0) / remoteLinkedPhones.length)),
+              unit_price: Number(ph.sale_price || ph.selling_price || (Number(sale.total_amount || 0) / remoteLinkedPhones.length)),
+              cost_price: Number(ph.cost_price || 0),
+              additional_costs: Number(ph.additional_costs || 0),
+              phones: ph,
+              imei_snapshot: {
+                imei_1: ph.imei_1,
+                imei_2: ph.imei_2,
+                brand: ph.brand,
+                model: ph.model,
+                color: ph.color,
+                storage: ph.storage,
+                condition: ph.condition,
+                pta_status: ph.pta_status
+              }
+            }, remoteLinkedPhones, lProducts))
+          }
+        }
+      }
+
+      if (items.length === 0) {
+        // Fallback to sale.sale_items, local DB, or linked phones
+        if (sale.sale_items && sale.sale_items.length > 0) {
+          items = sale.sale_items.map(it => normalizeSaleItem(it, lPhones, lProducts))
+        } else {
+          const sIdStr = String(sale.id)
+          const allLocalItems = db.sale_items ? await db.sale_items.toArray() : []
+          let localItems = allLocalItems.filter(i => String(i.sale_id) === sIdStr)
+
+          if (localItems.length === 0 && lPhones.length > 0) {
+            const linked = lPhones.filter(p => String(p.sale_id) === sIdStr)
+            if (linked.length > 0) {
+              localItems = linked.map((ph, idx) => ({
+                id: `rec_${sale.id}_${ph.id}_${idx}`,
+                sale_id: sale.id,
+                phone_id: ph.id,
+                product_name: `${ph.brand || ''} ${ph.model || 'Smartphone'}`.trim(),
+                quantity: 1,
+                price: Number(ph.sale_price || ph.selling_price || (Number(sale.total_amount || 0) / linked.length)),
+                unit_price: Number(ph.sale_price || ph.selling_price || (Number(sale.total_amount || 0) / linked.length)),
+                cost_price: Number(ph.cost_price || 0),
+                additional_costs: Number(ph.additional_costs || 0),
+                phones: ph,
+                imei_snapshot: {
+                  imei_1: ph.imei_1,
+                  imei_2: ph.imei_2,
+                  brand: ph.brand,
+                  model: ph.model,
+                  color: ph.color,
+                  storage: ph.storage,
+                  condition: ph.condition,
+                  pta_status: ph.pta_status
+                }
+              }))
+            }
+          }
+          items = localItems.map(it => normalizeSaleItem(it, lPhones, lProducts))
+        }
+      }
+      setSaleItems(items)
+    } catch (e) {
+      console.warn('Sale Items: Fetching fallback error:', e)
+      if (sale.sale_items && sale.sale_items.length > 0) {
+        setSaleItems(sale.sale_items)
+      }
+    } finally {
+      setLoadingItems(false)
     }
-    setLoadingItems(false)
   }
 
   // Handle return

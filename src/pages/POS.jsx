@@ -1102,6 +1102,8 @@ function POS() {
             p_items: cart.map(i => ({
               phone_id: i.phone_id || null,
               product_id: i.phone_id ? null : toIntOrNull(i.id),
+              name: i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone',
+              product_name: i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone',
               price: i.custom_price,
               quantity: i.qty
             })),
@@ -1118,11 +1120,13 @@ function POS() {
             const fallbackRes = await supabase.rpc('process_phone_sale', {
               p_customer_id: toIntOrNull(customerId),
               p_items: cart.map(i => ({
-                phone_id: i.phone_id || null,
-                product_id: i.phone_id ? null : toIntOrNull(i.id),
-                price: i.custom_price,
-                quantity: i.qty
-              })),
+              phone_id: i.phone_id || null,
+              product_id: i.phone_id ? null : toIntOrNull(i.id),
+              name: i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone',
+              product_name: i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone',
+              price: i.custom_price,
+              quantity: i.qty
+            })),
               p_total_amount: subtotal,
               p_discount: totalDiscount,
               p_net_amount: total,
@@ -1143,9 +1147,44 @@ function POS() {
 
         if (rpcRes && rpcRes.success) {
           const saleId = rpcRes.sale_id
-          finalSale = { ...saleData, id: saleId }
+          const localSaleItems = cart.map((i, idx) => ({
+            id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `item_${Date.now()}_${idx}`,
+            sale_id: saleId,
+            phone_id: i.phone_id || null,
+            product_id: i.phone_id ? null : toIntOrNull(i.id),
+            product_name: i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone',
+            quantity: Number(i.qty || 1),
+            price: Number(i.custom_price || 0),
+            unit_price: Number(i.custom_price || 0),
+            cost_price: Number(i.cost_price || 0),
+            additional_costs: Number(i.additional_costs || 0),
+            subtotal: Number(i.custom_price || 0) * Number(i.qty || 1),
+            line_total: Number(i.custom_price || 0) * Number(i.qty || 1),
+            returned_qty: 0,
+            imei_snapshot: (i.item_type === 'phone' || i.phone_id) ? {
+              imei_1: i.imei_1,
+              imei_2: i.imei_2,
+              brand: i.brand,
+              model: i.model,
+              color: i.color,
+              storage: i.storage,
+              condition: i.condition,
+              pta_status: i.pta_status,
+              cost_price: Number(i.cost_price || 0),
+              additional_costs: Number(i.additional_costs || 0)
+            } : null
+          }))
+
+          finalSale = {
+            ...saleData,
+            id: saleId,
+            sale_items: localSaleItems
+          }
 
           await db.sales.put(finalSale).catch(() => {})
+          if (db.sale_items) {
+            await db.sale_items.bulkPut(localSaleItems).catch(() => {})
+          }
           for (const item of cart) {
             if (item.phone_id && db.phones) {
               await db.phones.update(item.phone_id, { status: 'sold' }).catch(() => {})
