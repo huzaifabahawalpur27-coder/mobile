@@ -323,15 +323,22 @@ function PurchaseHistory() {
                     .update({ returned_qty: (item.returned_qty || 0) + returnQty })
                     .eq('id', item.id)
 
-                // Reduce stock — fetch live stock first
-                const { data: liveProduct } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).maybeSingle()
-                const currentStock = liveProduct?.stock_quantity ?? 0
-                const newStock = Math.max(0, currentStock - returnQty)
-                await supabase.from('products')
-                    .update({ stock_quantity: newStock })
-                    .eq('id', item.product_id)
-                // Keep local DB in sync
-                await db.products.update(item.product_id, { stock_quantity: newStock })
+                // Handle phone items vs product items
+                if (item.phone_id) {
+                    // Mark phone as returned
+                    await supabase.from('phones').update({ status: 'returned' }).eq('id', item.phone_id)
+                    if (db.phones) await db.phones.update(item.phone_id, { status: 'returned' }).catch(() => {})
+                } else if (item.product_id) {
+                    // Reduce stock — fetch live stock first
+                    const { data: liveProduct } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).maybeSingle()
+                    const currentStock = liveProduct?.stock_quantity ?? 0
+                    const newStock = Math.max(0, currentStock - returnQty)
+                    await supabase.from('products')
+                        .update({ stock_quantity: newStock })
+                        .eq('id', item.product_id)
+                    // Keep local DB in sync
+                    await db.products.update(item.product_id, { stock_quantity: newStock })
+                }
             }
 
             // Update purchase record total
@@ -399,11 +406,18 @@ function PurchaseHistory() {
                     await db.purchase_items.update(item.id, { returned_qty: newRetQty })
                     await db.sync_queue.add({ table: 'purchase_items', action: 'UPDATE', data: { id: item.id, returned_qty: newRetQty }, timestamp: new Date().toISOString() })
 
-                    // 2. Update local stock (subtract for purchase return)
-                    const localProd = await db.products.get(item.product_id)
-                    const newStock = Math.max(0, (localProd?.stock_quantity || 0) - returnQty)
-                    await db.products.update(item.product_id, { stock_quantity: newStock })
-                    await db.sync_queue.add({ table: 'products', action: 'UPDATE', data: { id: item.product_id, stock_quantity: newStock }, timestamp: new Date().toISOString() })
+                    // 2. Handle phone vs product stock
+                    if (item.phone_id) {
+                        // Mark phone as returned locally
+                        if (db.phones) await db.phones.update(item.phone_id, { status: 'returned' }).catch(() => {})
+                        await db.sync_queue.add({ table: 'phones', action: 'UPDATE', data: { id: item.phone_id, status: 'returned' }, timestamp: new Date().toISOString() })
+                    } else if (item.product_id) {
+                        // Update local stock (subtract for purchase return)
+                        const localProd = await db.products.get(item.product_id)
+                        const newStock = Math.max(0, (localProd?.stock_quantity || 0) - returnQty)
+                        await db.products.update(item.product_id, { stock_quantity: newStock })
+                        await db.sync_queue.add({ table: 'products', action: 'UPDATE', data: { id: item.product_id, stock_quantity: newStock }, timestamp: new Date().toISOString() })
+                    }
                 }
 
                 // Update local purchase total

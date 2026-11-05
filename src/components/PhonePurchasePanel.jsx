@@ -817,6 +817,18 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           } catch (_) {}
         }
 
+        // 5. Update supplier outstanding balance for unpaid credit portion
+        const unpaidCredit = totalCost - effectivePaid
+        if (unpaidCredit > 0 && supplierId) {
+          try {
+            const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', parseInt(supplierId)).maybeSingle()
+            const currentBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
+            const newBal = currentBal + unpaidCredit
+            await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', parseInt(supplierId))
+            if (db.suppliers) await db.suppliers.update(parseInt(supplierId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
+          } catch (_) {}
+        }
+
         rpcData = {
           success: true,
           purchase_id: purchaseId,

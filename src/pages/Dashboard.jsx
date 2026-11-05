@@ -486,17 +486,28 @@ function Dashboard() {
     const todayAOV = todayOrdersCount > 0 ? todayGrossSales / todayOrdersCount : 0
 
     // Payment breakdowns
-    const todayCashSales = todaySalesList
+    let todayCashSales = todaySalesList
       .filter(s => s.payment_type === 'cash')
       .reduce((sum, s) => sum + (Number(s.total_amount || 0) - Number(s.discount || 0)), 0)
 
-    const todayOnlineSales = todaySalesList
+    let todayOnlineSales = todaySalesList
       .filter(s => ['online', 'jazzcash', 'easypaisa', 'bank', 'sadapay', 'nayapay'].includes(String(s.payment_type || '').toLowerCase()))
       .reduce((sum, s) => sum + (Number(s.total_amount || 0) - Number(s.discount || 0)), 0)
 
-    const todayCreditSales = todaySalesList
+    let todayCreditSales = todaySalesList
       .filter(s => s.payment_type === 'credit')
       .reduce((sum, s) => sum + (Number(s.total_amount || 0) - Number(s.discount || 0)), 0)
+
+    // Distribute split-payment sales into their respective buckets
+    todaySalesList.filter(s => s.payment_type === 'split' && Array.isArray(s.payment_details)).forEach(s => {
+      s.payment_details.forEach(p => {
+        const method = String(p.method || p.provider || '').toLowerCase()
+        const amt = Number(p.amount || 0)
+        if (method === 'cash') todayCashSales += amt
+        else if (method === 'credit') todayCreditSales += amt
+        else todayOnlineSales += amt
+      })
+    })
 
     // 2. Today's Expenses
     const todayExpenses = (todayExpensesList || []).reduce((sum, e) => sum + Number(e.amount || 0), 0)

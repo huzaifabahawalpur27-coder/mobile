@@ -422,6 +422,7 @@ function Sales() {
 
       // Process Refund
       if (refundType === 'credit' && selectedSale.customer_id) {
+        // Credit refund: reduce customer outstanding balance
         const { data: cust } = await supabase.from('customers').select('*').eq('id', selectedSale.customer_id).maybeSingle()
         const currentBal = cust?.outstanding_balance ?? cust?.balance ?? 0
         const newBal = Math.max(0, currentBal - totalReturnAmount)
@@ -431,7 +432,7 @@ function Sales() {
         }
         await db.customers.update(selectedSale.customer_id, { outstanding_balance: newBal, balance: newBal })
 
-        // Log payment return in customer_payments
+        // Log credit return in customer_payments
         await supabase.from('customer_payments').insert([{
           shop_id: user.shop_id,
           customer_id: selectedSale.customer_id,
@@ -439,14 +440,17 @@ function Sales() {
           payment_type: 'return',
           note: `Return from Invoice #${String(selectedSale.id).slice(-6)} (Credited to Balance)`
         }])
-        // Log as refund (Cash or Walk-in)
-        await supabase.from('customer_payments').insert([{
-          shop_id: user.shop_id,
-          customer_id: selectedSale.customer_id || null,
-          amount: -totalReturnAmount,
-          payment_type: 'refund',
-          note: `Cash Refund from Invoice #${String(selectedSale.id).slice(-6)}`
-        }])
+      } else {
+        // Cash/walk-in refund: deduct from cash drawer, log as refund
+        if (selectedSale.customer_id) {
+          await supabase.from('customer_payments').insert([{
+            shop_id: user.shop_id,
+            customer_id: selectedSale.customer_id,
+            amount: -totalReturnAmount,
+            payment_type: 'refund',
+            note: `Cash Refund from Invoice #${String(selectedSale.id).slice(-6)}`
+          }])
+        }
 
         // Deduct from Cash account in Accounts section
         try {
@@ -700,6 +704,41 @@ function Sales() {
       const item = sales.find(s => s.id === id)
       if (!item) continue
       try {
+        // Rollback inventory and ledger before deleting
+        try {
+          const { data: saleItems } = await supabase.from('sale_items').select('*').eq('sale_id', id)
+          if (saleItems && saleItems.length > 0) {
+            for (const si of saleItems) {
+              // Restore phone status to in_stock
+              if (si.phone_id) {
+                await supabase.from('phones').update({ status: 'in_stock', sale_id: null, sold_at: null }).eq('id', si.phone_id)
+                if (db.phones) await db.phones.update(si.phone_id, { status: 'in_stock', sale_id: null, sold_at: null }).catch(() => {})
+              }
+              // Restore product stock quantity
+              if (si.product_id) {
+                const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', si.product_id).maybeSingle()
+                if (prod) {
+                  const restoredQty = (prod.stock_quantity || 0) + (si.quantity || 0)
+                  await supabase.from('products').update({ stock_quantity: restoredQty }).eq('id', si.product_id)
+                  if (db.products) await db.products.update(si.product_id, { stock_quantity: restoredQty }).catch(() => {})
+                }
+              }
+            }
+          }
+          // Reverse customer credit balance if credit sale
+          if (item.payment_type === 'credit' && item.customer_id) {
+            const { data: cust } = await supabase.from('customers').select('outstanding_balance, balance').eq('id', item.customer_id).maybeSingle()
+            if (cust) {
+              const saleAmount = Number(item.total_amount || 0) - Number(item.discount || 0)
+              const newBal = Math.max(0, (cust.outstanding_balance ?? cust.balance ?? 0) - saleAmount)
+              await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', item.customer_id).catch(() => {})
+              if (db.customers) await db.customers.update(item.customer_id, { outstanding_balance: newBal, balance: newBal }).catch(() => {})
+            }
+          }
+        } catch (rollbackErr) {
+          console.warn('Rollback warning for sale', id, rollbackErr)
+        }
+
         if (navigator.onLine) {
           // Cascade: delete sale_items first, then sale
           await supabase.from('sale_items').delete().eq('sale_id', id)

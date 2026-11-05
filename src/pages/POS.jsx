@@ -90,7 +90,7 @@ function POS() {
   const [discountPercent, setDiscountPercent] = useState('')
   const [saleType, setSaleType] = useState('sale')
 
-  const subtotal = cart.reduce((sum, i) => sum + i.custom_price * i.qty, 0)
+  const subtotal = cart.reduce((sum, i) => sum + (Number(i.custom_price) || 0) * (Number(i.qty) || 0), 0)
   const totalDiscount = discountMode === 'percent'
     ? Math.round((subtotal * (parseFloat(discountPercent) || 0)) / 100 * 100) / 100
     : parseFloat(discount) || 0
@@ -1263,7 +1263,7 @@ function POS() {
           subtotal: i.custom_price * i.qty,
           line_total: i.custom_price * i.qty,
           returned_qty: 0,
-          imei_snapshot: i.item_type === 'phone' ? {
+          imei_snapshot: (i.item_type === 'phone' || i.phone_id) ? {
             imei_1: i.imei_1,
             imei_2: i.imei_2,
             brand: i.brand,
@@ -1374,7 +1374,7 @@ function POS() {
         subtotal: i.custom_price * i.qty,
         line_total: i.custom_price * i.qty,
         returned_qty: 0,
-        imei_snapshot: i.item_type === 'phone' ? {
+        imei_snapshot: (i.item_type === 'phone' || i.phone_id) ? {
             imei_1: i.imei_1,
             imei_2: i.imei_2,
             brand: i.brand,
