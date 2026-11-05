@@ -16,7 +16,10 @@ import {
   Smartphone,
   Receipt,
   Users,
-  Terminal
+  ShieldCheck,
+  Sparkles,
+  Wifi,
+  WifiOff
 } from 'lucide-react'
 import BroadcastBanner from '../components/BroadcastBanner'
 
@@ -348,37 +351,66 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-[#faf8ff] text-[#131b2e] flex flex-col justify-between selection:bg-[#4338ca] selection:text-white relative">
+    <div className="min-h-screen relative flex flex-col justify-between overflow-hidden font-sans selection:bg-[#0071e3] selection:text-white">
 
-      {/* Top Architecture Bar */}
-      <header className="relative z-20 px-6 sm:px-10 py-3.5 bg-white border-b border-[#E2E8F0] shadow-[0_1px_2px_rgba(15,23,42,0.03)] flex items-center justify-between">
+      {/* ── 1. SEMI-TRANSPARENT POS BACKGROUND IMAGE & LIGHT APPLE FROST ── */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        {/* Subtle pan/zoom background image */}
+        <motion.div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: 'url("/mobile_shop_bg.jpg")' }}
+          initial={{ scale: 1 }}
+          animate={{ scale: [1, 1.04, 1] }}
+          transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
+        />
+
+        {/* Apple Light Translucent Frosted Glass Veil */}
+        <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-slate-50/75 to-white/85 backdrop-blur-[4px]" />
+
+        {/* Soft, delicate iOS atmospheric color bubbles */}
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-blue-400/15 blur-[90px]" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-indigo-300/20 blur-[100px]" />
+      </div>
+
+      {/* ── 2. FROSTED TRANSLUCENT APPLE GLASS HEADER ── */}
+      <header className="relative z-20 px-6 sm:px-10 py-3.5 bg-white/70 backdrop-blur-xl border-b border-black/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.02)] flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-md bg-[#f2f3ff] border border-[#c7c4d7]/70 p-1 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-2xl bg-white shadow-sm border border-black/[0.06] p-1.5 flex items-center justify-center shrink-0">
             <img src={logoUrl} alt={platformName} className="w-full h-full object-contain" />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm text-[#131b2e] tracking-tight">
-              {platformName}
-            </span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold font-mono uppercase tracking-[0.04em] bg-[#f2f3ff] text-[#464554] border border-[#c7c4d7]/60">
-              SYS // POS
-            </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-base text-[#1d1d1f] tracking-tight">
+                {platformName}
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-[#0071e3] border border-blue-500/20">
+                POS
+              </span>
+            </div>
+            <p className="text-[11px] text-[#86868b] hidden sm:block">
+              Mobile Store Retail & Serialized Inventory
+            </p>
           </div>
         </div>
 
-        {/* System & Telemetry Status Indicators */}
+        {/* Apple Status Capsule */}
         <div className="flex items-center gap-2.5">
-          <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono text-[#64748b] bg-[#f8fafc] border border-[#E2E8F0]">
-            <Terminal size={12} className="text-[#4338ca]" />
-            <span>NODE: LOCAL-HOST</span>
-          </div>
-          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border ${
+          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md transition-colors ${
             isOnline
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-              : 'bg-amber-50 text-amber-700 border-amber-200'
+              ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/25'
+              : 'bg-amber-500/10 text-amber-700 border border-amber-500/25'
           }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            <span className="text-[11px] font-mono font-medium">{isOnline ? 'ONLINE' : 'OFFLINE MODE'}</span>
+            {isOnline ? (
+              <>
+                <Wifi size={13} className="text-emerald-600" />
+                <span className="text-[11px] font-medium">Terminal Online</span>
+              </>
+            ) : (
+              <>
+                <WifiOff size={13} className="text-amber-600" />
+                <span className="text-[11px] font-medium">Offline Ready</span>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -388,165 +420,164 @@ function Login() {
         <BroadcastBanner isLogin />
       </div>
 
-      {/* Main Content: Disciplined Precision Architecture */}
+      {/* ── 3. MAIN CONTENT: LIGHT APPLE SPLIT EXPERIENCE ── */}
       <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-12 flex items-center justify-center">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 w-full items-center">
 
-          {/* Left Column: Utilitarian Spec / Operational Telemetry (Desktop) */}
+          {/* Left Column: Apple Product Showcase Cards (Desktop) */}
           <div className="hidden lg:block lg:col-span-7 space-y-6 text-left">
-            {/* System Tag */}
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded text-[11px] font-semibold uppercase tracking-[0.04em] bg-[#eaedff] text-[#2a14b4] border border-[#c1beff]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#4338ca]" />
-              <span>Disciplined Retail Architecture</span>
+            {/* Soft Capsule Tag */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 backdrop-blur-md border border-black/[0.06] shadow-sm text-xs font-semibold text-[#0071e3]">
+              <Sparkles size={14} className="text-[#0071e3]" />
+              <span>Tailored for Smartphone & Electronics Showrooms</span>
             </div>
 
-            {/* Headline */}
+            {/* Hero Heading */}
             <div className="space-y-3">
-              <h1 className="text-3xl lg:text-[34px] font-semibold text-[#131b2e] tracking-[-0.025em] leading-[1.2]">
-                High-density precision for mobile retail & serialized inventory.
+              <h1 className="text-4xl lg:text-[42px] font-black text-[#1d1d1f] tracking-tight leading-[1.15]">
+                Complete Control Over Every{' '}
+                <span className="bg-gradient-to-r from-[#0071e3] to-[#5856d6] bg-clip-text text-transparent">
+                  IMEI & Sale.
+                </span>
               </h1>
-              <p className="text-[14px] text-[#464554] leading-[22px] max-w-xl">
-                Engineered for rapid checkout, dual-IMEI tracking, counterparty ledgers, and zero-latency offline synchronization across local hardware terminals.
+              <p className="text-[#86868b] text-[15px] leading-relaxed max-w-xl">
+                Experience high-speed barcode checkout, automated bilingual WhatsApp receipts, instant customer credit ledgers, and multi-vault inventory protection.
               </p>
             </div>
 
-            {/* Structured Specifications Cards */}
-            <div className="grid grid-cols-3 gap-3 pt-2">
-              <div className="p-3.5 rounded-md bg-white border border-[#E2E8F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-2">
-                <div className="w-7 h-7 rounded bg-[#f2f3ff] border border-[#c7c4d7]/70 text-[#4338ca] flex items-center justify-center">
-                  <Smartphone size={15} />
+            {/* Apple Squircle Feature Cards */}
+            <div className="grid grid-cols-3 gap-3.5 pt-2">
+              <div className="p-4 rounded-2xl bg-white/75 hover:bg-white/90 backdrop-blur-xl border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_25px_rgba(0,0,0,0.06)] transition-all space-y-2.5">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-[#0071e3] border border-blue-500/20 flex items-center justify-center">
+                  <Smartphone size={20} />
                 </div>
-                <h3 className="text-xs font-semibold text-[#131b2e] tracking-tight">IMEI & PTA Engine</h3>
-                <p className="text-[11px] text-[#64748b] leading-[15px]">
-                  Dual-IMEI validation, box-pack grading, and official warranty lifecycle tracking.
+                <h3 className="text-xs font-bold text-[#1d1d1f]">Dual IMEI & PTA</h3>
+                <p className="text-[11px] text-[#86868b] leading-[15px]">
+                  Tracks box-pack, used, PTA approved, and warranty statuses seamlessly.
                 </p>
               </div>
 
-              <div className="p-3.5 rounded-md bg-white border border-[#E2E8F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-2">
-                <div className="w-7 h-7 rounded bg-[#f2f3ff] border border-[#c7c4d7]/70 text-[#0058be] flex items-center justify-center">
-                  <Receipt size={15} />
+              <div className="p-4 rounded-2xl bg-white/75 hover:bg-white/90 backdrop-blur-xl border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_25px_rgba(0,0,0,0.06)] transition-all space-y-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center">
+                  <Receipt size={20} />
                 </div>
-                <h3 className="text-xs font-semibold text-[#131b2e] tracking-tight">Direct Slips</h3>
-                <p className="text-[11px] text-[#64748b] leading-[15px]">
-                  Bilingual Urdu/English WhatsApp receipts and thermal ESC/POS dispatch.
+                <h3 className="text-xs font-bold text-[#1d1d1f]">WhatsApp Slips</h3>
+                <p className="text-[11px] text-[#86868b] leading-[15px]">
+                  Dispatches branded customer invoices directly to phone with warranty notes.
                 </p>
               </div>
 
-              <div className="p-3.5 rounded-md bg-white border border-[#E2E8F0] shadow-[0_1px_2px_rgba(15,23,42,0.04)] space-y-2">
-                <div className="w-7 h-7 rounded bg-[#f2f3ff] border border-[#c7c4d7]/70 text-[#4338ca] flex items-center justify-center">
-                  <Users size={15} />
+              <div className="p-4 rounded-2xl bg-white/75 hover:bg-white/90 backdrop-blur-xl border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_25px_rgba(0,0,0,0.06)] transition-all space-y-2.5">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-[#af52de] border border-purple-500/20 flex items-center justify-center">
+                  <Users size={20} />
                 </div>
-                <h3 className="text-xs font-semibold text-[#131b2e] tracking-tight">Ledgers & Khata</h3>
-                <p className="text-[11px] text-[#64748b] leading-[15px]">
-                  Dealer balances, customer credit registers, and daily cash drawer reconciliation.
+                <h3 className="text-xs font-bold text-[#1d1d1f]">Khata & Ledgers</h3>
+                <p className="text-[11px] text-[#86868b] leading-[15px]">
+                  Dealer udhaar, supplier balance tracking, and daily cash drawer shifts.
                 </p>
               </div>
             </div>
 
-            {/* Mechanical Architecture Chips */}
-            <div className="pt-2 flex flex-wrap items-center gap-2 text-[11px] font-mono text-[#64748b]">
-              <span className="px-2 py-0.5 rounded bg-[#f2f3ff] border border-[#c7c4d7]/60">IDB-VAULT</span>
-              <span className="px-2 py-0.5 rounded bg-[#f2f3ff] border border-[#c7c4d7]/60">RLS-ISOLATED</span>
-              <span className="px-2 py-0.5 rounded bg-[#f2f3ff] border border-[#c7c4d7]/60">PWA-OFFLINE-READY</span>
-              <span className="px-2 py-0.5 rounded bg-[#f2f3ff] border border-[#c7c4d7]/60">256-BIT-AUTH</span>
+            {/* Apple Trust Pill */}
+            <div className="flex items-center gap-2 text-xs font-medium text-[#86868b] pt-1">
+              <ShieldCheck size={16} className="text-emerald-500" />
+              <span>Offline-first PWA sync • Thermal ESC/POS ready • Bank transfer reconciliation</span>
             </div>
           </div>
 
-          {/* Right Column: Disciplined Precision Terminal Card */}
+          {/* Right Column: Apple Frosted Glass Login Card */}
           <div className="lg:col-span-5 w-full flex justify-center">
-            <div className="w-full max-w-[400px] bg-white border border-[#E2E8F0] rounded-lg p-6 sm:p-7 shadow-[0_4px_6px_-1px_rgba(15,23,42,0.05),0_2px_4px_-2px_rgba(15,23,42,0.03)] space-y-5 text-left">
+            <div className="w-full max-w-md bg-white/80 backdrop-blur-2xl border border-white/90 rounded-3xl p-7 sm:p-9 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] space-y-6 text-left relative overflow-hidden">
               
-              {/* Card Header & Workstation Metadata */}
-              <div className="border-b border-[#E2E8F0] pb-4 space-y-1">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-9 h-9 rounded-md bg-[#f2f3ff] border border-[#c7c4d7]/70 p-1.5 flex items-center justify-center">
-                    <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain" />
-                  </div>
-                  <span className="text-[10px] font-mono uppercase font-semibold tracking-wider text-[#64748b] bg-[#f8fafc] px-2 py-0.5 rounded border border-[#E2E8F0]">
-                    TERMINAL AUTH
-                  </span>
+              {/* Card Header */}
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-white p-2.5 shadow-md shadow-black/[0.04] border border-black/[0.06] flex items-center justify-center">
+                  <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain" />
                 </div>
-                <h2 className="text-xl font-semibold text-[#131b2e] tracking-[-0.015em]">
-                  Sign In to EdgeX
-                </h2>
-                <p className="text-xs text-[#64748b]">
-                  Authenticate operator credentials to mount workspace session.
-                </p>
+
+                <div>
+                  <h2 className="text-2xl font-bold text-[#1d1d1f] tracking-tight">
+                    Sign in to EdgeX
+                  </h2>
+                  <p className="text-xs sm:text-sm text-[#86868b] mt-0.5">
+                    Enter your staff credentials to continue
+                  </p>
+                </div>
               </div>
 
               {/* Login Form */}
               <form onSubmit={handleLogin} className="space-y-4">
                 
                 {/* Username Input */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-semibold uppercase tracking-[0.04em] text-[#464554]">
-                    Operator ID / Username
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73] ml-0.5">
+                    Username or Email
                   </label>
-                  <div className="relative rounded-md border border-[#c7c4d7] bg-white focus-within:border-[#4338ca] focus-within:ring-4 focus-within:ring-[#4338ca]/12 transition-all">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#777586]">
-                      <User size={15} />
+                  <div className="relative rounded-xl border border-slate-200/80 bg-white/90 hover:bg-white focus-within:bg-white focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
+                      <User size={16} />
                     </div>
                     <input
                       type="text"
-                      placeholder="admin or username"
+                      placeholder="admin or user@domain.com"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       required
                       autoComplete="username"
-                      className="w-full bg-transparent pl-9 pr-3 py-2 text-sm text-[#131b2e] placeholder:text-[#777586]/70 focus:outline-none font-sans"
+                      className="w-full bg-transparent pl-10 pr-3 py-3 text-sm text-[#1d1d1f] placeholder:text-[#86868b]/70 focus:outline-none font-medium"
                     />
                   </div>
                 </div>
 
                 {/* Password Input */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-[11px] font-semibold uppercase tracking-[0.04em] text-[#464554]">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-0.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73]">
                       Password
                     </label>
                     <button
                       type="button"
                       onClick={handleQuickDemoFill}
-                      className="text-[11px] font-medium text-[#0058be] hover:text-[#2a14b4] bg-[#f2f3ff] hover:bg-[#eaedff] px-2 py-0.5 rounded border border-[#c7c4d7]/60 shadow-[inset_0_-1px_0_#CBD5E1] transition-all cursor-pointer"
+                      className="text-xs font-semibold text-[#0071e3] hover:text-[#0077ed] bg-blue-500/10 hover:bg-blue-500/15 px-2.5 py-0.5 rounded-full transition cursor-pointer"
                     >
-                      ⚡ Demo Fill
+                      ⚡ Fill Demo
                     </button>
                   </div>
-                  <div className="relative rounded-md border border-[#c7c4d7] bg-white focus-within:border-[#4338ca] focus-within:ring-4 focus-within:ring-[#4338ca]/12 transition-all">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#777586]">
-                      <Lock size={15} />
+                  <div className="relative rounded-xl border border-slate-200/80 bg-white/90 hover:bg-white focus-within:bg-white focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
+                      <Lock size={16} />
                     </div>
                     <input
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="••••••••"
+                      placeholder="Enter your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       autoComplete="current-password"
-                      className="w-full bg-transparent pl-9 pr-9 py-2 text-sm text-[#131b2e] placeholder:text-[#777586]/70 focus:outline-none font-sans"
+                      className="w-full bg-transparent pl-10 pr-11 py-3 text-sm text-[#1d1d1f] placeholder:text-[#86868b]/70 focus:outline-none font-medium"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-[#777586] hover:text-[#131b2e] transition-colors cursor-pointer"
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#86868b] hover:text-[#1d1d1f] transition-colors cursor-pointer"
                       tabIndex={-1}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
-                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
                 </div>
 
-                {/* Error Banner */}
+                {/* Error Banner with Smooth AnimatePresence */}
                 <AnimatePresence>
                   {error && (
                     <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
+                      initial={{ opacity: 0, height: 0, y: -4 }}
+                      animate={{ opacity: 1, height: 'auto', y: 0 }}
                       exit={{ opacity: 0, height: 0 }}
                       className="overflow-hidden"
                     >
-                      <div className="p-2.5 bg-[#ffdad6]/50 border border-[#ba1a1a]/40 rounded-md text-xs text-[#93000a] leading-relaxed font-medium flex items-start gap-2">
+                      <div className="p-3 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-700 leading-relaxed font-semibold flex items-start gap-2">
                         <span className="shrink-0 mt-0.5">⚠️</span>
                         <span>{error}</span>
                       </div>
@@ -554,27 +585,27 @@ function Login() {
                   )}
                 </AnimatePresence>
 
-                {/* Submit Action Button with Tactile Inner Chamfer */}
+                {/* Apple Blue Primary Action Button */}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-2.5 px-4 bg-[#4338ca] hover:bg-[#3730a3] active:bg-[#2a14b4] text-white font-medium text-sm rounded-md shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(15,23,42,0.08)] flex items-center justify-center gap-2 cursor-pointer transition duration-150 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+                  className="w-full py-3.5 px-5 bg-[#0071e3] hover:bg-[#0077ed] active:scale-[0.985] text-white font-semibold text-sm rounded-xl transition-all duration-150 shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-2"
                 >
                   {loading ? (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
                     <>
-                      <span>Authenticate Session</span>
-                      <ArrowRight size={15} />
+                      <span>Sign In</span>
+                      <ArrowRight size={16} />
                     </>
                   )}
                 </button>
               </form>
 
-              {/* Card Micro-Security Specifications */}
-              <div className="pt-3 border-t border-[#E2E8F0] text-center">
-                <p className="text-[11px] font-mono text-[#64748b]">
-                  SECURE LOCAL WORKSTATION • IDB V2.4
+              {/* Card Footer Micro-note */}
+              <div className="pt-3 border-t border-black/[0.06] text-center">
+                <p className="text-[11px] text-[#86868b]">
+                  Offline PWA Ready • Serialized Hardware Vault Encrypted
                 </p>
               </div>
 
@@ -584,20 +615,20 @@ function Login() {
         </div>
       </main>
 
-      {/* Structured Footer */}
-      <footer className="relative z-10 px-6 py-3.5 bg-white border-t border-[#E2E8F0] text-xs text-[#64748b]">
+      {/* ── 4. LIGHT APPLE GLASS FOOTER ── */}
+      <footer className="relative z-10 px-6 py-3.5 bg-white/70 backdrop-blur-md border-t border-black/[0.06] text-xs text-[#86868b]">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
           <div>
-            &copy; {new Date().getFullYear()} {platformName}. Disciplined Precision POS OS.
+            &copy; {new Date().getFullYear()} {platformName}. All rights reserved.
           </div>
           <div className="flex items-center gap-3">
-            <span>Terminal Core</span>
+            <span>Enterprise Mobile Retail POS</span>
             <span>•</span>
             <a
               href="https://wa.me/923012616367?text=Hi!%20I%20need%20support%20for%20EdgeX%20POS."
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#0058be] hover:text-[#2a14b4] hover:underline font-medium transition"
+              className="text-[#0071e3] hover:text-[#0077ed] hover:underline font-semibold transition"
             >
               Direct Support: 0301-2616367
             </a>
