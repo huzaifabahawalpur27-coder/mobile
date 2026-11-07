@@ -15,6 +15,7 @@ import { enqueueWhatsAppMessage, buildPhoneSaleReceiptText } from '../services/w
 import { playError } from '../utils/soundEffects'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 import { recordSaleToAccounts, getBankAccounts } from '../services/bankService'
+import { reconcileOfflineProducts } from '../services/syncService'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
   { id: 'easypaisa', name: 'Easypaisa', icon: '🟢' },
@@ -272,11 +273,14 @@ function POS() {
 
     const product = products.find(p => {
       const pSku = String(p.sku || '').trim().toLowerCase()
+      const pBarcode = String(p.barcode || '').trim().toLowerCase()
       const pId = String(p.id || '').trim()
       const pName = String(p.name || '').trim().toLowerCase()
       const cleanPSku = pSku.replace(/[^a-zA-Z0-9]/g, '')
+      const cleanPBarcode = pBarcode.replace(/[^a-zA-Z0-9]/g, '')
 
       return (
+        (pBarcode && (pBarcode === skuLower || cleanPBarcode === cleanSku)) ||
         (pSku && (pSku === skuLower || cleanPSku === cleanSku)) ||
         (pId && pId === rawSku) ||
         (pName && pName === skuLower)
@@ -426,6 +430,19 @@ function POS() {
 
     if (sale) {
       const items = sale.sale_items.map(si => {
+        if (si.phone_id) {
+          const ph = phones.find(p => p.id === si.phone_id)
+          return {
+            ...(ph || {}),
+            id: `phone-${si.phone_id}`,
+            phone_id: si.phone_id,
+            item_type: 'phone',
+            name: si.product_name,
+            qty: si.quantity || 1,
+            custom_price: si.unit_price,
+            cost_price: si.cost_price || 0
+          }
+        }
         const prod = products.find(p => p.id === si.product_id)
         return {
           ...prod,
@@ -485,8 +502,9 @@ function POS() {
     // ── Step 2: Background refresh from Supabase (updates UI silently) ────────
     if (!navigator.onLine) return;
     try {
+      await reconcileOfflineProducts(user.shop_id).catch(() => {})
       const [p, c, cu, b, s, ph] = await Promise.all([
-        supabase.from('products').select('*, categories(name)').eq('shop_id', user.shop_id).or('status.eq.active,status.is.null'),
+        supabase.from('products').select('*, categories(name)').eq('shop_id', user.shop_id).or('status.neq.inactive,status.is.null'),
         supabase.from('categories').select('*').eq('shop_id', user.shop_id),
         supabase.from('customers').select('*').eq('shop_id', user.shop_id).order('name'),
         supabase.from('brands').select('*').eq('shop_id', user.shop_id).order('name'),
@@ -497,7 +515,7 @@ function POS() {
       if (p.data) {
         // Purge old local cached products for this shop to eliminate stale duplicate rows
         const allLocal = await db.products.toArray().catch(() => [])
-        const oldShopIds = allLocal.filter(x => String(x.shop_id) === sid).map(x => x.id)
+        const oldShopIds = allLocal.filter(x => String(x.shop_id) === sid && (typeof x.id === 'number' || !String(x.id).includes('-'))).map(x => x.id)
         if (oldShopIds.length > 0) await db.products.bulkDelete(oldShopIds).catch(() => {})
         await db.products.bulkPut(JSON.parse(JSON.stringify(p.data)))
       }
@@ -698,9 +716,10 @@ function POS() {
       const pName = String(p.name || '').toLowerCase()
       const pBrand = String(p.brand || '').toLowerCase()
       const pSku = String(p.sku || '').toLowerCase()
+      const pBarcode = String(p.barcode || '').toLowerCase()
       const pId = String(p.id || '').toLowerCase()
       const pCat = String(categoryNameMap[String(p.category_id)] || p.categories?.name || '').toLowerCase()
-      const searchTarget = `${pName} ${pBrand} ${pSku} ${pId} ${pCat}`
+      const searchTarget = `${pName} ${pBrand} ${pSku} ${pBarcode} ${pId} ${pCat}`
 
       matchSearch = tokens.every(token => searchTarget.includes(token))
     }
@@ -1239,6 +1258,13 @@ function POS() {
             }
           }
           setPhones(prev => prev.filter(p => !cart.some(c => c.phone_id === p.id)))
+          setProducts(prev => prev.map(p => {
+            const sold = cart.find(c => c.id === p.id && !c.phone_id)
+            if (sold) {
+              return { ...p, stock_quantity: Math.max(0, (Number(p.stock_quantity) || 0) - (Number(sold.qty) || 0)) }
+            }
+            return p
+          }))
 
           if (customerId) {
             const actualPaidToBill = Math.min(total, totalPaid)
@@ -1377,6 +1403,13 @@ function POS() {
             }
           }
           setPhones(prev => prev.filter(p => !cart.some(c => c.phone_id === p.id)))
+          setProducts(prev => prev.map(p => {
+            const sold = cart.find(c => c.id === p.id && !c.phone_id)
+            if (sold) {
+              return { ...p, stock_quantity: Math.max(0, (Number(p.stock_quantity) || 0) - (Number(sold.qty) || 0)) }
+            }
+            return p
+          }))
 
           if (customerId) {
             const actualPaidToBill = Math.min(total, totalPaid)
@@ -1685,6 +1718,19 @@ function POS() {
 
     const loadSaleToCart = (sale) => {
       const items = sale.sale_items.map(si => {
+        if (si.phone_id) {
+          const ph = phones.find(p => p.id === si.phone_id)
+          return {
+            ...(ph || {}),
+            id: `phone-${si.phone_id}`,
+            phone_id: si.phone_id,
+            item_type: 'phone',
+            name: si.product_name,
+            qty: si.quantity || 1,
+            custom_price: si.unit_price,
+            cost_price: si.cost_price || 0
+          }
+        }
         const prod = products.find(p => p.id === si.product_id)
         return {
           ...prod,

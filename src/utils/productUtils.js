@@ -1,7 +1,7 @@
 /**
- * Deduplicates product records based on ID, name + barcode/sku,
- * ensuring no item appears more than once in catalog, inventory, or POS grids.
- * Prefers integer cloud IDs over client-side temporary UUIDs.
+ * Deduplicates product records based on ID, and merges temporary client-side
+ * offline UUIDs with their synced cloud numeric IDs.
+ * Distinct products with different numeric IDs are NEVER dropped.
  */
 export const deduplicateProducts = (products = []) => {
   if (!Array.isArray(products)) return []
@@ -27,14 +27,26 @@ export const deduplicateProducts = (products = []) => {
     const nameNorm = (item.name || '').trim().toLowerCase()
     const codeNorm = (item.barcode || item.sku || '').trim().toLowerCase()
     const shopStr = String(item.shop_id || '')
-    const businessKey = `${shopStr}::${nameNorm}::${codeNorm}`
+    const isCurrentInt = typeof item.id === 'number' || (!isNaN(Number(item.id)) && !String(item.id).includes('-'))
 
-    if (nameNorm && seenBusinessKeys.has(businessKey)) {
-      continue
+    // Only deduplicate by businessKey if there is a non-empty barcode/sku,
+    // to bridge client-side temporary UUIDs with synced cloud numeric IDs.
+    // Distinct cloud items with numeric IDs are NEVER dropped even if names match.
+    if (codeNorm && nameNorm) {
+      const businessKey = `${shopStr}::${nameNorm}::${codeNorm}`
+      if (seenBusinessKeys.has(businessKey)) {
+        const existing = seenBusinessKeys.get(businessKey)
+        const isExistingInt = typeof existing.id === 'number' || (!isNaN(Number(existing.id)) && !String(existing.id).includes('-'))
+        // If the existing item is already a synced cloud item and current is a temp UUID, skip the temp one
+        if (isExistingInt && !isCurrentInt) {
+          continue
+        }
+      } else {
+        seenBusinessKeys.set(businessKey, item)
+      }
     }
 
     seenIds.add(idStr)
-    if (nameNorm) seenBusinessKeys.set(businessKey, item)
     results.push(item)
   }
 
@@ -42,17 +54,25 @@ export const deduplicateProducts = (products = []) => {
 }
 
 /**
- * Deduplicates mobile phone inventory items by IMEI 1
+ * Deduplicates mobile phone inventory items by IMEI 1,
+ * while safely preserving distinct phones that have empty or placeholder IMEIs.
  */
 export const deduplicatePhones = (phones = []) => {
   if (!Array.isArray(phones)) return []
   const seenImeis = new Set()
   const results = []
+  
+  const PLACEHOLDER_STRINGS = new Set(['', 'n/a', 'na', 'none', 'null', '0', '000000000000000', 'undefined', '-'])
+
   for (const phone of phones) {
     if (!phone) continue
-    const imei = String(phone.imei_1 || phone.id || '').trim().toLowerCase()
-    if (seenImeis.has(imei)) continue
-    seenImeis.add(imei)
+    const rawImei = String(phone.imei_1 || '').trim().toLowerCase()
+    const isPlaceholder = PLACEHOLDER_STRINGS.has(rawImei)
+    // If it has a real IMEI, deduplicate by IMEI. If placeholder, deduplicate by unique phone ID.
+    const key = isPlaceholder ? `id-${phone.id}` : `imei-${rawImei}`
+    
+    if (seenImeis.has(key)) continue
+    seenImeis.add(key)
     results.push(phone)
   }
   return results
