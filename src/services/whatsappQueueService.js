@@ -339,6 +339,10 @@ export function buildExchangeWhatsAppText({ exchange, shopInfo = {} }) {
     settleStatusUrdu = `⚪ برابری کا تبادلہ (Even Exchange - Rs. 0)`
   }
 
+  // Fetch shop warranty details from settings/localStorage
+  const shopId = shopInfo.id || shopInfo.shop_id || exchange.shop_id
+  const effectiveWarranty = shopInfo.warranty_terms || (shopId ? getShopWarrantyTerms(shopId) : DEFAULT_WARRANTY_TERMS_URDU)
+
   return `السلام علیکم ${customerName}! 🤝
 ${shopName} میں تشریف لانے اور فون ایکسچینج کرنے کا شکریہ!
 
@@ -356,6 +360,8 @@ ${outgoingText}
 
 ⚖️ *حتمی حساب (Reconciliation & Settlement):*
 ${settleStatusUrdu}
+
+${effectiveWarranty}
 
 آپ کے اعتماد کا بے حد شکریہ! 🤝${shopPhone ? `\n📞 رابطہ: ${shopPhone}` : ''}`
 }

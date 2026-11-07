@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   RefreshCw,
   Plus,
@@ -121,6 +121,7 @@ export default function Exchange() {
   // Panel C: Settlement & Tender
   const [paymentMethod, setPaymentMethod] = useState('cash') // 'cash' | 'bank' | 'split' | 'credit'
   const [selectedAccountId, setSelectedAccountId] = useState('')
+  const [showSplitModal, setShowSplitModal] = useState(false)
   const [splitAllocations, setSplitAllocations] = useState([
     { method: 'cash', amount: '', account_id: '' },
     { method: 'bank', amount: '', account_id: '' }
@@ -178,9 +179,17 @@ export default function Exchange() {
       const { data: prodData } = await supabase.from('products').select('*').eq('shop_id', sid).order('name')
       if (prodData) setAvailableProducts(prodData)
 
-      // 6. Shop settings
+      // 6. Shop settings & warranty terms
       const { data: sData } = await supabase.from('shops').select('*').eq('id', sid).maybeSingle()
-      if (sData) setShopSettings(sData)
+      const savedWarranty = localStorage.getItem(`shop_warranty_${sid}`)
+      if (sData) {
+        setShopSettings({
+          ...sData,
+          warranty_terms: savedWarranty || sData.warranty_terms
+        })
+      } else if (savedWarranty) {
+        setShopSettings({ warranty_terms: savedWarranty })
+      }
 
       // 7. Extract known phone models from DB (all past & current phones)
       const { data: allPastPhones } = await supabase
@@ -400,6 +409,68 @@ export default function Exchange() {
     return 'even'
   }, [netSettlementDifference])
 
+  // Account classification helpers
+  const cashAccount = useMemo(() => {
+    return bankAccounts.find(a => a.is_default || a.account_name?.toLowerCase().includes('cash') || a.bank_name?.toLowerCase().includes('cash')) || bankAccounts[0]
+  }, [bankAccounts])
+
+  const bankOnlyAccounts = useMemo(() => {
+    const list = bankAccounts.filter(a => a.id !== cashAccount?.id && !a.account_name?.toLowerCase().includes('cash'))
+    return list.length > 0 ? list : bankAccounts
+  }, [bankAccounts, cashAccount])
+
+  // Split payment allocations helpers
+  const totalSplitAllocated = useMemo(() => {
+    return (splitAllocations || []).reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0)
+  }, [splitAllocations])
+
+  const splitRemaining = useMemo(() => {
+    return absoluteSettlement - totalSplitAllocated
+  }, [absoluteSettlement, totalSplitAllocated])
+
+  const openSplitModal = () => {
+    const cId = cashAccount?.id ? String(cashAccount.id) : ''
+    const bId = bankOnlyAccounts[0]?.id ? String(bankOnlyAccounts[0].id) : (bankAccounts[0]?.id ? String(bankAccounts[0].id) : '')
+    const half = Math.floor(absoluteSettlement / 2)
+    const remainder = absoluteSettlement - half
+
+    if (!splitAllocations || splitAllocations.length === 0 || !splitAllocations.some(a => Number(a.amount) > 0)) {
+      setSplitAllocations([
+        { method: 'cash', amount: half > 0 ? String(half) : '', account_id: cId },
+        { method: 'bank', amount: remainder > 0 ? String(remainder) : '', account_id: bId }
+      ])
+    }
+    setShowSplitModal(true)
+  }
+
+  const updateSplitLine = (idx, field, value) => {
+    setSplitAllocations(prev => {
+      const copy = [...prev]
+      copy[idx] = { ...copy[idx], [field]: value }
+      if (field === 'method') {
+        if (value === 'cash') {
+          copy[idx].account_id = cashAccount?.id ? String(cashAccount.id) : ''
+        } else if (value === 'bank' && (!copy[idx].account_id || copy[idx].account_id === String(cashAccount?.id))) {
+          copy[idx].account_id = bankOnlyAccounts[0]?.id ? String(bankOnlyAccounts[0].id) : (bankAccounts[0]?.id ? String(bankAccounts[0].id) : '')
+        }
+      }
+      return copy
+    })
+  }
+
+  const addSplitLine = () => {
+    const defaultAcc = bankOnlyAccounts[0]?.id ? String(bankOnlyAccounts[0].id) : (bankAccounts[0]?.id ? String(bankAccounts[0].id) : '')
+    setSplitAllocations(prev => [
+      ...prev,
+      { method: 'bank', amount: '', account_id: defaultAcc }
+    ])
+  }
+
+  const removeSplitLine = (idx) => {
+    if (splitAllocations.length <= 1) return
+    setSplitAllocations(prev => prev.filter((_, i) => i !== idx))
+  }
+
   // Filtered Inventory Search
   const filteredAvailablePhones = useMemo(() => {
     const q = inventorySearch.toLowerCase().trim()
@@ -506,9 +577,39 @@ export default function Exchange() {
     }
 
     // 4. Settlement tender check
-    if (settlementDirection !== 'even') {
-      if (!selectedAccountId && paymentMethod !== 'split') {
-        setSubmitError('Please select a Bank / Cash Vault account for the settlement transaction')
+    if (settlementDirection === 'customer_paid') {
+      if (paymentMethod === 'split') {
+        const validLines = splitAllocations.filter(a => (parseFloat(a.amount) || 0) > 0)
+        if (validLines.length === 0) {
+          setSubmitError('Please configure split payments (amounts are required)')
+          return false
+        }
+        const totalAllocated = validLines.reduce((s, a) => s + parseFloat(a.amount), 0)
+        if (Math.abs(totalAllocated - absoluteSettlement) > 0.5) {
+          setSubmitError(`Split payments sum (Rs. ${totalAllocated.toLocaleString('en-PK')}) must equal net settlement (Rs. ${absoluteSettlement.toLocaleString('en-PK')})`)
+          return false
+        }
+        for (let i = 0; i < validLines.length; i++) {
+          if (!validLines[i].account_id) {
+            setSubmitError(`Split Payment #${i + 1}: Please select a valid bank/cash account`)
+            return false
+          }
+        }
+      } else if (paymentMethod === 'bank') {
+        if (!selectedAccountId) {
+          setSubmitError('Please select a Bank Account for the settlement transaction')
+          return false
+        }
+      } else if (paymentMethod === 'cash') {
+        if (!selectedAccountId && cashAccount) {
+          setSelectedAccountId(String(cashAccount.id))
+        }
+      }
+    } else if (settlementDirection === 'shop_payout') {
+      if (!selectedAccountId && paymentMethod === 'cash' && cashAccount) {
+        setSelectedAccountId(String(cashAccount.id))
+      } else if (!selectedAccountId) {
+        setSubmitError('Please select an account to pay the customer from')
         return false
       }
     }
@@ -567,8 +668,16 @@ export default function Exchange() {
         settlementAmount: absoluteSettlement,
         settlementDirection: settlementDirection,
         paymentMethod: paymentMethod,
-        paymentDetails: paymentMethod === 'split' ? splitAllocations : null,
-        accountId: selectedAccountId ? parseInt(selectedAccountId) : null,
+        paymentDetails: paymentMethod === 'split'
+          ? splitAllocations.filter(a => parseFloat(a.amount) > 0).map(a => ({
+              method: a.method,
+              amount: parseFloat(a.amount),
+              account_id: parseInt(a.account_id)
+            }))
+          : null,
+        accountId: paymentMethod === 'cash'
+          ? (cashAccount?.id || (selectedAccountId ? parseInt(selectedAccountId) : null))
+          : (selectedAccountId ? parseInt(selectedAccountId) : (cashAccount?.id || null)),
         notes: generalNotes,
         idempotencyKey: crypto.randomUUID ? crypto.randomUUID() : null
       }
@@ -623,6 +732,11 @@ export default function Exchange() {
     setWalkInName('')
     setWalkInPhone('')
     setGeneralNotes('')
+    setPaymentMethod('cash')
+    setSplitAllocations([
+      { method: 'cash', amount: '', account_id: '' },
+      { method: 'bank', amount: '', account_id: '' }
+    ])
     setIncomingPhones([
       {
         id: 1,
@@ -660,7 +774,16 @@ export default function Exchange() {
   // WhatsApp Dispatch
   const handleSendWhatsApp = (exchangeRecord = completedExchange) => {
     if (!exchangeRecord) return
-    const text = buildExchangeWhatsAppText({ exchange: exchangeRecord, shopInfo: shopSettings })
+    const sid = user?.shop_id
+    const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+    const text = buildExchangeWhatsAppText({
+      exchange: { ...exchangeRecord, shop_id: sid },
+      shopInfo: {
+        ...shopSettings,
+        id: sid,
+        warranty_terms: savedWarranty || shopSettings?.warranty_terms
+      }
+    })
     const targetPhone = exchangeRecord.customer_phone || ''
     const cleanPhone = targetPhone.replace(/[^0-9]/g, '')
     const url = cleanPhone
@@ -740,12 +863,48 @@ export default function Exchange() {
           </div>
         </div>
 
-        {/* Top Controls: Customer + Branch */}
-        {activeTab === 'new' && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Customer Picker */}
-            <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-slate-800 p-1 px-2 rounded-lg border border-gray-200 dark:border-slate-700">
-              <User size={13} className="text-purple-600 shrink-0" />
+        {/* Top Controls: Branch Picker (if multiple) */}
+        {activeTab === 'new' && branches.length > 1 && (
+          <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-slate-800 p-1 px-2.5 rounded-lg border border-gray-200 dark:border-slate-700 text-xs">
+            <Building2 size={13} className="text-purple-600 shrink-0" />
+            <span className="text-[10px] text-gray-500 font-bold uppercase">Branch:</span>
+            <select
+              value={selectedBranchId}
+              onChange={e => setSelectedBranchId(e.target.value)}
+              className="bg-transparent border-none text-xs font-bold focus:outline-hidden text-gray-800 dark:text-gray-200 cursor-pointer"
+            >
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {activeTab === 'new' ? (
+        /* ── WORKSPACE AREA (NO SCROLL MAIN SCREEN) ── */
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {/* ══════════════════════════════════════════════════════════
+              PROMINENT CUSTOMER BAR AT TOP OF WORKSPACE
+              Highlighted with glowing purple border so it is never overlooked!
+          ══════════════════════════════════════════════════════════ */}
+          <div className="shrink-0 mx-3 mt-2.5 p-2 px-3 bg-gradient-to-r from-purple-50 via-white to-purple-50/80 dark:from-purple-950/40 dark:via-slate-900 dark:to-purple-950/30 border-2 border-purple-400 dark:border-purple-600 rounded-xl shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+                <User size={15} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-black uppercase text-purple-950 dark:text-purple-300 tracking-wider flex items-center gap-1">
+                  Customer Details (گاہک کا نام و فون) <span className="text-red-500 font-bold">*</span>
+                </div>
+                <div className="text-[10px] text-gray-500 dark:text-gray-400">Select existing customer or type walk-in name</div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Existing Customer Selector */}
               <select
                 value={selectedCustomerId}
                 onChange={e => {
@@ -755,9 +914,9 @@ export default function Exchange() {
                     setWalkInPhone('')
                   }
                 }}
-                className="bg-transparent border-none text-xs font-semibold focus:outline-hidden text-gray-800 dark:text-gray-200"
+                className="text-xs font-bold py-1.5 px-2 bg-white dark:bg-slate-800 border-2 border-purple-300 dark:border-purple-700 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
-                <option value="">Walk-in Customer</option>
+                <option value="">-- Walk-in / New Customer --</option>
                 {customers.map(c => (
                   <option key={c.id} value={c.id}>
                     {c.name} {c.phone ? `(${c.phone})` : ''}
@@ -765,21 +924,22 @@ export default function Exchange() {
                 ))}
               </select>
 
+              {/* Walk-in Inputs (Visible when Walk-in is active) */}
               {!selectedCustomerId && (
-                <div className="flex items-center gap-1 ml-1 pl-1 border-l border-gray-200 dark:border-slate-700">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="text"
-                    placeholder="Walk-in Name *"
+                    placeholder="Customer Name * (گاہک کا نام)"
                     value={walkInName}
                     onChange={e => setWalkInName(e.target.value)}
-                    className="w-24 text-[11px] p-0.5 px-1 bg-white dark:bg-slate-900 rounded border border-gray-200 dark:border-slate-700"
+                    className="text-xs font-bold py-1.5 px-2.5 w-48 bg-white dark:bg-slate-800 border-2 border-purple-500 dark:border-purple-400 rounded-lg text-purple-950 dark:text-purple-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs"
                   />
                   <input
-                    type="text"
-                    placeholder="Phone"
+                    type="tel"
+                    placeholder="Phone (فون نمبر)"
                     value={walkInPhone}
                     onChange={e => setWalkInPhone(e.target.value)}
-                    className="w-20 text-[11px] p-0.5 px-1 bg-white dark:bg-slate-900 rounded border border-gray-200 dark:border-slate-700"
+                    className="text-xs py-1.5 px-2 w-32 bg-white dark:bg-slate-800 border border-purple-300 dark:border-slate-700 rounded-lg text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
                   />
                 </div>
               )}
@@ -787,46 +947,13 @@ export default function Exchange() {
               <button
                 type="button"
                 onClick={() => setShowAddCustomerModal(true)}
-                className="text-[11px] font-bold text-purple-600 hover:text-purple-800 dark:text-purple-400 ml-1 cursor-pointer"
-                title="Add New Customer"
+                className="text-xs font-bold px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                title="Add New Customer to Directory"
               >
-                + Add
+                <Plus size={12} /> Add
               </button>
             </div>
-
-            {/* Branch Picker */}
-            {branches.length > 1 && (
-              <div className="flex items-center gap-1 bg-gray-50 dark:bg-slate-800 p-1 px-2 rounded-lg border border-gray-200 dark:border-slate-700">
-                <Building2 size={13} className="text-gray-500 shrink-0" />
-                <select
-                  value={selectedBranchId}
-                  onChange={e => setSelectedBranchId(e.target.value)}
-                  className="bg-transparent border-none text-xs font-semibold focus:outline-hidden text-gray-800 dark:text-gray-200"
-                >
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* General Notes input */}
-            <input
-              type="text"
-              placeholder="Memo / Remarks..."
-              value={generalNotes}
-              onChange={e => setGeneralNotes(e.target.value)}
-              className="text-xs p-1 px-2.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-200 w-36 sm:w-48"
-            />
           </div>
-        )}
-      </div>
-
-      {activeTab === 'new' ? (
-        /* ── WORKSPACE AREA (NO SCROLL MAIN SCREEN) ── */
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* DUAL WORKSPACE PANELS (50/50 GRID) */}
           <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3 p-3 overflow-hidden">
             {/* ══════════════════════════════════════════════════════════
@@ -1378,38 +1505,79 @@ export default function Exchange() {
                 )}
               </div>
 
-              {/* Column 3: Payment Tender & Complete Button */}
+              {/* Column 3: Payment Tender, Memo & Complete Button */}
               <div className="space-y-1.5">
-                <div className="grid grid-cols-2 gap-2">
+                {/* Tender Selection Row */}
+                <div className="flex items-center gap-2">
+                  {/* Primary Method Selector */}
                   <select
                     value={paymentMethod}
-                    onChange={e => setPaymentMethod(e.target.value)}
-                    className="text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-bold"
+                    onChange={e => {
+                      const m = e.target.value
+                      setPaymentMethod(m)
+                      if (m === 'cash' && cashAccount) {
+                        setSelectedAccountId(String(cashAccount.id))
+                      } else if (m === 'bank') {
+                        const defaultBank = bankOnlyAccounts[0]?.id ? String(bankOnlyAccounts[0].id) : (bankAccounts[0]?.id ? String(bankAccounts[0].id) : '')
+                        setSelectedAccountId(defaultBank)
+                      } else if (m === 'split') {
+                        openSplitModal()
+                      }
+                    }}
+                    className={`text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-bold ${
+                      paymentMethod === 'bank' || paymentMethod === 'split' ? 'w-1/2' : 'w-full'
+                    }`}
                   >
-                    <option value="cash">Cash Vault</option>
-                    <option value="bank">Bank Account</option>
+                    <option value="cash">💵 Cash Vault</option>
+                    <option value="bank">🏦 Bank Account</option>
                     {settlementDirection === 'customer_paid' && (
                       <>
-                        <option value="split">Split Payment</option>
-                        <option value="credit">Customer Khata</option>
+                        <option value="split">🔀 Split Payment</option>
+                        <option value="credit">📒 Customer Khata (Udhaar)</option>
                       </>
                     )}
                   </select>
 
-                  {paymentMethod !== 'split' && paymentMethod !== 'credit' && (
+                  {/* ONLY show Bank Account selector when Bank is chosen */}
+                  {paymentMethod === 'bank' && (
                     <select
                       value={selectedAccountId}
                       onChange={e => setSelectedAccountId(e.target.value)}
-                      className="text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
+                      className="w-1/2 text-xs p-1.5 rounded-lg border border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-semibold"
                     >
-                      {bankAccounts.map(a => (
+                      {bankOnlyAccounts.map(a => (
                         <option key={a.id} value={a.id}>
-                          {a.account_name} ({a.bank_name}) - Rs. {Number(a.current_balance).toLocaleString('en-PK')}
+                          {a.bank_name || a.account_name} ({a.account_name})
                         </option>
                       ))}
                     </select>
                   )}
+
+                  {/* When Split Payment is chosen, show a button to configure split */}
+                  {paymentMethod === 'split' && (
+                    <button
+                      type="button"
+                      onClick={openSplitModal}
+                      className="w-1/2 text-xs font-bold py-1.5 px-2 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 rounded-lg flex items-center justify-between hover:bg-purple-200 transition cursor-pointer"
+                    >
+                      <span className="truncate">
+                        {splitAllocations.filter(a => Number(a.amount) > 0).length > 0
+                          ? `Split (${splitAllocations.filter(a => Number(a.amount) > 0).length} methods)`
+                          : 'Configure Split'}
+                      </span>
+                      <span className="text-[10px] underline ml-1">Edit</span>
+                    </button>
+                  )}
                 </div>
+
+                {/* Memo / Remarks Option inside the form */}
+                <input
+                  type="text"
+                  placeholder="Memo / Remarks (اختیاری ریمارکس)..."
+                  value={generalNotes}
+                  onChange={e => setGeneralNotes(e.target.value)}
+                  className="w-full text-xs p-1.5 px-2.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
+                />
 
                 <button
                   type="button"
@@ -1949,6 +2117,150 @@ export default function Exchange() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: SPLIT PAYMENT SETTLEMENT ── */}
+      {showSplitModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-4 sm:p-5 border border-purple-200 dark:border-purple-900 shadow-2xl space-y-4 max-h-[90dvh] flex flex-col">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-purple-100 dark:bg-purple-900/40 text-purple-600 rounded-lg font-bold text-sm">
+                  🔀
+                </span>
+                <div>
+                  <h3 className="font-black text-sm text-gray-900 dark:text-white uppercase tracking-tight">
+                    Split Payment Settlement
+                  </h3>
+                  <p className="text-[10px] text-gray-500">
+                    Net Settlement: <b className="text-purple-600">Rs. {absoluteSettlement.toLocaleString('en-PK')}</b>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSplitModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 overflow-y-auto flex-1 custom-scrollbar pr-1">
+              {splitAllocations.map((alloc, idx) => (
+                <div
+                  key={idx}
+                  className="p-2.5 bg-gray-50 dark:bg-slate-800/60 rounded-xl border border-gray-200 dark:border-slate-700 space-y-2"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-gray-700 dark:text-gray-300">
+                      Payment Line #{idx + 1}
+                    </span>
+                    {splitAllocations.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeSplitLine(idx)}
+                        className="text-red-500 hover:text-red-700 text-xs font-bold cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={alloc.method}
+                      onChange={e => updateSplitLine(idx, 'method', e.target.value)}
+                      className="text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold text-gray-900 dark:text-white"
+                    >
+                      <option value="cash">💵 Cash Vault</option>
+                      <option value="bank">🏦 Bank Account</option>
+                    </select>
+
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400 font-bold">Rs.</span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="Amount"
+                        value={alloc.amount}
+                        onChange={e => updateSplitLine(idx, 'amount', e.target.value)}
+                        className="w-full text-xs font-bold p-1.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-right"
+                      />
+                    </div>
+                  </div>
+
+                  {alloc.method === 'bank' && (
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 block mb-0.5">Deposit Into Bank:</label>
+                      <select
+                        value={alloc.account_id}
+                        onChange={e => updateSplitLine(idx, 'account_id', e.target.value)}
+                        className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white font-medium"
+                      >
+                        {bankOnlyAccounts.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.bank_name || a.account_name} ({a.account_name}) - Rs. {Number(a.current_balance).toLocaleString('en-PK')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={addSplitLine}
+                className="w-full py-1.5 border border-dashed border-purple-400 dark:border-purple-700 text-purple-600 dark:text-purple-400 rounded-xl text-xs font-bold hover:bg-purple-50 dark:hover:bg-purple-950/20 transition flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <Plus size={13} /> Add Another Payment Line
+              </button>
+
+              {/* Split Summary */}
+              <div className="p-3 bg-purple-50/50 dark:bg-purple-950/20 rounded-xl border border-purple-100 dark:border-purple-900/30 space-y-1 text-xs">
+                <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                  <span>Net Settlement Due:</span>
+                  <span className="font-bold font-mono">Rs. {absoluteSettlement.toLocaleString('en-PK')}</span>
+                </div>
+                <div className="flex justify-between text-purple-700 dark:text-purple-400">
+                  <span>Total Split Allocated:</span>
+                  <span className="font-bold font-mono">Rs. {totalSplitAllocated.toLocaleString('en-PK')}</span>
+                </div>
+                <div className="flex justify-between font-black pt-1 border-t border-purple-200 dark:border-purple-800">
+                  <span>Remaining to Allocate:</span>
+                  <span className={`font-mono ${splitRemaining === 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    Rs. {splitRemaining.toLocaleString('en-PK')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowSplitModal(false)}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold cursor-pointer transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (splitRemaining !== 0) {
+                    alert(`Allocated amount (Rs. ${totalSplitAllocated.toLocaleString('en-PK')}) must equal net settlement (Rs. ${absoluteSettlement.toLocaleString('en-PK')}). Remaining: Rs. ${splitRemaining.toLocaleString('en-PK')}`)
+                    return
+                  }
+                  setShowSplitModal(false)
+                }}
+                disabled={splitRemaining !== 0}
+                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold cursor-pointer transition disabled:opacity-40"
+              >
+                Confirm Split Allocation
+              </button>
+            </div>
           </div>
         </div>
       )}
