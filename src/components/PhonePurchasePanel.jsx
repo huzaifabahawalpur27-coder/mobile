@@ -96,9 +96,66 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
   const [showModelDropdown, setShowModelDropdown] = useState(false)
   const [showColorDropdown, setShowColorDropdown] = useState(false)
   const [showPtaDropdown, setShowPtaDropdown] = useState(false)
+  const [ptaDropdownDirection, setPtaDropdownDirection] = useState('down') // 'down' | 'up'
+  const [colorDropdownDirection, setColorDropdownDirection] = useState('down') // 'down' | 'up'
   const modelDropdownRef = useRef(null)
   const colorDropdownRef = useRef(null)
   const ptaDropdownRef = useRef(null)
+
+  // Smart direction positioning for popovers to prevent bottom clipping
+  useEffect(() => {
+    if (showPtaDropdown && ptaDropdownRef.current) {
+      const rect = ptaDropdownRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+        setPtaDropdownDirection('up')
+      } else {
+        setPtaDropdownDirection('down')
+      }
+    }
+  }, [showPtaDropdown])
+
+  useEffect(() => {
+    if (showColorDropdown && colorDropdownRef.current) {
+      const rect = colorDropdownRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+        setColorDropdownDirection('up')
+      } else {
+        setColorDropdownDirection('down')
+      }
+    }
+  }, [showColorDropdown])
+
+  const togglePtaDropdown = () => {
+    if (!showPtaDropdown && ptaDropdownRef.current) {
+      const rect = ptaDropdownRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+        setPtaDropdownDirection('up')
+      } else {
+        setPtaDropdownDirection('down')
+      }
+    }
+    setShowPtaDropdown(prev => !prev)
+  }
+
+  const toggleColorDropdown = () => {
+    if (!showColorDropdown && colorDropdownRef.current) {
+      const rect = colorDropdownRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+        setColorDropdownDirection('up')
+      } else {
+        setColorDropdownDirection('down')
+      }
+    }
+    setShowColorDropdown(prev => !prev)
+  }
 
   // Real-time Custom Colors state
   const [customColors, setCustomColors] = useState(() => {
@@ -1335,7 +1392,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
             {/* Color, Condition, PTA Status */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Color field with Official iPhone Colors Dropdown & Quick Badges */}
-              <div className="relative" ref={colorDropdownRef}>
+              <div className={`relative ${showColorDropdown ? 'z-50' : 'z-10'}`} ref={colorDropdownRef}>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Color</label>
                   {phoneForm.brand === 'Apple' && officialModelColors.length > 0 && (
@@ -1351,18 +1408,20 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     value={phoneForm.color}
                     onChange={e => {
                       setPhoneForm(prev => ({ ...prev, color: e.target.value }))
-                      setShowColorDropdown(true)
+                      toggleColorDropdown()
                     }}
-                    onFocus={() => setShowColorDropdown(true)}
+                    onFocus={() => {
+                      if (!showColorDropdown) toggleColorDropdown()
+                    }}
                     className="w-full pl-3 pr-8 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium"
                   />
                   <button
                     type="button"
-                    onClick={() => setShowColorDropdown(prev => !prev)}
+                    onClick={toggleColorDropdown}
                     className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600 cursor-pointer"
                     title="Choose Color"
                   >
-                    <ChevronDown className="w-4 h-4" />
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showColorDropdown ? 'rotate-180' : ''}`} />
                   </button>
                 </div>
 
@@ -1408,7 +1467,13 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
                 {/* Color Dropdown Popover */}
                 {showColorDropdown && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-2xl z-40 max-h-60 overflow-y-auto divide-y divide-gray-100 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div
+                    className={`absolute left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-gray-100 ${
+                      colorDropdownDirection === 'up'
+                        ? 'bottom-full mb-1.5 origin-bottom animate-in fade-in slide-in-from-bottom-1 duration-150'
+                        : 'top-full mt-1.5 origin-top animate-in fade-in slide-in-from-top-1 duration-150'
+                    }`}
+                  >
                     {/* Real-time Add Custom Color input */}
                     <div className="p-2 bg-slate-50 border-b border-gray-100">
                       <div className="flex items-center gap-1.5">
@@ -1539,13 +1604,13 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 </select>
               </div>
 
-              {/* PTA Status Combobox with Real-Time Custom Addition */}
-              <div className="relative" ref={ptaDropdownRef}>
+              {/* PTA Status Combobox with Smart Placement & Real-Time Custom Addition */}
+              <div className={`relative ${showPtaDropdown ? 'z-50' : 'z-10'}`} ref={ptaDropdownRef}>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">PTA Status</label>
                   <button
                     type="button"
-                    onClick={() => setShowPtaDropdown(prev => !prev)}
+                    onClick={togglePtaDropdown}
                     className="text-[10px] text-blue-600 font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
                     <Plus className="w-3 h-3" /> Custom
@@ -1555,17 +1620,25 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setShowPtaDropdown(prev => !prev)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm font-bold text-left flex items-center justify-between bg-white text-blue-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+                    onClick={togglePtaDropdown}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm font-bold text-left flex items-center justify-between bg-white text-blue-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer shadow-xs"
                   >
                     <span className="truncate">{phoneForm.pta_status || 'PTA Approved'}</span>
-                    <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                    <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${
+                      showPtaDropdown ? 'rotate-180' : ''
+                    }`} />
                   </button>
                 </div>
 
-                {/* PTA Status Dropdown Popover */}
+                {/* PTA Status Dropdown Popover (Smart Upward/Downward Popover) */}
                 {showPtaDropdown && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-2xl z-40 max-h-64 overflow-y-auto divide-y divide-gray-100 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div
+                    className={`absolute left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 max-h-60 sm:max-h-64 overflow-y-auto divide-y divide-gray-100 ${
+                      ptaDropdownDirection === 'up'
+                        ? 'bottom-full mb-1.5 origin-bottom animate-in fade-in slide-in-from-bottom-1 duration-150'
+                        : 'top-full mt-1.5 origin-top animate-in fade-in slide-in-from-top-1 duration-150'
+                    }`}
+                  >
                     {/* Real-time Add Custom PTA Status input */}
                     <div className="p-2 bg-slate-50 border-b border-gray-100">
                       <div className="flex items-center gap-1.5">
