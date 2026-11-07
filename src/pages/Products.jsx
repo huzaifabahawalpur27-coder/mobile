@@ -10,6 +10,7 @@ import PasswordModal from '../components/PasswordModal'
 import BarcodeLabelModal from '../components/BarcodeLabelModal'
 import ProductDetailModal from '../components/ProductDetailModal'
 import EditPriceModal from '../components/EditPriceModal'
+import EditProductModal from '../components/EditProductModal'
 import { hasFeature } from '../utils/featureGate'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 
@@ -21,6 +22,7 @@ function Products() {
   const [suppliers, setSuppliers] = useState([])
   const [detailProduct, setDetailProduct] = useState(null)
   const [priceModalItem, setPriceModalItem] = useState(null)
+  const [fullEditProduct, setFullEditProduct] = useState(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -1134,20 +1136,20 @@ function Products() {
                       >
                         🏷️
                       </button>
-                      {isPhone ? (
+                      <button
+                        onClick={() => setFullEditProduct(item.raw_item || item)}
+                        title="Edit Full Product Details"
+                        className="rounded-lg bg-blue-50 hover:bg-blue-100 px-2 py-1.5 text-xs font-bold text-blue-700 transition flex items-center gap-1 cursor-pointer"
+                      >
+                        ✏️ Edit
+                      </button>
+                      {isPhone && (
                         <button
                           onClick={() => setPriceModalItem(item.raw_item || item)}
-                          title="Edit Phone Price"
-                          className="rounded-lg bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 text-xs font-bold text-emerald-700 transition flex items-center gap-1 cursor-pointer"
+                          title="Quick Price Edit"
+                          className="rounded-lg bg-emerald-50 hover:bg-emerald-100 px-2 py-1.5 text-xs font-bold text-emerald-700 transition flex items-center gap-1 cursor-pointer"
                         >
                           💰 Price
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => { setInlineEditId(item.id); setInlineForm({ ...item }) }}
-                          className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-600"
-                        >
-                          Edit
                         </button>
                       )}
                       <button
@@ -1409,21 +1411,20 @@ function Products() {
                           >
                             🏷️
                           </button>
-                          {isPhone ? (
+                          <button
+                            onClick={() => setFullEditProduct(item.raw_item || item)}
+                            title="Edit Full Product Details"
+                            className="px-2 py-1 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition font-bold text-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            ✏️ Edit
+                          </button>
+                          {isPhone && (
                             <button
                               onClick={() => setPriceModalItem(item.raw_item || item)}
-                              title="Edit Phone Price"
+                              title="Quick Price Edit"
                               className="px-2 py-1 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition font-bold text-xs flex items-center gap-1 cursor-pointer"
                             >
                               💰 Price
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => { setInlineEditId(item.id); setInlineForm({ ...item }) }}
-                              title="Inline Edit"
-                              className="px-2 py-1 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition font-bold text-xs"
-                            >
-                              Edit
                             </button>
                           )}
                           <button
@@ -1637,18 +1638,31 @@ function Products() {
           }}
           onEdit={(prod) => {
             setDetailProduct(null)
-            if (prod.item_type === 'phone') {
-              setPriceModalItem(prod.raw_item || prod)
-            } else {
-              setInlineEditId(prod.id)
-              setInlineForm({ ...prod })
-            }
+            setFullEditProduct(prod.raw_item || prod)
           }}
           onPrintBarcode={(prod) => {
             setBarcodeModalProduct(prod)
             setShowBarcodeModal(true)
           }}
           userRole={user?.role}
+        />
+      )}
+
+      {/* Full Edit Product Details Modal */}
+      {fullEditProduct && (
+        <EditProductModal
+          isOpen={Boolean(fullEditProduct)}
+          onClose={() => setFullEditProduct(null)}
+          product={fullEditProduct}
+          categories={categories}
+          brands={brands}
+          suppliers={suppliers}
+          units={units}
+          userRole={user?.role}
+          shopId={user?.shop_id}
+          onSaveSuccess={() => {
+            fetchProducts()
+          }}
         />
       )}
 

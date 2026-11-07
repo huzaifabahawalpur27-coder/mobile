@@ -300,17 +300,19 @@ export default function ProductDetailModal({
               <span>Edit Price</span>
             </button>
 
-            {/* Full Edit for General Products / Accessories */}
-            {product.item_type !== 'phone' && (
-              <Link
-                to={`/edit-product/${product.id}`}
-                onClick={onClose}
-                className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-bold text-xs flex items-center gap-1.5 transition border border-blue-200 dark:border-blue-800"
-              >
-                <Edit size={15} />
-                <span>Full Edit</span>
-              </Link>
-            )}
+            {/* Full Edit for General Products & Phones */}
+            <button
+              type="button"
+              onClick={() => {
+                onClose()
+                if (onEdit) onEdit(product)
+              }}
+              className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-bold text-xs flex items-center gap-1.5 transition border border-blue-200 dark:border-blue-800 cursor-pointer"
+              title="Edit all product specifications, pricing and details"
+            >
+              <Edit size={15} />
+              <span>Full Edit</span>
+            </button>
           </div>
 
           <button
