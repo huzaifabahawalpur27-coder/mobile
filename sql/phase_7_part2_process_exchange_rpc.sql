@@ -1,3 +1,6 @@
+-- Ensure optional columns exist on phones table
+ALTER TABLE public.phones ADD COLUMN IF NOT EXISTS purchase_date DATE DEFAULT CURRENT_DATE;
+
 CREATE OR REPLACE FUNCTION process_phone_exchange(
     p_customer_id INTEGER,
     p_customer_name TEXT,
@@ -278,7 +281,6 @@ BEGIN
                     additional_costs = 0,
                     sale_price = v_unit_price,
                     purchase_id = v_purchase_id,
-                    purchase_date = CURRENT_DATE,
                     status = 'in_stock',
                     sold_at = NULL,
                     sale_id = NULL,
@@ -303,7 +305,6 @@ BEGIN
                     additional_costs,
                     sale_price,
                     purchase_id,
-                    purchase_date,
                     status,
                     notes,
                     created_at,
@@ -323,7 +324,6 @@ BEGIN
                     0,
                     v_unit_price,
                     v_purchase_id,
-                    CURRENT_DATE,
                     'in_stock',
                     v_item->>'notes',
                     NOW(),
@@ -365,19 +365,27 @@ BEGIN
             INSERT INTO purchase_items (
                 purchase_id,
                 phone_id,
+                product_name,
                 cost_price,
-                price,
+                unit_cost,
+                unit_price,
                 quantity,
                 subtotal,
-                created_at
+                line_total,
+                total_price,
+                total_cost
             ) VALUES (
                 v_purchase_id,
                 v_phone_id,
+                format('%s %s', COALESCE(v_item->>'brand', ''), COALESCE(v_item->>'model', 'Phone')),
+                v_unit_price,
                 v_unit_price,
                 v_unit_price,
                 1,
                 v_unit_price,
-                NOW()
+                v_unit_price,
+                v_unit_price,
+                v_unit_price
             );
         END LOOP;
     END IF;
