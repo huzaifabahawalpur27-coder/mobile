@@ -2078,10 +2078,17 @@ function POS() {
       {showMobileCart && (
         <div className="md:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setShowMobileCart(false)} />
       )}
-      <div className={`${showMobileCart ? 'fixed inset-x-2 top-2 bottom-2 z-50 flex max-h-[calc(100dvh-1rem)]' : 'hidden md:flex'} md:static md:w-96 lg:w-[410px] xl:w-[430px] flex-col gap-2 bg-gradient-to-b from-blue-50/95 via-sky-50/40 to-blue-50/80 rounded-2xl shadow-xl border-2 border-blue-200/90 p-3 h-full min-h-0 overflow-hidden shrink-0`}>
+      <div className={`${showMobileCart ? 'fixed inset-x-2 top-2 bottom-2 z-50 flex max-h-[calc(100dvh-1rem)]' : 'hidden md:flex'} md:static md:w-96 lg:w-[410px] xl:w-[430px] flex-col gap-2 bg-gradient-to-b from-blue-50/95 via-sky-50/40 to-blue-50/80 rounded-2xl shadow-xl border-2 border-blue-200/90 dark:border-[#38383a] dark:from-[#1c1c1e] dark:via-[#252528] dark:to-[#1c1c1e] dark:text-[#f5f5f7] p-3 h-full min-h-0 overflow-hidden shrink-0`}>
 
         {/* Mobile close button */}
-        <button onClick={() => setShowMobileCart(false)} className="md:hidden self-end text-gray-400 hover:text-gray-700 text-xl font-bold -mt-1 -mr-1 p-1">✕</button>
+        <button
+          type="button"
+          onClick={() => setShowMobileCart(false)}
+          aria-label="Close cart drawer"
+          className="md:hidden self-end text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg font-bold -mt-1 -mr-1 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition active:scale-95"
+        >
+          ✕
+        </button>
 
         {/* Cart Header */}
         <div className="border-b border-blue-200/80 pb-2 shrink-0 flex justify-between items-center gap-2">
@@ -2099,7 +2106,8 @@ function POS() {
                 type="button"
                 onClick={() => switchPosLayout('two_stage')}
                 title="Two-Stage Flow (Max Vertical Cart)"
-                className={`px-1.5 py-0.5 rounded transition ${posLayout === 'two_stage' ? 'bg-blue-600 text-white shadow-2xs font-black' : 'text-slate-600 hover:text-blue-900'}`}
+                aria-label="Switch layout to 2-Stage mode"
+                className={`px-1.5 py-0.5 rounded transition active:scale-95 ${posLayout === 'two_stage' ? 'bg-blue-600 text-white shadow-2xs font-black' : 'text-slate-600 hover:text-blue-900'}`}
               >
                 ⚡ 2-Stage
               </button>
@@ -2107,7 +2115,8 @@ function POS() {
                 type="button"
                 onClick={() => switchPosLayout('bottom_dock')}
                 title="Global Bottom Dock (Full-height Cart)"
-                className={`px-1.5 py-0.5 rounded transition ${posLayout === 'bottom_dock' ? 'bg-blue-600 text-white shadow-2xs font-black' : 'text-slate-600 hover:text-blue-900'}`}
+                aria-label="Switch layout to Bottom Dock mode"
+                className={`px-1.5 py-0.5 rounded transition active:scale-95 ${posLayout === 'bottom_dock' ? 'bg-blue-600 text-white shadow-2xs font-black' : 'text-slate-600 hover:text-blue-900'}`}
               >
                 🖥️ Dock
               </button>
@@ -2115,7 +2124,8 @@ function POS() {
                 type="button"
                 onClick={() => switchPosLayout('compact_dock')}
                 title="Compact Sidebar"
-                className={`px-1.5 py-0.5 rounded transition ${posLayout === 'compact_dock' ? 'bg-blue-600 text-white shadow-2xs font-black' : 'text-slate-600 hover:text-blue-900'}`}
+                aria-label="Switch layout to Compact Sidebar mode"
+                className={`px-1.5 py-0.5 rounded transition active:scale-95 ${posLayout === 'compact_dock' ? 'bg-blue-600 text-white shadow-2xs font-black' : 'text-slate-600 hover:text-blue-900'}`}
               >
                 📱 Side
               </button>
@@ -2274,10 +2284,12 @@ function POS() {
                         1 pcs
                       </span>
                     ) : (
-                      <div className="flex items-center bg-white border border-slate-200 rounded px-0.5 py-0.2 shadow-2xs">
+                      <div className="flex items-center bg-white dark:bg-[#2c2c2e] border border-slate-200 dark:border-[#38383a] rounded-lg px-1 py-0.5 shadow-2xs">
                         <button
+                          type="button"
                           onClick={() => updateQty(item.id, Math.max(1, (parseFloat(item.qty) || 1) - 1))}
-                          className="w-4 h-4 flex items-center justify-center text-xs font-bold text-slate-500 hover:bg-slate-100 rounded select-none"
+                          aria-label="Decrease quantity"
+                          className="w-6 h-6 flex items-center justify-center text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-md active:scale-90 transition select-none"
                         >
                           −
                         </button>
@@ -2285,9 +2297,10 @@ function POS() {
                           type="number"
                           step="any"
                           min="0.001"
+                          aria-label="Item quantity"
                           value={item.qty}
                           onChange={e => updateQty(item.id, e.target.value)}
-                          className="w-9 text-center text-xs font-bold text-slate-900 border-none outline-none p-0 bg-transparent"
+                          className="w-10 text-center text-xs font-bold font-mono tabular-nums text-slate-900 dark:text-[#f5f5f7] border-none outline-none p-0 bg-transparent"
                         />
                         <button
                           onClick={() => updateQty(item.id, (parseFloat(item.qty) || 0) + 1)}
@@ -2298,13 +2311,15 @@ function POS() {
                       </div>
                     )}
 
-                    <span className="font-black text-xs text-slate-900 min-w-[58px] text-right" title="Item Total">
+                    <span className="font-black text-xs text-slate-900 dark:text-[#f5f5f7] min-w-[62px] text-right font-mono tabular-nums" title="Item Total">
                       Rs.{(item.custom_price * item.qty).toFixed(0)}
                     </span>
 
                     <button
+                      type="button"
                       onClick={() => removeFromCart(item.id)}
-                      className="text-slate-400 hover:text-red-600 font-bold px-0.5 text-xs transition"
+                      aria-label="Remove item from cart"
+                      className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md font-bold text-xs transition active:scale-90"
                       title="Remove item"
                     >
                       ✕
@@ -2453,18 +2468,22 @@ function POS() {
             {/* Action Buttons Row */}
             <div className="flex gap-1.5 pt-0.5">
               <button
+                type="button"
                 onClick={handleHoldBill}
                 disabled={cart.length === 0}
+                aria-label="Hold this bill"
                 title="Hold this cart"
-                className="px-3 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-xl text-xs font-bold transition disabled:opacity-40 shrink-0"
+                className="px-3 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-xl text-xs font-bold transition active:scale-95 disabled:opacity-40 shrink-0"
               >
                 ⏸️
               </button>
               <button
+                type="button"
                 onClick={clearCart}
                 disabled={cart.length === 0}
+                aria-label="Clear entire cart"
                 title="Clear cart"
-                className="px-3 py-2.5 bg-slate-100 hover:bg-red-100 hover:text-red-700 text-slate-600 rounded-xl text-xs font-bold transition disabled:opacity-40 shrink-0"
+                className="px-3 py-2.5 bg-slate-100 hover:bg-red-100 hover:text-red-700 text-slate-600 rounded-xl text-xs font-bold transition active:scale-95 disabled:opacity-40 shrink-0"
               >
                 🗑️
               </button>
@@ -2493,7 +2512,7 @@ function POS() {
                   type="button"
                   onClick={openTenderSheetSafe}
                   disabled={cart.length === 0}
-                  className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-sm rounded-xl transition shadow-lg shadow-blue-200 active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-sm rounded-xl transition-all shadow-lg shadow-blue-200/50 active:scale-[0.97] duration-150 ease-out disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <span>💳 Charge Rs. {total.toFixed(0)}</span>
                   <span className="text-[10px] bg-white/25 px-1.5 py-0.5 rounded font-mono font-normal">F4 →</span>

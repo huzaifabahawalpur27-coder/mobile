@@ -396,7 +396,14 @@ function Layout({ children }) {
         {/* Top Header */}
         <header className="h-14 sm:h-16 bg-white border-b border-gray-200 px-3 sm:px-4 md:px-6 flex items-center justify-between shrink-0 shadow-sm z-20 transition-all">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="md:hidden w-8 h-8 flex items-center justify-center text-xl cursor-pointer hover:bg-gray-100 rounded-lg transition flex-shrink-0">☰</button>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="Toggle navigation menu"
+              className="md:hidden w-8 h-8 flex items-center justify-center text-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 flex-shrink-0"
+            >
+              ☰
+            </button>
             <div className="flex flex-col min-w-0">
               <span className="text-gray-900 font-black tracking-tight text-sm sm:text-lg leading-none truncate max-w-[140px] sm:max-w-[300px]">{shopName}</span>
               <div className="flex items-center gap-1.5 mt-0.5">
@@ -412,9 +419,11 @@ function Layout({ children }) {
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             {/* Audio Feedback Toggle */}
             <button
+              type="button"
               onClick={toggleSound}
               data-sound="toggle"
-              className={`px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border text-[10px] sm:text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer select-none ${
+              aria-label={soundEnabled ? "Mute sound effects" : "Enable sound effects"}
+              className={`px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border text-[10px] sm:text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer select-none ${
                 soundEnabled
                   ? 'bg-blue-50 dark:bg-blue-950/40 text-[#0071e3] dark:text-[#2997ff] border-blue-200 dark:border-blue-900/60 shadow-xs'
                   : 'bg-white dark:bg-[#2c2c2e] text-[#86868b] dark:text-[#98989d] border-[#e5e5ea] dark:border-[#38383a]'
@@ -427,9 +436,11 @@ function Layout({ children }) {
 
             {/* Apple Theme Switch (Light / Dark) */}
             <button
+              type="button"
               onClick={toggleTheme}
               data-sound="toggle"
-              className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#e5e5ea] dark:border-[#38383a] bg-white dark:bg-[#2c2c2e] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.08] text-[10px] sm:text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer select-none shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#e5e5ea] dark:border-[#38383a] bg-white dark:bg-[#2c2c2e] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.08] text-[10px] sm:text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer select-none shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
               title={isDark ? "Switch to Apple Light Mode" : "Switch to Apple Dark Mode"}
             >
               {isDark ? (
@@ -447,9 +458,11 @@ function Layout({ children }) {
 
             {/* OS Design Theme Switcher Modal Trigger */}
             <button
+              type="button"
               onClick={() => setShowThemeModal(true)}
               data-sound="click"
-              className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#e5e5ea] dark:border-[#38383a] bg-white dark:bg-[#2c2c2e] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.08] text-[10px] sm:text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer select-none shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              aria-label="Open theme customization menu"
+              className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#e5e5ea] dark:border-[#38383a] bg-white dark:bg-[#2c2c2e] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.08] text-[10px] sm:text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer select-none shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
               title="Select OS Design Theme (Apple, Glass, Pixel, OnePlus, Samsung)"
             >
               <Palette size={14} className="text-[#0071e3] dark:text-[#2997ff]" />

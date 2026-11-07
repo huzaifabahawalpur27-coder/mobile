@@ -929,16 +929,18 @@ function Dashboard() {
       {/* Daily cash flow and operating totals */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* 1. Cash in Drawer (Galla) */}
-        <div
+        <button
+          type="button"
           onClick={() => navigate('/accounts')}
-          className="bg-gradient-to-br from-emerald-500/[0.06] via-white/95 to-emerald-500/[0.02] dark:from-emerald-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-emerald-500/25 dark:border-emerald-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
+          aria-label="Cash in Drawer: Rs. Math.round(stats.todayNetCashDrawer). Click to view accounts"
+          className="w-full text-left bg-gradient-to-br from-emerald-500/[0.06] via-white/95 to-emerald-500/[0.02] dark:from-emerald-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-emerald-500/25 dark:border-emerald-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
         >
           <div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Cash in Drawer</span>
               <span className="text-[10px] text-emerald-600 font-bold">(گلہ)</span>
             </div>
-            <span className={`text-base font-extrabold tabular-nums ${stats.todayNetCashDrawer >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}`}>
+            <span className={`text-base font-extrabold tabular-nums font-mono ${stats.todayNetCashDrawer >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}`}>
               Rs. {Math.round(stats.todayNetCashDrawer).toLocaleString()}
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">Cash in hand balance</span>
@@ -946,16 +948,18 @@ function Dashboard() {
           <div className="w-8.5 h-8.5 rounded-[12px] bg-[#34c759]/15 text-[#34c759] flex items-center justify-center font-bold text-xs shrink-0">
             <Wallet size={16} />
           </div>
-        </div>
+        </button>
 
         {/* 2. Digital / Bank Inflow */}
-        <div
+        <button
+          type="button"
           onClick={() => navigate('/accounts')}
-          className="bg-gradient-to-br from-sky-500/[0.06] via-white/95 to-blue-500/[0.02] dark:from-sky-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-sky-500/25 dark:border-sky-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
+          aria-label="Digital and Bank transfers: Rs. Math.round(stats.todayOnlineSales). Click to view accounts"
+          className="w-full text-left bg-gradient-to-br from-sky-500/[0.06] via-white/95 to-blue-500/[0.02] dark:from-sky-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-sky-500/25 dark:border-sky-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
         >
           <div>
             <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Digital / Bank</span>
-            <span className="text-base font-extrabold text-[#0071e3] dark:text-[#3894ff] tabular-nums">
+            <span className="text-base font-extrabold text-[#0071e3] dark:text-[#3894ff] tabular-nums font-mono">
               Rs. {Math.round(stats.todayOnlineSales).toLocaleString()}
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">JazzCash • Bank transfers</span>
@@ -963,19 +967,21 @@ function Dashboard() {
           <div className="w-8.5 h-8.5 rounded-[12px] bg-[#0071e3]/15 text-[#0071e3] flex items-center justify-center font-bold text-xs shrink-0">
             💳
           </div>
-        </div>
+        </button>
 
         {/* 3. Operating Expenses */}
-        <div
+        <button
+          type="button"
           onClick={() => navigate('/expenses')}
-          className="bg-gradient-to-br from-rose-500/[0.06] via-white/95 to-red-500/[0.02] dark:from-rose-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-rose-500/25 dark:border-rose-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
+          aria-label="Today's expenses: Rs. Math.round(stats.todayExpenses). Click to view expenses"
+          className="w-full text-left bg-gradient-to-br from-rose-500/[0.06] via-white/95 to-red-500/[0.02] dark:from-rose-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-rose-500/25 dark:border-rose-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
         >
           <div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Today's Expenses</span>
               <span className="text-[10px] text-rose-500 font-bold">(خرچے)</span>
             </div>
-            <span className="text-base font-extrabold text-[#ff3b30] tabular-nums">
+            <span className="text-base font-extrabold text-[#ff3b30] tabular-nums font-mono">
               Rs. {Math.round(stats.todayExpenses).toLocaleString()}
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">Shop running costs</span>
@@ -983,16 +989,18 @@ function Dashboard() {
           <div className="w-8.5 h-8.5 rounded-[12px] bg-[#ff3b30]/15 text-[#ff3b30] flex items-center justify-center font-bold text-xs shrink-0">
             💸
           </div>
-        </div>
+        </button>
 
         {/* 4. Month Sales (MTD) */}
-        <div
+        <button
+          type="button"
           onClick={() => navigate('/sales')}
-          className="bg-gradient-to-br from-teal-500/[0.06] via-white/95 to-teal-500/[0.02] dark:from-teal-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-teal-500/25 dark:border-teal-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
+          aria-label="Month Sales MTD: Rs. Math.round(stats.monthlySales). Click to view sales"
+          className="w-full text-left bg-gradient-to-br from-teal-500/[0.06] via-white/95 to-teal-500/[0.02] dark:from-teal-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-teal-500/25 dark:border-teal-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
         >
           <div>
             <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Month Sales (MTD)</span>
-            <span className="text-base font-extrabold text-teal-700 dark:text-teal-400 tabular-nums">
+            <span className="text-base font-extrabold text-teal-700 dark:text-teal-400 tabular-nums font-mono">
               Rs. {Math.round(stats.monthlySales).toLocaleString()}
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">{stats.monthlyOrdersCount} orders this month</span>
@@ -1000,16 +1008,18 @@ function Dashboard() {
           <div className="w-8.5 h-8.5 rounded-[12px] bg-teal-500/15 text-teal-600 flex items-center justify-center font-bold text-xs shrink-0">
             <Activity size={16} />
           </div>
-        </div>
+        </button>
 
         {/* 5. Low Stock Alert Watchlist */}
-        <div
+        <button
+          type="button"
           onClick={() => navigate('/products')}
-          className="col-span-2 sm:col-span-3 lg:col-span-1 bg-gradient-to-br from-amber-500/[0.06] via-white/95 to-amber-500/[0.02] dark:from-amber-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-amber-500/25 dark:border-amber-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs transition"
+          aria-label="Catalog Health: stats.lowStockCount items below reorder point. Click to view products"
+          className="col-span-2 sm:col-span-3 lg:col-span-1 w-full text-left bg-gradient-to-br from-amber-500/[0.06] via-white/95 to-amber-500/[0.02] dark:from-amber-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-amber-500/25 dark:border-amber-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
         >
           <div>
             <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Catalog Health</span>
-            <span className={`text-base font-extrabold tabular-nums ${stats.lowStockCount > 0 ? 'text-[#ff9500]' : 'text-[#34c759]'}`}>
+            <span className={`text-base font-extrabold tabular-nums font-mono ${stats.lowStockCount > 0 ? 'text-[#ff9500]' : 'text-[#34c759]'}`}>
               {stats.lowStockCount > 0 ? `${stats.lowStockCount} Reorders Due` : 'Stock Healthy'}
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">
@@ -1019,7 +1029,7 @@ function Dashboard() {
           <div className={`w-8.5 h-8.5 rounded-[12px] flex items-center justify-center shrink-0 ${stats.lowStockCount > 0 ? 'bg-[#ff9500]/15 text-[#ff9500]' : 'bg-[#34c759]/15 text-[#34c759]'}`}>
             <AlertTriangle size={16} />
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Sales trend and stock overview */}
