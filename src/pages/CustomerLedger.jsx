@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { printHTML, getShopBranding } from '../utils/printUtils'
 import { db } from '../services/db'
 import { generateOutstandingPDF, shareOrDownloadPDF } from '../utils/pdfShare'
+import { getBankAccounts, creditBankBalance, deductBankBalance } from '../services/bankService'
 
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
     let snap = null
@@ -439,7 +440,31 @@ function CustomerLedger() {
                 await supabase.from('customers').update({ outstanding_balance: newBalance }).eq('id', id)
                 setCustomer(c => c ? { ...c, outstanding_balance: newBalance } : c)
             } catch (_) {}
-            if (payAmt > 0) setLastPayment({ amount: payAmt, note: txForm.note.trim() || 'Cash Received', date: now })
+            if (payAmt > 0) {
+                setLastPayment({ amount: payAmt, note: txForm.note.trim() || 'Cash Received', date: now })
+                try {
+                    const accounts = await getBankAccounts(user.shop_id)
+                    const mode = String(txForm.payment_mode || 'cash').toLowerCase()
+                    const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
+                    const targetAcc = accounts.find(a => 
+                        isBank 
+                            ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                            : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                    ) || accounts[0]
+                    if (targetAcc) {
+                        await creditBankBalance({
+                            shopId: user.shop_id,
+                            accountId: targetAcc.id,
+                            amount: payAmt,
+                            referenceType: 'CUSTOMER_PAYMENT',
+                            referenceId: String(id),
+                            description: `Customer Payment: ${customer?.name || 'Customer'} (Ref: ${txForm.transaction_ref || txForm.bill_number || 'Khata'})`
+                        })
+                    }
+                } catch (accErr) {
+                    console.warn('Could not credit customer payment to bank account:', accErr)
+                }
+            }
             resetTxForm()
             fetchCustomerData()
         } catch (error) {
@@ -476,6 +501,61 @@ function CustomerLedger() {
             let newBalance = customer.outstanding_balance || 0
 
             if (item.type === 'sale') {
+                // 1. Rollback inventory and accounts before deleting sale
+                try {
+                    let saleItems = []
+                    if (navigator.onLine) {
+                        const { data } = await supabase.from('sale_items').select('*').eq('sale_id', item.id)
+                        saleItems = data || []
+                    } else {
+                        const lItems = await db.sale_items.toArray()
+                        saleItems = lItems.filter(i => String(i.sale_id) === String(item.id))
+                    }
+
+                    for (const si of saleItems) {
+                        // Restore phone to in_stock
+                        if (si.phone_id) {
+                            if (navigator.onLine) {
+                                await supabase.from('phones').update({ status: 'in_stock', sale_id: null, sold_at: null }).eq('id', si.phone_id)
+                            }
+                            if (db.phones) await db.phones.update(si.phone_id, { status: 'in_stock', sale_id: null, sold_at: null }).catch(() => {})
+                        }
+                        // Restore product stock quantity
+                        if (si.product_id) {
+                            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', si.product_id).maybeSingle()
+                            const curStock = prod?.stock_quantity ?? (await db.products.get(si.product_id))?.stock_quantity ?? 0
+                            const restoredQty = curStock + (si.quantity || 1)
+                            if (navigator.onLine) {
+                                await supabase.from('products').update({ stock_quantity: restoredQty }).eq('id', si.product_id)
+                            }
+                            if (db.products) await db.products.update(si.product_id, { stock_quantity: restoredQty }).catch(() => {})
+                        }
+                    }
+
+                    // Reverse bank/cash account proceeds if sale had paid amount
+                    const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? item.amount : 0)) || 0
+                    if (paid > 0 && item.payment_type !== 'credit') {
+                        const accounts = await getBankAccounts(user.shop_id)
+                        const method = String(item.payment_type || item.payment_mode || 'cash').toLowerCase()
+                        const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(method)
+                        const targetAcc = accounts.find(a => 
+                            isBank 
+                                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                        ) || accounts[0]
+                        if (targetAcc) {
+                            await deductBankBalance({
+                                shopId: user.shop_id,
+                                accountId: targetAcc.id,
+                                amount: paid,
+                                description: `Sale Deletion Reversal (Customer Ledger #${item.id})`
+                            })
+                        }
+                    }
+                } catch (rollbackErr) {
+                    console.warn('Rollback warning on sale deletion:', rollbackErr)
+                }
+
                 // Cascade: delete sale_items first, then sale
                 if (navigator.onLine) {
                     await supabase.from('sale_items').delete().eq('sale_id', item.id)
@@ -493,6 +573,44 @@ function CustomerLedger() {
                 newBalance = Math.max(0, newBalance - owed)
             } else {
                 // payment or return — delete from customer_payments
+                const payAmt = Math.abs(Number(item.amount || 0))
+                if (payAmt > 0) {
+                    try {
+                        const accounts = await getBankAccounts(user.shop_id)
+                        const mode = String(item.payment_mode || item.payment_type || 'cash').toLowerCase()
+                        const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
+                        const targetAcc = accounts.find(a => 
+                            isBank 
+                                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                        ) || accounts[0]
+
+                        if (targetAcc) {
+                            if (item.payment_type === 'refund') {
+                                // Deleting a refund restores money to account
+                                await creditBankBalance({
+                                    shopId: user.shop_id,
+                                    accountId: targetAcc.id,
+                                    amount: payAmt,
+                                    referenceType: 'REFUND_DELETION',
+                                    referenceId: String(item.id),
+                                    description: `Deleted Customer Refund Reversal (${customer?.name || 'Customer'})`
+                                })
+                            } else if (item.payment_type === 'payment' || !item.payment_type) {
+                                // Deleting a received payment reverses money from account
+                                await deductBankBalance({
+                                    shopId: user.shop_id,
+                                    accountId: targetAcc.id,
+                                    amount: payAmt,
+                                    description: `Deleted Customer Payment Reversal (${customer?.name || 'Customer'})`
+                                })
+                            }
+                        }
+                    } catch (accErr) {
+                        console.warn('Could not reverse account balance for deleted payment:', accErr)
+                    }
+                }
+
                 if (navigator.onLine) {
                     const { error } = await supabase.from('customer_payments').delete().eq('id', item.id)
                     if (error) throw error

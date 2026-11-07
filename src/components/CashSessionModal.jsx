@@ -16,6 +16,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
     cashPayments: 0,
     cashExpenses: 0,
     cashPurchases: 0,
+    cashSupplierPayments: 0,
     salesCount: 0,
     purchasesCount: 0
   })
@@ -103,14 +104,21 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
         return sum
       }, 0)
 
-      // Cash payments from customers
+      // Cash payments from customers (filter out online/debits)
       const { data: paymentsData } = await supabase
         .from('customer_payments')
-        .select('amount')
+        .select('amount, payment_type, payment_mode')
         .eq('shop_id', shopId)
         .gte('created_at', session.opened_at)
 
-      const cashPayments = (paymentsData || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+      const cashPayments = (paymentsData || []).reduce((sum, p) => {
+        const type = String(p.payment_type || 'payment').toLowerCase()
+        const mode = String(p.payment_mode || 'cash').toLowerCase()
+        if (type === 'payment' && (mode === 'cash' || !mode)) {
+          return sum + (Number(p.amount) || 0)
+        }
+        return sum
+      }, 0)
 
       // Cash expenses
       const { data: expensesData } = await supabase
@@ -143,11 +151,28 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
         return sum
       }, 0)
 
+      // Cash supplier payments during shift (paying off vendor bills from the till)
+      const { data: supplierPaymentsData } = await supabase
+        .from('supplier_payments')
+        .select('amount, payment_type, payment_mode')
+        .eq('shop_id', shopId)
+        .gte('created_at', session.opened_at)
+
+      const cashSupplierPayments = (supplierPaymentsData || []).reduce((sum, p) => {
+        const type = String(p.payment_type || 'payment').toLowerCase()
+        const mode = String(p.payment_mode || 'cash').toLowerCase()
+        if (type === 'payment' && (mode === 'cash' || !mode)) {
+          return sum + (Number(p.amount) || 0)
+        }
+        return sum
+      }, 0)
+
       setSessionStats({
         cashSales,
         cashPayments,
         cashExpenses,
         cashPurchases,
+        cashSupplierPayments,
         salesCount: (salesData || []).length,
         purchasesCount: (purchasesData || []).length
       })
@@ -241,7 +266,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
       return
     }
 
-    const expectedCash = (Number(currentSession.opening_cash) || 0) + sessionStats.cashSales + sessionStats.cashPayments - sessionStats.cashExpenses - (sessionStats.cashPurchases || 0)
+    const expectedCash = (Number(currentSession.opening_cash) || 0) + sessionStats.cashSales + sessionStats.cashPayments - sessionStats.cashExpenses - (sessionStats.cashPurchases || 0) - (sessionStats.cashSupplierPayments || 0)
     const variance = actualVal - expectedCash
 
     const confirmMsg = `Confirm Close Shift?\nExpected: Rs. ${expectedCash.toLocaleString()}\nCounted: Rs. ${actualVal.toLocaleString()}\nVariance: Rs. ${variance > 0 ? '+' : ''}${variance.toLocaleString()}`
@@ -286,7 +311,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
   if (!isOpen) return null
 
   const expectedTotal = currentSession
-    ? (Number(currentSession.opening_cash) || 0) + sessionStats.cashSales + sessionStats.cashPayments - sessionStats.cashExpenses - (sessionStats.cashPurchases || 0)
+    ? (Number(currentSession.opening_cash) || 0) + sessionStats.cashSales + sessionStats.cashPayments - sessionStats.cashExpenses - (sessionStats.cashPurchases || 0) - (sessionStats.cashSupplierPayments || 0)
     : 0
 
   const calculatedVariance = actualCash !== '' ? (parseFloat(actualCash) || 0) - expectedTotal : 0
@@ -403,6 +428,12 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
                       <div className="text-[11px] font-bold text-amber-600 uppercase">Purchases Out</div>
                       <div className="text-base font-black text-amber-800 mt-0.5">
                         - Rs. {(sessionStats.cashPurchases || 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-orange-50/60 rounded-xl border border-orange-100">
+                      <div className="text-[11px] font-bold text-orange-600 uppercase">Supplier Out</div>
+                      <div className="text-base font-black text-orange-800 mt-0.5">
+                        - Rs. {(sessionStats.cashSupplierPayments || 0).toLocaleString()}
                       </div>
                     </div>
                   </div>

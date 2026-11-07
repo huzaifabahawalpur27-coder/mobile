@@ -85,15 +85,37 @@ function TrashBin() {
 
     const adjustBalanceOnRestore = async (table, data) => {
         try {
-            if (table === 'purchases' && data?.supplier_id) {
-                const unpaid = Math.max(0, Number(data.total_amount || 0) - Number(data.paid_amount || 0))
-                if (unpaid > 0) {
-                    const supId = data.supplier_id
-                    const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supId).maybeSingle()
-                    const baseBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
-                    const newBal = baseBal + unpaid
-                    await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', supId)
-                    await db.suppliers?.update(Number(supId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
+            if (table === 'purchases') {
+                if (data?.supplier_id) {
+                    const unpaid = Math.max(0, Number(data.total_amount || 0) - Number(data.paid_amount || 0))
+                    if (unpaid > 0) {
+                        const supId = data.supplier_id
+                        const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supId).maybeSingle()
+                        const baseBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
+                        const newBal = baseBal + unpaid
+                        await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', supId)
+                        await db.suppliers?.update(Number(supId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
+                    }
+                }
+                // Re-stock inventory (phones back to 'in_stock', increment product stock)
+                try {
+                    const { data: pItems } = await supabase.from('purchase_items').select('*').eq('purchase_id', data.id)
+                    const items = pItems || (await db.purchase_items?.where({ purchase_id: data.id }).toArray().catch(() => [])) || []
+                    for (const pi of items) {
+                        if (pi.phone_id) {
+                            await supabase.from('phones').update({ status: 'in_stock', purchase_id: data.id }).eq('id', pi.phone_id)
+                            if (db.phones) await db.phones.update(pi.phone_id, { status: 'in_stock', purchase_id: data.id }).catch(() => {})
+                        }
+                        if (pi.product_id) {
+                            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', pi.product_id).maybeSingle()
+                            const curStock = prod?.stock_quantity ?? (await db.products?.get(pi.product_id))?.stock_quantity ?? 0
+                            const newStock = curStock + (pi.quantity || 1)
+                            await supabase.from('products').update({ stock_quantity: newStock }).eq('id', pi.product_id)
+                            if (db.products) await db.products.update(pi.product_id, { stock_quantity: newStock }).catch(() => {})
+                        }
+                    }
+                } catch (invErr) {
+                    console.warn('Inventory re-stock on purchase restore warning:', invErr)
                 }
             } else if (table === 'supplier_payments' && data?.supplier_id) {
                 const supId = data.supplier_id
@@ -104,15 +126,37 @@ function TrashBin() {
                 const newBal = Math.max(0, isDebit ? baseBal + amt : baseBal - amt)
                 await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', supId)
                 await db.suppliers?.update(Number(supId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
-            } else if (table === 'sales' && data?.customer_id) {
-                const unpaid = Math.max(0, Number(data.total_amount || 0) - Number(data.paid_amount || 0))
-                if (unpaid > 0) {
-                    const custId = data.customer_id
-                    const { data: curCust } = await supabase.from('customers').select('outstanding_balance, balance').eq('id', custId).maybeSingle()
-                    const baseBal = Number(curCust?.outstanding_balance ?? curCust?.balance ?? 0)
-                    const newBal = baseBal + unpaid
-                    await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', custId)
-                    await db.customers?.update(Number(custId), { outstanding_balance: newBal, balance: newBal }).catch(() => {})
+            } else if (table === 'sales') {
+                if (data?.customer_id) {
+                    const unpaid = Math.max(0, Number(data.total_amount || 0) - Number(data.paid_amount || 0))
+                    if (unpaid > 0) {
+                        const custId = data.customer_id
+                        const { data: curCust } = await supabase.from('customers').select('outstanding_balance, balance').eq('id', custId).maybeSingle()
+                        const baseBal = Number(curCust?.outstanding_balance ?? curCust?.balance ?? 0)
+                        const newBal = baseBal + unpaid
+                        await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', custId)
+                        await db.customers?.update(Number(custId), { outstanding_balance: newBal, balance: newBal }).catch(() => {})
+                    }
+                }
+                // Re-lock inventory (phones back to 'sold', decrement product stock)
+                try {
+                    const { data: sItems } = await supabase.from('sale_items').select('*').eq('sale_id', data.id)
+                    const items = sItems || (await db.sale_items?.where({ sale_id: data.id }).toArray().catch(() => [])) || []
+                    for (const si of items) {
+                        if (si.phone_id) {
+                            await supabase.from('phones').update({ status: 'sold', sale_id: data.id }).eq('id', si.phone_id)
+                            if (db.phones) await db.phones.update(si.phone_id, { status: 'sold', sale_id: data.id }).catch(() => {})
+                        }
+                        if (si.product_id) {
+                            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', si.product_id).maybeSingle()
+                            const curStock = prod?.stock_quantity ?? (await db.products?.get(si.product_id))?.stock_quantity ?? 0
+                            const newStock = Math.max(0, curStock - (si.quantity || 1))
+                            await supabase.from('products').update({ stock_quantity: newStock }).eq('id', si.product_id)
+                            if (db.products) await db.products.update(si.product_id, { stock_quantity: newStock }).catch(() => {})
+                        }
+                    }
+                } catch (invErr) {
+                    console.warn('Inventory re-lock on sale restore warning:', invErr)
                 }
             }
         } catch (err) {

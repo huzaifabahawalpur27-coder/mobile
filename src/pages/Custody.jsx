@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../services/db'
+import { getBankAccounts, creditBankBalance, deductBankBalance } from '../services/bankService'
 import { printHTML, getShopBranding } from '../utils/printUtils'
 import {
   Smartphone,
@@ -483,6 +484,28 @@ export default function Custody() {
         await db.phones.update(selectedPhone.id, { status: targetStatus }).catch(() => {})
       }
 
+      if (depositVal > 0) {
+        try {
+          const accounts = await getBankAccounts(user.shop_id)
+          const cashAcc = accounts.find(a => 
+            a.bank_name?.toLowerCase().includes('cash') || 
+            a.account_name?.toLowerCase().includes('cash')
+          ) || accounts[0]
+          if (cashAcc) {
+            await creditBankBalance({
+              shopId: user.shop_id,
+              accountId: cashAcc.id,
+              amount: depositVal,
+              referenceType: 'CUSTODY_DEPOSIT',
+              referenceId: String(selectedPhone.id),
+              description: `Custody Security Deposit: ${selectedPhone.model || 'Phone'} (${issueForm.recipient_name.trim()})`
+            })
+          }
+        } catch (accErr) {
+          console.warn('Could not credit custody deposit to cash account:', accErr)
+        }
+      }
+
       showNotification(`✅ ${selectedPhone.model} successfully locked & issued into custody!`)
       setShowIssueModal(false)
       loadData()
@@ -545,6 +568,27 @@ export default function Custody() {
 
       if (db.phones && phoneId) {
         await db.phones.update(phoneId, { status: 'in_stock' }).catch(() => {})
+      }
+
+      const depositAmt = parseFloat(custodyToReturn.deposit_amount || custodyToReturn.token_deposit) || 0
+      if (depositAmt > 0) {
+        try {
+          const accounts = await getBankAccounts(user.shop_id)
+          const cashAcc = accounts.find(a => 
+            a.bank_name?.toLowerCase().includes('cash') || 
+            a.account_name?.toLowerCase().includes('cash')
+          ) || accounts[0]
+          if (cashAcc) {
+            await deductBankBalance({
+              shopId: user.shop_id,
+              accountId: cashAcc.id,
+              amount: depositAmt,
+              description: `Custody Deposit Refund: ${custodyToReturn.phone?.model || 'Phone'} (${custodyToReturn.recipient_name})`
+            })
+          }
+        } catch (accErr) {
+          console.warn('Could not deduct custody refund from cash account:', accErr)
+        }
       }
 
       showNotification('✅ Phone successfully returned back to in-stock inventory!')

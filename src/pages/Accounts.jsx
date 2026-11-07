@@ -105,8 +105,16 @@ export default function Accounts() {
     }
   }
 
-  // Delete Account
+  // Delete Account (Guarded against vaporizing funds)
   const handleDelete = async (acc) => {
+    const bal = Number(acc.current_balance || 0)
+    if (Math.abs(bal) > 0.01) {
+      alert(`⚠️ Account "${acc.account_name}" has an active balance of Rs. ${bal.toLocaleString()}.
+
+Financial Protection: You cannot delete an account with existing funds. Please transfer or adjust the remaining balance to Rs. 0 before deleting.`)
+      return
+    }
+
     if (confirm(`Are you sure you want to delete ${acc.account_name} (${acc.bank_name})? Any past purchase references will remain in logs.`)) {
       try {
         await deleteBankAccount(acc.id, user.shop_id)

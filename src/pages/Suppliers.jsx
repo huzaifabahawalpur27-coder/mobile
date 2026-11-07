@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import { db, addToSyncQueue, moveToTrash } from '../services/db'
+import { getBankAccounts, deductBankBalance } from '../services/bankService'
 import PasswordModal from '../components/PasswordModal'
 
 function Suppliers() {
@@ -166,6 +167,27 @@ function Suppliers() {
         error = retryRes.error
       }
       if (error) throw error
+
+      // If payment made to supplier, deduct from bank/cash account
+      if (!isDebit && amount > 0) {
+        try {
+          const accounts = await getBankAccounts(user.shop_id)
+          const cashAcc = accounts.find(a => 
+            a.bank_name?.toLowerCase().includes('cash') || 
+            a.account_name?.toLowerCase().includes('cash')
+          ) || accounts[0]
+          if (cashAcc) {
+            await deductBankBalance({
+              shopId: user.shop_id,
+              accountId: cashAcc.id,
+              amount,
+              description: `Supplier Payment: ${txSup.name} (${noteText || 'Ledger Payment'})`
+            })
+          }
+        } catch (accErr) {
+          console.warn('Could not deduct supplier payment from cash account:', accErr)
+        }
+      }
 
       // Update supplier outstanding_balance and balance
       const newBal = isDebit

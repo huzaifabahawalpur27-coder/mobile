@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../services/db'
+import { getBankAccounts, creditBankBalance, deductBankBalance } from '../services/bankService'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
@@ -271,6 +272,28 @@ function SupplierLedger() {
             const { error: sErr } = await supabase.from('suppliers').update({ outstanding_balance: newBalance, balance: newBalance }).eq('id', id)
             if (sErr) throw sErr
 
+            if (paidAmt > 0) {
+                try {
+                    const accounts = await getBankAccounts(user.shop_id)
+                    const mode = String(txForm.payment_mode || 'cash').toLowerCase()
+                    const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
+                    const targetAcc = accounts.find(a => 
+                        isBank 
+                            ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                            : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                    ) || accounts[0]
+                    if (targetAcc) {
+                        await deductBankBalance({
+                            shopId: user.shop_id,
+                            accountId: targetAcc.id,
+                            amount: paidAmt,
+                            description: `Supplier Payment: ${supplier?.name || 'Supplier'} (Bill: ${txForm.bill_number || 'Ledger'})`
+                        })
+                    }
+                } catch (accErr) {
+                    console.warn('Could not deduct supplier payment from bank account:', accErr)
+                }
+            }
             alert('Transaction save ho gaya! ✅')
             resetForm()
             fetchSupplierData()
@@ -322,6 +345,61 @@ function SupplierLedger() {
             let newBalance = supplier?.outstanding_balance || 0
 
             if (item.type === 'purchase') {
+                // 1. Rollback inventory and accounts before deleting purchase
+                try {
+                    let pItems = []
+                    if (navigator.onLine) {
+                        const { data } = await supabase.from('purchase_items').select('*').eq('purchase_id', item.id)
+                        pItems = data || []
+                    } else {
+                        const localPItems = await db.purchase_items.toArray()
+                        pItems = localPItems.filter(i => String(i.purchase_id) === String(item.id))
+                    }
+
+                    for (const pi of pItems) {
+                        if (pi.phone_id) {
+                            if (navigator.onLine) {
+                                await supabase.from('phones').update({ status: 'returned', purchase_id: null }).eq('id', pi.phone_id)
+                            }
+                            if (db.phones) await db.phones.update(pi.phone_id, { status: 'returned', purchase_id: null }).catch(() => {})
+                        }
+                        if (pi.product_id) {
+                            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', pi.product_id).maybeSingle()
+                            const curStock = prod?.stock_quantity ?? (await db.products.get(pi.product_id))?.stock_quantity ?? 0
+                            const newStock = Math.max(0, curStock - (pi.quantity || 1))
+                            if (navigator.onLine) {
+                                await supabase.from('products').update({ stock_quantity: newStock }).eq('id', pi.product_id)
+                            }
+                            if (db.products) await db.products.update(pi.product_id, { stock_quantity: newStock }).catch(() => {})
+                        }
+                    }
+
+                    // Reverse Cash / Bank payment made for this purchase
+                    const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? item.amount : 0)) || 0
+                    if (paid > 0 && item.payment_type !== 'credit') {
+                        const accounts = await getBankAccounts(user.shop_id)
+                        const method = String(item.payment_type || item.payment_mode || 'cash').toLowerCase()
+                        const isBank = method === 'bank' || method === 'online'
+                        const targetAcc = accounts.find(a => 
+                            isBank
+                                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                        ) || accounts[0]
+                        if (targetAcc) {
+                            await creditBankBalance({
+                                shopId: user.shop_id,
+                                accountId: targetAcc.id,
+                                amount: paid,
+                                referenceType: 'PURCHASE_DELETION',
+                                referenceId: String(item.id),
+                                description: `Purchase Deletion Refund (${item.id})`
+                            })
+                        }
+                    }
+                } catch (rollbackErr) {
+                    console.warn('Rollback warning on purchase deletion:', rollbackErr)
+                }
+
                 // Cascade: delete purchase_items first, then purchase
                 if (navigator.onLine) {
                     await supabase.from('purchase_items').delete().eq('purchase_id', item.id)
@@ -338,6 +416,34 @@ function SupplierLedger() {
                 newBalance = Math.max(0, newBalance - Number(item.amount))
             } else {
                 // debit / payment / return — from supplier_payments table
+                if (item.type === 'payment') {
+                    const payAmt = Math.abs(Number(item.amount || 0))
+                    if (payAmt > 0) {
+                        try {
+                            const accounts = await getBankAccounts(user.shop_id)
+                            const mode = String(item.payment_mode || 'cash').toLowerCase()
+                            const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
+                            const targetAcc = accounts.find(a => 
+                                isBank 
+                                    ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                                    : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                            ) || accounts[0]
+                            if (targetAcc) {
+                                await creditBankBalance({
+                                    shopId: user.shop_id,
+                                    accountId: targetAcc.id,
+                                    amount: payAmt,
+                                    referenceType: 'PAYMENT_DELETION',
+                                    referenceId: String(item.id),
+                                    description: `Deleted Supplier Payment Refund (${supplier?.name || 'Supplier'})`
+                                })
+                            }
+                        } catch (accErr) {
+                            console.warn('Could not refund deleted supplier payment:', accErr)
+                        }
+                    }
+                }
+
                 const balanceEffect = (item.type === 'debit') ? -Number(item.amount) : +Math.abs(Number(item.amount))
                 newBalance = newBalance + balanceEffect
 

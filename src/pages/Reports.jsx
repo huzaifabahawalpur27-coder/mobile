@@ -336,6 +336,34 @@ function Reports() {
 
     const prodMap = {}
 
+    const saleMap = (sales || []).reduce((acc, s) => {
+      acc[s.id] = s
+      return acc
+    }, {})
+
+    // Pre-calculate invoice subtotals to accurately prorate order-level discounts
+    const saleSubtotalMap = {}
+    items.forEach(i => {
+      const qty = Number(i.quantity || i.qty || 1) - Number(i.returned_qty || 0)
+      if (qty <= 0) return
+      const unitPrice = Number(
+        (Number(i.unit_price) > 0 ? i.unit_price : null) ??
+        (Number(i.price) > 0 ? i.price : null) ??
+        (i.phone_id && phoneMap[i.phone_id] ? phoneMap[i.phone_id].price : 0) ?? 0
+      )
+      let lineRev = Number(
+        (Number(i.line_total) > 0 ? i.line_total : null) ??
+        (Number(i.subtotal) > 0 ? i.subtotal : null) ??
+        (qty * unitPrice)
+      )
+      if (lineRev <= 0 && Number(i.price || 0) > 0) {
+        lineRev = qty * Number(i.price)
+      }
+      if (i.sale_id) {
+        saleSubtotalMap[i.sale_id] = (saleSubtotalMap[i.sale_id] || 0) + lineRev
+      }
+    })
+
     items.forEach(i => {
       const qty = Number(i.quantity || i.qty || 1) - Number(i.returned_qty || 0)
       if (qty <= 0) return
@@ -391,8 +419,15 @@ function Reports() {
       if (lineRev <= 0 && Number(i.price || 0) > 0) {
         lineRev = qty * Number(i.price)
       }
+      const parentSale = i.sale_id ? saleMap[i.sale_id] : null
+      const saleDiscount = Number(parentSale?.discount || 0)
+      const saleSubtotal = i.sale_id ? (saleSubtotalMap[i.sale_id] || 0) : 0
+      const itemDiscount = (saleDiscount > 0 && saleSubtotal > 0)
+        ? (lineRev / saleSubtotal) * saleDiscount
+        : 0
+      const netLineRev = Math.max(0, lineRev - itemDiscount)
       const lineCost = qty * totalUnitCost
-      const lineProfit = lineRev - lineCost
+      const lineProfit = netLineRev - lineCost
       const categoryName = i.products?.categories?.name ||
         catNameById[String(i.products?.category_id)] ||
         (isPhone ? 'Mobile Phones' : 'General')
@@ -416,6 +451,8 @@ function Reports() {
           item_type: isPhone ? 'phone' : 'product',
           qty: 0,
           revenue: 0,
+          grossRevenue: 0,
+          discount: 0,
           cost: 0,
           baseCost: 0,
           directCost: 0,
@@ -427,7 +464,9 @@ function Reports() {
       }
 
       prodMap[name].qty += qty
-      prodMap[name].revenue += lineRev
+      prodMap[name].revenue += netLineRev
+      prodMap[name].grossRevenue += lineRev
+      prodMap[name].discount += itemDiscount
       prodMap[name].cost += lineCost
       prodMap[name].baseCost = (prodMap[name].baseCost || 0) + (qty * baseCost)
       prodMap[name].directCost = (prodMap[name].directCost || 0) + (qty * directCost)

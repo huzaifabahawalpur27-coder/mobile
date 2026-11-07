@@ -237,11 +237,27 @@ function Dashboard() {
             ? supabase.from('shops').select('status, subscription_plan, subscription_fee, next_billing_date').eq('id', user.shop_id).maybeSingle()
             : r
           )
-          .catch(() => ({ data: null }))
+          .catch(() => ({ data: null })),
+
+        // 10. Today Customer Payments
+        supabase
+          .from('customer_payments')
+          .select('id, amount, payment_type, payment_mode, created_at')
+          .eq('shop_id', user.shop_id)
+          .gte('created_at', todayISO)
+          .then(r => r, () => ({ data: [] })),
+
+        // 11. Today Supplier Payments
+        supabase
+          .from('supplier_payments')
+          .select('id, amount, payment_type, payment_mode, created_at')
+          .eq('shop_id', user.shop_id)
+          .gte('created_at', todayISO)
+          .then(r => r, () => ({ data: [] }))
       ])
 
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
-      const [todayRes, monthRes, weekRes, recentRes, prodRes, phonesRes, expRes, purRes, shopConfigRes] = await Promise.race([
+      const [todayRes, monthRes, weekRes, recentRes, prodRes, phonesRes, expRes, purRes, shopConfigRes, custPayRes, supPayRes] = await Promise.race([
         fetchPromise,
         timeoutPromise
       ])
@@ -276,6 +292,8 @@ function Dashboard() {
       const phonesList = phonesRes.data || []
       const todayExpensesList = expRes.data || []
       const todayPurchasesList = purRes.data || []
+      const todayCustomerPaymentsList = custPayRes?.data || []
+      const todaySupplierPaymentsList = supPayRes?.data || []
 
       processDashboardData({
         todaySalesList,
@@ -286,6 +304,8 @@ function Dashboard() {
         phonesList,
         todayExpensesList,
         todayPurchasesList,
+        todayCustomerPaymentsList,
+        todaySupplierPaymentsList,
         config
       })
       setUsingOfflineData(false)
@@ -328,6 +348,19 @@ function Dashboard() {
         }))
         const config = JSON.parse(localStorage.getItem('plan_limits') || '{}')
 
+        let todayCustomerPaymentsList = []
+        let todaySupplierPaymentsList = []
+        try {
+          if (db.customer_payments) {
+            const allCP = await db.customer_payments.toArray()
+            todayCustomerPaymentsList = allCP.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at) >= today)
+          }
+          if (db.supplier_payments) {
+            const allSP = await db.supplier_payments.toArray()
+            todaySupplierPaymentsList = allSP.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at) >= today)
+          }
+        } catch (_) {}
+
         processDashboardData({
           todaySalesList,
           monthSalesList,
@@ -337,6 +370,8 @@ function Dashboard() {
           phonesList,
           todayExpensesList,
           todayPurchasesList,
+          todayCustomerPaymentsList,
+          todaySupplierPaymentsList,
           config
         })
         setLastRefreshed(new Date())
@@ -357,6 +392,8 @@ function Dashboard() {
     phonesList,
     todayExpensesList,
     todayPurchasesList,
+    todayCustomerPaymentsList = [],
+    todaySupplierPaymentsList = [],
     config
   }) => {
     // Lookups for accurate phone & product cost and naming (unified with Reports)
@@ -549,7 +586,25 @@ function Dashboard() {
       }
     })
 
-    const todayNetCashDrawer = todayCashSales - todayExpenses - todayCashPurchases
+    let todayCashCustomerPayments = 0
+    ;(todayCustomerPaymentsList || []).forEach(p => {
+      const type = String(p.payment_type || 'payment').toLowerCase()
+      const mode = String(p.payment_mode || 'cash').toLowerCase()
+      if (type === 'payment' && (mode === 'cash' || !mode)) {
+        todayCashCustomerPayments += (Number(p.amount) || 0)
+      }
+    })
+
+    let todayCashSupplierPayments = 0
+    ;(todaySupplierPaymentsList || []).forEach(p => {
+      const type = String(p.payment_type || 'payment').toLowerCase()
+      const mode = String(p.payment_mode || 'cash').toLowerCase()
+      if (type === 'payment' && (mode === 'cash' || !mode)) {
+        todayCashSupplierPayments += (Number(p.amount) || 0)
+      }
+    })
+
+    const todayNetCashDrawer = todayCashSales + todayCashCustomerPayments - todayExpenses - todayCashPurchases - todayCashSupplierPayments
 
     // 4. Month-to-date total
     const monthlyTotal = monthSalesList.reduce((sum, s) => sum + (Number(s.total_amount || 0) - Number(s.discount || 0)), 0)

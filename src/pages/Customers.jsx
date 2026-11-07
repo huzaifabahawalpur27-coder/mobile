@@ -234,6 +234,27 @@ function Customers() {
             const allSaleIds = [...new Set([...saleIds, ...onlineIds])]
             
             if (allSaleIds.length > 0) {
+              try {
+                const { data: sItems } = await supabase.from('sale_items').select('*').in('sale_id', allSaleIds)
+                if (sItems && sItems.length > 0) {
+                  for (const si of sItems) {
+                    if (si.phone_id) {
+                      await supabase.from('phones').update({ status: 'in_stock', sale_id: null, sold_at: null }).eq('id', si.phone_id)
+                      if (db.phones) await db.phones.update(si.phone_id, { status: 'in_stock', sale_id: null, sold_at: null }).catch(() => {})
+                    }
+                    if (si.product_id) {
+                      const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', si.product_id).maybeSingle()
+                      if (prod) {
+                        const restoredQty = (prod.stock_quantity || 0) + (si.quantity || 1)
+                        await supabase.from('products').update({ stock_quantity: restoredQty }).eq('id', si.product_id)
+                        if (db.products) await db.products.update(si.product_id, { stock_quantity: restoredQty }).catch(() => {})
+                      }
+                    }
+                  }
+                }
+              } catch (rollbackErr) {
+                console.warn('Customer wipe inventory rollback warning:', rollbackErr)
+              }
               await supabase.from('sale_items').delete().in('sale_id', allSaleIds)
             }
             await supabase.from('sales').delete().eq('customer_id', id)
