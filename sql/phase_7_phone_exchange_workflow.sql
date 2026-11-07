@@ -2,6 +2,42 @@
 -- PHASE 7 MIGRATION: PHONE TRADE-IN & EXCHANGE WORKFLOW
 -- ============================================================
 
+-- 0. Helper Functions (Session & Multitenancy Resolvers)
+CREATE OR REPLACE FUNCTION public.current_session_token()
+RETURNS uuid
+LANGUAGE plpgsql STABLE
+AS $$
+DECLARE
+  raw_token text;
+BEGIN
+  raw_token := COALESCE(
+    current_setting('request.headers', true)::json->>'x-session-token',
+    current_setting('request.headers', true)::json->>'x-auth-token'
+  );
+  IF raw_token IS NULL OR raw_token = '' THEN
+    RETURN NULL;
+  END IF;
+  RETURN raw_token::uuid;
+EXCEPTION WHEN OTHERS THEN RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.current_user_shop_id()
+RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT s.shop_id
+  FROM public.sessions s
+  JOIN public.users u ON u.id = s.user_id AND COALESCE(u.is_active, true) = true
+  WHERE s.token::text = public.current_session_token()::text
+    AND (s.expires_at IS NULL OR s.expires_at > now())
+  LIMIT 1
+$$;
+
+GRANT EXECUTE ON FUNCTION public.current_session_token() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.current_user_shop_id() TO anon, authenticated;
+
 -- 1. Table: exchanges (Master Aggregate)
 CREATE TABLE IF NOT EXISTS public.exchanges (
     id SERIAL PRIMARY KEY,
@@ -175,7 +211,7 @@ BEGIN
     SELECT user_id, shop_id, branch_id
     INTO v_user_id, v_shop_id, v_branch_id
     FROM sessions
-    WHERE token = v_token AND expires_at > NOW();
+    WHERE token = v_token AND (expires_at IS NULL OR expires_at > NOW());
 
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Session expired');
@@ -1030,7 +1066,7 @@ BEGIN
     INTO v_user_id, v_shop_id, v_role
     FROM sessions s
     JOIN users u ON u.id = s.user_id
-    WHERE s.token = v_token AND s.expires_at > NOW();
+    WHERE s.token = v_token AND (s.expires_at IS NULL OR s.expires_at > NOW());
 
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Session expired');
