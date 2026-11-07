@@ -1,24 +1,24 @@
 -- ============================================================================
--- QUICK FIX: RESOLVE "record v_shop has no field currency" & SECURE LOGIN ERROR
--- Run this in Supabase Dashboard -> SQL Editor:
+-- STEP 1: INSTANT FIX FOR CURRENCY & SESSIONS
+-- Run these 3 lines first in Supabase SQL Editor:
 -- https://supabase.com/dashboard/project/hekqzkrpxqsjfkosilpr/sql
 -- ============================================================================
 
--- 1. Add currency column to shops if missing
 ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'PKR';
-
--- 2. Relax NOT NULL constraints on sessions
 ALTER TABLE public.sessions ALTER COLUMN user_id DROP NOT NULL;
 ALTER TABLE public.sessions ALTER COLUMN shop_id DROP NOT NULL;
 
--- 3. Re-create secure_login with safe JSON-based property extraction
-DROP FUNCTION IF EXISTS public.secure_login(TEXT, TEXT);
+-- ============================================================================
+-- STEP 2 (OPTIONAL): FULL RE-CREATION OF SECURE_LOGIN
+-- (Only run if you want to replace the procedure; make sure to copy the entire block including $func$; at the end)
+-- ============================================================================
+
 CREATE OR REPLACE FUNCTION public.secure_login(p_username TEXT, p_password_hash TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
-AS $$
+AS $func$
 DECLARE
     v_user           RECORD;
     v_shop           RECORD;
@@ -28,7 +28,6 @@ DECLARE
 BEGIN
     v_clean_username := TRIM(p_username);
 
-    -- Find active user
     SELECT u.* INTO v_user
     FROM public.users u
     WHERE (LOWER(u.username) = LOWER(v_clean_username) OR LOWER(COALESCE(u.email, '')) = LOWER(v_clean_username))
@@ -39,12 +38,10 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid username or password');
     END IF;
 
-    -- Verify password hash
     IF v_user.password != p_password_hash THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid username or password');
     END IF;
 
-    -- Lookup shop details if user belongs to a shop
     IF v_user.shop_id IS NOT NULL THEN
         SELECT s.* INTO v_shop
         FROM public.shops s
@@ -62,12 +59,10 @@ BEGIN
         END IF;
     END IF;
 
-    -- Non-superadmin must have an active shop
     IF v_user.role != 'superadmin' AND NOT v_has_shop THEN
         RETURN jsonb_build_object('success', false, 'error', 'No active shop organization is linked to this account.');
     END IF;
 
-    -- Update sign-in timestamp safely
     BEGIN
         UPDATE public.users SET last_sign_in_at = NOW() WHERE id = v_user.id;
         IF v_has_shop THEN
@@ -76,7 +71,6 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
 
-    -- Generate and store session token
     v_session_token := gen_random_uuid()::text;
     BEGIN
         INSERT INTO public.sessions (token, user_id, shop_id, expires_at)
@@ -88,7 +82,6 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
 
-    -- Return success payload safely
     RETURN jsonb_build_object(
         'success', true,
         'session_token', v_session_token,
@@ -128,7 +121,7 @@ BEGIN
         END
     );
 END;
-$$;
+$func$;
 
 GRANT EXECUTE ON FUNCTION public.secure_login(TEXT, TEXT) TO anon, authenticated, service_role, public;
 
