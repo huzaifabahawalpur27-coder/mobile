@@ -1,9 +1,8 @@
 import { supabase } from './supabase';
-import { supabaseAdmin } from './supabaseAdmin';
 import { db, addToSyncQueue } from './db';
 
 const getClient = () => {
-  return supabaseAdmin || supabase;
+  return supabase;
 };
 
 /**
@@ -144,7 +143,7 @@ export const createBankAccount = async (accountData) => {
   }
 
   // Offline / local fallback
-  const localId = Date.now();
+  const localId = `temp-${Date.now()}`;
   const localAccount = {
     ...payload,
     id: localId
@@ -203,7 +202,8 @@ export const deductBankBalance = async ({
   }
 
   if (!account) {
-    account = await db.bank_accounts.get(Number(accountId));
+    const lookupId = !isNaN(Number(accountId)) ? Number(accountId) : accountId;
+    account = await db.bank_accounts.get(lookupId);
   }
 
   const currentBalance = Number(account?.current_balance || 0);
@@ -230,9 +230,10 @@ export const deductBankBalance = async ({
 
   // Update Dexie
   try {
-    const local = await db.bank_accounts.get(Number(accountId));
+    const lookupId = !isNaN(Number(accountId)) ? Number(accountId) : accountId;
+    const local = await db.bank_accounts.get(lookupId);
     if (local) {
-      await db.bank_accounts.update(Number(accountId), {
+      await db.bank_accounts.update(lookupId, {
         current_balance: newBalance,
         updated_at: new Date().toISOString()
       });
@@ -294,7 +295,8 @@ export const creditBankBalance = async ({
   }
 
   if (!account) {
-    account = await db.bank_accounts.get(Number(accountId));
+    const lookupId = !isNaN(Number(accountId)) ? Number(accountId) : accountId;
+    account = await db.bank_accounts.get(lookupId);
   }
 
   const currentBalance = Number(account?.current_balance || 0);
@@ -315,9 +317,10 @@ export const creditBankBalance = async ({
   }
 
   try {
-    const local = await db.bank_accounts.get(Number(accountId));
+    const lookupId = !isNaN(Number(accountId)) ? Number(accountId) : accountId;
+    const local = await db.bank_accounts.get(lookupId);
     if (local) {
-      await db.bank_accounts.update(Number(accountId), {
+      await db.bank_accounts.update(lookupId, {
         current_balance: newBalance,
         updated_at: new Date().toISOString()
       });
@@ -399,7 +402,7 @@ export const recordBankTransaction = async ({
   }
 
   // Offline / Dexie fallback
-  const localRecord = { ...record, id: Date.now() };
+  const localRecord = { ...record, id: `temp-${Date.now()}` };
   try {
     await db.bank_account_transactions.put(localRecord);
     await addToSyncQueue('bank_account_transactions', 'INSERT', localRecord);

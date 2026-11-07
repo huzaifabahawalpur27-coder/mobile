@@ -227,6 +227,27 @@ export const syncOfflineData = async () => {
         return;
     }
 
+    // Auto-recover any dead letters caused by out of range integer ID bug or bank_accounts
+    try {
+        if (db.sync_dead_letter) {
+            const deadLetters = await db.sync_dead_letter.toArray();
+            for (const dl of deadLetters) {
+                if (dl.error && (dl.error.includes('out of range for type integer') || dl.table === 'bank_accounts')) {
+                    console.log(`SyncService: Auto-recovering dead letter for table ${dl.table} (ID ${dl.id})`);
+                    await db.sync_queue.add({
+                        table: dl.table,
+                        action: dl.action,
+                        data: dl.data,
+                        shop_id: dl.shop_id || activeShopId,
+                        timestamp: new Date().toISOString(),
+                        retry_count: 0
+                    });
+                    await db.sync_dead_letter.delete(dl.id);
+                }
+            }
+        }
+    } catch (_) {}
+
     // Filter out local-only table entries and clean them from queue
     const syncable = [];
     for (const item of queue) {
@@ -253,16 +274,35 @@ export const syncOfflineData = async () => {
 
     for (const item of syncable) {
         try {
-            // Helper to recursively replace UUIDs in the payload with real IDs
+            // Helper to determine if an ID is an offline/client-generated temporary ID
+            const isTemporaryId = (id) => {
+                if (id === null || id === undefined) return true;
+                if (typeof id === 'string') {
+                    return id.includes('-') || id.startsWith('temp') || id.startsWith('local') || !/^\d+$/.test(id);
+                }
+                if (typeof id === 'number') {
+                    // Postgres 32-bit integer maximum is 2,147,483,647.
+                    // Any Date.now() timestamp (~1,700,000,000,000+) or negative number is temporary.
+                    return id > 2147483647 || id < 0;
+                }
+                return false;
+            };
+
+            // Helper to recursively replace UUIDs and temporary IDs in the payload with real IDs
             const replaceIds = (obj) => {
                 if (!obj || typeof obj !== 'object') return obj;
                 if (Array.isArray(obj)) return obj.map(replaceIds);
                 const newObj = { ...obj };
                 for (const key in newObj) {
-                    if (typeof newObj[key] === 'string' && idMapping[newObj[key]]) {
-                        newObj[key] = idMapping[newObj[key]];
-                    } else if (typeof newObj[key] === 'object') {
-                        newObj[key] = replaceIds(newObj[key]);
+                    const val = newObj[key];
+                    if (val !== undefined && val !== null && idMapping[val] !== undefined) {
+                        newObj[key] = idMapping[val];
+                    } else if (typeof val === 'string' && idMapping[val]) {
+                        newObj[key] = idMapping[val];
+                    } else if (typeof val === 'number' && idMapping[String(val)]) {
+                        newObj[key] = idMapping[String(val)];
+                    } else if (typeof val === 'object') {
+                        newObj[key] = replaceIds(val);
                     }
                 }
                 return newObj;
@@ -292,11 +332,11 @@ export const syncOfflineData = async () => {
                 const isArray = Array.isArray(processedData);
                 let payload = isArray ? processedData.map(d => {
                     const obj = { ...d };
-                    if (typeof obj.id === 'string' && obj.id.includes('-')) delete obj.id;
+                    if (isTemporaryId(obj.id)) delete obj.id;
                     return obj;
                 }) : (() => {
                     const obj = { ...processedData };
-                    if (typeof obj.id === 'string' && obj.id.includes('-')) delete obj.id;
+                    if (isTemporaryId(obj.id)) delete obj.id;
                     return obj;
                 })();
 
@@ -528,15 +568,21 @@ export const syncOfflineData = async () => {
 
                 if (!error && returnedData) {
                     if (isArray) {
-                        const originalIds = processedData.map(d => d.id).filter(id => typeof id === 'string' && id.includes('-'));
+                        const originalIds = processedData.map(d => d.id).filter(isTemporaryId);
                         if (originalIds.length > 0) {
                             await db[item.table].bulkDelete(originalIds);
                         }
                         await db[item.table].bulkPut(returnedData);
                     } else {
                         const oldId = item.data.id;
-                        if (typeof oldId === 'string' && oldId.includes('-')) {
+                        if (isTemporaryId(oldId)) {
                             await db[item.table].delete(oldId);
+                            if (typeof oldId === 'string' && !isNaN(Number(oldId))) {
+                                await db[item.table].delete(Number(oldId));
+                            } else if (typeof oldId === 'number') {
+                                await db[item.table].delete(String(oldId));
+                            }
+
                             const newId = returnedData[0].id;
                             
                             // Cascade ID update to other items in local IndexedDB
@@ -558,7 +604,7 @@ export const syncOfflineData = async () => {
                                     }
                                     const copy = { ...obj };
                                     for (const k in copy) {
-                                        if (copy[k] === oldId) {
+                                        if (copy[k] === oldId || String(copy[k]) === String(oldId)) {
                                             copy[k] = newId;
                                             updated = true;
                                         } else if (typeof copy[k] === 'object') {
@@ -579,6 +625,7 @@ export const syncOfflineData = async () => {
                             
                             // Keep in-memory mapping as backup for current sync run
                             idMapping[oldId] = newId;
+                            idMapping[String(oldId)] = newId;
                         } else {
                             await db[item.table].put(returnedData[0]);
                         }
