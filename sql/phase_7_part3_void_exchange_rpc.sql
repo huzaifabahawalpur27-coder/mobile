@@ -178,7 +178,7 @@ BEGIN
                         ) VALUES (
                             v_shop_id,
                             v_split_acc_id,
-                            'DEBIT',
+                            'withdrawal',
                             v_split_amt,
                             v_acc_bal_before,
                             v_acc_bal_after,
@@ -216,7 +216,7 @@ BEGIN
                 ) VALUES (
                     v_shop_id,
                     v_exchange.settlement_account_id,
-                    'DEBIT',
+                    'withdrawal',
                     v_exchange.settlement_amount,
                     v_acc_bal_before,
                     v_acc_bal_after,
@@ -256,7 +256,7 @@ BEGIN
                 ) VALUES (
                     v_shop_id,
                     v_exchange.settlement_account_id,
-                    'CREDIT',
+                    'deposit',
                     v_exchange.settlement_amount,
                     v_acc_bal_before,
                     v_acc_bal_after,

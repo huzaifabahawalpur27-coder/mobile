@@ -1,10 +1,9 @@
--- Ensure phones table accepts flexible conditions and PTA statuses
+-- Relax constraints on phones and bank_account_transactions
 ALTER TABLE public.phones DROP CONSTRAINT IF EXISTS phones_condition_check;
 ALTER TABLE public.phones DROP CONSTRAINT IF EXISTS phones_pta_status_check;
 ALTER TABLE public.phones ADD COLUMN IF NOT EXISTS purchase_date DATE DEFAULT CURRENT_DATE;
-
--- Ensure optional columns exist on phones table
-ALTER TABLE public.phones ADD COLUMN IF NOT EXISTS purchase_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.bank_account_transactions DROP CONSTRAINT IF EXISTS bank_account_transactions_transaction_type_check;
+ALTER TABLE public.bank_account_transactions ADD CONSTRAINT bank_account_transactions_transaction_type_check CHECK (transaction_type IN ('deposit', 'withdrawal', 'transfer', 'adjustment', 'CREDIT', 'DEBIT', 'credit', 'debit'));
 
 CREATE OR REPLACE FUNCTION process_phone_exchange(
     p_customer_id INTEGER,
@@ -805,7 +804,7 @@ BEGIN
                         ) VALUES (
                             v_shop_id,
                             v_split_acc_id,
-                            'CREDIT',
+                            'deposit',
                             v_split_amt,
                             v_acc_bal_before,
                             v_acc_bal_after,
@@ -843,7 +842,7 @@ BEGIN
                 ) VALUES (
                     v_shop_id,
                     p_account_id,
-                    'CREDIT',
+                    'deposit',
                     v_abs_settlement,
                     v_acc_bal_before,
                     v_acc_bal_after,
@@ -883,7 +882,7 @@ BEGIN
                 ) VALUES (
                     v_shop_id,
                     p_account_id,
-                    'DEBIT',
+                    'withdrawal',
                     v_abs_settlement,
                     v_acc_bal_before,
                     v_acc_bal_after,
