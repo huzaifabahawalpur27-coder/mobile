@@ -642,6 +642,266 @@ export function buildBillHTML(r, isQuotation = false, shopSettings = {}, isPurch
   return template2(r, isQuotation, shopSettings, isPurchase)
 }
 
+// ── PHONE EXCHANGE BILL (Thermal 80mm & A4) ──────────────────
+export function buildExchangeBillHTML(exchange, shopSettings = {}) {
+  const s = shopSettings
+  const isA4 = s.print_size === 'a4'
+  const dateStr = exchange.created_at ? new Date(exchange.created_at).toLocaleString('en-PK') : new Date().toLocaleString('en-PK')
+  const incoming = (exchange.exchange_items || exchange.incoming_items || []).filter(i => i.item_direction === 'incoming_trade_in')
+  const outgoing = (exchange.exchange_items || exchange.outgoing_items || []).filter(i => i.item_direction === 'outgoing_sale')
+
+  const saleAmount = safeNum(exchange.sale_amount)
+  const tradeInCredit = safeNum(exchange.trade_in_credit)
+  const settlementAmount = safeNum(exchange.settlement_amount)
+  const direction = exchange.settlement_direction || 'even'
+
+  let settlementBadgeText = 'EVEN EXCHANGE (NO CASH)'
+  let settlementColor = '#475569'
+  if (direction === 'customer_paid') {
+    settlementBadgeText = `CUSTOMER PAID STORE: Rs. ${settlementAmount.toLocaleString('en-PK')}`
+    settlementColor = '#16a34a'
+  } else if (direction === 'shop_payout') {
+    settlementBadgeText = `STORE PAID OUT TO CUSTOMER: Rs. ${settlementAmount.toLocaleString('en-PK')}`
+    settlementColor = '#dc2626'
+  }
+
+  const paymentMethodLabel = (exchange.settlement_payment_method || 'Cash').toUpperCase()
+  const exchangeNumber = exchange.exchange_number || `EXC-${String(exchange.id || Date.now()).slice(-6)}`
+  const saleInvoiceNo = exchange.sale_id ? `INV-${String(exchange.sale_id).slice(-8)}` : null
+  const purchaseInvoiceNo = exchange.purchase_id ? `PR-${String(exchange.purchase_id).slice(-8)}` : null
+
+  if (!isA4) {
+    // 80mm Thermal Memo
+    return `<html><head><title>Exchange Memo ${exchangeNumber}</title>
+    <style>
+      @page{size:80mm auto;margin:2mm}
+      *{box-sizing:border-box}
+      body{font-family:monospace;width:302px;margin:0 auto;padding:8px 6px;font-size:12px;background:#fff;color:#000}
+      p{margin:2px 0;line-height:1.35}
+      .c{text-align:center} .r{text-align:right} .b{font-weight:bold}
+      .dot{border-top:1px dashed #000;margin:6px 0}
+      .solid{border-top:1px solid #000;margin:6px 0}
+      table{width:100%;border-collapse:collapse;font-size:11px}
+      .badge{border:1px solid #000;padding:4px 6px;text-align:center;font-weight:bold;margin:6px 0;font-size:12px}
+    </style></head><body>
+      <p class="c b" style="font-size:1.3em">${safeStr(s.name, 'Shop')}</p>
+      ${s.phone ? `<p class="c">${s.phone}</p>` : ''}
+      ${s.address ? `<p class="c" style="font-size:0.9em">${s.address}</p>` : ''}
+      <div class="dot"></div>
+      <p class="c b" style="font-size:1.1em">🔄 PHONE EXCHANGE MEMO</p>
+      <div class="dot"></div>
+      <p><b>Exchange #:</b> ${exchangeNumber}</p>
+      ${saleInvoiceNo ? `<p><b>Outgoing Sale:</b> ${saleInvoiceNo}</p>` : ''}
+      ${purchaseInvoiceNo ? `<p><b>Trade-in Purchase:</b> ${purchaseInvoiceNo}</p>` : ''}
+      <p><b>Date:</b> ${dateStr}</p>
+      <p><b>Customer:</b> ${safeStr(exchange.customer_name || exchange.customer?.name, 'Walk-in Customer')}</p>
+      ${exchange.customer_phone || exchange.customer?.phone ? `<p><b>Phone:</b> ${exchange.customer_phone || exchange.customer?.phone}</p>` : ''}
+      
+      <div class="solid"></div>
+      <p class="b">📥 TRADED-IN DEVICE(S):</p>
+      <table>
+        ${incoming.map(p => `
+          <tr>
+            <td style="padding:2px 0;vertical-align:top">
+              <b>${p.brand || ''} ${p.model || p.product_name}</b> (${p.storage || ''} ${p.color || ''})
+              <div style="font-size:0.85em;color:#333">IMEI 1: ${maskImei(p.imei_1)}</div>
+              ${p.imei_2 ? `<div style="font-size:0.85em;color:#333">IMEI 2: ${maskImei(p.imei_2)}</div>` : ''}
+              <div style="font-size:0.85em;color:#444">Cond: ${p.condition || 'Used'} · ${p.pta_status || 'PTA'}</div>
+              ${p.inspection_details?.battery_health ? `<div style="font-size:0.85em;color:#555">Battery: ${p.inspection_details.battery_health}%</div>` : ''}
+            </td>
+            <td class="r b" style="padding:2px 0;vertical-align:top;white-space:nowrap">
+              Rs. ${safeNum(p.assessed_value || p.subtotal).toLocaleString('en-PK')}
+            </td>
+          </tr>
+        `).join('')}
+      </table>
+      <p class="r" style="margin-top:4px"><b>Total Trade-in Credit:</b> Rs. ${tradeInCredit.toLocaleString('en-PK')}</p>
+
+      <div class="solid"></div>
+      <p class="b">📤 OUTGOING PURCHASE(S):</p>
+      <table>
+        ${outgoing.map(item => `
+          <tr>
+            <td style="padding:2px 0;vertical-align:top">
+              <b>${item.product_name}</b> ${item.storage ? `(${item.storage})` : ''}
+              ${item.imei_1 ? `<div style="font-size:0.85em;color:#333">IMEI: ${maskImei(item.imei_1)}</div>` : ''}
+              <div style="font-size:0.85em;color:#555">${item.quantity || 1} × Rs. ${safeNum(item.assessed_value || item.unit_price || item.subtotal).toLocaleString('en-PK')}</div>
+            </td>
+            <td class="r b" style="padding:2px 0;vertical-align:top;white-space:nowrap">
+              Rs. ${safeNum(item.subtotal || item.line_total).toLocaleString('en-PK')}
+            </td>
+          </tr>
+        `).join('')}
+      </table>
+      <p class="r" style="margin-top:4px"><b>Total Outgoing Items:</b> Rs. ${saleAmount.toLocaleString('en-PK')}</p>
+
+      <div class="solid"></div>
+      <p class="b">RECONCILIATION SUMMARY:</p>
+      <div style="display:flex;justify-content:space-between;padding:1px 0">
+        <span>Outgoing Purchases:</span>
+        <b>Rs. ${saleAmount.toLocaleString('en-PK')}</b>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:1px 0">
+        <span>Less: Trade-in Credit:</span>
+        <b>- Rs. ${tradeInCredit.toLocaleString('en-PK')}</b>
+      </div>
+      <div class="dot"></div>
+      <div style="display:flex;justify-content:space-between;font-size:1.1em;padding:2px 0">
+        <b>Net Settlement:</b>
+        <b>Rs. ${settlementAmount.toLocaleString('en-PK')}</b>
+      </div>
+
+      <div class="badge">
+        ${settlementBadgeText}
+      </div>
+      <p style="font-size:0.9em;margin-top:2px"><b>Settlement Tender:</b> ${paymentMethodLabel}</p>
+
+      ${exchange.notes ? `<p style="font-size:0.85em;margin-top:4px;color:#333"><b>Notes:</b> ${exchange.notes}</p>` : ''}
+
+      <div class="dot"></div>
+      <p style="font-size:0.75em;text-align:justify;line-height:1.2;color:#333">
+        <b>Declaration:</b> Customer confirms traded device(s) are genuine and free of legal dispute. Traded phones are received as used goods with no warranty unless agreed in writing.
+      </p>
+
+      <div style="margin-top:16px;display:flex;justify-content:space-between;font-size:0.8em">
+        <div style="text-align:center;width:45%;border-top:1px solid #000;padding-top:2px">Customer Sig</div>
+        <div style="text-align:center;width:45%;border-top:1px solid #000;padding-top:2px">Authorized Sig</div>
+      </div>
+      <p class="c" style="margin-top:10px;font-size:0.8em;color:#666">Thank you for your business!</p>
+      ${printScript}
+    </body></html>`
+  }
+
+  // A4 Layout
+  return `<html><head><title>Exchange Memo ${exchangeNumber}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:28px;color:#1e293b;font-size:13px;background:#fff}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2563eb;padding-bottom:16px;margin-bottom:20px}
+    .shop-name{font-size:24px;font-weight:900;color:#1e3a5f}
+    .badge-box{background:#f1f5f9;border:1px solid #cbd5e1;padding:12px 18px;border-radius:10px;text-align:right}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+    .card{border:1px solid #e2e8f0;border-radius:8px;padding:14px;background:#f8fafc}
+    .card-title{font-size:12px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th{background:#f1f5f9;color:#334155;padding:8px 10px;font-size:11px;text-transform:uppercase;text-align:left;font-weight:700}
+    td{padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12px}
+    .r{text-align:right} .b{font-weight:700}
+    .settlement-card{border:2px solid ${settlementColor};background:#f8fafc;padding:16px;border-radius:10px;margin-top:20px;display:flex;justify-content:space-between;align-items:center}
+    .terms{margin-top:24px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;color:#475569;line-height:1.4}
+    .signatures{display:flex;justify-content:space-between;margin-top:40px;padding:0 20px}
+    .sig-line{border-top:1px solid #64748b;width:200px;text-align:center;padding-top:4px;font-size:11px;font-weight:600}
+  </style></head><body>
+    <div class="header">
+      <div>
+        <div class="shop-name">${safeStr(s.name, 'Shop')}</div>
+        ${s.phone ? `<div style="font-size:13px;color:#475569;margin-top:2px">Phone: ${s.phone}</div>` : ''}
+        ${s.address ? `<div style="font-size:12px;color:#64748b">${s.address}</div>` : ''}
+      </div>
+      <div class="badge-box">
+        <div style="font-size:18px;font-weight:900;color:#2563eb">🔄 PHONE EXCHANGE INVOICE</div>
+        <div style="font-size:13px;font-weight:700;margin-top:2px">${exchangeNumber}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">${dateStr}</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Customer Information</div>
+        <div style="font-size:14px;font-weight:700">${safeStr(exchange.customer_name || exchange.customer?.name, 'Walk-in Customer')}</div>
+        ${exchange.customer_phone || exchange.customer?.phone ? `<div>Phone: ${exchange.customer_phone || exchange.customer?.phone}</div>` : ''}
+        ${exchange.customer?.address ? `<div>Address: ${exchange.customer.address}</div>` : ''}
+      </div>
+      <div class="card">
+        <div class="card-title">Exchange Audit References</div>
+        <div><b>Sale Invoice:</b> ${saleInvoiceNo || 'N/A'}</div>
+        <div><b>Trade-in Purchase:</b> ${purchaseInvoiceNo || 'N/A'}</div>
+        <div><b>Branch:</b> ${safeStr(exchange.branches?.name, 'Main Branch')}</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <div style="font-size:13px;font-weight:800;color:#dc2626;text-transform:uppercase;margin-bottom:4px">📥 Traded-In Device(s) (Incoming)</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Device Specifications</th>
+            <th>Condition & PTA</th>
+            <th>IMEI Numbers</th>
+            <th class="r">Assessed Credit</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${incoming.map(p => `
+            <tr>
+              <td class="b">${p.brand || ''} ${p.model || p.product_name} <span style="font-weight:normal;color:#64748b">(${p.storage || ''} ${p.color || ''})</span></td>
+              <td>${p.condition || 'Used'} · ${p.pta_status || 'PTA'} ${p.inspection_details?.battery_health ? `(Batt: ${p.inspection_details.battery_health}%)` : ''}</td>
+              <td style="font-family:monospace">${maskImei(p.imei_1)} ${p.imei_2 ? `<br/>${maskImei(p.imei_2)}` : ''}</td>
+              <td class="r b" style="font-size:13px">Rs. ${safeNum(p.assessed_value || p.subtotal).toLocaleString('en-PK')}</td>
+            </tr>
+          `).join('')}
+          <tr style="background:#fef2f2">
+            <td colspan="3" class="b r" style="color:#dc2626">TOTAL TRADE-IN CREDIT:</td>
+            <td class="r b" style="color:#dc2626;font-size:14px">Rs. ${tradeInCredit.toLocaleString('en-PK')}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:800;color:#16a34a;text-transform:uppercase;margin-bottom:4px">📤 Outgoing Replacement Items (Purchased)</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Product / Phone Description</th>
+            <th>IMEI / Identifiers</th>
+            <th class="r">Unit Price</th>
+            <th class="r">Qty</th>
+            <th class="r">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${outgoing.map(item => `
+            <tr>
+              <td class="b">${item.product_name} <span style="font-weight:normal;color:#64748b">${item.storage ? `(${item.storage} ${item.color || ''})` : ''}</span></td>
+              <td style="font-family:monospace">${item.imei_1 ? maskImei(item.imei_1) : '—'}</td>
+              <td class="r">Rs. ${safeNum(item.assessed_value || item.unit_price || item.subtotal).toLocaleString('en-PK')}</td>
+              <td class="r">${item.quantity || 1}</td>
+              <td class="r b" style="font-size:13px">Rs. ${safeNum(item.subtotal || item.line_total).toLocaleString('en-PK')}</td>
+            </tr>
+          `).join('')}
+          <tr style="background:#f0fdf4">
+            <td colspan="4" class="b r" style="color:#16a34a">TOTAL OUTGOING PURCHASES:</td>
+            <td class="r b" style="color:#16a34a;font-size:14px">Rs. ${saleAmount.toLocaleString('en-PK')}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="settlement-card">
+      <div>
+        <div style="font-size:18px;font-weight:900;color:${settlementColor}">${settlementBadgeText}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px">Settlement Method: <b>${paymentMethodLabel}</b> ${exchange.notes ? `· Notes: ${exchange.notes}` : ''}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:#64748b">Sale (Rs. ${saleAmount.toLocaleString('en-PK')}) − Credit (Rs. ${tradeInCredit.toLocaleString('en-PK')})</div>
+        <div style="font-size:24px;font-weight:900;color:${settlementColor}">Rs. ${settlementAmount.toLocaleString('en-PK')}</div>
+      </div>
+    </div>
+
+    <div class="terms">
+      <b>Trade-in & Exchange Terms:</b> The customer certifies that all surrendered devices are free of hardware locks (iCloud/Google/MDM) and are the legal property of the seller with clear ownership. EdgeX POS records both outgoing invoice and inward trade-in receipt for warranty and tax compliance.
+    </div>
+
+    <div class="signatures">
+      <div class="sig-line">Customer Signature</div>
+      <div class="sig-line">Authorized Store Signature</div>
+    </div>
+
+    ${printScript}
+  </body></html>`
+}
+
 // ── SALES REPORT (daily / weekly / monthly) ──────────────────
 export function buildSalesReportHTML(sales, saleItems, period, shopSettings) {
   const s = shopSettings

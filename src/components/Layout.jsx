@@ -10,7 +10,7 @@ import {
   Users, BookOpen, MessageSquare, Receipt, Truck,
   ShoppingBag, History, Wallet, BarChart3, UserCog,
   Settings as SettingsIcon, Trash2, LifeBuoy, Lock, Store,
-  Volume2, VolumeX, Sun, Moon, Palette, Check, Landmark, Smartphone, Send
+  Volume2, VolumeX, Sun, Moon, Palette, Check, Landmark, Smartphone, Send, RefreshCw
 } from 'lucide-react'
 import { getPendingWhatsAppQueueCount } from '../services/whatsappQueueService'
 import BroadcastBanner from './BroadcastBanner'
@@ -268,6 +268,9 @@ function Layout({ children }) {
             <NavItem to="/dashboard" icon={<LayoutDashboard size={18} />} label="Dashboard" active={location.pathname === '/dashboard'} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             {hasAccess('pos', ['admin', 'manager', 'cashier']) && (
               <NavItem to="/pos" icon={<ShoppingCart size={18} />} label="POS Billing" active={location.pathname === '/pos'} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
+            )}
+            {hasAccess('pos', ['admin', 'manager', 'cashier']) && (
+              <NavItem to="/exchange" icon={<RefreshCw size={18} />} label="Phone Exchange" active={location.pathname === '/exchange'} onClick={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} />
             )}
 
             <NavHeader label="Inventory & Products" collapsed={sidebarCollapsed} />

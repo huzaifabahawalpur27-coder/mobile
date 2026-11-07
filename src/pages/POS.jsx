@@ -1837,12 +1837,18 @@ function POS() {
         {/* LEFT: Products */}
         <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
 
-        {/* Sale / Quotation toggle */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {/* Sale / Quotation / Exchange toggle */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
           <button onClick={() => setSaleType('sale')}
             className={`flex-1 py-2 rounded-lg font-semibold text-sm transition ${saleType === 'sale' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border'}`}>
             🧾 Sale
           </button>
+          <Link
+            to="/exchange"
+            className="flex-1 py-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 rounded-lg font-semibold text-sm border border-purple-200 dark:border-purple-800 transition-transform duration-150 ease-out motion-safe:active:scale-[0.96] motion-reduce:transform-none flex items-center justify-center gap-1"
+          >
+            🔄 Exchange
+          </Link>
           <button onClick={() => setSaleType('quotation')}
             className={`flex-1 py-2 rounded-lg font-semibold text-sm transition ${saleType === 'quotation' ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 border'}`}>
             📄 Quotation

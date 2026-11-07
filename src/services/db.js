@@ -324,6 +324,12 @@ db.version(18).stores({
   sync_dead_letter: '++id, table, action, failed_at'
 });
 
+// v19: exchanges and exchange_items stores for dedicated phone trade-in & exchange workflow
+db.version(19).stores({
+  exchanges: 'id, exchange_number, shop_id, branch_id, customer_id, status, created_at',
+  exchange_items: 'id, exchange_id, shop_id, item_direction, phone_id, product_id'
+});
+
 export const addToSyncQueue = async (table, action, data) => {
   let activeShopId = null;
   try { activeShopId = JSON.parse(localStorage.getItem('user') || 'null')?.shop_id || null; } catch (_) {}

@@ -682,6 +682,12 @@ function Purchases() {
           >
             <span>📦</span> Accessories & Stock
           </button>
+          <Link
+            to="/exchange"
+            className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 cursor-pointer"
+          >
+            <span>🔄</span> Trade-in & Exchange
+          </Link>
         </div>
       </div>
 

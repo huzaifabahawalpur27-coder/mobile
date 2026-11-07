@@ -1,5 +1,5 @@
-import { supabase } from './supabase'
-import { db } from './db'
+import { supabase } from './supabase.js'
+import { db } from './db.js'
 
 export function cleanPakistanPhone(rawPhone) {
   if (!rawPhone) return ''
@@ -295,6 +295,69 @@ ${itemsList}
 • Remaining Balance: Rs. ${balance}
 
 Thank you for your partnership! 🤝`
+}
+
+/**
+ * Builds exchange confirmation memo for WhatsApp.
+ */
+export function buildExchangeWhatsAppText({ exchange, shopInfo = {} }) {
+  const customerName = exchange.customer_name || exchange.customer?.name || 'Valued Customer'
+  const shopName = shopInfo.name || 'EdgeX Mobile Store'
+  const shopPhone = shopInfo.phone || ''
+  const exchangeNo = exchange.exchange_number || `EXC-${String(exchange.id || Date.now()).slice(-6)}`
+  const dateStr = exchange.created_at
+    ? new Date(exchange.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
+    : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
+
+  const incoming = (exchange.exchange_items || exchange.incoming_items || []).filter(i => i.item_direction === 'incoming_trade_in')
+  const outgoing = (exchange.exchange_items || exchange.outgoing_items || []).filter(i => i.item_direction === 'outgoing_sale')
+
+  const incomingText = incoming.map((p, idx) => {
+    const brandModel = `${p.brand || ''} ${p.model || p.product_name}`.trim()
+    const imei = p.imei_1 ? ` [IMEI: ${p.imei_1}]` : ''
+    const val = Number(p.assessed_value || p.subtotal || 0).toLocaleString('en-PK')
+    return `${idx + 1}. ${brandModel}${imei} (Credit: Rs. ${val})`
+  }).join('\n') || 'None'
+
+  const outgoingText = outgoing.map((i, idx) => {
+    const desc = i.product_name || `${i.brand || ''} ${i.model || 'Phone'}`.trim()
+    const imei = i.imei_1 ? ` [IMEI: ${i.imei_1}]` : ''
+    const price = Number(i.subtotal || i.line_total || i.assessed_value || 0).toLocaleString('en-PK')
+    return `${idx + 1}. ${desc}${imei} = Rs. ${price}`
+  }).join('\n') || 'None'
+
+  const saleAmt = Number(exchange.sale_amount || 0).toLocaleString('en-PK')
+  const tradeAmt = Number(exchange.trade_in_credit || 0).toLocaleString('en-PK')
+  const settleAmt = Number(exchange.settlement_amount || 0).toLocaleString('en-PK')
+
+  let settleStatusUrdu = ''
+  if (exchange.settlement_direction === 'customer_paid') {
+    settleStatusUrdu = `🟢 وصول شدہ بقایا رقم (Customer Paid): Rs. ${settleAmt} (${(exchange.settlement_payment_method || 'Cash').toUpperCase()})`
+  } else if (exchange.settlement_direction === 'shop_payout') {
+    settleStatusUrdu = `🔴 کسٹمر کو ادا کردہ رقم (Store Payout): Rs. ${settleAmt} (${(exchange.settlement_payment_method || 'Cash').toUpperCase()})`
+  } else {
+    settleStatusUrdu = `⚪ برابری کا تبادلہ (Even Exchange - Rs. 0)`
+  }
+
+  return `السلام علیکم ${customerName}! 🤝
+${shopName} میں تشریف لانے اور فون ایکسچینج کرنے کا شکریہ!
+
+🔄 *PHONE TRADE-IN & EXCHANGE MEMO*
+ایکسچینج نمبر: ${exchangeNo}
+تاریخ: ${dateStr}
+
+📥 *آپ کی طرف سے جمع کروایا گیا فون (Traded-in):*
+${incomingText}
+• کل ٹریڈ ان کریڈٹ: Rs. ${tradeAmt}
+
+📤 *خریدا گیا سامان / نیا فون (Purchased):*
+${outgoingText}
+• کل قیمت خرید: Rs. ${saleAmt}
+
+⚖️ *حتمی حساب (Reconciliation & Settlement):*
+${settleStatusUrdu}
+
+آپ کے اعتماد کا بے حد شکریہ! 🤝${shopPhone ? `\n📞 رابطہ: ${shopPhone}` : ''}`
 }
 
 let isSupabaseTableMissing = false

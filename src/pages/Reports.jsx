@@ -356,6 +356,8 @@ function Reports() {
           phonePurchasedCash += pAmount
         } else if (['bank', 'online'].includes(payType)) {
           phonePurchasedBank += pAmount
+        } else if (payType === 'trade_in' || p.is_trade_in) {
+          // Trade-in phone purchase: Settled via exchange credit against outgoing sale (No cash/credit debt)
         } else {
           phonePurchasedCredit += pAmount
         }

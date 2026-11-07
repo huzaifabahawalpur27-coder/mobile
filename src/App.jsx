@@ -10,6 +10,7 @@ import Layout from './components/Layout'
 const Login = lazy(() => import('./pages/Login'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const POS = lazy(() => import('./pages/POS'))
+const Exchange = lazy(() => import('./pages/Exchange'))
 const Products = lazy(() => import('./pages/Products'))
 const AddProduct = lazy(() => import('./pages/AddProduct'))
 const EditProduct = lazy(() => import('./pages/EditProduct'))
@@ -101,6 +102,8 @@ function App() {
               {/* ── Shop Tenant Routes (Both admin & cashier/staff) ── */}
               <Route path="/dashboard" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
               <Route path="/pos" element={<ProtectedRoute requiredModule="pos" allowedRoles={['admin', 'manager', 'cashier']}><Layout><POS /></Layout></ProtectedRoute>} />
+              <Route path="/exchange" element={<ProtectedRoute requiredModule="pos" allowedRoles={['admin', 'manager', 'cashier']}><Layout><Exchange /></Layout></ProtectedRoute>} />
+              <Route path="/exchanges" element={<Navigate to="/exchange" replace />} />
               <Route path="/customers" element={<ProtectedRoute requiredModule="customers" allowedRoles={['admin', 'manager', 'cashier']}><Layout><Customers /></Layout></ProtectedRoute>} />
               <Route path="/customers/:id" element={<ProtectedRoute requiredModule="customers" allowedRoles={['admin', 'manager', 'cashier']}><Layout><CustomerLedger /></Layout></ProtectedRoute>} />
               <Route path="/customer-ledger" element={<ProtectedRoute requiredModule="customers" allowedRoles={['admin', 'manager', 'cashier']}><Layout><CustomerLedgerOverview /></Layout></ProtectedRoute>} />
