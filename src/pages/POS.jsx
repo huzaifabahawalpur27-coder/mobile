@@ -1798,20 +1798,20 @@ function POS() {
             📄 Quotation
           </button>
           <button onClick={() => setShowQuotationSearch(true)}
-            className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm border border-transparent transition">
+            className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 rounded-lg font-semibold text-sm border border-transparent transition-transform duration-150 ease-out motion-safe:active:scale-[0.96] motion-reduce:transform-none">
             🔍 Search Quotation
           </button>
           <button onClick={() => setBarcodeMode(b => !b)}
-            className={`flex-1 py-2 rounded-lg font-semibold text-sm transition border ${barcodeMode ? 'bg-green-500 text-white border-green-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-green-50 hover:border-green-300'}`}>
+            className={`flex-1 py-2 rounded-lg font-semibold text-sm transition-transform duration-150 ease-out motion-safe:active:scale-[0.96] motion-reduce:transform-none border ${barcodeMode ? 'bg-green-500 text-white border-green-500 shadow-xs' : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-800 hover:bg-green-50 dark:hover:bg-green-950/20 hover:border-green-300'}`}>
             📷 {barcodeMode ? 'Scanning...' : 'Barcode Scan'}
           </button>
           <button
             type="button"
             onClick={() => setShowCashSessionModal(true)}
-            className={`flex-1 py-2 rounded-lg font-semibold text-sm transition border flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2 rounded-lg font-semibold text-sm transition-transform duration-150 ease-out motion-safe:active:scale-[0.96] motion-reduce:transform-none border flex items-center justify-center gap-1.5 ${
               activeCashSession
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
+                : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/60'
             }`}
             title="Cash Register & Shift Drawer"
           >
@@ -1860,35 +1860,35 @@ function POS() {
           </select>
           {selectedBrand && (
             <button onClick={() => setShowBrandDiscount(true)}
-              className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm transition whitespace-nowrap shadow-sm">
+              className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm transition-transform duration-150 ease-out motion-safe:active:scale-[0.96] motion-reduce:transform-none whitespace-nowrap shadow-sm">
               % Brand Discount
             </button>
           )}
         </div>
 
         {/* Catalog Tab Switcher: All | Accessories | Mobile Phones */}
-        <div className="flex gap-1.5 border-b border-gray-200 pb-1 shrink-0 overflow-x-auto">
+        <div className="flex gap-1.5 border-b border-gray-200 dark:border-slate-800 pb-1 shrink-0 overflow-x-auto">
           <button
             type="button"
             onClick={() => setCatalogTab('all')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap ${catalogTab === 'all' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-transform duration-150 ease-out motion-safe:active:scale-[0.96] motion-reduce:transform-none whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${catalogTab === 'all' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/60'}`}
           >
             All Items ({filtered.length + filteredPhones.length})
           </button>
           <button
             type="button"
             onClick={() => setCatalogTab('products')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap ${catalogTab === 'products' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-transform duration-150 ease-out motion-safe:active:scale-[0.96] motion-reduce:transform-none whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${catalogTab === 'products' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/60'}`}
           >
             📦 Accessories ({filtered.length})
           </button>
           <button
             type="button"
             onClick={() => setCatalogTab('phones')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap flex items-center gap-1.5 ${catalogTab === 'phones' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'}`}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-transform duration-150 ease-out motion-safe:active:scale-[0.96] motion-reduce:transform-none whitespace-nowrap flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${catalogTab === 'phones' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'}`}
           >
             <span>📱 Mobile Phones</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${catalogTab === 'phones' ? 'bg-white/25 text-white' : 'bg-emerald-200/80 text-emerald-900'}`}>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${catalogTab === 'phones' ? 'bg-white/25 text-white' : 'bg-emerald-200/80 dark:bg-emerald-800/80 text-emerald-900 dark:text-emerald-100'}`}>
               {filteredPhones.length}
             </span>
           </button>
@@ -1902,54 +1902,54 @@ function POS() {
               <div
                 key={`phone-card-${phone.id}`}
                 onClick={() => addPhoneToCart(phone)}
-                className={`pos-product-card group bg-white rounded-xl shadow-xs hover:shadow-md p-3 text-left transition-all border cursor-pointer flex flex-col justify-between select-none relative border-t-4 border-t-emerald-500 ${
+                className={`pos-product-card group rounded-2xl shadow-xs hover:shadow-md p-3 text-left transition-all duration-150 ease-out motion-safe:active:scale-[0.98] motion-reduce:transform-none border cursor-pointer flex flex-col justify-between select-none relative border-t-4 border-t-emerald-500 ${
                   isPhoneInCart
-                    ? 'border-emerald-400 bg-emerald-50/40'
-                    : 'border-gray-200/80 hover:border-emerald-500 hover:bg-emerald-50/20'
+                    ? 'border-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/30 dark:border-emerald-600'
+                    : 'bg-white dark:bg-[#1c1c1e] border-gray-200/80 dark:border-[#38383a] hover:border-emerald-500 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20'
                 }`}
               >
                 {/* Row 1: Brand & Model */}
                 <div className="w-full mb-1">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-[9px] font-black uppercase text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                    <span className="text-[9px] font-black uppercase text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded-md">
                       📱 Phone
                     </span>
-                    <span className="text-[10px] font-bold text-gray-500 capitalize">
+                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 capitalize">
                       {phone.condition || 'Used'}
                     </span>
                   </div>
-                  <h3 className="font-bold text-gray-900 text-xs sm:text-sm leading-snug break-words mt-1">
+                  <h3 className="font-bold text-gray-900 dark:text-[#f5f5f7] text-xs sm:text-sm leading-snug break-words mt-1">
                     {phone.brand} {phone.model}
                   </h3>
-                  <div className="text-[10px] text-gray-500 flex gap-1 mt-0.5">
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 flex gap-1 mt-0.5">
                     {phone.storage && <span>{phone.storage}</span>}
                     {phone.color && <span>· {phone.color}</span>}
                   </div>
                 </div>
 
                 {/* Row 2: Price & PTA Status */}
-                <div className="flex items-center justify-between gap-1 mb-1.5 pt-1 border-t border-gray-100/70">
-                  <span className="font-black text-sm sm:text-base text-emerald-600 tracking-tight">
+                <div className="flex items-center justify-between gap-1 mb-1.5 pt-1 border-t border-gray-100/70 dark:border-white/10">
+                  <span className="font-black text-sm sm:text-base text-emerald-600 dark:text-emerald-400 tracking-tight">
                     Rs. {Number(phone.sale_price).toLocaleString()}
                   </span>
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase ${
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border uppercase ${
                     phone.pta_status === 'approved'
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                      : 'bg-amber-100 text-amber-800 border-amber-200'
+                      ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                   }`}>
                     {phone.pta_status || 'PTA'}
                   </span>
                 </div>
 
                 {/* Row 3: IMEI snippet & Masked/Visible Cost */}
-                <div className="flex items-center justify-between pt-1 border-t border-gray-100 mt-0.5 text-[10px]">
-                  <span className="font-mono text-gray-600 truncate max-w-[130px]" title={`IMEI 1: ${phone.imei_1}`}>
+                <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-white/10 mt-0.5 text-[10px]">
+                  <span className="font-mono text-gray-600 dark:text-gray-400 truncate max-w-[130px]" title={`IMEI 1: ${phone.imei_1}`}>
                     SN: {String(phone.imei_1).slice(-6)}
                   </span>
                   {isPrivileged ? (
-                    <span className="text-gray-400">Cost: Rs.{phone.cost_price}</span>
+                    <span className="text-gray-400 dark:text-gray-500">Cost: Rs.{phone.cost_price}</span>
                   ) : (
-                    <span className="text-gray-300">Cost: ***</span>
+                    <span className="text-gray-300 dark:text-gray-600">Cost: ***</span>
                   )}
                 </div>
               </div>
@@ -1966,44 +1966,44 @@ function POS() {
               <div
                 key={p.id}
                 onClick={() => { addToCart(p, parseFloat(cardQtys[p.id]) || 1); setCardQtys(prev => ({ ...prev, [p.id]: '' })) }}
-                className={`pos-product-card group bg-white rounded-xl shadow-xs hover:shadow-md p-3 text-left transition-all border cursor-pointer flex flex-col justify-between select-none relative border-t-4 ${catStyle.border} ${
+                className={`pos-product-card group rounded-2xl shadow-xs hover:shadow-md p-3 text-left transition-all duration-150 ease-out motion-safe:active:scale-[0.98] motion-reduce:transform-none border cursor-pointer flex flex-col justify-between select-none relative border-t-4 ${catStyle.border} ${
                   isOutOfStock
-                    ? 'border-red-200 bg-red-50/20 opacity-80'
+                    ? 'border-red-200 dark:border-red-900/50 bg-red-50/20 dark:bg-red-950/20 opacity-80'
                     : isLowStock
-                      ? 'border-amber-200 bg-amber-50/15 hover:border-amber-400'
-                      : 'border-gray-200/80 hover:border-blue-500 hover:bg-blue-50/30'
+                      ? 'border-amber-200 dark:border-amber-900/50 bg-amber-50/15 dark:bg-amber-950/20 hover:border-amber-400'
+                      : 'bg-white dark:bg-[#1c1c1e] border-gray-200/80 dark:border-[#38383a] hover:border-blue-500 hover:bg-blue-50/30 dark:hover:bg-blue-950/20'
                 }`}
               >
                 {/* Row 1: Dedicated Product Name (100% visible, multi-line wrapping allowed) */}
                 <div className="w-full mb-1">
-                  <h3 className="font-bold text-gray-900 text-xs sm:text-sm leading-snug break-words w-full" title={p.name}>
+                  <h3 className="font-bold text-gray-900 dark:text-[#f5f5f7] text-xs sm:text-sm leading-snug break-words w-full" title={p.name}>
                     {p.name}
                   </h3>
                 </div>
 
                 {/* Row 2: Separate Price Line & Category / Brand / Stock Status Badges */}
-                <div className="flex items-center justify-between gap-1 mb-1.5 pt-1 border-t border-gray-100/70">
-                  <span className="font-black text-sm sm:text-base text-blue-600 tracking-tight">
+                <div className="flex items-center justify-between gap-1 mb-1.5 pt-1 border-t border-gray-100/70 dark:border-white/10">
+                  <span className="font-black text-sm sm:text-base text-blue-600 dark:text-blue-400 tracking-tight">
                     Rs. {Number(p.sale_price).toLocaleString()}
                   </span>
 
                   <div className="flex items-center gap-1 shrink-0">
                     {catName && (
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border truncate max-w-[75px] ${catStyle.pill}`} title={catName}>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border truncate max-w-[75px] ${catStyle.pill}`} title={catName}>
                         {catName}
                       </span>
                     )}
                     {p.brand && (
-                      <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60 truncate max-w-[80px]">
+                      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-700/60 truncate max-w-[80px]">
                         {p.brand}
                       </span>
                     )}
                     {isOutOfStock ? (
-                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300">
                         Out
                       </span>
                     ) : isLowStock ? (
-                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
                         Low
                       </span>
                     ) : null}
@@ -2011,13 +2011,13 @@ function POS() {
                 </div>
 
                 {/* Row 3: Stock, Cost & Quick Qty Action */}
-                <div className="flex items-center justify-between pt-1 border-t border-gray-100 mt-0.5">
-                  <div className="text-[11px] flex items-center gap-1 text-gray-500">
-                    <span className={isOutOfStock ? 'text-red-600 font-bold' : isLowStock ? 'text-amber-600 font-semibold' : 'text-gray-500'}>
+                <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-white/10 mt-0.5">
+                  <div className="text-[11px] flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                    <span className={isOutOfStock ? 'text-red-600 dark:text-red-400 font-bold' : isLowStock ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}>
                       Stock: <span className="font-semibold">{p.stock_quantity}</span>
                     </span>
                     {isPrivileged && p.cost_price != null && (
-                      <span className="text-gray-400 text-[10px] hidden sm:inline">
+                      <span className="text-gray-400 dark:text-gray-500 text-[10px] hidden sm:inline">
                         · Cost: {p.cost_price}
                       </span>
                     )}
@@ -2040,7 +2040,7 @@ function POS() {
                       }}
                       placeholder="Qty"
                       title="Custom quantity"
-                      className="w-12 text-[11px] font-medium text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 bg-white"
+                      className="w-12 text-[11px] font-medium text-center border border-gray-200 dark:border-[#38383a] rounded-md px-1 py-0.5 outline-none focus:border-blue-500 bg-white dark:bg-[#2c2c2e] text-gray-900 dark:text-white"
                     />
                     <button
                       type="button"
@@ -2049,7 +2049,7 @@ function POS() {
                         setCardQtys(prev => ({ ...prev, [p.id]: '' }))
                       }}
                       title="Add to cart"
-                      className="px-2 py-0.5 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded text-xs font-black transition border border-blue-200 hover:border-transparent active:scale-95"
+                      className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-600 text-blue-600 dark:text-blue-400 hover:text-white rounded-md text-xs font-black transition-transform duration-150 ease-out border border-blue-200 dark:border-blue-800 hover:border-transparent motion-safe:active:scale-[0.96] motion-reduce:transform-none"
                     >
                       +
                     </button>

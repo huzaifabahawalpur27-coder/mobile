@@ -44,16 +44,14 @@ const AppleWidget = ({
   isHero,
   onClick
 }) => (
-  <div
+  <button
+    type="button"
     onClick={onClick}
-    role="button"
-    tabIndex={0}
-    onKeyDown={e => { if (onClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick() } }}
-    className={`p-4 sm:p-5 rounded-2xl transition-all duration-200 group flex flex-col justify-between cursor-pointer relative overflow-hidden active:scale-[0.99] bg-white dark:bg-[#1c1c1e] border ${isHero ? 'border-emerald-500/40 shadow-sm' : 'border-black/[0.08] dark:border-white/[0.1] shadow-xs'} hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500`}
+    className={`w-full text-left p-4 sm:p-5 rounded-2xl transition-transform duration-150 ease-out group flex flex-col justify-between cursor-pointer relative overflow-hidden motion-safe:active:scale-[0.96] motion-reduce:transform-none bg-white dark:bg-[#1c1c1e] border ${isHero ? 'border-emerald-500/40 shadow-sm' : 'border-black/[0.08] dark:border-white/[0.1] shadow-xs'} hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2`}
   >
-    <div>
+    <div className="w-full">
       <div className="flex justify-between items-start mb-2.5">
-        <div className={`w-10 h-10 rounded-[14px] flex items-center justify-center ${bgTint} ${color} transition-transform group-hover:scale-105 shadow-2xs`}>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${bgTint} ${color} transition-transform group-hover:scale-105 shadow-2xs`}>
           {icon}
         </div>
         {badge && (
@@ -89,7 +87,7 @@ const AppleWidget = ({
         <span className={`group-hover:translate-x-0.5 transition-transform ${isHero ? 'text-emerald-500 font-bold' : 'text-gray-400 group-hover:text-[#0071e3]'}`}>→</span>
       </div>
     )}
-  </div>
+  </button>
 )
 
 function Dashboard() {
@@ -933,7 +931,7 @@ function Dashboard() {
           type="button"
           onClick={() => navigate('/accounts')}
           aria-label="Cash in Drawer: Rs. Math.round(stats.todayNetCashDrawer). Click to view accounts"
-          className="w-full text-left bg-gradient-to-br from-emerald-500/[0.06] via-white/95 to-emerald-500/[0.02] dark:from-emerald-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-emerald-500/25 dark:border-emerald-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+          className="w-full text-left bg-gradient-to-br from-emerald-500/[0.06] via-white/95 to-emerald-500/[0.02] dark:from-emerald-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-emerald-500/25 dark:border-emerald-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
         >
           <div>
             <div className="flex items-center gap-1">
@@ -945,7 +943,7 @@ function Dashboard() {
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">Cash in hand balance</span>
           </div>
-          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#34c759]/15 text-[#34c759] flex items-center justify-center font-bold text-xs shrink-0">
+          <div className="w-8.5 h-8.5 rounded-[10px] bg-[#34c759]/15 text-[#34c759] flex items-center justify-center font-bold text-xs shrink-0">
             <Wallet size={16} />
           </div>
         </button>
@@ -955,7 +953,7 @@ function Dashboard() {
           type="button"
           onClick={() => navigate('/accounts')}
           aria-label="Digital and Bank transfers: Rs. Math.round(stats.todayOnlineSales). Click to view accounts"
-          className="w-full text-left bg-gradient-to-br from-sky-500/[0.06] via-white/95 to-blue-500/[0.02] dark:from-sky-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-sky-500/25 dark:border-sky-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+          className="w-full text-left bg-gradient-to-br from-sky-500/[0.06] via-white/95 to-blue-500/[0.02] dark:from-sky-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-sky-500/25 dark:border-sky-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
         >
           <div>
             <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Digital / Bank</span>
@@ -964,7 +962,7 @@ function Dashboard() {
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">JazzCash • Bank transfers</span>
           </div>
-          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#0071e3]/15 text-[#0071e3] flex items-center justify-center font-bold text-xs shrink-0">
+          <div className="w-8.5 h-8.5 rounded-[10px] bg-[#0071e3]/15 text-[#0071e3] flex items-center justify-center font-bold text-xs shrink-0">
             💳
           </div>
         </button>
@@ -974,7 +972,7 @@ function Dashboard() {
           type="button"
           onClick={() => navigate('/expenses')}
           aria-label="Today's expenses: Rs. Math.round(stats.todayExpenses). Click to view expenses"
-          className="w-full text-left bg-gradient-to-br from-rose-500/[0.06] via-white/95 to-red-500/[0.02] dark:from-rose-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-rose-500/25 dark:border-rose-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
+          className="w-full text-left bg-gradient-to-br from-rose-500/[0.06] via-white/95 to-red-500/[0.02] dark:from-rose-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-rose-500/25 dark:border-rose-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
         >
           <div>
             <div className="flex items-center gap-1">
@@ -986,7 +984,7 @@ function Dashboard() {
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">Shop running costs</span>
           </div>
-          <div className="w-8.5 h-8.5 rounded-[12px] bg-[#ff3b30]/15 text-[#ff3b30] flex items-center justify-center font-bold text-xs shrink-0">
+          <div className="w-8.5 h-8.5 rounded-[10px] bg-[#ff3b30]/15 text-[#ff3b30] flex items-center justify-center font-bold text-xs shrink-0">
             💸
           </div>
         </button>
@@ -996,7 +994,7 @@ function Dashboard() {
           type="button"
           onClick={() => navigate('/sales')}
           aria-label="Month Sales MTD: Rs. Math.round(stats.monthlySales). Click to view sales"
-          className="w-full text-left bg-gradient-to-br from-teal-500/[0.06] via-white/95 to-teal-500/[0.02] dark:from-teal-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-teal-500/25 dark:border-teal-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+          className="w-full text-left bg-gradient-to-br from-teal-500/[0.06] via-white/95 to-teal-500/[0.02] dark:from-teal-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-teal-500/25 dark:border-teal-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
         >
           <div>
             <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Month Sales (MTD)</span>
@@ -1005,7 +1003,7 @@ function Dashboard() {
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">{stats.monthlyOrdersCount} orders this month</span>
           </div>
-          <div className="w-8.5 h-8.5 rounded-[12px] bg-teal-500/15 text-teal-600 flex items-center justify-center font-bold text-xs shrink-0">
+          <div className="w-8.5 h-8.5 rounded-[10px] bg-teal-500/15 text-teal-600 flex items-center justify-center font-bold text-xs shrink-0">
             <Activity size={16} />
           </div>
         </button>
@@ -1015,7 +1013,7 @@ function Dashboard() {
           type="button"
           onClick={() => navigate('/products')}
           aria-label="Catalog Health: stats.lowStockCount items below reorder point. Click to view products"
-          className="col-span-2 sm:col-span-3 lg:col-span-1 w-full text-left bg-gradient-to-br from-amber-500/[0.06] via-white/95 to-amber-500/[0.02] dark:from-amber-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-amber-500/25 dark:border-amber-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+          className="col-span-2 sm:col-span-3 lg:col-span-1 w-full text-left bg-gradient-to-br from-amber-500/[0.06] via-white/95 to-amber-500/[0.02] dark:from-amber-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-amber-500/25 dark:border-amber-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
         >
           <div>
             <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Catalog Health</span>
@@ -1026,7 +1024,7 @@ function Dashboard() {
               {stats.lowStockCount > 0 ? 'Items below reorder point' : 'All items well-stocked'}
             </span>
           </div>
-          <div className={`w-8.5 h-8.5 rounded-[12px] flex items-center justify-center shrink-0 ${stats.lowStockCount > 0 ? 'bg-[#ff9500]/15 text-[#ff9500]' : 'bg-[#34c759]/15 text-[#34c759]'}`}>
+          <div className={`w-8.5 h-8.5 rounded-[10px] flex items-center justify-center shrink-0 ${stats.lowStockCount > 0 ? 'bg-[#ff9500]/15 text-[#ff9500]' : 'bg-[#34c759]/15 text-[#34c759]'}`}>
             <AlertTriangle size={16} />
           </div>
         </button>
@@ -1587,13 +1585,13 @@ function Dashboard() {
                   <div className="pt-2 flex gap-2">
                     <button
                       onClick={printEOD}
-                      className="flex-1 py-2.5 bg-[#0071e3] hover:bg-[#0077ed] text-white font-semibold text-xs rounded-full shadow-xs active:scale-[0.98] transition cursor-pointer"
+                      className="flex-1 py-2.5 bg-[#0071e3] hover:bg-[#0077ed] text-white font-semibold text-xs rounded-full shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out cursor-pointer"
                     >
                       🖨️ Thermal Print
                     </button>
                     <button
                       onClick={shareEODWhatsApp}
-                      className="flex-1 py-2.5 bg-[#34c759] hover:bg-[#30d158] text-white font-semibold text-xs rounded-full shadow-xs active:scale-[0.98] transition cursor-pointer"
+                      className="flex-1 py-2.5 bg-[#34c759] hover:bg-[#30d158] text-white font-semibold text-xs rounded-full shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out cursor-pointer"
                     >
                       📱 WhatsApp
                     </button>
