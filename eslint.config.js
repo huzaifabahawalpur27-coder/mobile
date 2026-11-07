@@ -9,6 +9,7 @@ export default defineConfig([
     'dist',
     'superadmin/dist',
     'node_modules',
+    '.agents',
     '**/*.timestamp-*.mjs',
   ]),
   {

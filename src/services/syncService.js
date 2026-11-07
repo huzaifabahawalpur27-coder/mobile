@@ -598,7 +598,27 @@ export const syncOfflineData = async () => {
                         await db.sync_queue.delete(item.id);
                         continue;
                     }
-                    ({ error } = await supabase.from(item.table).update(updateData).eq('id', id));
+                    if (item.table === 'shops') {
+                        const { error: rpcErr } = await supabase.rpc('update_shop_settings', {
+                            p_shop_id: Number(id),
+                            p_name: updateData.name,
+                            p_phone: updateData.phone,
+                            p_address: updateData.address,
+                            p_logo_url: updateData.logo_url,
+                            p_invoice_footer: updateData.invoice_footer,
+                            p_quotation_footer: updateData.quotation_footer,
+                            p_print_size: updateData.print_size,
+                            p_print_mode: updateData.print_mode,
+                            p_print_template: updateData.print_template,
+                            p_wa_reminder_template: updateData.wa_reminder_template,
+                            p_wa_bill_template: updateData.wa_bill_template,
+                            p_wa_reorder_template: updateData.wa_reorder_template,
+                            p_invoice_prefix: updateData.invoice_prefix
+                        });
+                        error = rpcErr;
+                    } else {
+                        ({ error } = await supabase.from(item.table).update(updateData).eq('id', id));
+                    }
                     if (error && item.table === 'categories' && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('description') || error.message?.includes('low_stock_threshold') || error.message?.includes('schema cache'))) {
                         const { description: _d, low_stock_threshold: _l, ...strippedUpdate } = updateData;
                         ({ error } = await supabase.from(item.table).update(strippedUpdate).eq('id', id));
