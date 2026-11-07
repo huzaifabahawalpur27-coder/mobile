@@ -34,6 +34,31 @@ if (typeof window !== 'undefined') {
       }
     }
   })
+
+  window.addEventListener('unhandledrejection', async (event) => {
+    const reasonStr = String(event?.reason?.message || event?.reason || '')
+    if (reasonStr.includes('bad-precaching-response') || reasonStr.includes('precache')) {
+      console.warn('[EdgeX] Corrupted or stale PWA precache detected. Purging cache storage and updating...', reasonStr)
+      const lastPurge = parseInt(sessionStorage.getItem('edgex_sw_purge') || '0', 10)
+      const now = Date.now()
+      if (now - lastPurge > 10000) {
+        sessionStorage.setItem('edgex_sw_purge', String(now))
+        if ('caches' in window) {
+          try {
+            const keys = await caches.keys()
+            await Promise.all(keys.map(k => caches.delete(k)))
+          } catch (_) {}
+        }
+        if ('serviceWorker' in navigator) {
+          try {
+            const regs = await navigator.serviceWorker.getRegistrations()
+            await Promise.all(regs.map(r => r.unregister()))
+          } catch (_) {}
+        }
+        window.location.reload()
+      }
+    }
+  })
 }
 
 

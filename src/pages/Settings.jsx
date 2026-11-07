@@ -1298,6 +1298,35 @@ function Settings() {
             </div>
           </div>
         </div>
+
+        {/* Quick App Cache & Update Purge */}
+        <div className="mt-4 p-4 bg-amber-50/50 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <p className="font-bold text-amber-900 dark:text-amber-200 text-sm">Force Refresh & Clear App Cache</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400">If your browser is stuck on an older version or service worker precache error, click here to flush cache and reload.</p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              if ('caches' in window) {
+                try {
+                  const keys = await caches.keys()
+                  await Promise.all(keys.map(k => caches.delete(k)))
+                } catch (_) {}
+              }
+              if ('serviceWorker' in navigator) {
+                try {
+                  const regs = await navigator.serviceWorker.getRegistrations()
+                  await Promise.all(regs.map(r => r.unregister()))
+                } catch (_) {}
+              }
+              window.location.reload()
+            }}
+            className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs rounded-xl shadow-xs transition cursor-pointer"
+          >
+            🔄 Clear Cache & Reload
+          </button>
+        </div>
       </div>
 
 
