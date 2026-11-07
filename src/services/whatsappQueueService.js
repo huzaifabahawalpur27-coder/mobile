@@ -16,10 +16,97 @@ export function cleanPakistanPhone(rawPhone) {
   return cleaned
 }
 
+export const DEFAULT_WARRANTY_TERMS_URDU = `⚠️ *وارنٹی شرائط (Warranty Terms):*
+۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔
+۲۔ موبائل ڈیڈ ہونے کی صورت میں کوئی وارنٹی یا واپسی قبول نہیں کی جائے گی۔
+۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔`.trim()
+
+export const DEFAULT_WARRANTY_TERMS_ENGLISH = `⚠️ *Warranty Terms:*
+1. No warranty for LCD, Face Lock, and Cameras.
+2. No warranty or return accepted if the phone becomes dead.
+3. No warranty on second-hand mobile devices.`.trim()
+
+export const DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE = `السلام علیکم [Name]! 🤝
+*[Shop Name]* سے خریداری کرنے کا بہت بہت شکریہ!
+
+🧾 *بل کی تفصیلات (Invoice Details)*
+📄 انوائس نمبر: INV-[ID]
+📅 تاریخ: [Date]
+
+📱 *خریدی گئی اشیاء:*
+[Items]
+
+💰 *ادائیگی کا خلاصہ:*
+• کل رقم (Total): Rs. [Total]
+• وصول رقم (Paid): Rs. [Paid]
+• بقایا کھاتہ (Balance): Rs. [Balance]
+
+⚠️ *وارنٹی شرائط (Warranty Terms):*
+۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔
+۲۔ موبائل ڈیڈ ہونے کی صورت میں کوئی وارنٹی یا واپسی قبول نہیں کی جائے گی۔
+۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔
+
+آپ کے اعتماد اور تعاون کا شکریہ! 🤝
+🏪 *[Shop Name]*
+📞 رابطہ: [Phone]`.trim()
+
 /**
- * Builds invoice details and polite greetings without warranty statements.
+ * Renders a custom WhatsApp template with sale data substitutions.
+ */
+export function renderCustomWhatsAppTemplate(template, { sale, customer, items = [], shopInfo = {} }) {
+  if (!template) return ''
+  const customerName = customer?.name || sale?.walkInName || 'Valued Customer'
+  const shopName = shopInfo.name || 'EdgeX Mobile Store'
+  const shopPhone = shopInfo.phone || shopInfo.mobile || ''
+  const invoiceId = String(sale?.id || Date.now()).slice(-8).toUpperCase()
+  const dateStr = sale?.created_at
+    ? new Date(sale.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
+    : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
+
+  const subtotalNum = Number(sale?.subtotal || items.reduce((s, i) => s + (Number(i.custom_price || i.sale_price || i.price || 0) * (Number(i.qty) || 1)), 0))
+  const discountNum = Number(sale?.discount || sale?.totalDiscount || 0)
+  const totalNum = Number(sale?.total || sale?.total_amount || (subtotalNum - discountNum))
+  const paidNum = Number(sale?.receivedAmount ?? sale?.paid_amount ?? totalNum)
+  const balanceNum = Number(customer?.outstanding_balance || 0)
+
+  const itemsText = items.map((i, idx) => {
+    const name = i.name || i.model || i.product_name || 'Item'
+    const imei = i.imei_1 || i.imei || ''
+    const imeiStr = imei ? ` (IMEI: ${imei})` : ''
+    const qty = i.qty || i.quantity || 1
+    const price = Number(i.custom_price || i.sale_price || i.price || i.unit_price || 0).toLocaleString()
+    const lineTotal = (qty * Number(i.custom_price || i.sale_price || i.price || i.unit_price || 0)).toLocaleString()
+    return `${idx + 1}. ${name}${imeiStr} × ${qty} @ Rs. ${price} = Rs. ${lineTotal}`
+  }).join('\n')
+
+  const modelText = items.map(i => `${i.name || i.model || ''}${i.imei_1 ? ` [${i.imei_1}]` : ''}`).filter(Boolean).join(', ') || 'Phone/Accessory'
+
+  return template
+    .replace(/\[Name\]/g, customerName)
+    .replace(/\[Customer Name\]/g, customerName)
+    .replace(/\[Shop Name\]/g, shopName)
+    .replace(/\[ID\]/g, invoiceId)
+    .replace(/\[Invoice ID\]/g, invoiceId)
+    .replace(/\[Date\]/g, dateStr)
+    .replace(/\[Items\]/g, itemsText || '1x Device')
+    .replace(/\[Model\]/g, modelText)
+    .replace(/\[Amount\]/g, totalNum.toLocaleString())
+    .replace(/\[Total\]/g, totalNum.toLocaleString())
+    .replace(/\[Paid\]/g, paidNum.toLocaleString())
+    .replace(/\[Balance\]/g, balanceNum > 0 ? balanceNum.toLocaleString() : '0')
+    .replace(/\[Phone\]/g, shopPhone)
+    .replace(/\[Shop Phone\]/g, shopPhone)
+}
+
+/**
+ * Builds invoice details and greetings with standard warranty terms.
  */
 export function buildPhoneSaleReceiptText({ sale, customer, items = [], shopInfo = {}, language = 'english' }) {
+  // If shop has custom template configured, render it
+  if (shopInfo.wa_bill_template && shopInfo.wa_bill_template.trim().length > 20) {
+    return renderCustomWhatsAppTemplate(shopInfo.wa_bill_template, { sale, customer, items, shopInfo })
+  }
+
   const customerName = customer?.name || sale?.walkInName || 'Valued Customer'
   const shopName = shopInfo.name || 'EdgeX Mobile Store'
   const shopPhone = shopInfo.phone || ''
@@ -67,6 +154,8 @@ ${itemsText}
 💰 *ادائیگی کا خلاصہ:*
 ${paymentInfoUrdu}
 
+${DEFAULT_WARRANTY_TERMS_URDU}
+
 آپ کے اعتماد اور تعاون کا شکریہ! 🤝${shopPhone ? `\n📞 رابطہ: ${shopPhone}` : ''}`
   }
 
@@ -105,6 +194,8 @@ ${itemsText}
 
 💰 *Payment Summary:*
 ${paymentSummary}
+
+${DEFAULT_WARRANTY_TERMS_ENGLISH}
 
 Thank you for your business and trust! 🤝${shopPhone ? `\n📞 Contact: ${shopPhone}` : ''}`
 }
@@ -430,4 +521,115 @@ export async function getPendingWhatsAppQueueCount(shop_id) {
     console.debug('Pending queue count check notice:', err)
   }
   return 0
+}
+
+/**
+ * Updates the message text of an individual queue message.
+ */
+export async function updateWhatsAppMessageText(id, newText) {
+  if (!id || typeof newText !== 'string') return false
+  try {
+    if (db.whatsapp_queue) {
+      await db.whatsapp_queue.update(id, { message_text: newText })
+    }
+  } catch (dexieErr) {
+    console.warn('Failed to update Dexie whatsapp_queue:', dexieErr)
+  }
+
+  try {
+    if (navigator.onLine && !isSupabaseTableMissing) {
+      await supabase.from('whatsapp_queue').update({ message_text: newText }).eq('id', id)
+    }
+  } catch (err) {
+    console.warn('Failed to update Supabase whatsapp_queue:', err)
+  }
+
+  try {
+    const local = getLocalStorageQueue()
+    const idx = local.findIndex(m => m.id === id)
+    if (idx !== -1) {
+      local[idx].message_text = newText
+      saveLocalStorageQueue(local)
+    }
+  } catch (_) {}
+
+  return true
+}
+
+/**
+ * Bulk updates already saved pending WhatsApp messages in the outbox to include warranty terms.
+ */
+export async function updateExistingQueueMessagesWithWarranty(shopId, customWarranty = null) {
+  const warrantyText = customWarranty || DEFAULT_WARRANTY_TERMS_URDU
+  let updatedCount = 0
+
+  try {
+    // 1. Update in Dexie
+    if (db.whatsapp_queue) {
+      const all = await db.whatsapp_queue.toArray()
+      const shopItems = all.filter(item => {
+        if (shopId && String(item.shop_id) !== String(shopId)) return false
+        return item.status === 'pending' || !item.status
+      })
+
+      for (const item of shopItems) {
+        const text = item.message_text || ''
+        // Check if message already has the warranty terms
+        if (!text.includes('LCD') && !text.includes('فیس لاک') && !text.includes('وارنٹی شرائط')) {
+          let updatedText = ''
+          if (text.includes('آپ کے اعتماد') || text.includes('Thank you for your business')) {
+            const splitAnchor = text.includes('آپ کے اعتماد') ? 'آپ کے اعتماد' : 'Thank you for your business'
+            const parts = text.split(splitAnchor)
+            updatedText = `${parts[0].trim()}\n\n${warrantyText}\n\n${splitAnchor}${parts[1]}`
+          } else {
+            updatedText = `${text.trim()}\n\n${warrantyText}`
+          }
+
+          await db.whatsapp_queue.update(item.id, { message_text: updatedText })
+          updatedCount++
+
+          // Mirror into Supabase
+          if (navigator.onLine && !isSupabaseTableMissing) {
+            try {
+              await supabase
+                .from('whatsapp_queue')
+                .update({ message_text: updatedText })
+                .eq('id', item.id)
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
+    // 2. Update in LocalStorage fallback queue
+    try {
+      const localQueue = getLocalStorageQueue()
+      let lsUpdated = false
+      const newLocalQueue = localQueue.map(item => {
+        if (shopId && String(item.shop_id) !== String(shopId)) return item
+        const text = item.message_text || ''
+        if (!text.includes('LCD') && !text.includes('فیس لاک') && !text.includes('وارنٹی شرائط')) {
+          lsUpdated = true
+          let updatedText = ''
+          if (text.includes('آپ کے اعتماد') || text.includes('Thank you for your business')) {
+            const splitAnchor = text.includes('آپ کے اعتماد') ? 'آپ کے اعتماد' : 'Thank you for your business'
+            const parts = text.split(splitAnchor)
+            updatedText = `${parts[0].trim()}\n\n${warrantyText}\n\n${splitAnchor}${parts[1]}`
+          } else {
+            updatedText = `${text.trim()}\n\n${warrantyText}`
+          }
+          return { ...item, message_text: updatedText }
+        }
+        return item
+      })
+      if (lsUpdated) {
+        saveLocalStorageQueue(newLocalQueue)
+      }
+    } catch (_) {}
+
+  } catch (err) {
+    console.warn('Error updating queue messages with warranty:', err)
+  }
+
+  return updatedCount
 }

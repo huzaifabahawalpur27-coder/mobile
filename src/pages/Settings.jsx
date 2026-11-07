@@ -8,10 +8,15 @@ import { buildSalesReportHTML, buildBillHTML } from '../utils/billTemplates'
 import { hasFeature } from '../utils/featureGate'
 import { printHTML } from '../utils/printUtils'
 import { syncOfflineData } from '../services/syncService'
-import { Tag, Receipt, ShieldCheck, Smartphone, Landmark, Plus, CheckCircle2 } from 'lucide-react'
+import { Tag, Receipt, ShieldCheck, Smartphone, Landmark, Plus, CheckCircle2, MessageSquare } from 'lucide-react'
 import { useTheme, THEME_STYLES } from '../context/ThemeContext'
 import { getBankAccounts } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
+import {
+  DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
+  DEFAULT_WARRANTY_TERMS_URDU,
+  updateExistingQueueMessagesWithWarranty
+} from '../services/whatsappQueueService'
 
 function Settings() {
   const { user } = useAuth()
@@ -19,6 +24,8 @@ function Settings() {
   const [shop, setShop] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [updatingOutbox, setUpdatingOutbox] = useState(false)
+  const [outboxUpdateStatus, setOutboxUpdateStatus] = useState(null)
   const [form, setForm] = useState(() => {
     const sid = user?.shop_id
     const saved = sid ? localStorage.getItem(`shop_settings_${sid}`) : null
@@ -37,7 +44,7 @@ function Settings() {
       print_size: 'thermal',
       print_mode: 'manual',
       wa_reminder_template: 'Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!',
-      wa_bill_template: 'Hello [Name], thank you for shopping at [Shop Name]! Your bill summary for Invoice #[ID] is Rs. [Amount].\n📱 Model: [Model]\n📅 Date: [Date]\nThank you for your business!',
+      wa_bill_template: DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
       wa_reorder_template: 'Assalam-o-Alaikum *[Supplier Name]*! 🙏\n\n*[Shop Name]* se order:\n\n[Items]\n\nMeharbani farma kar jald supply karein. Shukriya!',
       invoice_prefix: '',
       business_preset: 'general',
@@ -249,7 +256,7 @@ function Settings() {
         print_size:           data.print_size           || saved.print_size           || prev.print_size           || 'thermal',
         print_mode:           data.print_mode           || saved.print_mode           || prev.print_mode           || 'manual',
         wa_reminder_template: data.wa_reminder_template || saved.wa_reminder_template || prev.wa_reminder_template || '',
-        wa_bill_template:     data.wa_bill_template     || saved.wa_bill_template     || prev.wa_bill_template     || '',
+        wa_bill_template:     data.wa_bill_template     || saved.wa_bill_template     || prev.wa_bill_template     || DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
         wa_reorder_template:  data.wa_reorder_template  || saved.wa_reorder_template  || prev.wa_reorder_template  || '',
         invoice_prefix:       data.invoice_prefix       || saved.invoice_prefix       || prev.invoice_prefix       || '',
         business_preset:      data.business_preset      || saved.business_preset      || prev.business_preset      || 'general',
@@ -454,6 +461,23 @@ function Settings() {
       alert('Logo upload failed: ' + (err?.message || String(err)))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleUpdateOutboxWarranty = async () => {
+    if (!window.confirm('کیا آپ تمام پینڈنگ واٹس ایپ آؤٹ باکس میسجز میں وارنٹی شرائط شامل کرنا چاہتے ہیں؟\n\nAre you sure you want to update all pending outbox messages with these warranty terms?')) {
+      return
+    }
+    setUpdatingOutbox(true)
+    setOutboxUpdateStatus(null)
+    try {
+      const count = await updateExistingQueueMessagesWithWarranty(user?.shop_id, DEFAULT_WARRANTY_TERMS_URDU)
+      setOutboxUpdateStatus(`کامیابی! ${count} میسجز میں وارنٹی شامل کر دی گئی ہے۔ (${count} messages updated in outbox)`)
+      setTimeout(() => setOutboxUpdateStatus(null), 6000)
+    } catch (err) {
+      setOutboxUpdateStatus('Error updating outbox messages: ' + (err?.message || String(err)))
+    } finally {
+      setUpdatingOutbox(false)
     }
   }
 
@@ -868,14 +892,115 @@ function Settings() {
                 placeholder="Hello [Name], your balance is Rs. [Amount]..."
               />
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-bold text-gray-600 mb-1">🧾 New Bill / Sale Template</label>
+            <div className="md:col-span-2 space-y-3 bg-gray-50/70 dark:bg-slate-900/50 p-4 rounded-2xl border border-gray-200 dark:border-slate-700">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-1.5">
+                    <span>🧾 New Bill / Sale Template (انوائس میسج اور وارنٹی شرائط)</span>
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
+                    پی او ایس پر موبائل فروخت ہوتے ہی یہ پیغام واٹس ایپ آؤٹ باکس میں خودکار طور پر تیار ہو جاتا ہے۔
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('کیا آپ تجویز کردہ پروفیشنل انوائس اور وارنٹی لوڈ کرنا چاہتے ہیں؟')) {
+                        setForm(prev => ({ ...prev, wa_bill_template: DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE }))
+                      }
+                    }}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 transition flex items-center gap-1 cursor-pointer"
+                    title="Load recommended professional invoice with warranty"
+                  >
+                    ✨ تجویز کردہ انوائس
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = form.wa_bill_template || ''
+                      if (!cur.includes('LCD') && !cur.includes('وارنٹی')) {
+                        setForm(prev => ({ ...prev, wa_bill_template: `${cur.trim()}\n\n${DEFAULT_WARRANTY_TERMS_URDU}`.trim() }))
+                      } else {
+                        alert('وارنٹی شرائط پہلے سے موجود ہیں۔ (Warranty terms already present)')
+                      }
+                    }}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 transition flex items-center gap-1 cursor-pointer"
+                    title="Insert warranty terms into current template"
+                  >
+                    🛡️ + وارنٹی شرائط
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUpdateOutboxWarranty}
+                    disabled={updatingOutbox}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
+                    title="Update all unsent messages in WhatsApp outbox with warranty terms"
+                  >
+                    {updatingOutbox ? '🔄 Updating...' : '🔄 آؤٹ باکس اپڈیٹ کریں'}
+                  </button>
+                </div>
+              </div>
+
+              {outboxUpdateStatus && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-medium flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{outboxUpdateStatus}</span>
+                </div>
+              )}
+
               <textarea
+                dir="auto"
                 value={form.wa_bill_template}
                 onChange={e => setForm({ ...form, wa_bill_template: e.target.value })}
-                className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm h-20"
+                className="w-full px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs sm:text-sm font-sans h-52 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 leading-relaxed"
                 placeholder="Hello [Name], thank you for shopping! Bill #[ID] for Rs. [Amount]..."
               />
+
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mr-1">
+                    ٹیگز شامل کریں (Insert Tags):
+                  </span>
+                  {[
+                    { tag: '[Name]', desc: 'Customer Name' },
+                    { tag: '[Shop Name]', desc: 'Shop Name' },
+                    { tag: '[ID]', desc: 'Invoice #' },
+                    { tag: '[Date]', desc: 'Date & Time' },
+                    { tag: '[Items]', desc: 'Items & IMEI' },
+                    { tag: '[Total]', desc: 'Total Amount' },
+                    { tag: '[Paid]', desc: 'Paid Amount' },
+                    { tag: '[Balance]', desc: 'Customer Balance' },
+                    { tag: '[Phone]', desc: 'Shop Phone' }
+                  ].map(({ tag, desc }) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        setForm(prev => ({
+                          ...prev,
+                          wa_bill_template: (prev.wa_bill_template || '') + ' ' + tag
+                        }))
+                      }}
+                      className="px-2 py-0.5 text-[10px] font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-blue-400 text-gray-700 dark:text-gray-300 rounded cursor-pointer transition shadow-xs"
+                      title={desc}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-xl text-xs space-y-1">
+                  <div className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <span>🛡️ شامل شدہ معیاری موبائل وارنٹی شرائط:</span>
+                  </div>
+                  <div className="text-amber-800 dark:text-amber-300 space-y-0.5 font-sans leading-relaxed" dir="rtl">
+                    <p>۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔</p>
+                    <p>۲۔ موبائل ڈیڈ ہونے کی صورت میں کوئی وارنٹی یا واپسی قبول نہیں کی جائے گی۔</p>
+                    <p>۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔</p>
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-bold text-gray-600 mb-1">📦 Low Stock Reorder Template (Inventory → Reorder WA)</label>

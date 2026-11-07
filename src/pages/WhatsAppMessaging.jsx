@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import { formatInvoiceWhatsAppMessage, buildWhatsAppUrl, cleanPhoneNumber } from '../utils/whatsappTemplates'
+import { DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE } from '../services/whatsappQueueService'
 import { 
   MessageSquare, 
   Users, 
@@ -917,7 +918,7 @@ function WhatsAppMessaging() {
               </h3>
               <button
                 onClick={() => {
-                  const tpl = shop?.wa_bill_template || 'Hello [Name], thank you for shopping at [Shop Name]! Your bill summary for Invoice #[ID] is Rs. [Amount].\n📱 Model: [Model]\n📅 Date: [Date]\nThank you for your business!'
+                  const tpl = shop?.wa_bill_template || DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
                   navigator.clipboard.writeText(tpl)
                   setCopiedTemplate('bill')
                   setTimeout(() => setCopiedTemplate(null), 2000)
@@ -929,10 +930,10 @@ function WhatsAppMessaging() {
               </button>
             </div>
             <p className="text-xs text-[#86868b]">
-              Sent automatically after checkout from POS billing. Includes customer name, bill amount, phone model, and date.
+              Sent automatically after checkout from POS billing. Includes customer name, bill amount, items, warranty terms, and date.
             </p>
             <div className="p-3 bg-[#f5f5f7] dark:bg-[#2c2c2e] rounded-xl text-xs font-mono whitespace-pre-wrap text-[#1d1d1f] dark:text-[#f5f5f7]">
-              {shop?.wa_bill_template || 'Hello [Name], thank you for shopping at [Shop Name]! Your bill summary for Invoice #[ID] is Rs. [Amount].\n📱 Model: [Model]\n📅 Date: [Date]\nThank you for your business!'}
+              {shop?.wa_bill_template || DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE}
             </div>
           </div>
 

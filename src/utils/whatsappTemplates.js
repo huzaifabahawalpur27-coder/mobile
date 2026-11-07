@@ -156,6 +156,11 @@ ${itemsList ? `\n📦 *Khareedari Items:*\n${itemsList}\n` : ''}
 💰 *Kul Bill (Total):* Rs. ${total.toLocaleString()}
 💵 *Ada Shuda (Paid):* Rs. ${paid.toLocaleString()}
 ${remainingBalance > 0 ? `⚠️ *Baqaya Is Bill Ka:* Rs. ${remainingBalance.toLocaleString()}\n` : ''}${totalCustomerDue > 0 ? `📒 *Kul Baqaya Balance:* Rs. ${totalCustomerDue.toLocaleString()}\n` : ''}
+⚠️ *وارنٹی شرائط (Warranty Terms):*
+۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔
+۲۔ موبائل ڈیڈ ہونے کی صورت میں کوئی وارنٹی یا واپسی قبول نہیں کی جائے گی۔
+۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔
+
 Aapke aitmaad aur taawun ka dil se shukriya. Dobara tashreef laane ka intezar rahega! 🤝
 
 🏪 *${shopName}*${shopPhone ? `\n📞 *Rabta Number:* ${shopPhone}` : ''}`
@@ -180,6 +185,11 @@ ${itemsList ? `\n📦 *Items Purchased:*\n${itemsList}\n` : ''}
 💰 *Total Bill:* Rs. ${total.toLocaleString()}
 💵 *Amount Paid:* Rs. ${paid.toLocaleString()}
 ${remainingBalance > 0 ? `⚠️ *This Bill Balance:* Rs. ${remainingBalance.toLocaleString()}\n` : ''}${totalCustomerDue > 0 ? `📒 *Total Outstanding Balance:* Rs. ${totalCustomerDue.toLocaleString()}\n` : ''}
+⚠️ *Warranty & Terms:*
+1. No warranty for LCD, Face Lock, and Cameras.
+2. No warranty or return accepted if the phone becomes dead.
+3. No warranty on second-hand mobile devices.
+
 Thank you for your business and trust! We look forward to serving you again. 🤝
 
 🏪 *${shopName}*${shopPhone ? `\n📞 *Contact:* ${shopPhone}` : ''}`

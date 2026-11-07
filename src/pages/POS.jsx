@@ -11,7 +11,7 @@ import { printHTML } from '../utils/printUtils'
 import { getPricingConfig } from '../utils/businessPresets'
 import CashSessionModal from '../components/CashSessionModal'
 import { formatInvoiceWhatsAppMessage, buildWhatsAppUrl, cleanPhoneNumber } from '../utils/whatsappTemplates'
-import { enqueueWhatsAppMessage, buildPhoneSaleReceiptText } from '../services/whatsappQueueService'
+import { enqueueWhatsAppMessage, buildPhoneSaleReceiptText, DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE } from '../services/whatsappQueueService'
 import { playError } from '../utils/soundEffects'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 import { recordSaleToAccounts, getBankAccounts } from '../services/bankService'
@@ -124,7 +124,7 @@ function POS() {
       print_mode: 'manual',
       logo_url: (sid ? localStorage.getItem(`shop_logo_${sid}`) : null) || '',
       wa_reminder_template: 'Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!',
-      wa_bill_template: 'Hello [Name], thank you for shopping at [Shop Name]! Your bill summary for Invoice #[ID] is Rs. [Amount].\n📱 Model: [Model]\n📅 Date: [Date]\nThank you for your business!'
+      wa_bill_template: DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
     }
   })
 
@@ -1575,7 +1575,8 @@ function POS() {
       try {
         const shopInfo = {
           name: form.name || (user?.shop_id ? localStorage.getItem(`shop_name_${user.shop_id}`) : null) || 'EdgeX POS Store',
-          phone: form.phone || user?.phone || ''
+          phone: form.phone || user?.phone || '',
+          wa_bill_template: form.wa_bill_template || (user?.shop_id ? (() => { try { return JSON.parse(localStorage.getItem(`shop_settings_${user.shop_id}`) || '{}').wa_bill_template } catch (_) { return null } })() : null)
         }
         const msgText = buildPhoneSaleReceiptText({
           sale: finalSale,
@@ -1657,10 +1658,11 @@ function POS() {
 
     const shopInfo = {
       name: form.name || (user?.shop_id ? localStorage.getItem(`shop_name_${user.shop_id}`) : null) || 'EdgeX POS Store',
-      phone: form.phone || user?.phone || ''
+      phone: form.phone || user?.phone || '',
+      wa_bill_template: form.wa_bill_template || (user?.shop_id ? (() => { try { return JSON.parse(localStorage.getItem(`shop_settings_${user.shop_id}`) || '{}').wa_bill_template } catch (_) { return null } })() : null)
     }
 
-    // Invoice details and greetings ONLY - no warranty sentence
+    // Generate invoice text using custom template or professional defaults with warranty
     const msg = buildPhoneSaleReceiptText({
       sale: lastReceipt.sale || lastReceipt,
       customer: { ...(lastReceipt.customer || {}), name: customerName, phone: customerPhone },

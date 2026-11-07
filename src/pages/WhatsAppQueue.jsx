@@ -4,7 +4,10 @@ import {
   fetchWhatsAppQueue,
   markWhatsAppMessageSent,
   deleteWhatsAppMessage,
-  isSoldPhoneQueueItem
+  isSoldPhoneQueueItem,
+  updateWhatsAppMessageText,
+  updateExistingQueueMessagesWithWarranty,
+  DEFAULT_WARRANTY_TERMS_URDU
 } from '../services/whatsappQueueService'
 import {
   MessageSquare,
@@ -19,7 +22,10 @@ import {
   Send,
   Receipt,
   Package,
-  Check
+  Check,
+  Pencil,
+  Save,
+  CheckCircle2
 } from 'lucide-react'
 
 export default function WhatsAppQueue() {
@@ -31,6 +37,10 @@ export default function WhatsAppQueue() {
   const [copiedId, setCopiedId] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [processingId, setProcessingId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editingText, setEditingText] = useState('')
+  const [updatingWarranty, setUpdatingWarranty] = useState(false)
+  const [warrantyStatusMsg, setWarrantyStatusMsg] = useState(null)
 
   const loadQueue = useCallback(async () => {
     setLoading(true)
@@ -140,6 +150,59 @@ export default function WhatsAppQueue() {
     navigator.clipboard.writeText(item.message_text || '')
     setCopiedId(item.id)
     setTimeout(() => setCopiedId(null), 1800)
+  }
+
+  // Edit message inline
+  const handleStartEdit = (e, item) => {
+    e.stopPropagation()
+    setEditingId(item.id)
+    setEditingText(item.message_text || '')
+  }
+
+  const handleCancelEdit = (e) => {
+    e?.stopPropagation()
+    setEditingId(null)
+    setEditingText('')
+  }
+
+  const handleSaveEdit = async (e, id) => {
+    e.stopPropagation()
+    try {
+      await updateWhatsAppMessageText(id, editingText)
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, message_text: editingText } : m))
+      setEditingId(null)
+      setEditingText('')
+    } catch (err) {
+      alert('Failed to save message: ' + (err?.message || String(err)))
+    }
+  }
+
+  const handleAppendWarrantyToEdit = (e) => {
+    e.stopPropagation()
+    if (!editingText.includes('LCD') && !editingText.includes('وارنٹی')) {
+      setEditingText(prev => `${prev.trim()}\n\n${DEFAULT_WARRANTY_TERMS_URDU}`.trim())
+    } else {
+      alert('وارنٹی شرائط پہلے سے موجود ہیں۔ (Warranty terms already present)')
+    }
+  }
+
+  // Bulk update all pending with warranty terms
+  const handleUpdateAllPendingWarranty = async () => {
+    if (!window.confirm('کیا آپ آؤٹ باکس کے تمام پینڈنگ میسجز میں وارنٹی شرائط شامل کرنا چاہتے ہیں؟\n\nUpdate all pending outbox messages with standard warranty terms?')) {
+      return
+    }
+    setUpdatingWarranty(true)
+    setWarrantyStatusMsg(null)
+    try {
+      const count = await updateExistingQueueMessagesWithWarranty(user?.shop_id, DEFAULT_WARRANTY_TERMS_URDU)
+      setWarrantyStatusMsg(`Updated ${count} pending messages with warranty terms! ✅`)
+      await loadQueue()
+      setTimeout(() => setWarrantyStatusMsg(null), 6000)
+    } catch (err) {
+      setWarrantyStatusMsg('Error: ' + (err?.message || String(err)))
+    } finally {
+      setUpdatingWarranty(false)
+    }
   }
 
   // Mark all pending as sent
@@ -261,18 +324,36 @@ export default function WhatsAppQueue() {
         </div>
       </div>
 
+      {/* Status Notice */}
+      {warrantyStatusMsg && (
+        <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 font-medium">
+          <CheckCircle2 size={15} className="shrink-0" />
+          <span>{warrantyStatusMsg}</span>
+        </div>
+      )}
+
       {/* Quick Action Banner */}
-      {filterTab === 'pending' && pendingCount > 1 && (
-        <div className="flex items-center justify-between px-3 py-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/50 rounded-xl text-xs">
+      {filterTab === 'pending' && pendingCount > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/50 rounded-xl text-xs">
           <span className="text-emerald-800 dark:text-emerald-300 font-medium">
-            💡 Tap <b>"Send on WhatsApp"</b> on each card to dispatch from your phone.
+            💡 Tap <b>"Send on WhatsApp"</b> to dispatch from your phone.
           </span>
-          <button
-            onClick={handleMarkAllPendingSent}
-            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 underline shrink-0 ml-2"
-          >
-            Mark all sent
-          </button>
+          <div className="flex items-center gap-2.5 self-end sm:self-auto">
+            <button
+              onClick={handleUpdateAllPendingWarranty}
+              disabled={updatingWarranty}
+              className="text-[11px] font-bold text-amber-700 hover:text-amber-900 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-900/40 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
+              title="Add warranty terms to all pending outbox messages"
+            >
+              🛡️ {updatingWarranty ? 'Updating...' : 'Add Warranty to All Pending'}
+            </button>
+            <button
+              onClick={handleMarkAllPendingSent}
+              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 underline shrink-0 cursor-pointer"
+            >
+              Mark all sent
+            </button>
+          </div>
         </div>
       )}
 
@@ -367,46 +448,102 @@ export default function WhatsAppQueue() {
                   </div>
                 </div>
 
-                {/* Message Preview Box */}
-                <div className="bg-[#f8f9fa] dark:bg-[#252528] rounded-xl p-3 border border-black/[0.04] dark:border-white/[0.04]">
-                  <div className="flex items-center justify-between pb-1.5 border-b border-gray-200/60 dark:border-gray-700/60 mb-2">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500">
-                      Message Content (No Warranty • Invoice Details Only)
-                    </span>
-                    <button
-                      onClick={(e) => handleCopyText(e, item)}
-                      className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-emerald-600 flex items-center gap-1"
-                    >
-                      {copiedId === item.id ? (
-                        <>
-                          <Check size={12} className="text-emerald-600" />
-                          <span className="text-emerald-600">Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={12} />
-                          <span>Copy</span>
-                        </>
-                      )}
-                    </button>
+                {/* Message Box: Edit Mode or Preview Mode */}
+                {editingId === item.id ? (
+                  <div className="bg-[#f8f9fa] dark:bg-[#252528] rounded-xl p-3 border border-emerald-300 dark:border-emerald-700/80 space-y-2">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-gray-200 dark:border-gray-700">
+                      <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                        <Pencil size={12} /> ترمیم میسج (Edit Message)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleAppendWarrantyToEdit}
+                        className="text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer"
+                        title="Append standard warranty terms"
+                      >
+                        🛡️ + وارنٹی شامل کریں
+                      </button>
+                    </div>
+                    <textarea
+                      dir="auto"
+                      value={editingText}
+                      onChange={(e) => setEditingText(e.target.value)}
+                      className="w-full p-2.5 bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-800 dark:text-gray-100 font-sans leading-relaxed focus:ring-2 focus:ring-emerald-500 focus:outline-none min-h-[140px]"
+                    />
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleSaveEdit(e, item.id)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center gap-1 shadow-xs cursor-pointer"
+                      >
+                        <Save size={12} /> Save
+                      </button>
+                    </div>
                   </div>
-                  <pre
-                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                    className={`text-xs text-gray-700 dark:text-gray-300 font-sans whitespace-pre-wrap leading-relaxed cursor-pointer ${
-                      isExpanded ? '' : 'line-clamp-3'
-                    }`}
-                  >
-                    {item.message_text}
-                  </pre>
-                  {item.message_text && item.message_text.split('\n').length > 3 && (
-                    <button
+                ) : (
+                  <div className="bg-[#f8f9fa] dark:bg-[#252528] rounded-xl p-3 border border-black/[0.04] dark:border-white/[0.04]">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-gray-200/60 dark:border-gray-700/60 mb-2">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500">
+                        Message Content (Invoice & Warranty)
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {isPending && (
+                          <>
+                            <button
+                              onClick={(e) => handleStartEdit(e, item)}
+                              className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-emerald-600 flex items-center gap-1 cursor-pointer"
+                              title="Edit message text"
+                            >
+                              <Pencil size={11} />
+                              <span>Edit</span>
+                            </button>
+                            <span className="text-gray-300 dark:text-gray-600">•</span>
+                          </>
+                        )}
+                        <button
+                          onClick={(e) => handleCopyText(e, item)}
+                          className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-emerald-600 flex items-center gap-1 cursor-pointer"
+                        >
+                          {copiedId === item.id ? (
+                            <>
+                              <Check size={12} className="text-emerald-600" />
+                              <span className="text-emerald-600">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={12} />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <pre
+                      dir="auto"
                       onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                      className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline mt-1 block"
+                      className={`text-xs text-gray-700 dark:text-gray-300 font-sans whitespace-pre-wrap leading-relaxed cursor-pointer ${
+                        isExpanded ? '' : 'line-clamp-3'
+                      }`}
                     >
-                      {isExpanded ? '▲ Show less' : '▼ Read full invoice details...'}
-                    </button>
-                  )}
-                </div>
+                      {item.message_text}
+                    </pre>
+                    {item.message_text && item.message_text.split('\n').length > 3 && (
+                      <button
+                        onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                        className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline mt-1 block cursor-pointer"
+                      >
+                        {isExpanded ? '▲ Show less' : '▼ Read full invoice details...'}
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Primary Action Button (Big Touch-Target for Mobile) */}
                 <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
