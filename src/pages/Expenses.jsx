@@ -5,7 +5,7 @@ import { db, addToSyncQueue, moveToTrash } from '../services/db'
 import PasswordModal from '../components/PasswordModal'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
-import { Calendar, Search, Filter, Plus, X, Edit3, Trash2 } from 'lucide-react'
+import { Calendar, Search, Filter, Plus, X, Edit3, Trash2, Wallet, Tag } from 'lucide-react'
 import { getBankAccounts, deductBankBalance, creditBankBalance } from '../services/bankService'
 
 export const getTodayDateStr = () => {
@@ -52,6 +52,8 @@ export const formatDateFullHuman = (dateStr) => {
   })
 }
 
+const DEFAULT_CATEGORIES = ['Rent', 'Electricity', 'Tea/Food', 'Salary', 'Misc', 'Repairing', 'Transport']
+
 function Expenses() {
   const { user } = useAuth()
   const [expenses, setExpenses] = useState([])
@@ -59,6 +61,15 @@ function Expenses() {
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
+
+  // Bank accounts & Cash Drawer selection
+  const [bankAccounts, setBankAccounts] = useState([])
+  const [selectedAccountId, setSelectedAccountId] = useState('')
+
+  // Custom expense categories per shop
+  const [customCategories, setCustomCategories] = useState([])
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
 
   const [form, setForm] = useState({
     category: 'Misc',
@@ -120,11 +131,74 @@ function Expenses() {
     } catch (_e) {}
   }
 
-  const categories = ['Rent', 'Electricity', 'Tea/Food', 'Salary', 'Misc', 'Repairing', 'Transport']
+  // Combined categories list (defaults + custom)
+  const allCategories = useMemo(() => {
+    return Array.from(new Set([...DEFAULT_CATEGORIES, ...customCategories]))
+  }, [customCategories])
 
+  // Load custom categories and bank accounts when shop changes
   useEffect(() => {
-    if (user?.shop_id) fetchExpenses()
+    if (user?.shop_id) {
+      try {
+        const saved = localStorage.getItem(`custom_expense_categories_${user.shop_id}`)
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed)) setCustomCategories(parsed)
+        }
+      } catch (_) {}
+      fetchExpenses()
+      loadBankAccounts()
+    }
   }, [user?.shop_id])
+
+  const loadBankAccounts = async () => {
+    if (!user?.shop_id) return
+    try {
+      const list = await getBankAccounts(user.shop_id)
+      setBankAccounts(list)
+      setSelectedAccountId(prev => {
+        if (prev && list.some(a => String(a.id) === String(prev))) return prev
+        const cash = list.find(a => 
+          a.bank_name?.toLowerCase().includes('cash') || 
+          a.account_name?.toLowerCase().includes('cash') ||
+          a.is_default
+        ) || list[0]
+        return cash ? String(cash.id) : ''
+      })
+    } catch (err) {
+      console.warn('Expenses: failed to load bank accounts:', err)
+    }
+  }
+
+  const handleAddCustomCategory = (e) => {
+    e?.preventDefault()
+    const trimmed = newCategoryName.trim()
+    if (!trimmed) return
+
+    const exists = allCategories.some(c => c.toLowerCase() === trimmed.toLowerCase())
+    if (!exists) {
+      const updated = [...customCategories, trimmed]
+      setCustomCategories(updated)
+      if (user?.shop_id) {
+        localStorage.setItem(`custom_expense_categories_${user.shop_id}`, JSON.stringify(updated))
+      }
+    }
+
+    setForm(f => ({ ...f, category: trimmed }))
+    setNewCategoryName('')
+    setShowAddCategoryModal(false)
+  }
+
+  const handleDeleteCustomCategory = (catToDelete) => {
+    const updated = customCategories.filter(c => c !== catToDelete)
+    setCustomCategories(updated)
+    if (user?.shop_id) {
+      localStorage.setItem(`custom_expense_categories_${user.shop_id}`, JSON.stringify(updated))
+    }
+    if (form.category === catToDelete) {
+      setForm(f => ({ ...f, category: 'Misc' }))
+    }
+  }
 
   const fetchExpenses = async () => {
     setLoading(true)
@@ -204,6 +278,13 @@ function Expenses() {
       note: '',
       date: getTodayDateStr()
     })
+    // Reset to default cash drawer or first account
+    const cash = bankAccounts.find(a => 
+      a.bank_name?.toLowerCase().includes('cash') || 
+      a.account_name?.toLowerCase().includes('cash') ||
+      a.is_default
+    ) || bankAccounts[0]
+    if (cash) setSelectedAccountId(String(cash.id))
   }
 
   const handleSubmit = async (e) => {
@@ -214,11 +295,16 @@ function Expenses() {
     const isToday = selectedDateStr === getTodayDateStr()
     const now = new Date()
     const [y, m, d] = selectedDateStr.split('-').map(Number)
-    // If today, keep the current time; if a past/future date, set to 12:00:00 midday to prevent UTC timezone day-boundary shifts
-    const expenseDate = isToday
-      ? now
-      : new Date(y, m - 1, d, 12, 0, 0)
+    // If today, keep current time; if past/future, set to midday to avoid UTC date boundary shifts
+    const expenseDate = isToday ? now : new Date(y, m - 1, d, 12, 0, 0)
     const isoString = expenseDate.toISOString()
+
+    const selectedAcc = bankAccounts.find(a => String(a.id) === String(selectedAccountId))
+    const isCashAcc = selectedAcc ? (
+      selectedAcc.bank_name?.toLowerCase().includes('cash') || 
+      selectedAcc.account_name?.toLowerCase().includes('cash')
+    ) : true
+    const paymentMethodStr = selectedAcc ? (isCashAcc ? 'cash' : (selectedAcc.bank_name || selectedAcc.account_name || 'bank')) : 'cash'
 
     const payload = {
       category: form.category,
@@ -227,10 +313,12 @@ function Expenses() {
       description: form.note || '',
       date: selectedDateStr,
       created_at: isoString,
-      shop_id: user.shop_id
+      shop_id: user.shop_id,
+      payment_method: paymentMethodStr
     }
 
     try {
+      let savedExpenseId = editingId
       if (editingId) {
         let { error } = await supabase.from('expenses').update(payload).eq('id', editingId)
         if (error && (error.message?.includes('column') || error.code === 'PGRST204')) {
@@ -246,7 +334,7 @@ function Expenses() {
         }
         if (error) throw error
       } else {
-        let { error } = await supabase.from('expenses').insert([payload])
+        let { data, error } = await supabase.from('expenses').insert([payload]).select().maybeSingle()
         if (error && (error.message?.includes('column') || error.code === 'PGRST204')) {
           const minimal = {
             category: payload.category,
@@ -255,48 +343,80 @@ function Expenses() {
             shop_id: payload.shop_id,
             created_at: payload.created_at
           }
-          const retryRes = await supabase.from('expenses').insert([minimal])
+          const retryRes = await supabase.from('expenses').insert([minimal]).select().maybeSingle()
+          data = retryRes.data
           error = retryRes.error
         }
         if (error) throw error
+        if (data?.id) savedExpenseId = data.id
       }
 
-      // Deduct or adjust expense in Cash Drawer / Bank Account
+      // Deduct or adjust expense in the selected Bank Account or Cash Drawer
       try {
-        const accounts = await getBankAccounts(user.shop_id)
-        const cashAcc = accounts.find(a => 
-          a.bank_name?.toLowerCase().includes('cash') || 
-          a.account_name?.toLowerCase().includes('cash')
-        ) || accounts[0]
-        if (cashAcc) {
-          if (!editingId && payload.amount > 0) {
+        if (selectedAccountId && payload.amount > 0) {
+          const accDesc = selectedAcc ? (selectedAcc.bank_name ? `${selectedAcc.bank_name} - ${selectedAcc.account_name}` : selectedAcc.account_name) : 'Cash Drawer'
+
+          if (!editingId) {
+            // New expense: deduct full amount from the chosen bank account / cash drawer
             await deductBankBalance({
               shopId: user.shop_id,
-              accountId: cashAcc.id,
+              accountId: selectedAccountId,
               amount: payload.amount,
-              description: `Shop Expense: ${payload.category} - ${payload.note || payload.description || 'Misc'}`
+              referenceType: 'EXPENSE',
+              referenceId: String(savedExpenseId || ''),
+              description: `Shop Expense: ${payload.category} (${accDesc})${payload.note ? ` - ${payload.note}` : ''}`
             })
-          } else if (editingId) {
+          } else {
+            // Editing existing expense: handle amount and account differences
             const oldExpense = expenses.find(e => e.id === editingId)
             const oldAmount = Number(oldExpense?.amount || 0)
             const newAmount = Number(payload.amount || 0)
-            const diff = newAmount - oldAmount
-            if (diff > 0) {
-              await deductBankBalance({
-                shopId: user.shop_id,
-                accountId: cashAcc.id,
-                amount: diff,
-                description: `Expense Edit Increase: ${payload.category} (+Rs. ${diff.toLocaleString()})`
-              })
-            } else if (diff < 0) {
-              await creditBankBalance({
-                shopId: user.shop_id,
-                accountId: cashAcc.id,
-                amount: Math.abs(diff),
-                referenceType: 'EXPENSE_ADJUSTMENT',
-                referenceId: String(editingId),
-                description: `Expense Edit Reduction: ${payload.category} (-Rs. ${Math.abs(diff).toLocaleString()})`
-              })
+            const oldAccId = oldExpense?.account_id || selectedAccountId
+
+            if (String(oldAccId) === String(selectedAccountId)) {
+              // Same account: adjust net difference
+              const diff = newAmount - oldAmount
+              if (diff > 0) {
+                await deductBankBalance({
+                  shopId: user.shop_id,
+                  accountId: selectedAccountId,
+                  amount: diff,
+                  referenceType: 'EXPENSE_EDIT',
+                  referenceId: String(editingId),
+                  description: `Expense Increase: ${payload.category} (+Rs. ${diff.toLocaleString()})`
+                })
+              } else if (diff < 0) {
+                await creditBankBalance({
+                  shopId: user.shop_id,
+                  accountId: selectedAccountId,
+                  amount: Math.abs(diff),
+                  referenceType: 'EXPENSE_EDIT',
+                  referenceId: String(editingId),
+                  description: `Expense Reduction: ${payload.category} (-Rs. ${Math.abs(diff).toLocaleString()})`
+                })
+              }
+            } else {
+              // Account changed: refund old account completely, deduct new amount from new account
+              if (oldAmount > 0) {
+                await creditBankBalance({
+                  shopId: user.shop_id,
+                  accountId: oldAccId,
+                  amount: oldAmount,
+                  referenceType: 'EXPENSE_ACCOUNT_SWITCH',
+                  referenceId: String(editingId),
+                  description: `Expense Account Switch Refund: ${payload.category}`
+                })
+              }
+              if (newAmount > 0) {
+                await deductBankBalance({
+                  shopId: user.shop_id,
+                  accountId: selectedAccountId,
+                  amount: newAmount,
+                  referenceType: 'EXPENSE',
+                  referenceId: String(editingId),
+                  description: `Shop Expense: ${payload.category} (${accDesc})${payload.note ? ` - ${payload.note}` : ''}`
+                })
+              }
             }
           }
         }
@@ -304,15 +424,23 @@ function Expenses() {
         console.warn('Could not adjust bank balance on expense change:', accErr)
       }
 
+      // Mirror account_id to local Dexie for seamless client caching
+      if (savedExpenseId) {
+        await db.expenses.update(savedExpenseId, {
+          account_id: selectedAccountId,
+          payment_method: paymentMethodStr
+        }).catch(() => {})
+      }
+
       resetForm()
       setShowForm(false)
-      fetchExpenses()
+      await Promise.all([fetchExpenses(), loadBankAccounts()])
     } catch (error) {
       const errMsg = error?.message || String(error)
       if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
         const offlineData = editingId
-          ? { ...payload, id: editingId }
-          : { ...payload, id: crypto.randomUUID(), created_at: payload.created_at, date: payload.date }
+          ? { ...payload, id: editingId, account_id: selectedAccountId }
+          : { ...payload, id: crypto.randomUUID(), created_at: payload.created_at, date: payload.date, account_id: selectedAccountId }
         const action = editingId ? 'UPDATE' : 'INSERT'
         await addToSyncQueue('expenses', action, offlineData)
         if (editingId) {
@@ -341,6 +469,18 @@ function Expenses() {
       if (!isNaN(d.getTime())) {
         dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       }
+    }
+
+    if (exp.account_id) {
+      setSelectedAccountId(String(exp.account_id))
+    } else if (exp.payment_method) {
+      const pm = String(exp.payment_method).toLowerCase()
+      const matched = bankAccounts.find(a => 
+        (pm === 'cash' && (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))) ||
+        a.bank_name?.toLowerCase() === pm ||
+        a.account_name?.toLowerCase() === pm
+      )
+      if (matched) setSelectedAccountId(String(matched.id))
     }
 
     setForm({
@@ -386,18 +526,18 @@ function Expenses() {
         await moveToTrash('expenses', id, item, user.id, user.shop_id)
         await db.expenses.delete(id)
 
-        // Refund expense back to Cash Account
+        // Refund expense back to the selected Account / Cash Drawer
         if (item.amount > 0) {
           try {
-            const accounts = await getBankAccounts(user.shop_id)
-            const cashAcc = accounts.find(a => 
-              a.bank_name?.toLowerCase().includes('cash') || 
-              a.account_name?.toLowerCase().includes('cash')
-            ) || accounts[0]
-            if (cashAcc) {
+            const targetAccountId = item.account_id || (bankAccounts.find(a => 
+              (item.payment_method === 'cash' && (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))) ||
+              a.bank_name?.toLowerCase() === String(item.payment_method).toLowerCase()
+            )?.id) || bankAccounts[0]?.id
+
+            if (targetAccountId) {
               await creditBankBalance({
                 shopId: user.shop_id,
-                accountId: cashAcc.id,
+                accountId: targetAccountId,
                 amount: item.amount,
                 referenceType: 'EXPENSE_REVERSAL',
                 referenceId: String(id),
@@ -425,7 +565,7 @@ function Expenses() {
     } else if (successCount > 0) {
       alert(`🗑️ ${successCount} expense(s) moved to Trash!`)
     }
-    fetchExpenses()
+    await Promise.all([fetchExpenses(), loadBankAccounts()])
   }
 
   const saveBudget = () => {
@@ -477,7 +617,8 @@ function Expenses() {
         const cat = (exp.category || '').toLowerCase()
         const note = (exp.note || exp.description || '').toLowerCase()
         const amt = String(exp.amount || '')
-        if (!cat.includes(q) && !note.includes(q) && !amt.includes(q) && !dStr.includes(q)) {
+        const pm = String(exp.payment_method || '').toLowerCase()
+        if (!cat.includes(q) && !note.includes(q) && !amt.includes(q) && !dStr.includes(q) && !pm.includes(q)) {
           return false
         }
       }
@@ -562,7 +703,7 @@ function Expenses() {
             </span>
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-0.5">
-            Track daily mobile shop expenditures and record previous date expenses
+            Track daily expenditures with automatic bank account & cash drawer deduction
           </p>
         </div>
 
@@ -621,7 +762,7 @@ function Expenses() {
                     <div className="w-full bg-gray-100 dark:bg-white/10 rounded-full h-1.5 mt-1.5">
                       <div className={`${barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
                     </div>
-                    <p className={`text-[10px] font-bold mt-1 ${textColor}`}>{pct.toFixed(0)}% used</p>
+                    <p className={`text-[10px] font-bold mt-1 ${textColor}`}>${pct.toFixed(0)}% used</p>
                   </>
                 ) : (
                   <p className="text-xs text-gray-400 italic mt-1">Set a budget ✏️</p>
@@ -651,7 +792,7 @@ function Expenses() {
 
       {/* Expense Input / Edit Form */}
       {showForm && (
-        <div className="bg-white dark:bg-[#1c1c1e] rounded-3xl shadow-xl p-6 sm:p-7 border border-blue-100 dark:border-white/10 max-w-2xl mx-auto transition-all">
+        <div className="bg-white dark:bg-[#1c1c1e] rounded-3xl shadow-xl p-6 sm:p-7 border border-blue-100 dark:border-white/10 max-w-2xl mx-auto transition-all animate-in fade-in duration-150">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="font-black text-gray-900 dark:text-white text-lg sm:text-xl flex items-center gap-2">
@@ -661,7 +802,7 @@ function Expenses() {
                 </span>
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Select today or any previous date to record shop expenditure
+                Expense will be deducted from your chosen Cash Drawer or Bank Account automatically
               </p>
             </div>
             <button
@@ -763,19 +904,50 @@ function Expenses() {
 
             {/* 2. Category & Amount Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Category Dropdown with Custom Add Button */}
               <div>
-                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider mb-1.5">
-                  Category (قسم)
-                </label>
-                <select
-                  value={form.category}
-                  onChange={e => setForm({ ...form, category: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#2c2c2e] border border-gray-200 dark:border-white/10 rounded-xl font-semibold text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                >
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                    Category (قسم / خرچے کی قسم)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCategoryModal(true)}
+                    className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition active:scale-95"
+                  >
+                    <Plus size={13} />
+                    <span>Add Custom</span>
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={form.category}
+                    onChange={e => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setShowAddCategoryModal(true)
+                      } else {
+                        setForm({ ...form, category: e.target.value })
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#2c2c2e] border border-gray-200 dark:border-white/10 rounded-xl font-semibold text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 dark:text-blue-400">
+                      ➕ + Add Custom Expense Type...
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCategoryModal(true)}
+                    className="px-3 py-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-300 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/40 transition flex items-center justify-center shrink-0 cursor-pointer font-bold text-xs"
+                    title="Add custom expense type"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
               </div>
 
+              {/* Amount */}
               <div>
                 <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider mb-1.5">
                   Amount (Rs.) (رقم)
@@ -793,6 +965,65 @@ function Expenses() {
                     placeholder="0"
                   />
                 </div>
+              </div>
+
+              {/* 3. Deduct From (Bank Account or Cash Drawer) */}
+              <div className="sm:col-span-2 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
+                  <label className="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Wallet size={15} className="text-blue-600 dark:text-blue-400" />
+                    <span>Deduct From (Account / Cash Drawer)</span>
+                    <span className="text-[10px] text-gray-400 font-normal">(رقم کی کٹوتی)</span>
+                  </label>
+                  {(() => {
+                    const selectedAcc = bankAccounts.find(a => String(a.id) === String(selectedAccountId))
+                    if (!selectedAcc) return null
+                    const isSufficient = selectedAcc.current_balance >= Number(form.amount || 0)
+                    return (
+                      <span className={`text-xs font-black tabular-nums font-mono px-2.5 py-0.5 rounded-lg border inline-flex items-center gap-1 self-start sm:self-auto ${
+                        isSufficient
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+                          : 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800'
+                      }`}>
+                        <span>Available Balance:</span>
+                        <span>Rs. {Number(selectedAcc.current_balance).toLocaleString()}</span>
+                      </span>
+                    )
+                  })()}
+                </div>
+
+                <select
+                  value={selectedAccountId}
+                  onChange={e => setSelectedAccountId(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#2c2c2e] border border-gray-200 dark:border-white/10 rounded-xl font-bold text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  {bankAccounts.length === 0 ? (
+                    <option value="">Loading accounts...</option>
+                  ) : (
+                    bankAccounts.map(acc => {
+                      const isCash = acc.bank_name?.toLowerCase().includes('cash') || acc.account_name?.toLowerCase().includes('cash')
+                      return (
+                        <option key={acc.id} value={acc.id}>
+                          {isCash ? '💵 Cash in Hand / Drawer (گلہ)' : `🏦 ${acc.bank_name ? `${acc.bank_name} - ` : ''}${acc.account_name}`} (Bal: Rs. {Number(acc.current_balance).toLocaleString()})
+                        </option>
+                      )
+                    })
+                  )}
+                </select>
+
+                {(() => {
+                  const selectedAcc = bankAccounts.find(a => String(a.id) === String(selectedAccountId))
+                  if (selectedAcc && Number(form.amount || 0) > selectedAcc.current_balance) {
+                    return (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 font-semibold flex items-center gap-1">
+                        <span>⚠️ Note:</span>
+                        <span>Expense amount (Rs. {Number(form.amount || 0).toLocaleString()}) exceeds balance in {selectedAcc.account_name}. Balance will become negative after deduction.</span>
+                      </p>
+                    )
+                  }
+                  return null
+                })()}
               </div>
 
               {/* Note / Description */}
@@ -818,10 +1049,10 @@ function Expenses() {
                 className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-98 text-white font-black text-sm rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
               >
                 {saving ? (
-                  <span>Saving...</span>
+                  <span>Saving & Deducting...</span>
                 ) : (
                   <>
-                    <span>{editingId ? 'Update Expense' : 'Save Expense (خرچہ محفوظ کریں)'}</span>
+                    <span>{editingId ? 'Update Expense' : 'Save & Deduct Expense (خرچہ محفوظ کریں)'}</span>
                     <span className="text-blue-200 text-xs font-medium">
                       • {formatDateDDMMYYYY(form.date)} ({formatDateFullHuman(form.date)})
                     </span>
@@ -870,7 +1101,7 @@ function Expenses() {
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search category or note..."
+              placeholder="Search category, account or note..."
               className="w-full pl-9 pr-3 py-1.5 text-xs font-medium bg-gray-50 dark:bg-[#2c2c2e] border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white"
             />
           </div>
@@ -941,52 +1172,65 @@ function Expenses() {
             <p className="px-6 py-12 text-center text-gray-400">Loading expenses...</p>
           ) : filteredExpenses.length === 0 ? (
             <p className="px-6 py-12 text-center text-gray-400 italic">No expenses match your filter.</p>
-          ) : filteredExpenses.map(exp => (
-            <div key={exp.id} className={`p-4 ${selected.includes(exp.id) ? 'bg-blue-50/80 dark:bg-blue-950/40' : ''}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-2.5 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-md text-[10px] font-black uppercase tracking-wider">
-                      {exp.category}
-                    </span>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {formatExpenseDate(exp.date, exp.created_at)}
+          ) : filteredExpenses.map(exp => {
+            const pm = (exp.payment_method || 'cash').toLowerCase()
+            const isCash = pm === 'cash'
+            return (
+              <div key={exp.id} className={`p-4 ${selected.includes(exp.id) ? 'bg-blue-50/80 dark:bg-blue-950/40' : ''}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2.5 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-md text-[10px] font-black uppercase tracking-wider">
+                        {exp.category}
+                      </span>
+                      {/* Paid From Pill */}
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                        isCash
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                          : 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800'
+                      }`}>
+                        <span>{isCash ? '💵' : '🏦'}</span>
+                        <span>{isCash ? 'Cash Drawer' : exp.payment_method}</span>
+                      </span>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {formatExpenseDate(exp.date, exp.created_at)}
+                      </div>
                     </div>
+                    <p className="mt-1.5 font-bold text-gray-900 dark:text-white text-sm">
+                      {exp.note || exp.description || 'No description'}
+                    </p>
                   </div>
-                  <p className="mt-1.5 font-bold text-gray-900 dark:text-white text-sm">
-                    {exp.note || exp.description || 'No description'}
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(exp.id)}
+                    onChange={() => toggleSelect(exp.id)}
+                    className="mt-1 h-4 w-4 rounded text-blue-600"
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-white/5">
+                  <p className="text-base font-black text-rose-600 dark:text-rose-400 tabular-nums">
+                    Rs. {Number(exp.amount || 0).toLocaleString()}
                   </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={selected.includes(exp.id)}
-                  onChange={() => toggleSelect(exp.id)}
-                  className="mt-1 h-4 w-4 rounded text-blue-600"
-                />
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-white/5">
-                <p className="text-base font-black text-rose-600 dark:text-rose-400 tabular-nums">
-                  Rs. {Number(exp.amount || 0).toLocaleString()}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleEdit(exp)}
-                    className="rounded-lg bg-blue-50 dark:bg-blue-950/60 px-3 py-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1 cursor-pointer"
-                  >
-                    <Edit3 size={12} />
-                    <span>Edit</span>
-                  </button>
-                  <button
-                    onClick={() => requestDelete([exp.id])}
-                    className="rounded-lg bg-rose-50 dark:bg-rose-950/60 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer"
-                  >
-                    <Trash2 size={12} />
-                    <span>Delete</span>
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(exp)}
+                      className="rounded-lg bg-blue-50 dark:bg-blue-950/60 px-3 py-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Edit3 size={12} />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      onClick={() => requestDelete([exp.id])}
+                      className="rounded-lg bg-rose-50 dark:bg-rose-950/60 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 size={12} />
+                      <span>Delete</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Desktop View: Table */}
@@ -1004,6 +1248,7 @@ function Expenses() {
                 </th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Expense Date (DD-MM-YYYY)</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Category (قسم)</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Paid From (کٹوتی کھاتہ)</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase whitespace-nowrap min-w-[180px]">Description (تفصیل)</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right whitespace-nowrap">Amount (رقم)</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center whitespace-nowrap">Actions</th>
@@ -1012,65 +1257,168 @@ function Expenses() {
             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-gray-400">Loading expenses...</td>
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-400">Loading expenses...</td>
                 </tr>
               ) : filteredExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-gray-400 italic">No expenses match your selected filter.</td>
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-400 italic">No expenses match your selected filter.</td>
                 </tr>
-              ) : filteredExpenses.map(exp => (
-                <tr
-                  key={exp.id}
-                  className={`hover:bg-gray-50/80 dark:hover:bg-white/[0.02] transition group ${
-                    selected.includes(exp.id) ? 'bg-blue-50/70 dark:bg-blue-950/30' : ''
-                  }`}
-                >
-                  <td className="px-4 py-4">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(exp.id)}
-                      onChange={() => toggleSelect(exp.id)}
-                      className="w-4 h-4 rounded text-blue-600"
-                    />
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    {formatExpenseDate(exp.date, exp.created_at)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-3 py-1 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-full text-xs font-bold uppercase tracking-wider">
-                      {exp.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300 font-medium">
-                    {exp.note || exp.description || <span className="text-gray-400 italic">-</span>}
-                  </td>
-                  <td className="px-6 py-4 text-right font-black text-rose-600 dark:text-rose-400 text-base tabular-nums">
-                    Rs. {Number(exp.amount || 0).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex justify-center gap-3 opacity-0 group-hover:opacity-100 transition">
-                      <button
-                        onClick={() => handleEdit(exp)}
-                        className="text-blue-600 dark:text-blue-400 hover:underline font-bold text-xs flex items-center gap-1 cursor-pointer"
-                      >
-                        <Edit3 size={12} />
-                        <span>Edit</span>
-                      </button>
-                      <button
-                        onClick={() => requestDelete([exp.id])}
-                        className="text-rose-600 dark:text-rose-400 hover:underline font-bold text-xs flex items-center gap-1 cursor-pointer"
-                      >
-                        <Trash2 size={12} />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              ) : filteredExpenses.map(exp => {
+                const pm = (exp.payment_method || 'cash').toLowerCase()
+                const isCash = pm === 'cash'
+                return (
+                  <tr
+                    key={exp.id}
+                    className={`hover:bg-gray-50/80 dark:hover:bg-white/[0.02] transition group ${
+                      selected.includes(exp.id) ? 'bg-blue-50/70 dark:bg-blue-950/30' : ''
+                    }`}
+                  >
+                    <td className="px-4 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(exp.id)}
+                        onChange={() => toggleSelect(exp.id)}
+                        className="w-4 h-4 rounded text-blue-600"
+                      />
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {formatExpenseDate(exp.date, exp.created_at)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-3 py-1 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-full text-xs font-bold uppercase tracking-wider">
+                        {exp.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold ${
+                        isCash
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                          : 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800'
+                      }`}>
+                        <span>{isCash ? '💵' : '🏦'}</span>
+                        <span>{isCash ? 'Cash Drawer' : exp.payment_method}</span>
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300 font-medium">
+                      {exp.note || exp.description || <span className="text-gray-400 italic">-</span>}
+                    </td>
+                    <td className="px-6 py-4 text-right font-black text-rose-600 dark:text-rose-400 text-base tabular-nums">
+                      Rs. {Number(exp.amount || 0).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex justify-center gap-3 opacity-0 group-hover:opacity-100 transition">
+                        <button
+                          onClick={() => handleEdit(exp)}
+                          className="text-blue-600 dark:text-blue-400 hover:underline font-bold text-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit3 size={12} />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={() => requestDelete([exp.id])}
+                          className="text-rose-600 dark:text-rose-400 hover:underline font-bold text-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 size={12} />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Add Custom Category Modal */}
+      {showAddCategoryModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-md rounded-3xl p-6 shadow-2xl border border-gray-200 dark:border-white/10 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
+                  <Tag size={16} />
+                </div>
+                <h3 className="text-base font-black text-gray-900 dark:text-white">
+                  Add Custom Expense Type
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowAddCategoryModal(false); setNewCategoryName('') }}
+                className="w-7 h-7 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Enter a new expense category name. It will be added to your dropdown and saved for future use.
+            </p>
+
+            <form onSubmit={handleAddCustomCategory} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
+                  Expense Type Name (خرچے کا نام)
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={newCategoryName}
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  placeholder="e.g. Generator Fuel, Internet, Printing, Courier..."
+                  className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-[#2c2c2e] border border-gray-200 dark:border-white/10 rounded-xl font-bold text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              {/* Existing Custom Categories List */}
+              {customCategories.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Your Custom Categories:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 bg-gray-50 dark:bg-[#2c2c2e] rounded-xl border border-gray-200/60 dark:border-white/5">
+                    {customCategories.map(cat => (
+                      <span
+                        key={cat}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white dark:bg-[#1c1c1e] text-gray-800 dark:text-gray-200 text-xs font-bold rounded-lg border border-gray-200 dark:border-white/10 shadow-2xs"
+                      >
+                        <span>{cat}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCustomCategory(cat)}
+                          className="text-gray-400 hover:text-red-500 cursor-pointer text-xs"
+                          title={`Delete ${cat}`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowAddCategoryModal(false); setNewCategoryName('') }}
+                  className="flex-1 py-2.5 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 text-gray-700 dark:text-gray-300 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-sm transition cursor-pointer active:scale-95"
+                >
+                  Add & Select (محفوظ کریں)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showPasswordModal && (
         <PasswordModal

@@ -178,6 +178,8 @@ export const deductBankBalance = async ({
   accountId,
   amount,
   purchaseId = null,
+  referenceType = null,
+  referenceId = null,
   description = ''
 }) => {
   const deductAmount = Math.abs(Number(amount || 0));
@@ -240,7 +242,7 @@ export const deductBankBalance = async ({
   }
 
   // 3. Record transaction in bank_account_transactions
-  const desc = description || `Purchase payment deduction (Purchase #${purchaseId || 'N/A'})`;
+  const desc = description || `Payment deduction (${purchaseId ? `Purchase #${purchaseId}` : 'Expense'})`;
   await recordBankTransaction({
     shopId,
     accountId,
@@ -248,8 +250,8 @@ export const deductBankBalance = async ({
     amount: deductAmount,
     balanceBefore: currentBalance,
     balanceAfter: newBalance,
-    referenceType: 'PURCHASE',
-    referenceId: purchaseId ? String(purchaseId) : null,
+    referenceType: referenceType || (purchaseId ? 'PURCHASE' : 'EXPENSE'),
+    referenceId: referenceId ? String(referenceId) : (purchaseId ? String(purchaseId) : null),
     description: desc
   });
 

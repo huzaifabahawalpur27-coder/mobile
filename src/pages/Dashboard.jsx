@@ -3,12 +3,12 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../services/db'
+import { getBankAccounts } from '../services/bankService'
 import { printHTML, getShopBranding } from '../utils/printUtils'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts'
 import {
-  TrendingUp,
   CreditCard,
   Package,
   AlertTriangle,
@@ -21,12 +21,9 @@ import {
   Banknote,
   ChevronRight,
   Sparkles,
-  Percent,
   Activity,
-  Layers,
   Receipt,
-  Wallet,
-  ArrowUpRight
+  Wallet
 } from 'lucide-react'
 
 // Apple HIG / Linear SaaS Widget Stat Card
@@ -98,10 +95,6 @@ function Dashboard() {
   const [stats, setStats] = useState({
     todaySales: 0,
     todayNetSales: 0,
-    todayCOGS: 0,
-    todayProfit: 0,
-    todayProfitMargin: 0,
-    todayNetProfit: 0,
     todayCashSales: 0,
     todayCreditSales: 0,
     todayOnlineSales: 0,
@@ -117,7 +110,6 @@ function Dashboard() {
     todayPurchasedUnits: 0,
     todayPurchasedPhones: 0,
     todayPurchasedBulk: 0,
-    todayNetCashDrawer: 0,
     monthlySales: 0,
     monthlyOrdersCount: 0,
     lowStockCount: 0,
@@ -135,6 +127,7 @@ function Dashboard() {
 
   const [trendSales, setTrendSales] = useState([])
   const [trendRange, setTrendRange] = useState(7)
+  const [cashInHandBalance, setCashInHandBalance] = useState(0)
   const [lastRefreshed, setLastRefreshed] = useState(null)
   const [usingOfflineData, setUsingOfflineData] = useState(false)
   const [showEOD, setShowEOD] = useState(false)
@@ -144,6 +137,17 @@ function Dashboard() {
   const sid = user?.shop_id
   const shopName = (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX POS'
 
+  const refreshCashInHandBalance = async () => {
+    const accounts = await getBankAccounts(user.shop_id)
+    const balance = accounts
+      .filter(account =>
+        String(account.bank_name || '').toLowerCase().includes('cash') ||
+        String(account.account_name || '').toLowerCase().includes('cash')
+      )
+      .reduce((sum, account) => sum + Number(account.current_balance || 0), 0)
+    setCashInHandBalance(balance)
+  }
+
   useEffect(() => {
     if (user?.shop_id) {
       fetchDashboardStats()
@@ -152,6 +156,7 @@ function Dashboard() {
 
   const fetchDashboardStats = async () => {
     setLoading(true)
+    refreshCashInHandBalance().catch(err => console.warn('Dashboard cash balance refresh failed:', err))
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -224,7 +229,7 @@ function Dashboard() {
         // 8. Today's Inward Purchases
         supabase
           .from('purchases')
-          .select('id, total_amount, payment_type, created_at, purchase_items(id, quantity, product_name, phone_id, cost_price)')
+          .select('id, total_amount, discount, net_amount, payment_type, created_at, purchase_items(id, quantity, product_name, phone_id, cost_price)')
           .eq('shop_id', user.shop_id)
           .gte('created_at', todayISO),
 
@@ -237,25 +242,10 @@ function Dashboard() {
           )
           .catch(() => ({ data: null })),
 
-        // 10. Today Customer Payments
-        supabase
-          .from('customer_payments')
-          .select('id, amount, payment_type, payment_mode, created_at')
-          .eq('shop_id', user.shop_id)
-          .gte('created_at', todayISO)
-          .then(r => r, () => ({ data: [] })),
-
-        // 11. Today Supplier Payments
-        supabase
-          .from('supplier_payments')
-          .select('id, amount, payment_type, payment_mode, created_at')
-          .eq('shop_id', user.shop_id)
-          .gte('created_at', todayISO)
-          .then(r => r, () => ({ data: [] }))
       ])
 
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
-      const [todayRes, monthRes, weekRes, recentRes, prodRes, phonesRes, expRes, purRes, shopConfigRes, custPayRes, supPayRes] = await Promise.race([
+      const [todayRes, monthRes, weekRes, recentRes, prodRes, phonesRes, expRes, purRes, shopConfigRes] = await Promise.race([
         fetchPromise,
         timeoutPromise
       ])
@@ -290,8 +280,6 @@ function Dashboard() {
       const phonesList = phonesRes.data || []
       const todayExpensesList = expRes.data || []
       const todayPurchasesList = purRes.data || []
-      const todayCustomerPaymentsList = custPayRes?.data || []
-      const todaySupplierPaymentsList = supPayRes?.data || []
 
       processDashboardData({
         todaySalesList,
@@ -302,8 +290,6 @@ function Dashboard() {
         phonesList,
         todayExpensesList,
         todayPurchasesList,
-        todayCustomerPaymentsList,
-        todaySupplierPaymentsList,
         config
       })
       setUsingOfflineData(false)
@@ -346,19 +332,6 @@ function Dashboard() {
         }))
         const config = JSON.parse(localStorage.getItem('plan_limits') || '{}')
 
-        let todayCustomerPaymentsList = []
-        let todaySupplierPaymentsList = []
-        try {
-          if (db.customer_payments) {
-            const allCP = await db.customer_payments.toArray()
-            todayCustomerPaymentsList = allCP.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at) >= today)
-          }
-          if (db.supplier_payments) {
-            const allSP = await db.supplier_payments.toArray()
-            todaySupplierPaymentsList = allSP.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at) >= today)
-          }
-        } catch (_) {}
-
         processDashboardData({
           todaySalesList,
           monthSalesList,
@@ -368,8 +341,6 @@ function Dashboard() {
           phonesList,
           todayExpensesList,
           todayPurchasesList,
-          todayCustomerPaymentsList,
-          todaySupplierPaymentsList,
           config
         })
         setLastRefreshed(new Date())
@@ -390,34 +361,19 @@ function Dashboard() {
     phonesList,
     todayExpensesList,
     todayPurchasesList,
-    todayCustomerPaymentsList = [],
-    todaySupplierPaymentsList = [],
     config
   }) => {
-    // Lookups for accurate phone & product cost and naming (unified with Reports)
+    // Lookups for phone names and prices used in the sales summary
     const phoneMap = (phonesList || []).reduce((acc, p) => {
       const pName = `${p.brand || ''} ${p.model || ''}${p.storage ? ` ${p.storage}` : ''}`.trim()
-      const baseCost = Number(p.cost_price || 0)
-      const directCost = Number(p.additional_costs || 0)
       acc[p.id] = {
         name: pName || 'Mobile Phone',
-        baseCost,
-        directCost,
-        cost: baseCost + directCost,
         price: Number(p.sale_price || 0)
       }
       return acc
     }, {})
 
-    const productCostMap = (productList || []).reduce((acc, p) => {
-      if (p.id) acc[p.id] = Number(p.cost_price || 0)
-      if (p.name) acc[p.name] = Number(p.cost_price || 0)
-      return acc
-    }, {})
-
     // 1. Today's Sales Financials & Line-Item Aggregation
-    let todayPhonesCost = 0
-    let todayBulkCost = 0
     let todayItemsSold = 0
     let todayBulkSold = 0
     let todayBulkRevenue = 0
@@ -460,14 +416,6 @@ function Dashboard() {
         const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
 
         const phoneInfo = i.phone_id ? phoneMap[i.phone_id] : null
-        const directCost = Number((Number(i.additional_costs) > 0 ? i.additional_costs : null) ?? (phoneInfo ? phoneInfo.directCost : (snap?.additional_costs || 0)) ?? 0)
-        const baseCost = Number(
-          (Number(i.cost_price) > 0 ? i.cost_price : null) ??
-          (phoneInfo ? phoneInfo.baseCost : null) ??
-          (i.product_id ? productCostMap[i.product_id] : null) ??
-          (productCostMap[name] || 0)
-        )
-        const costPrice = baseCost + directCost
         const unitPrice = Number(
           (Number(i.unit_price) > 0 ? i.unit_price : null) ??
           (Number(i.price) > 0 ? i.price : null) ??
@@ -483,24 +431,19 @@ function Dashboard() {
           lineRev = Number(s.total_amount || 0)
         }
 
-        const lineCost = netQty * costPrice
-
         if (isPhone) {
           todayPhonesSold += netQty
           todayPhonesRevenue += lineRev
-          todayPhonesCost += lineCost
         } else {
           todayBulkSold += netQty
           todayBulkRevenue += lineRev
-          todayBulkCost += lineCost
         }
 
         if (!todayProdMap[name]) {
-          todayProdMap[name] = { name, qty: 0, revenue: 0, cost: 0, isPhone }
+          todayProdMap[name] = { name, qty: 0, revenue: 0, isPhone }
         }
         todayProdMap[name].qty += netQty
         todayProdMap[name].revenue += lineRev
-        todayProdMap[name].cost += lineCost
       })
     })
 
@@ -510,9 +453,6 @@ function Dashboard() {
       : todaySalesList.reduce((sum, s) => sum + Number(s.total_amount || s.net_amount || 0), 0)
     const todayTotalDiscount = todaySalesList.reduce((sum, s) => sum + Number(s.discount || 0), 0)
     const todayNetSales = Math.max(0, todayGrossSales - todayTotalDiscount)
-    const todayCOGS = todayPhonesCost + todayBulkCost
-    const todayProfit = todayNetSales - todayCOGS
-    const todayProfitMargin = todayNetSales > 0 ? (todayProfit / todayNetSales) * 100 : 0
     const todayOrdersCount = todaySalesList.length
     const todayAOV = todayOrdersCount > 0 ? todayGrossSales / todayOrdersCount : 0
 
@@ -542,11 +482,9 @@ function Dashboard() {
 
     // 2. Today's Expenses
     const todayExpenses = (todayExpensesList || []).reduce((sum, e) => sum + Number(e.amount || 0), 0)
-    const todayNetProfit = todayProfit - todayExpenses
 
     // 3. Today's Purchases / Inward Procurement
     let todayPurchasesCost = 0
-    let todayCashPurchases = 0
     let todayPurchasedUnits = 0
     let todayPurchasedPhones = 0
     let todayPurchasedBulk = 0
@@ -554,18 +492,6 @@ function Dashboard() {
     ;(todayPurchasesList || []).forEach(p => {
       const pCost = Number(p.net_amount ?? (Number(p.total_amount || 0) - Number(p.discount || 0)))
       todayPurchasesCost += pCost
-      const method = String(p.payment_type || p.payment_method || '').toLowerCase()
-      const paidAmt = Number(p.paid_amount ?? p.amount_paid ?? (method === 'cash' ? pCost : 0)) || 0
-
-      if (method === 'cash') {
-        todayCashPurchases += paidAmt
-      } else if (method === 'split' && Array.isArray(p.payment_details)) {
-        p.payment_details.forEach(d => {
-          if (String(d.method || d.provider || '').toLowerCase() === 'cash') {
-            todayCashPurchases += Number(d.amount || 0)
-          }
-        })
-      }
 
       const items = p.purchase_items || []
       if (items.length > 0) {
@@ -584,25 +510,6 @@ function Dashboard() {
       }
     })
 
-    let todayCashCustomerPayments = 0
-    ;(todayCustomerPaymentsList || []).forEach(p => {
-      const type = String(p.payment_type || 'payment').toLowerCase()
-      const mode = String(p.payment_mode || 'cash').toLowerCase()
-      if (type === 'payment' && (mode === 'cash' || !mode)) {
-        todayCashCustomerPayments += (Number(p.amount) || 0)
-      }
-    })
-
-    let todayCashSupplierPayments = 0
-    ;(todaySupplierPaymentsList || []).forEach(p => {
-      const type = String(p.payment_type || 'payment').toLowerCase()
-      const mode = String(p.payment_mode || 'cash').toLowerCase()
-      if (type === 'payment' && (mode === 'cash' || !mode)) {
-        todayCashSupplierPayments += (Number(p.amount) || 0)
-      }
-    })
-
-    const todayNetCashDrawer = todayCashSales + todayCashCustomerPayments - todayExpenses - todayCashPurchases - todayCashSupplierPayments
 
     // 4. Month-to-date total
     const monthlyTotal = monthSalesList.reduce((sum, s) => sum + (Number(s.total_amount || 0) - Number(s.discount || 0)), 0)
@@ -623,21 +530,12 @@ function Dashboard() {
 
     // 7. Top Selling Products Today
     const topProducts = Object.values(todayProdMap)
-      .map(p => ({
-        ...p,
-        profit: p.revenue - p.cost,
-        margin: p.revenue > 0 ? ((p.revenue - p.cost) / p.revenue) * 100 : 0
-      }))
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5)
 
     setStats({
       todaySales: todayGrossSales,
       todayNetSales,
-      todayCOGS,
-      todayProfit,
-      todayProfitMargin,
-      todayNetProfit,
       todayCashSales,
       todayCreditSales,
       todayOnlineSales,
@@ -653,7 +551,6 @@ function Dashboard() {
       todayPurchasedUnits,
       todayPurchasedPhones,
       todayPurchasedBulk,
-      todayNetCashDrawer,
       monthlySales: monthlyTotal,
       monthlyOrdersCount,
       lowStockCount: lowStockList.length,
@@ -692,7 +589,6 @@ function Dashboard() {
         onlineSales: stats.todayOnlineSales,
         creditSales: stats.todayCreditSales,
         totalSales: stats.todaySales,
-        profit: stats.todayProfit,
         expenses: todayExpenses,
         cashPurchases: todayCashPurchases,
         bankPurchases: todayBankPurchases,
@@ -718,8 +614,7 @@ function Dashboard() {
       `📊 Total Revenue: Rs. ${Math.round(d.totalSales).toLocaleString()}\n\n` +
       `💸 Shop Expenses: Rs. ${Math.round(d.expenses).toLocaleString()}\n` +
       `📦 Cash Purchases: Rs. ${Math.round(d.cashPurchases).toLocaleString()}\n\n` +
-      `📈 Gross Business Profit: Rs. ${Math.round(d.profit).toLocaleString()}\n` +
-      `💰 *Net Cash in Hand: Rs. ${Math.round(d.netCash).toLocaleString()}*`
+      `💰 *Net Cash Flow Today: Rs. ${Math.round(d.netCash).toLocaleString()}*`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
@@ -755,9 +650,8 @@ function Dashboard() {
       <div class="row"><span>Expenses:</span><span>Rs. ${Math.round(d.expenses).toLocaleString()}</span></div>
       <div class="row"><span>Cash Purchases:</span><span>Rs. ${Math.round(d.cashPurchases).toLocaleString()}</span></div>
       <hr/>
-      <div class="row bold"><span>Gross Profit:</span><span>Rs. ${Math.round(d.profit).toLocaleString()}</span></div>
       <div class="row bold" style="font-size:14px;border-top:1px solid #000;padding-top:4px;margin-top:4px">
-        <span>Net Cash in Hand:</span><span>Rs. ${Math.round(d.netCash).toLocaleString()}</span>
+        <span>Net Cash Flow Today:</span><span>Rs. ${Math.round(d.netCash).toLocaleString()}</span>
       </div>
       <hr/>
       <p class="center" style="font-size:10px;color:#666;">Generated at: ${new Date().toLocaleTimeString('en-PK')}</p>
@@ -813,7 +707,7 @@ function Dashboard() {
             Dashboard
           </h1>
           <p className="text-[#86868b] text-xs sm:text-sm mt-0.5 font-normal">
-            Today’s sales, earnings, cash flow, and stock at a glance.
+            Today’s sales, purchases, cash, and stock at a glance.
           </p>
           <p className="text-[11px] text-[#86868b] mt-1" aria-live="polite">
             {usingOfflineData ? 'Offline data' : 'Online data'}{lastRefreshed ? ` · Updated ${lastRefreshed.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' })}` : ''}{loading ? ' · Refreshing…' : ''}
@@ -849,7 +743,7 @@ function Dashboard() {
         </div>
       </div>
 
-      {/*  Apple Control Center Primary KPI Widgets (5 Core Financial Metrics with Hero Net Profit) */}
+      {/* Primary business KPIs */}
       {loading && !lastRefreshed ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 animate-pulse">
           {[1, 2, 3].map(i => (
@@ -858,9 +752,9 @@ function Dashboard() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-          {/* 1. Today's Gross Sales - Apple Cobalt Blue */}
+          {/* 1. Today's sales */}
           <AppleWidget
-            title="Gross Sales (Rs)"
+            title="Total Sales (Rs)"
             hint="Today"
             value={stats.todaySales}
             icon={<Banknote size={20} />}
@@ -868,7 +762,7 @@ function Dashboard() {
             bgTint="bg-[#0071e3]/12 dark:bg-[#0071e3]/25"
             cardBg="bg-gradient-to-br from-blue-500/[0.08] via-white/95 to-sky-500/[0.03] dark:from-blue-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
             cardBorder="border border-blue-500/25 dark:border-blue-500/40 hover:border-blue-500/50 shadow-[0_4px_20px_rgba(0,113,227,0.08)] hover:shadow-[0_8px_28px_rgba(0,113,227,0.16)]"
-            badge="Today"
+            badge="Sales"
             badgeStyle="bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 font-bold"
             valueColor="text-[#0071e3] dark:text-[#3894ff]"
             glowColor="bg-blue-500/10"
@@ -880,45 +774,34 @@ function Dashboard() {
             onClick={() => navigate('/sales')}
           />
 
-          {/* 2. Today's Net Profit - Apple Emerald Mint (Hero Card - Pure Profit) */}
+          {/* 2. Today's purchases */}
           <AppleWidget
-            isHero={true}
-            title="Net Profit (Rs)"
-            hint="After expenses"
-            value={stats.todayNetProfit}
-            icon={<Sparkles size={20} />}
+            title="Total Purchases (Rs)"
+            hint="Today"
+            value={stats.todayPurchasesCost}
+            icon={<Package size={20} />}
             color="text-emerald-600 dark:text-emerald-400"
             bgTint="bg-emerald-500/15 dark:bg-emerald-500/25"
-            cardBg="bg-gradient-to-br from-emerald-500/[0.12] via-white/95 to-teal-500/[0.05] dark:from-emerald-950/50 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
-            cardBorder="border-2 border-emerald-500/40 dark:border-emerald-500/50 hover:border-emerald-500/70 shadow-[0_4px_24px_rgba(16,185,129,0.14)] hover:shadow-[0_8px_32px_rgba(16,185,129,0.22)]"
-            badge={stats.todayProfitMargin ? `${(stats.todayProfitMargin ?? 0).toFixed(1)}% gross margin` : 'After expenses'}
-            badgeStyle="bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/35 font-black"
+            badge="Purchases"
+            badgeStyle="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold"
             valueColor="text-emerald-600 dark:text-emerald-400"
-            glowColor="bg-emerald-500/20"
-            subValue={
-              stats.todaySales > 0
-                ? `Gross profit Rs. ${Math.round(stats.todayProfit).toLocaleString()} − expenses Rs. ${Math.round(stats.todayExpenses).toLocaleString()}`
-                : 'Gross profit less today’s expenses'
-            }
-            onClick={() => navigate('/reports')}
+            subValue={stats.todayPurchasesCost > 0 ? `${stats.todayPurchasedUnits} units purchased today` : 'No purchases today'}
+            onClick={() => navigate('/purchases')}
           />
 
-          {/* 3. Orders completed today */}
+          {/* 3. Phone stock */}
           <AppleWidget
-            title="Orders Today"
-            hint="Today"
-            value={stats.todayOrdersCount}
-            icon={<ShoppingBag size={20} />}
+            title="Phones in Stock"
+            hint="Available"
+            value={stats.phonesInStock}
+            icon={<Smartphone size={20} />}
             color="text-[#5856d6] dark:text-[#7d7aff]"
             bgTint="bg-[#5856d6]/12 dark:bg-[#5856d6]/25"
-            cardBg="bg-gradient-to-br from-indigo-500/[0.08] via-white/95 to-purple-500/[0.03] dark:from-indigo-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
-            cardBorder="border border-indigo-500/25 dark:border-indigo-500/40 hover:border-indigo-500/50 shadow-[0_4px_20px_rgba(99,102,241,0.08)] hover:shadow-[0_8px_28px_rgba(99,102,241,0.16)]"
-            badge="Invoices"
+            badge="Units"
             badgeStyle="bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 font-bold"
             valueColor="text-[#5856d6] dark:text-[#7d7aff]"
-            glowColor="bg-indigo-500/10"
-            subValue={`Average sale: Rs. ${Math.round(stats.todayAOV).toLocaleString()}`}
-            onClick={() => navigate('/sales')}
+            subValue={`${stats.todayPhonesSold} sold today`}
+            onClick={() => navigate('/products')}
           />
         </div>
       )}
@@ -930,7 +813,7 @@ function Dashboard() {
         <button
           type="button"
           onClick={() => navigate('/accounts')}
-          aria-label="Cash in Drawer: Rs. Math.round(stats.todayNetCashDrawer). Click to view accounts"
+          aria-label={`Cash in Hand: Rs. ${Math.round(cashInHandBalance).toLocaleString()}. Click to view accounts`}
           className="w-full text-left bg-gradient-to-br from-emerald-500/[0.06] via-white/95 to-emerald-500/[0.02] dark:from-emerald-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-emerald-500/25 dark:border-emerald-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
         >
           <div>
@@ -938,8 +821,8 @@ function Dashboard() {
               <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Cash in Drawer</span>
               <span className="text-[10px] text-emerald-600 font-bold">(گلہ)</span>
             </div>
-            <span className={`text-base font-extrabold tabular-nums font-mono ${stats.todayNetCashDrawer >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}`}>
-              Rs. {Math.round(stats.todayNetCashDrawer).toLocaleString()}
+            <span className={`text-base font-extrabold tabular-nums font-mono ${cashInHandBalance >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}`}>
+              Rs. {Math.round(cashInHandBalance).toLocaleString()}
             </span>
             <span className="text-[10px] text-[#86868b] block mt-0.5">Cash in hand balance</span>
           </div>
@@ -1262,7 +1145,7 @@ function Dashboard() {
                           {p.name}
                         </h4>
                         <span className="text-[11px] text-[#86868b]">
-                          {p.qty} {p.isPhone ? 'phones' : 'pcs'} • Profit: Rs. {Math.round(p.profit).toLocaleString()}
+                          {p.qty} {p.isPhone ? 'phones' : 'pcs'} sold today
                         </span>
                       </div>
                     </div>
@@ -1270,8 +1153,8 @@ function Dashboard() {
                       <span className="font-bold text-xs sm:text-sm text-[#1d1d1f] dark:text-white block tabular-nums">
                         Rs. {Math.round(p.revenue).toLocaleString()}
                       </span>
-                      <span className="text-[10px] font-semibold text-[#34c759]">
-                        {(p.margin ?? 0).toFixed(0)}% margin
+                      <span className="text-[10px] font-semibold text-[#86868b]">
+                        Sales today
                       </span>
                     </div>
                   </div>
@@ -1565,16 +1448,10 @@ function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Profit & Net Drawer */}
+                  {/* Net cash flow */}
                   <div className="bg-[#0071e3]/10 dark:bg-[#0071e3]/15 p-4 rounded-[18px] border border-[#0071e3]/20 space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-semibold text-[#1d1d1f] dark:text-gray-200">Gross Business Profit:</span>
-                      <span className="font-bold text-sm text-[#34c759]">
-                        Rs. {Math.round(eodData.profit).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm pt-2 border-t border-[#0071e3]/20 font-bold">
-                      <span className="text-[#1d1d1f] dark:text-white">Net Cash in Drawer:</span>
+                    <div className="flex justify-between items-center text-sm font-bold">
+                      <span className="text-[#1d1d1f] dark:text-white">Net Cash Flow Today:</span>
                       <span className={`text-lg font-bold ${eodData.netCash >= 0 ? 'text-[#0071e3]' : 'text-[#ff3b30]'}`}>
                         Rs. {Math.round(eodData.netCash).toLocaleString()}
                       </span>
