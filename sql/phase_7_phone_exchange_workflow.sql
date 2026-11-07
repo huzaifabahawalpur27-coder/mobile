@@ -140,6 +140,11 @@ CREATE POLICY exchange_items_shop_access ON public.exchange_items
     );
 
 
+-- Ensure phones table accepts flexible conditions and PTA statuses
+ALTER TABLE public.phones DROP CONSTRAINT IF EXISTS phones_condition_check;
+ALTER TABLE public.phones DROP CONSTRAINT IF EXISTS phones_pta_status_check;
+ALTER TABLE public.phones ADD COLUMN IF NOT EXISTS purchase_date DATE DEFAULT CURRENT_DATE;
+
 -- Ensure optional columns exist on phones table
 ALTER TABLE public.phones ADD COLUMN IF NOT EXISTS purchase_date DATE DEFAULT CURRENT_DATE;
 
@@ -187,6 +192,8 @@ DECLARE
     v_imei_snap JSONB;
     v_clean_imei1 TEXT;
     v_clean_imei2 TEXT;
+    v_clean_condition TEXT;
+    v_clean_pta TEXT;
     v_existing_id INTEGER;
     v_existing_status TEXT;
     v_calc_diff NUMERIC;
@@ -401,6 +408,20 @@ BEGIN
             v_clean_imei2 := NULLIF(TRIM(COALESCE(v_item->>'imei_2', '')), '');
             v_unit_price := COALESCE((v_item->>'assessed_value')::NUMERIC, 0);
 
+            -- Normalize condition & PTA status to satisfy legacy check constraints
+            v_clean_condition := CASE
+                WHEN LOWER(COALESCE(v_item->>'condition', '')) LIKE '%new%' AND LOWER(COALESCE(v_item->>'condition', '')) NOT LIKE '%used%' THEN 'New'
+                WHEN LOWER(COALESCE(v_item->>'condition', '')) LIKE '%refurb%' THEN 'Refurbished'
+                ELSE 'Used'
+            END;
+
+            v_clean_pta := CASE
+                WHEN LOWER(COALESCE(v_item->>'pta_status', '')) LIKE '%non%' THEN 'Non-PTA'
+                WHEN LOWER(COALESCE(v_item->>'pta_status', '')) LIKE '%jv%' THEN 'JV'
+                WHEN LOWER(COALESCE(v_item->>'pta_status', '')) LIKE '%patch%' OR LOWER(COALESCE(v_item->>'pta_status', '')) LIKE '%custom%' THEN 'Custom'
+                ELSE 'PTA Approved'
+            END;
+
             -- Check if buy-back of previously sold/returned phone
             v_existing_id := NULL;
             v_existing_status := NULL;
@@ -417,8 +438,8 @@ BEGIN
                     model = COALESCE(v_item->>'model', model),
                     storage = COALESCE(v_item->>'storage', storage),
                     color = COALESCE(v_item->>'color', color),
-                    condition = COALESCE(v_item->>'condition', 'Used'),
-                    pta_status = COALESCE(v_item->>'pta_status', 'PTA Approved'),
+                    condition = v_clean_condition,
+                    pta_status = v_clean_pta,
                     cost_price = v_unit_price,
                     additional_costs = 0,
                     sale_price = v_unit_price,
@@ -460,8 +481,8 @@ BEGIN
                     COALESCE(v_item->>'model', 'Phone'),
                     v_item->>'storage',
                     v_item->>'color',
-                    COALESCE(v_item->>'condition', 'Used'),
-                    COALESCE(v_item->>'pta_status', 'PTA Approved'),
+                    v_clean_condition,
+                    v_clean_pta,
                     v_unit_price,
                     0,
                     v_unit_price,
