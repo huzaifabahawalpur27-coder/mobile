@@ -6,7 +6,7 @@
 CREATE OR REPLACE FUNCTION public.current_session_token()
 RETURNS uuid
 LANGUAGE plpgsql STABLE
-AS $$
+AS $token$
 DECLARE
   raw_token text;
 BEGIN
@@ -20,20 +20,20 @@ BEGIN
   RETURN raw_token::uuid;
 EXCEPTION WHEN OTHERS THEN RETURN NULL;
 END;
-$$;
+$token$;
 
 CREATE OR REPLACE FUNCTION public.current_user_shop_id()
 RETURNS integer
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, public
-AS $$
+AS $shop$
   SELECT s.shop_id
   FROM public.sessions s
   JOIN public.users u ON u.id = s.user_id AND COALESCE(u.is_active, true) = true
   WHERE s.token::text = public.current_session_token()::text
     AND (s.expires_at IS NULL OR s.expires_at > now())
   LIMIT 1
-$$;
+$shop$;
 
 GRANT EXECUTE ON FUNCTION public.current_session_token() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.current_user_shop_id() TO anon, authenticated;
@@ -165,7 +165,7 @@ RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $func$
 DECLARE
     v_token UUID;
     v_user_id UUID;
@@ -1027,7 +1027,7 @@ BEGIN
         'message', 'Phone exchange processed successfully'
     );
 END;
-$$;
+$func$;
 
 
 -- ============================================================
@@ -1042,7 +1042,7 @@ RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $func$
 DECLARE
     v_token UUID;
     v_user_id UUID;
@@ -1331,8 +1331,10 @@ BEGIN
         'message', 'Exchange successfully voided and inventory/balances restored'
     );
 END;
-$$;
+$func$;
 
 -- Grant execution permissions
 GRANT EXECUTE ON FUNCTION process_phone_exchange TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION void_phone_exchange TO anon, authenticated;
+
+
