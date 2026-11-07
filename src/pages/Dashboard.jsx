@@ -925,18 +925,6 @@ function Dashboard() {
         </div>
       )}
 
-      {stats.lowStockCount > 0 && (
-        <Link to="/products" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 dark:bg-amber-950/25 dark:border-amber-800 px-4 py-3 hover:bg-amber-100 dark:hover:bg-amber-950/40 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500">
-          <div className="flex items-center gap-3">
-            <span className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center justify-center"><AlertTriangle size={20} /></span>
-            <div>
-              <p className="text-sm font-bold text-amber-950 dark:text-amber-100">Needs attention: {stats.lowStockCount} items at or below reorder level</p>
-              <p className="text-xs text-amber-800 dark:text-amber-300">Review low stock before the next sale.</p>
-            </div>
-          </div>
-          <span className="text-sm font-semibold text-amber-800 dark:text-amber-200">Review stock <ChevronRight size={16} className="inline" /></span>
-        </Link>
-      )}
 
       {/* Daily cash flow and operating totals */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
