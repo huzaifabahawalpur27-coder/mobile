@@ -464,7 +464,7 @@ BEGIN
 
             IF v_phone_id IS NOT NULL THEN
                 SELECT * INTO v_phone FROM phones WHERE id = v_phone_id;
-                v_item_cost := v_phone.cost_price + v_phone.additional_costs;
+                v_item_cost := COALESCE(v_phone.cost_price, 0) + COALESCE(v_phone.additional_costs, 0);
 
                 v_imei_snap := jsonb_build_object(
                     'imei_1', v_phone.imei_1,
@@ -493,7 +493,7 @@ BEGIN
                 ) VALUES (
                     v_sale_id,
                     v_phone_id,
-                    v_phone.product_id,
+                    NULL,
                     format('%s %s (%s %s)', v_phone.brand, v_phone.model, COALESCE(v_phone.storage, ''), COALESCE(v_phone.color, '')),
                     1,
                     v_unit_price,
