@@ -29,6 +29,13 @@ CREATE TABLE IF NOT EXISTS public.sessions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Ensure currency column exists on shops
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'PKR';
+
+-- Relax constraints on sessions so any login or session sync succeeds
+ALTER TABLE public.sessions ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE public.sessions ALTER COLUMN shop_id DROP NOT NULL;
+
 -- Ensure token column has UNIQUE constraint so upsert works
 DO $$
 BEGIN
@@ -206,7 +213,7 @@ BEGIN
             WHEN v_has_shop THEN jsonb_build_object(
                 'shop_name',         COALESCE(v_shop.name, 'EdgeX Store'),
                 'logo_url',          COALESCE(v_shop.logo_url, ''),
-                'currency',          COALESCE(v_shop.currency, 'PKR'),
+                'currency',          COALESCE(to_jsonb(v_shop)->>'currency', 'PKR'),
                 'plan_name',         COALESCE(v_shop.subscription_plan, 'Trial'),
                 'product_limit',     10000,
                 'user_limit',        10,
