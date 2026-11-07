@@ -15,7 +15,9 @@ import BankAccountModal from '../components/BankAccountModal'
 import {
   DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
   DEFAULT_WARRANTY_TERMS_URDU,
-  updateExistingQueueMessagesWithWarranty
+  updateExistingQueueMessagesWithWarranty,
+  replaceOrInjectWarrantyInTemplate,
+  getShopWarrantyTerms
 } from '../services/whatsappQueueService'
 
 function Settings() {
@@ -29,11 +31,13 @@ function Settings() {
   const [form, setForm] = useState(() => {
     const sid = user?.shop_id
     const saved = sid ? localStorage.getItem(`shop_settings_${sid}`) : null
+    let parsedSaved = null
     if (saved) {
       try {
-        return JSON.parse(saved)
+        parsedSaved = JSON.parse(saved)
       } catch (e) { /* fallback */ }
     }
+    const savedWarranty = (sid ? localStorage.getItem(`shop_warranty_${sid}`) : null)
     return {
       name: (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX POS',
       phone: '',
@@ -47,6 +51,7 @@ function Settings() {
       wa_bill_template: DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
       wa_reorder_template: 'Assalam-o-Alaikum *[Supplier Name]*! 🙏\n\n*[Shop Name]* se order:\n\n[Items]\n\nMeharbani farma kar jald supply karein. Shukriya!',
       invoice_prefix: '',
+      warranty_terms: savedWarranty || parsedSaved?.warranty_terms || DEFAULT_WARRANTY_TERMS_URDU,
       business_preset: 'general',
       pricing_mode: 'hidden',
       custom_price_label: '',
@@ -259,6 +264,7 @@ function Settings() {
         wa_bill_template:     data.wa_bill_template     || saved.wa_bill_template     || prev.wa_bill_template     || DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
         wa_reorder_template:  data.wa_reorder_template  || saved.wa_reorder_template  || prev.wa_reorder_template  || '',
         invoice_prefix:       data.invoice_prefix       || saved.invoice_prefix       || prev.invoice_prefix       || '',
+        warranty_terms:       (sid ? localStorage.getItem(`shop_warranty_${sid}`) : null) || data.warranty_terms || saved.warranty_terms || prev.warranty_terms || DEFAULT_WARRANTY_TERMS_URDU,
         business_preset:      data.business_preset      || saved.business_preset      || prev.business_preset      || 'general',
         pricing_mode:         data.pricing_mode         || saved.pricing_mode         || prev.pricing_mode         || 'hidden',
         custom_price_label:   data.custom_price_label   || saved.custom_price_label   || prev.custom_price_label   || '',
@@ -328,6 +334,9 @@ function Settings() {
     // for print preferences, WA templates, footers, print size etc.
     localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(fullSettings))
     localStorage.setItem(`shop_name_${sid}`, form.name || 'EdgeX POS')
+    if (form.warranty_terms) {
+      localStorage.setItem(`shop_warranty_${sid}`, form.warranty_terms)
+    }
 
     // Send all columns that exist in the shops table to Supabase.
     const supabasePayload = {
@@ -464,15 +473,21 @@ function Settings() {
     }
   }
 
+  const handleApplyWarrantyToTemplate = () => {
+    const updated = replaceOrInjectWarrantyInTemplate(form.wa_bill_template, form.warranty_terms)
+    setForm(prev => ({ ...prev, wa_bill_template: updated }))
+    alert('وارنٹی شرائط کو بل میسج میں لاگو کر دیا گیا ہے! ✅\n\nWarranty terms have been synced to the bill template.')
+  }
+
   const handleUpdateOutboxWarranty = async () => {
-    if (!window.confirm('کیا آپ تمام پینڈنگ واٹس ایپ آؤٹ باکس میسجز میں وارنٹی شرائط شامل کرنا چاہتے ہیں؟\n\nAre you sure you want to update all pending outbox messages with these warranty terms?')) {
+    if (!window.confirm('کیا آپ تمام پینڈنگ واٹس ایپ آؤٹ باکس میسجز میں اپنی تبدیل شدہ وارنٹی شرائط لاگو کرنا چاہتے ہیں؟\n\nAre you sure you want to update all pending outbox messages with your modified warranty terms?')) {
       return
     }
     setUpdatingOutbox(true)
     setOutboxUpdateStatus(null)
     try {
-      const count = await updateExistingQueueMessagesWithWarranty(user?.shop_id, DEFAULT_WARRANTY_TERMS_URDU)
-      setOutboxUpdateStatus(`کامیابی! ${count} میسجز میں وارنٹی شامل کر دی گئی ہے۔ (${count} messages updated in outbox)`)
+      const count = await updateExistingQueueMessagesWithWarranty(user?.shop_id, form.warranty_terms)
+      setOutboxUpdateStatus(`کامیابی! ${count} میسجز میں تبدیل شدہ وارنٹی لاگو کر دی گئی ہے۔ (${count} messages updated in outbox)`)
       setTimeout(() => setOutboxUpdateStatus(null), 6000)
     } catch (err) {
       setOutboxUpdateStatus('Error updating outbox messages: ' + (err?.message || String(err)))
@@ -918,24 +933,22 @@ function Settings() {
                   <button
                     type="button"
                     onClick={() => {
-                      const cur = form.wa_bill_template || ''
-                      if (!cur.includes('LCD') && !cur.includes('وارنٹی')) {
-                        setForm(prev => ({ ...prev, wa_bill_template: `${cur.trim()}\n\n${DEFAULT_WARRANTY_TERMS_URDU}`.trim() }))
-                      } else {
-                        alert('وارنٹی شرائط پہلے سے موجود ہیں۔ (Warranty terms already present)')
-                      }
+                      setForm(prev => ({
+                        ...prev,
+                        wa_bill_template: replaceOrInjectWarrantyInTemplate(prev.wa_bill_template, prev.warranty_terms)
+                      }))
                     }}
                     className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 transition flex items-center gap-1 cursor-pointer"
-                    title="Insert warranty terms into current template"
+                    title="Insert or update warranty terms in current template"
                   >
-                    🛡️ + وارنٹی شرائط
+                    🛡️ + وارنٹی شرائط شامل کریں
                   </button>
                   <button
                     type="button"
                     onClick={handleUpdateOutboxWarranty}
                     disabled={updatingOutbox}
                     className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
-                    title="Update all unsent messages in WhatsApp outbox with warranty terms"
+                    title="Update all unsent messages in WhatsApp outbox with current warranty terms"
                   >
                     {updatingOutbox ? '🔄 Updating...' : '🔄 آؤٹ باکس اپڈیٹ کریں'}
                   </button>
@@ -957,7 +970,7 @@ function Settings() {
                 placeholder="Hello [Name], thank you for shopping! Bill #[ID] for Rs. [Amount]..."
               />
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mr-1">
                     ٹیگز شامل کریں (Insert Tags):
@@ -990,14 +1003,53 @@ function Settings() {
                   ))}
                 </div>
 
-                <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-xl text-xs space-y-1">
-                  <div className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-                    <span>🛡️ شامل شدہ معیاری موبائل وارنٹی شرائط:</span>
+                {/* ── Option to Modify Warranty Terms ── */}
+                <div className="p-4 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-xl space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/60 dark:border-amber-800/50 pb-2">
+                    <div>
+                      <label className="block text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
+                        <span>🛡️ موبائل وارنٹی شرائط تبدیل کریں (Modify Warranty Terms)</span>
+                      </label>
+                      <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                        یہاں سے آپ اپنی شاپ کی وارنٹی شرائط میں جو چاہیں ترمیم، تبدیلی یا نیا نکتہ شامل کر سکتے ہیں۔
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('کیا آپ وارنٹی شرائط کو ڈیفالٹ پر ری سیٹ کرنا چاہتے ہیں؟')) {
+                            setForm(prev => ({ ...prev, warranty_terms: DEFAULT_WARRANTY_TERMS_URDU }))
+                          }
+                        }}
+                        className="px-2 py-1 text-[11px] font-semibold rounded-lg bg-amber-200/70 hover:bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 transition cursor-pointer"
+                        title="Reset to default 3 warranty points"
+                      >
+                        ✨ ڈیفالٹ شرائط
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleApplyWarrantyToTemplate}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition flex items-center gap-1 cursor-pointer shadow-xs"
+                        title="Sync these warranty terms directly into the bill template above"
+                      >
+                        📝 انوائس میسج میں لاگو کریں
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-amber-800 dark:text-amber-300 space-y-0.5 font-sans leading-relaxed" dir="rtl">
-                    <p>۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔</p>
-                    <p>۲۔ موبائل ڈیڈ ہونے کی صورت میں کوئی وارنٹی یا واپسی قبول نہیں کی جائے گی۔</p>
-                    <p>۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔</p>
+
+                  <textarea
+                    dir="auto"
+                    rows={4}
+                    value={form.warranty_terms}
+                    onChange={e => setForm({ ...form, warranty_terms: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-amber-300 dark:border-amber-700/80 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-xs sm:text-sm font-sans bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 leading-relaxed"
+                    placeholder="وارنٹی شرائط درج کریں (e.g. ۱۔ LCD کی وارنٹی نہیں ہوگی...)"
+                  />
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-amber-800 dark:text-amber-300">
+                    <span>💡 جو وارنٹی شرائط آپ یہاں لکھیں گے، وہ بل ٹیمپلیٹ، پی او ایس بلز اور آؤٹ باکس میں استعمال ہوں گی۔</span>
+                    <span className="font-mono text-[10px] opacity-75 self-end sm:self-auto">{form.warranty_terms?.length || 0} characters</span>
                   </div>
                 </div>
               </div>

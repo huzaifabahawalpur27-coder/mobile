@@ -7,6 +7,8 @@ import {
   isSoldPhoneQueueItem,
   updateWhatsAppMessageText,
   updateExistingQueueMessagesWithWarranty,
+  getShopWarrantyTerms,
+  replaceOrInjectWarrantyInTemplate,
   DEFAULT_WARRANTY_TERMS_URDU
 } from '../services/whatsappQueueService'
 import {
@@ -179,22 +181,20 @@ export default function WhatsAppQueue() {
 
   const handleAppendWarrantyToEdit = (e) => {
     e.stopPropagation()
-    if (!editingText.includes('LCD') && !editingText.includes('وارنٹی')) {
-      setEditingText(prev => `${prev.trim()}\n\n${DEFAULT_WARRANTY_TERMS_URDU}`.trim())
-    } else {
-      alert('وارنٹی شرائط پہلے سے موجود ہیں۔ (Warranty terms already present)')
-    }
+    const shopWarranty = getShopWarrantyTerms(user?.shop_id)
+    setEditingText(prev => replaceOrInjectWarrantyInTemplate(prev, shopWarranty))
   }
 
   // Bulk update all pending with warranty terms
   const handleUpdateAllPendingWarranty = async () => {
-    if (!window.confirm('کیا آپ آؤٹ باکس کے تمام پینڈنگ میسجز میں وارنٹی شرائط شامل کرنا چاہتے ہیں؟\n\nUpdate all pending outbox messages with standard warranty terms?')) {
+    if (!window.confirm('کیا آپ آؤٹ باکس کے تمام پینڈنگ میسجز میں وارنٹی شرائط شامل کرنا چاہتے ہیں؟\n\nUpdate all pending outbox messages with current warranty terms?')) {
       return
     }
     setUpdatingWarranty(true)
     setWarrantyStatusMsg(null)
     try {
-      const count = await updateExistingQueueMessagesWithWarranty(user?.shop_id, DEFAULT_WARRANTY_TERMS_URDU)
+      const shopWarranty = getShopWarrantyTerms(user?.shop_id)
+      const count = await updateExistingQueueMessagesWithWarranty(user?.shop_id, shopWarranty)
       setWarrantyStatusMsg(`Updated ${count} pending messages with warranty terms! ✅`)
       await loadQueue()
       setTimeout(() => setWarrantyStatusMsg(null), 6000)

@@ -1576,7 +1576,8 @@ function POS() {
         const shopInfo = {
           name: form.name || (user?.shop_id ? localStorage.getItem(`shop_name_${user.shop_id}`) : null) || 'EdgeX POS Store',
           phone: form.phone || user?.phone || '',
-          wa_bill_template: form.wa_bill_template || (user?.shop_id ? (() => { try { return JSON.parse(localStorage.getItem(`shop_settings_${user.shop_id}`) || '{}').wa_bill_template } catch (_) { return null } })() : null)
+          wa_bill_template: form.wa_bill_template || (user?.shop_id ? (() => { try { return JSON.parse(localStorage.getItem(`shop_settings_${user.shop_id}`) || '{}').wa_bill_template } catch (_) { return null } })() : null),
+          warranty_terms: (user?.shop_id ? localStorage.getItem(`shop_warranty_${user.shop_id}`) : null) || form.warranty_terms
         }
         const msgText = buildPhoneSaleReceiptText({
           sale: finalSale,
@@ -1659,7 +1660,8 @@ function POS() {
     const shopInfo = {
       name: form.name || (user?.shop_id ? localStorage.getItem(`shop_name_${user.shop_id}`) : null) || 'EdgeX POS Store',
       phone: form.phone || user?.phone || '',
-      wa_bill_template: form.wa_bill_template || (user?.shop_id ? (() => { try { return JSON.parse(localStorage.getItem(`shop_settings_${user.shop_id}`) || '{}').wa_bill_template } catch (_) { return null } })() : null)
+      wa_bill_template: form.wa_bill_template || (user?.shop_id ? (() => { try { return JSON.parse(localStorage.getItem(`shop_settings_${user.shop_id}`) || '{}').wa_bill_template } catch (_) { return null } })() : null),
+      warranty_terms: (user?.shop_id ? localStorage.getItem(`shop_warranty_${user.shop_id}`) : null) || form.warranty_terms
     }
 
     // Generate invoice text using custom template or professional defaults with warranty

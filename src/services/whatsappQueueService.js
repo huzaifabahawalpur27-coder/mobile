@@ -99,6 +99,62 @@ export function renderCustomWhatsAppTemplate(template, { sale, customer, items =
 }
 
 /**
+ * Retrieves custom shop warranty terms or fallback default.
+ */
+export function getShopWarrantyTerms(shopId) {
+  if (shopId) {
+    try {
+      const direct = localStorage.getItem(`shop_warranty_${shopId}`)
+      if (direct && direct.trim()) return direct.trim()
+      const settings = JSON.parse(localStorage.getItem(`shop_settings_${shopId}`) || '{}')
+      if (settings.warranty_terms && settings.warranty_terms.trim()) {
+        return settings.warranty_terms.trim()
+      }
+    } catch (_) {}
+  }
+  return DEFAULT_WARRANTY_TERMS_URDU
+}
+
+/**
+ * Injects or replaces the warranty section in any template or receipt string.
+ */
+export function replaceOrInjectWarrantyInTemplate(template, newWarranty) {
+  if (!template) return (newWarranty || DEFAULT_WARRANTY_TERMS_URDU).trim()
+  const warranty = (newWarranty || DEFAULT_WARRANTY_TERMS_URDU).trim()
+
+  // Match existing warranty section if already present
+  // Patterns:
+  // Starts with "⚠️ *وارنٹی شرائط" or "⚠️ *Warranty" or contains LCD / فیس لاک up to next double newline or greeting
+  const urduWarrantyRegex = /⚠️\s*\*وارنٹی شرائط[\s\S]*?(?=\n\n(?:آپ کے اعتماد|🏪|📞|Thank you|$))/i
+  const engWarrantyRegex = /⚠️\s*\*Warranty Terms[\s\S]*?(?=\n\n(?:Thank you|آپ کے اعتماد|🏪|📞|$))/i
+
+  if (urduWarrantyRegex.test(template)) {
+    return template.replace(urduWarrantyRegex, warranty).trim()
+  }
+  if (engWarrantyRegex.test(template)) {
+    return template.replace(engWarrantyRegex, warranty).trim()
+  }
+
+  // If already has LCD / فیس لاک / سیکنڈ ہینڈ bullet points without header
+  const rawTermsRegex = /(?:۱۔|1\.)\s*LCD[\s\S]*?(?=\n\n(?:آپ کے اعتماد|🏪|📞|Thank you|$))/i
+  if (rawTermsRegex.test(template)) {
+    return template.replace(rawTermsRegex, warranty).trim()
+  }
+
+  // If there's a footer greeting, inject before it
+  if (template.includes('آپ کے اعتماد')) {
+    const parts = template.split('آپ کے اعتماد')
+    return `${parts[0].trim()}\n\n${warranty}\n\nآپ کے اعتماد${parts[1]}`.trim()
+  }
+  if (template.includes('Thank you for your business')) {
+    const parts = template.split('Thank you for your business')
+    return `${parts[0].trim()}\n\n${warranty}\n\nThank you for your business${parts[1]}`.trim()
+  }
+
+  return `${template.trim()}\n\n${warranty}`.trim()
+}
+
+/**
  * Builds invoice details and greetings with standard warranty terms.
  */
 export function buildPhoneSaleReceiptText({ sale, customer, items = [], shopInfo = {}, language = 'english' }) {
@@ -121,6 +177,7 @@ export function buildPhoneSaleReceiptText({ sale, customer, items = [], shopInfo
   const paid = Number(sale?.receivedAmount ?? sale?.paid_amount ?? total).toFixed(0)
   const change = Number(sale?.changeDue || 0)
   const balance = Number(customer?.outstanding_balance || 0)
+  const effectiveWarranty = shopInfo.warranty_terms || (shopInfo.shop_id ? getShopWarrantyTerms(shopInfo.shop_id) : DEFAULT_WARRANTY_TERMS_URDU)
 
   if (language === 'urdu') {
     const itemsText = items.map((i, idx) => {
@@ -154,7 +211,7 @@ ${itemsText}
 💰 *ادائیگی کا خلاصہ:*
 ${paymentInfoUrdu}
 
-${DEFAULT_WARRANTY_TERMS_URDU}
+${effectiveWarranty}
 
 آپ کے اعتماد اور تعاون کا شکریہ! 🤝${shopPhone ? `\n📞 رابطہ: ${shopPhone}` : ''}`
   }
@@ -195,7 +252,7 @@ ${itemsText}
 💰 *Payment Summary:*
 ${paymentSummary}
 
-${DEFAULT_WARRANTY_TERMS_ENGLISH}
+${shopInfo.warranty_terms || DEFAULT_WARRANTY_TERMS_ENGLISH}
 
 Thank you for your business and trust! 🤝${shopPhone ? `\n📞 Contact: ${shopPhone}` : ''}`
 }
@@ -560,7 +617,7 @@ export async function updateWhatsAppMessageText(id, newText) {
  * Bulk updates already saved pending WhatsApp messages in the outbox to include warranty terms.
  */
 export async function updateExistingQueueMessagesWithWarranty(shopId, customWarranty = null) {
-  const warrantyText = customWarranty || DEFAULT_WARRANTY_TERMS_URDU
+  const warrantyText = (customWarranty || getShopWarrantyTerms(shopId) || DEFAULT_WARRANTY_TERMS_URDU).trim()
   let updatedCount = 0
 
   try {
@@ -574,28 +631,22 @@ export async function updateExistingQueueMessagesWithWarranty(shopId, customWarr
 
       for (const item of shopItems) {
         const text = item.message_text || ''
-        // Check if message already has the warranty terms
-        if (!text.includes('LCD') && !text.includes('فیس لاک') && !text.includes('وارنٹی شرائط')) {
-          let updatedText = ''
-          if (text.includes('آپ کے اعتماد') || text.includes('Thank you for your business')) {
-            const splitAnchor = text.includes('آپ کے اعتماد') ? 'آپ کے اعتماد' : 'Thank you for your business'
-            const parts = text.split(splitAnchor)
-            updatedText = `${parts[0].trim()}\n\n${warrantyText}\n\n${splitAnchor}${parts[1]}`
-          } else {
-            updatedText = `${text.trim()}\n\n${warrantyText}`
-          }
+        // Check if message already has the exact current warranty terms
+        if (!text.includes(warrantyText)) {
+          const updatedText = replaceOrInjectWarrantyInTemplate(text, warrantyText)
+          if (updatedText && updatedText !== text) {
+            await db.whatsapp_queue.update(item.id, { message_text: updatedText })
+            updatedCount++
 
-          await db.whatsapp_queue.update(item.id, { message_text: updatedText })
-          updatedCount++
-
-          // Mirror into Supabase
-          if (navigator.onLine && !isSupabaseTableMissing) {
-            try {
-              await supabase
-                .from('whatsapp_queue')
-                .update({ message_text: updatedText })
-                .eq('id', item.id)
-            } catch (_) {}
+            // Mirror into Supabase
+            if (navigator.onLine && !isSupabaseTableMissing) {
+              try {
+                await supabase
+                  .from('whatsapp_queue')
+                  .update({ message_text: updatedText })
+                  .eq('id', item.id)
+              } catch (_) {}
+            }
           }
         }
       }
@@ -608,17 +659,12 @@ export async function updateExistingQueueMessagesWithWarranty(shopId, customWarr
       const newLocalQueue = localQueue.map(item => {
         if (shopId && String(item.shop_id) !== String(shopId)) return item
         const text = item.message_text || ''
-        if (!text.includes('LCD') && !text.includes('فیس لاک') && !text.includes('وارنٹی شرائط')) {
-          lsUpdated = true
-          let updatedText = ''
-          if (text.includes('آپ کے اعتماد') || text.includes('Thank you for your business')) {
-            const splitAnchor = text.includes('آپ کے اعتماد') ? 'آپ کے اعتماد' : 'Thank you for your business'
-            const parts = text.split(splitAnchor)
-            updatedText = `${parts[0].trim()}\n\n${warrantyText}\n\n${splitAnchor}${parts[1]}`
-          } else {
-            updatedText = `${text.trim()}\n\n${warrantyText}`
+        if (!text.includes(warrantyText)) {
+          const updatedText = replaceOrInjectWarrantyInTemplate(text, warrantyText)
+          if (updatedText && updatedText !== text) {
+            lsUpdated = true
+            return { ...item, message_text: updatedText }
           }
-          return { ...item, message_text: updatedText }
         }
         return item
       })
