@@ -698,7 +698,7 @@ export function buildExchangeBillHTML(exchange, shopSettings = {}) {
       ${exchange.customer_phone || exchange.customer?.phone ? `<p><b>Phone:</b> ${exchange.customer_phone || exchange.customer?.phone}</p>` : ''}
       
       <div class="solid"></div>
-      <p class="b">📥 TRADED-IN DEVICE(S):</p>
+      <p class="b">📥 CUSTOMER'S OLD PHONE(S):</p>
       <table>
         ${incoming.map(p => `
           <tr>
@@ -715,10 +715,10 @@ export function buildExchangeBillHTML(exchange, shopSettings = {}) {
           </tr>
         `).join('')}
       </table>
-      <p class="r" style="margin-top:4px"><b>Total Trade-in Credit:</b> Rs. ${tradeInCredit.toLocaleString('en-PK')}</p>
+      <p class="r" style="margin-top:4px"><b>Total Old Phone Value:</b> Rs. ${tradeInCredit.toLocaleString('en-PK')}</p>
 
       <div class="solid"></div>
-      <p class="b">📤 OUTGOING PURCHASE(S):</p>
+      <p class="b">📤 NEW ITEM(S) PURCHASED:</p>
       <table>
         ${outgoing.map(item => `
           <tr>
@@ -733,16 +733,16 @@ export function buildExchangeBillHTML(exchange, shopSettings = {}) {
           </tr>
         `).join('')}
       </table>
-      <p class="r" style="margin-top:4px"><b>Total Outgoing Items:</b> Rs. ${saleAmount.toLocaleString('en-PK')}</p>
+      <p class="r" style="margin-top:4px"><b>Total New Items:</b> Rs. ${saleAmount.toLocaleString('en-PK')}</p>
 
       <div class="solid"></div>
       <p class="b">RECONCILIATION SUMMARY:</p>
       <div style="display:flex;justify-content:space-between;padding:1px 0">
-        <span>Outgoing Purchases:</span>
+        <span>New Purchases:</span>
         <b>Rs. ${saleAmount.toLocaleString('en-PK')}</b>
       </div>
       <div style="display:flex;justify-content:space-between;padding:1px 0">
-        <span>Less: Trade-in Credit:</span>
+        <span>Less: Old Phone Value:</span>
         <b>- Rs. ${tradeInCredit.toLocaleString('en-PK')}</b>
       </div>
       <div class="dot"></div>
@@ -821,7 +821,7 @@ export function buildExchangeBillHTML(exchange, shopSettings = {}) {
     </div>
 
     <div style="margin-top:16px">
-      <div style="font-size:13px;font-weight:800;color:#dc2626;text-transform:uppercase;margin-bottom:4px">📥 Traded-In Device(s) (Incoming)</div>
+      <div style="font-size:13px;font-weight:800;color:#dc2626;text-transform:uppercase;margin-bottom:4px">📥 Customer's Old Phone(s) (Incoming)</div>
       <table>
         <thead>
           <tr>
@@ -841,7 +841,7 @@ export function buildExchangeBillHTML(exchange, shopSettings = {}) {
             </tr>
           `).join('')}
           <tr style="background:#fef2f2">
-            <td colspan="3" class="b r" style="color:#dc2626">TOTAL TRADE-IN CREDIT:</td>
+            <td colspan="3" class="b r" style="color:#dc2626">TOTAL OLD PHONE VALUE:</td>
             <td class="r b" style="color:#dc2626;font-size:14px">Rs. ${tradeInCredit.toLocaleString('en-PK')}</td>
           </tr>
         </tbody>
@@ -849,7 +849,7 @@ export function buildExchangeBillHTML(exchange, shopSettings = {}) {
     </div>
 
     <div style="margin-top:20px">
-      <div style="font-size:13px;font-weight:800;color:#16a34a;text-transform:uppercase;margin-bottom:4px">📤 Outgoing Replacement Items (Purchased)</div>
+      <div style="font-size:13px;font-weight:800;color:#16a34a;text-transform:uppercase;margin-bottom:4px">📤 New Replacement Items (Purchased)</div>
       <table>
         <thead>
           <tr>

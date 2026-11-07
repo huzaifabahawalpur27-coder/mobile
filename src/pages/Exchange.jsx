@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   RefreshCw,
   Plus,
@@ -12,7 +12,10 @@ import {
   Search,
   Building2,
   User,
-  ShieldAlert
+  ShieldAlert,
+  ChevronDown,
+  ChevronUp,
+  Sparkles
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../services/supabase'
@@ -20,12 +23,45 @@ import { getBankAccounts } from '../services/bankService'
 import { processPhoneExchange, getExchanges, voidPhoneExchange } from '../services/exchangeService'
 import { buildExchangeBillHTML } from '../utils/billTemplates'
 import { buildExchangeWhatsAppText } from '../services/whatsappQueueService'
+import { IPHONE_MODELS } from '../utils/iphonePresets'
 
 const PHONE_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Oppo', 'Vivo', 'Realme', 'OnePlus', 'Google', 'Infinix', 'Tecno', 'Other']
 const PHONE_STORAGES = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB']
 const PHONE_CONDITIONS = ['Used - Like New', 'Used - Good', 'Used - Fair', 'Damaged / Needs Repair']
 const PTA_STATUSES = ['PTA Approved', 'Non-PTA', 'JV / Gevey', 'Software Patch']
 const SCREEN_CONDITIONS = ['Flawless (No Scratches)', 'Minor Scratches', 'Replaced / Aftermarket', 'Cracked / Damaged']
+
+const COMMON_ANDROID_MODELS = [
+  { brand: 'Samsung', name: 'Galaxy S24 Ultra', defaultStorage: '256GB' },
+  { brand: 'Samsung', name: 'Galaxy S24 Plus', defaultStorage: '256GB' },
+  { brand: 'Samsung', name: 'Galaxy S24', defaultStorage: '128GB' },
+  { brand: 'Samsung', name: 'Galaxy S23 Ultra', defaultStorage: '256GB' },
+  { brand: 'Samsung', name: 'Galaxy S23', defaultStorage: '128GB' },
+  { brand: 'Samsung', name: 'Galaxy S22 Ultra', defaultStorage: '128GB' },
+  { brand: 'Samsung', name: 'Galaxy A55 5G', defaultStorage: '128GB' },
+  { brand: 'Samsung', name: 'Galaxy A35 5G', defaultStorage: '128GB' },
+  { brand: 'Samsung', name: 'Galaxy A15', defaultStorage: '128GB' },
+  { brand: 'Xiaomi', name: 'Redmi Note 13 Pro Plus', defaultStorage: '256GB' },
+  { brand: 'Xiaomi', name: 'Redmi Note 13 Pro', defaultStorage: '128GB' },
+  { brand: 'Xiaomi', name: 'Redmi Note 13', defaultStorage: '128GB' },
+  { brand: 'Xiaomi', name: 'Redmi 13C', defaultStorage: '128GB' },
+  { brand: 'Xiaomi', name: '14 Ultra', defaultStorage: '512GB' },
+  { brand: 'Google', name: 'Pixel 8 Pro', defaultStorage: '128GB' },
+  { brand: 'Google', name: 'Pixel 8', defaultStorage: '128GB' },
+  { brand: 'Google', name: 'Pixel 7 Pro', defaultStorage: '128GB' },
+  { brand: 'Google', name: 'Pixel 7', defaultStorage: '128GB' },
+  { brand: 'Google', name: 'Pixel 6 Pro', defaultStorage: '128GB' },
+  { brand: 'OnePlus', name: '12', defaultStorage: '256GB' },
+  { brand: 'OnePlus', name: '11', defaultStorage: '128GB' },
+  { brand: 'Vivo', name: 'V30 Pro', defaultStorage: '256GB' },
+  { brand: 'Vivo', name: 'V30', defaultStorage: '128GB' },
+  { brand: 'Vivo', name: 'Y28', defaultStorage: '128GB' },
+  { brand: 'Oppo', name: 'Reno 11', defaultStorage: '256GB' },
+  { brand: 'Infinix', name: 'Note 40 Pro', defaultStorage: '256GB' },
+  { brand: 'Infinix', name: 'Hot 40 Pro', defaultStorage: '128GB' },
+  { brand: 'Tecno', name: 'Camon 30', defaultStorage: '256GB' },
+  { brand: 'Tecno', name: 'Spark 20', defaultStorage: '128GB' }
+]
 
 export default function Exchange() {
   const { user } = useAuth()
@@ -40,6 +76,8 @@ export default function Exchange() {
   const [availablePhones, setAvailablePhones] = useState([])
   const [availableProducts, setAvailableProducts] = useState([])
   const [shopSettings, setShopSettings] = useState({})
+  const [knownPhoneModels, setKnownPhoneModels] = useState([])
+  const [activeAutocompletePhoneId, setActiveAutocompletePhoneId] = useState(null)
 
   // Form State: Counterparty & Branch
   const [selectedCustomerId, setSelectedCustomerId] = useState('')
@@ -53,7 +91,7 @@ export default function Exchange() {
   const [newCustomerName, setNewCustomerName] = useState('')
   const [newCustomerPhone, setNewCustomerPhone] = useState('')
 
-  // Panel A: Incoming Traded-In Phones
+  // Panel A: Incoming Old Phone(s)
   const [incomingPhones, setIncomingPhones] = useState([
     {
       id: 1,
@@ -70,11 +108,12 @@ export default function Exchange() {
       battery_health: '',
       screen_condition: 'Flawless (No Scratches)',
       accessories: ['Box'],
-      defects: ''
+      defects: '',
+      expanded: false
     }
   ])
 
-  // Panel B: Outgoing Replacement Items
+  // Panel B: Outgoing New Phone / Replacement Items
   const [outgoingItems, setOutgoingItems] = useState([])
   const [inventorySearch, setInventorySearch] = useState('')
   const [inventoryFilter, setInventoryFilter] = useState('phones') // 'phones' | 'accessories'
@@ -142,6 +181,38 @@ export default function Exchange() {
       // 6. Shop settings
       const { data: sData } = await supabase.from('shops').select('*').eq('id', sid).maybeSingle()
       if (sData) setShopSettings(sData)
+
+      // 7. Extract known phone models from DB (all past & current phones)
+      const { data: allPastPhones } = await supabase
+        .from('phones')
+        .select('brand, model, storage')
+        .eq('shop_id', sid)
+        .limit(300)
+
+      const fromDb = (allPastPhones || [])
+        .filter(p => p.model && p.model.trim())
+        .map(p => ({
+          brand: p.brand || 'Other',
+          name: p.model.trim(),
+          defaultStorage: p.storage || '128GB'
+        }))
+
+      const iphoneList = IPHONE_MODELS.map(m => ({
+        brand: 'Apple',
+        name: m.name,
+        defaultStorage: m.defaultStorage || '128GB',
+        shorthand: m.shorthand || []
+      }))
+
+      // Merge and deduplicate models
+      const modelMap = new Map()
+      ;[...fromDb, ...iphoneList, ...COMMON_ANDROID_MODELS].forEach(item => {
+        const key = `${item.brand}__${item.name}`.toLowerCase()
+        if (!modelMap.has(key)) {
+          modelMap.set(key, item)
+        }
+      })
+      setKnownPhoneModels(Array.from(modelMap.values()))
     } catch (err) {
       console.warn('Initial data load warning:', err)
     }
@@ -193,7 +264,8 @@ export default function Exchange() {
         battery_health: '',
         screen_condition: 'Flawless (No Scratches)',
         accessories: ['Box'],
-        defects: ''
+        defects: '',
+        expanded: false
       }
     ])
   }
@@ -206,10 +278,35 @@ export default function Exchange() {
 
   const removeIncomingPhone = (id) => {
     if (incomingPhones.length === 1) {
-      alert('An exchange requires at least one surrendered phone')
+      alert('An exchange requires at least one customer phone')
       return
     }
     setIncomingPhones(prev => prev.filter(p => p.id !== id))
+  }
+
+  // Model Autocomplete Selection
+  const selectModelSuggestion = (phoneId, suggestion) => {
+    updateIncomingPhone(phoneId, 'model', suggestion.name)
+    if (suggestion.brand) {
+      updateIncomingPhone(phoneId, 'brand', suggestion.brand)
+    }
+    if (suggestion.defaultStorage) {
+      updateIncomingPhone(phoneId, 'storage', suggestion.defaultStorage)
+    }
+    setActiveAutocompletePhoneId(null)
+  }
+
+  const getFilteredSuggestions = (query, currentBrand) => {
+    if (!query || query.trim().length === 0) return []
+    const q = query.toLowerCase().trim()
+    return knownPhoneModels
+      .filter(m => {
+        const matchName = m.name.toLowerCase().includes(q)
+        const matchShorthand = Array.isArray(m.shorthand) && m.shorthand.some(sh => sh.toLowerCase().includes(q))
+        const matchBrand = currentBrand && currentBrand !== 'Other' ? m.brand.toLowerCase() === currentBrand.toLowerCase() : true
+        return (matchName || matchShorthand) && matchBrand
+      })
+      .slice(0, 8)
   }
 
   // Outgoing Replacement Helpers
@@ -368,7 +465,7 @@ export default function Exchange() {
 
     // 2. Incoming trade-in validation
     if (incomingPhones.length === 0) {
-      setSubmitError('At least one traded-in phone is required')
+      setSubmitError('At least one old phone is required')
       return false
     }
 
@@ -377,11 +474,11 @@ export default function Exchange() {
       const p = incomingPhones[i]
       const cleanImei = String(p.imei_1 || '').trim()
       if (cleanImei.length < 6) {
-        setSubmitError(`Trade-in Phone #${i + 1}: Valid IMEI 1 is required (min 6 digits)`)
+        setSubmitError(`Old Phone #${i + 1}: Valid IMEI 1 is required (min 6 digits)`)
         return false
       }
       if (seenImeis.has(cleanImei)) {
-        setSubmitError(`Duplicate IMEI ${cleanImei} entered in trade-in items`)
+        setSubmitError(`Duplicate IMEI ${cleanImei} entered in old phones`)
         return false
       }
       seenImeis.add(cleanImei)
@@ -389,7 +486,7 @@ export default function Exchange() {
       if (p.imei_2) {
         const cleanImei2 = String(p.imei_2).trim()
         if (cleanImei2 && seenImeis.has(cleanImei2)) {
-          setSubmitError(`Duplicate IMEI 2 ${cleanImei2} entered in trade-in items`)
+          setSubmitError(`Duplicate IMEI 2 ${cleanImei2} entered`)
           return false
         }
         if (cleanImei2) seenImeis.add(cleanImei2)
@@ -397,14 +494,14 @@ export default function Exchange() {
 
       const val = parseFloat(p.assessed_value)
       if (isNaN(val) || val < 0) {
-        setSubmitError(`Trade-in Phone #${i + 1}: Please enter a valid assessed valuation amount`)
+        setSubmitError(`Old Phone #${i + 1}: Please enter the old phone value amount`)
         return false
       }
     }
 
     // 3. Outgoing items validation
     if (outgoingItems.length === 0) {
-      setSubmitError('Please select at least one replacement phone or accessory from inventory')
+      setSubmitError('Please select at least one replacement phone or accessory from store stock')
       return false
     }
 
@@ -481,7 +578,6 @@ export default function Exchange() {
       if (result && result.success) {
         setShowConfirmModal(false)
 
-        // Snapshot complete exchange for receipt printing & WhatsApp
         const completedSnapshot = {
           ...result,
           customer_name: custName,
@@ -509,10 +605,7 @@ export default function Exchange() {
 
         setCompletedExchange(completedSnapshot)
         setShowReceiptModal(true)
-
-        // Reset Form
         resetExchangeForm()
-        // Reload inventory
         loadInitialData()
       } else {
         throw new Error(result?.error || 'Transaction failed')
@@ -546,7 +639,8 @@ export default function Exchange() {
         battery_health: '',
         screen_condition: 'Flawless (No Scratches)',
         accessories: ['Box'],
-        defects: ''
+        defects: '',
+        expanded: false
       }
     ])
     setOutgoingItems([])
@@ -605,400 +699,433 @@ export default function Exchange() {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 space-y-4">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shrink-0">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
-            <span className="p-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl">
-              <RefreshCw size={24} />
-            </span>
-            Phone Trade-in & Exchange
-          </h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Intake customer used phone(s), purchase new stock, and settle net difference in one atomic transaction
-          </p>
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-[#f5f5f7] dark:bg-black text-[#1d1d1f] dark:text-[#f5f5f7]">
+      {/* ── TOP COMPACT HEADER BAR (SHRINK-0) ── */}
+      <div className="shrink-0 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 p-2.5 px-4 flex flex-wrap items-center justify-between gap-3 shadow-2xs z-20">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="p-1.5 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-xl flex items-center justify-center">
+            <RefreshCw size={18} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight truncate">
+              Phone Trade-in & Exchange
+            </h1>
+            <p className="text-[10px] text-gray-400 truncate">
+              Customer Old Phone intake & New Phone sale in 1 step
+            </p>
+          </div>
+
+          {/* Mode Switcher */}
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs ml-2">
+            <button
+              onClick={() => setActiveTab('new')}
+              className={`px-2.5 py-1 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                activeTab === 'new'
+                  ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
+              }`}
+            >
+              <Plus size={12} /> New Exchange
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`px-2.5 py-1 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                activeTab === 'history'
+                  ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
+              }`}
+            >
+              📜 History
+            </button>
+          </div>
         </div>
 
-        {/* Tab Toggle */}
-        <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl">
-          <button
-            onClick={() => setActiveTab('new')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'new'
-                ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-sm'
-                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900'
-            }`}
-          >
-            <Plus size={14} /> New Exchange
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'history'
-                ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-sm'
-                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900'
-            }`}
-          >
-            📜 Exchange History
-          </button>
-        </div>
-      </div>
+        {/* Top Controls: Customer + Branch */}
+        {activeTab === 'new' && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {/* Customer Picker */}
+            <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-slate-800 p-1 px-2 rounded-lg border border-gray-200 dark:border-slate-700">
+              <User size={13} className="text-purple-600 shrink-0" />
+              <select
+                value={selectedCustomerId}
+                onChange={e => {
+                  setSelectedCustomerId(e.target.value)
+                  if (e.target.value) {
+                    setWalkInName('')
+                    setWalkInPhone('')
+                  }
+                }}
+                className="bg-transparent border-none text-xs font-semibold focus:outline-hidden text-gray-800 dark:text-gray-200"
+              >
+                <option value="">Walk-in Customer</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} {c.phone ? `(${c.phone})` : ''}
+                  </option>
+                ))}
+              </select>
 
-      {activeTab === 'new' ? (
-        /* ── NEW EXCHANGE WORKFLOW ── */
-        <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 space-y-4 pr-1">
-          {/* Header Card: Customer & Branch Selection */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-200 dark:border-slate-800 shadow-xs">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Customer Selector */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                    <User size={13} className="text-purple-600" /> Customer <span className="text-red-500">*</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddCustomerModal(true)}
-                    className="text-[11px] font-bold text-purple-600 hover:text-purple-800 dark:text-purple-400"
-                  >
-                    + New Customer
-                  </button>
+              {!selectedCustomerId && (
+                <div className="flex items-center gap-1 ml-1 pl-1 border-l border-gray-200 dark:border-slate-700">
+                  <input
+                    type="text"
+                    placeholder="Walk-in Name *"
+                    value={walkInName}
+                    onChange={e => setWalkInName(e.target.value)}
+                    className="w-24 text-[11px] p-0.5 px-1 bg-white dark:bg-slate-900 rounded border border-gray-200 dark:border-slate-700"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Phone"
+                    value={walkInPhone}
+                    onChange={e => setWalkInPhone(e.target.value)}
+                    className="w-20 text-[11px] p-0.5 px-1 bg-white dark:bg-slate-900 rounded border border-gray-200 dark:border-slate-700"
+                  />
                 </div>
-                <select
-                  value={selectedCustomerId}
-                  onChange={e => {
-                    setSelectedCustomerId(e.target.value)
-                    if (e.target.value) {
-                      setWalkInName('')
-                      setWalkInPhone('')
-                    }
-                  }}
-                  className="w-full text-xs p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                >
-                  <option value="">-- Walk-in / New Customer --</option>
-                  {customers.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.phone ? `(${c.phone})` : ''}
-                    </option>
-                  ))}
-                </select>
+              )}
 
-                {!selectedCustomerId && (
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <input
-                      type="text"
-                      placeholder="Walk-in Customer Name *"
-                      value={walkInName}
-                      onChange={e => setWalkInName(e.target.value)}
-                      className="text-xs p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Phone (e.g. 03001234567)"
-                      value={walkInPhone}
-                      onChange={e => setWalkInPhone(e.target.value)}
-                      className="text-xs p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                    />
-                  </div>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddCustomerModal(true)}
+                className="text-[11px] font-bold text-purple-600 hover:text-purple-800 dark:text-purple-400 ml-1 cursor-pointer"
+                title="Add New Customer"
+              >
+                + Add
+              </button>
+            </div>
 
-              {/* Branch Selector */}
-              <div>
-                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1">
-                  <Building2 size={13} className="text-purple-600" /> Active Branch
-                </label>
+            {/* Branch Picker */}
+            {branches.length > 1 && (
+              <div className="flex items-center gap-1 bg-gray-50 dark:bg-slate-800 p-1 px-2 rounded-lg border border-gray-200 dark:border-slate-700">
+                <Building2 size={13} className="text-gray-500 shrink-0" />
                 <select
                   value={selectedBranchId}
                   onChange={e => setSelectedBranchId(e.target.value)}
-                  className="w-full text-xs p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
+                  className="bg-transparent border-none text-xs font-semibold focus:outline-hidden text-gray-800 dark:text-gray-200"
                 >
                   {branches.map(b => (
                     <option key={b.id} value={b.id}>
-                      {b.name} {b.is_main ? '(Main Branch)' : ''}
+                      {b.name}
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  Inventory movements and accounting will be posted to this branch.
-                </p>
               </div>
+            )}
 
-              {/* General Notes */}
-              <div>
-                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 block">
-                  Exchange Remarks / Memo
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Customer traded iPhone 13 for 15 Pro Max"
-                  value={generalNotes}
-                  onChange={e => setGeneralNotes(e.target.value)}
-                  className="w-full text-xs p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                />
-              </div>
-            </div>
+            {/* General Notes input */}
+            <input
+              type="text"
+              placeholder="Memo / Remarks..."
+              value={generalNotes}
+              onChange={e => setGeneralNotes(e.target.value)}
+              className="text-xs p-1 px-2.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-200 w-36 sm:w-48"
+            />
           </div>
+        )}
+      </div>
 
-          {/* DUAL PANELS: LEFT (TRADE-IN) & RIGHT (OUTGOING) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* ── PANEL A: INCOMING TRADE-IN INTAKE ── */}
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-200 dark:border-slate-800 shadow-xs flex flex-col min-h-0">
-              <div className="flex justify-between items-center pb-3 border-b border-gray-200 dark:border-slate-800 mb-3">
+      {activeTab === 'new' ? (
+        /* ── WORKSPACE AREA (NO SCROLL MAIN SCREEN) ── */
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {/* DUAL WORKSPACE PANELS (50/50 GRID) */}
+          <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3 p-3 overflow-hidden">
+            {/* ══════════════════════════════════════════════════════════
+                PANEL A: CUSTOMER'S OLD PHONE (آنے والا پرانا فون)
+            ══════════════════════════════════════════════════════════ */}
+            <div className="flex flex-col h-full min-h-0 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-2xs overflow-hidden">
+              {/* Header */}
+              <div className="p-2.5 px-3 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0 bg-gray-50/70 dark:bg-slate-800/40">
                 <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 flex items-center justify-center font-bold text-xs">
+                  <span className="w-5 h-5 rounded-md bg-red-100 dark:bg-red-950/40 text-red-600 flex items-center justify-center font-black text-xs">
                     📥
                   </span>
                   <div>
-                    <h2 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider">
-                      Customer Traded-In Phone(s)
+                    <h2 className="text-xs font-black uppercase text-gray-900 dark:text-white tracking-wider">
+                      Customer's Old Phone (گاہک کا پرانا فون)
                     </h2>
-                    <p className="text-[11px] text-gray-500">Device specs, physical inspection, & valuation</p>
+                    <p className="text-[10px] text-gray-400">Incoming device specs & value</p>
                   </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={addIncomingPhone}
-                  className="px-2.5 py-1 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/40 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition"
+                  className="px-2 py-0.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/40 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition"
                 >
-                  <Plus size={13} /> Add Phone
+                  <Plus size={12} /> Add Phone
                 </button>
               </div>
 
-              {/* Trade-in Devices List */}
-              <div className="space-y-4 flex-1">
-                {incomingPhones.map((phone, index) => (
-                  <div
-                    key={phone.id}
-                    className="p-3 bg-red-50/40 dark:bg-red-950/10 rounded-xl border border-red-100 dark:border-red-900/30 space-y-3"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-black text-red-700 dark:text-red-400 uppercase tracking-wide">
-                        Device #{index + 1}
-                      </span>
-                      {incomingPhones.length > 1 && (
+              {/* Scrollable list of Old Phones */}
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 space-y-2.5">
+                {incomingPhones.map((phone, index) => {
+                  const suggestions = getFilteredSuggestions(phone.model, phone.brand)
+                  const showDropdown = activeAutocompletePhoneId === phone.id && suggestions.length > 0
+
+                  return (
+                    <div
+                      key={phone.id}
+                      className="p-2.5 bg-red-50/30 dark:bg-red-950/10 rounded-xl border border-red-100 dark:border-red-900/30 space-y-2 relative"
+                    >
+                      {/* Top Row: Device Header + Remove */}
+                      <div className="flex justify-between items-center">
+                        <span className="text-[11px] font-black text-red-700 dark:text-red-400 uppercase tracking-wide">
+                          Old Phone #{index + 1}
+                        </span>
+                        {incomingPhones.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeIncomingPhone(phone.id)}
+                            className="text-gray-400 hover:text-red-600 transition"
+                            title="Remove"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Line 1: Brand & Model (with instant autocomplete) */}
+                      <div className="grid grid-cols-12 gap-2">
+                        <div className="col-span-4">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                            Brand
+                          </label>
+                          <select
+                            value={phone.brand}
+                            onChange={e => updateIncomingPhone(phone.id, 'brand', e.target.value)}
+                            className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-semibold"
+                          >
+                            {PHONE_BRANDS.map(b => (
+                              <option key={b} value={b}>
+                                {b}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="col-span-8 relative">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between items-center mb-0.5">
+                            <span>Phone Name / Model *</span>
+                            <span className="text-[9px] text-purple-600 dark:text-purple-400 flex items-center gap-0.5 font-normal">
+                              <Sparkles size={10} /> Type to autocomplete
+                            </span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Type phone name (e.g. 13 Pro, S23 Ultra, Note 13)..."
+                            value={phone.model}
+                            onFocus={() => setActiveAutocompletePhoneId(phone.id)}
+                            onChange={e => {
+                              updateIncomingPhone(phone.id, 'model', e.target.value)
+                              setActiveAutocompletePhoneId(phone.id)
+                            }}
+                            className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-bold focus:border-purple-500"
+                          />
+
+                          {/* Autocomplete Suggestions Popover */}
+                          {showDropdown && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-900 rounded-xl shadow-xl z-50 max-h-44 overflow-y-auto custom-scrollbar divide-y divide-gray-100 dark:divide-slate-700">
+                              {suggestions.map((sug, sIdx) => (
+                                <div
+                                  key={sIdx}
+                                  onMouseDown={e => {
+                                    e.preventDefault()
+                                    selectModelSuggestion(phone.id, sug)
+                                  }}
+                                  className="p-2 hover:bg-purple-50 dark:hover:bg-purple-950/40 text-xs cursor-pointer flex justify-between items-center transition"
+                                >
+                                  <div>
+                                    <span className="font-black text-gray-900 dark:text-white mr-1.5">
+                                      {sug.name}
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.2 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 rounded font-bold">
+                                      {sug.brand}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-gray-400 font-mono">
+                                    {sug.defaultStorage || ''}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Line 2: Storage, Color, PTA Status */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                            Storage
+                          </label>
+                          <select
+                            value={phone.storage}
+                            onChange={e => updateIncomingPhone(phone.id, 'storage', e.target.value)}
+                            className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
+                          >
+                            {PHONE_STORAGES.map(s => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                            Color
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Black"
+                            value={phone.color}
+                            onChange={e => updateIncomingPhone(phone.id, 'color', e.target.value)}
+                            className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                            PTA Status
+                          </label>
+                          <select
+                            value={phone.pta_status}
+                            onChange={e => updateIncomingPhone(phone.id, 'pta_status', e.target.value)}
+                            className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-semibold"
+                          >
+                            {PTA_STATUSES.map(p => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Line 3: IMEI 1 & Old Phone Value */}
+                      <div className="grid grid-cols-12 gap-2 items-center">
+                        <div className="col-span-6">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                            IMEI 1 (Required) *
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={16}
+                            placeholder="15-digit IMEI"
+                            value={phone.imei_1}
+                            onChange={e => updateIncomingPhone(phone.id, 'imei_1', e.target.value.replace(/\s+/g, ''))}
+                            className="w-full text-xs font-mono p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
+                          />
+                        </div>
+
+                        <div className="col-span-6">
+                          <label className="text-[10px] font-black text-red-700 dark:text-red-400 uppercase flex justify-between items-center mb-0.5">
+                            <span>Old Phone Value (PKR) *</span>
+                            {phone.assessed_value && (
+                              <span className="font-mono text-[10px]">
+                                Rs. {parseFloat(phone.assessed_value || 0).toLocaleString('en-PK')}
+                              </span>
+                            )}
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="0.00"
+                            value={phone.assessed_value}
+                            onChange={e => updateIncomingPhone(phone.id, 'assessed_value', e.target.value)}
+                            className="w-full text-xs font-black p-1.5 rounded-lg border-2 border-red-300 dark:border-red-900 bg-white dark:bg-slate-800 text-red-700 dark:text-red-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Collapsible Inspection Details Toggle */}
+                      <div className="pt-1">
                         <button
                           type="button"
-                          onClick={() => removeIncomingPhone(phone.id)}
-                          className="text-gray-400 hover:text-red-600 transition"
-                          title="Remove this phone"
+                          onClick={() => updateIncomingPhone(phone.id, 'expanded', !phone.expanded)}
+                          className="text-[10px] font-bold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 flex items-center gap-1 cursor-pointer"
                         >
-                          <Trash2 size={14} />
+                          {phone.expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                          <span>{phone.expanded ? 'Hide Extra Details' : '+ Extra Details (Battery %, Screen, IMEI 2, Notes)'}</span>
                         </button>
-                      )}
-                    </div>
 
-                    {/* Brand & Model */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          Brand
-                        </label>
-                        <select
-                          value={phone.brand}
-                          onChange={e => updateIncomingPhone(phone.id, 'brand', e.target.value)}
-                          className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        >
-                          {PHONE_BRANDS.map(b => (
-                            <option key={b} value={b}>
-                              {b}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          Model Name *
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. iPhone 13 Pro"
-                          value={phone.model}
-                          onChange={e => updateIncomingPhone(phone.id, 'model', e.target.value)}
-                          className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Storage & Color */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          Storage
-                        </label>
-                        <select
-                          value={phone.storage}
-                          onChange={e => updateIncomingPhone(phone.id, 'storage', e.target.value)}
-                          className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        >
-                          {PHONE_STORAGES.map(s => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          Color
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Sierra Blue"
-                          value={phone.color}
-                          onChange={e => updateIncomingPhone(phone.id, 'color', e.target.value)}
-                          className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        />
-                      </div>
-                    </div>
-
-                    {/* IMEI 1 & IMEI 2 */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          IMEI 1 (Required) *
-                        </label>
-                        <input
-                          type="text"
-                          maxLength={16}
-                          placeholder="15-digit IMEI"
-                          value={phone.imei_1}
-                          onChange={e => updateIncomingPhone(phone.id, 'imei_1', e.target.value.replace(/\s+/g, ''))}
-                          className="w-full text-xs font-mono p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          IMEI 2 (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          maxLength={16}
-                          placeholder="Secondary IMEI"
-                          value={phone.imei_2}
-                          onChange={e => updateIncomingPhone(phone.id, 'imei_2', e.target.value.replace(/\s+/g, ''))}
-                          className="w-full text-xs font-mono p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Condition & PTA Status */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          Condition
-                        </label>
-                        <select
-                          value={phone.condition}
-                          onChange={e => updateIncomingPhone(phone.id, 'condition', e.target.value)}
-                          className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        >
-                          {PHONE_CONDITIONS.map(c => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          PTA Status
-                        </label>
-                        <select
-                          value={phone.pta_status}
-                          onChange={e => updateIncomingPhone(phone.id, 'pta_status', e.target.value)}
-                          className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        >
-                          {PTA_STATUSES.map(p => (
-                            <option key={p} value={p}>
-                              {p}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Inspection: Battery Health & Screen */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          Battery Health %
-                        </label>
-                        <input
-                          type="number"
-                          min="40"
-                          max="100"
-                          placeholder="e.g. 88"
-                          value={phone.battery_health}
-                          onChange={e => updateIncomingPhone(phone.id, 'battery_health', e.target.value)}
-                          className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">
-                          Screen Condition
-                        </label>
-                        <select
-                          value={phone.screen_condition}
-                          onChange={e => updateIncomingPhone(phone.id, 'screen_condition', e.target.value)}
-                          className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        >
-                          {SCREEN_CONDITIONS.map(sc => (
-                            <option key={sc} value={sc}>
-                              {sc}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Valuation (Trade-in Credit) */}
-                    <div className="pt-2 border-t border-red-200 dark:border-red-900/30">
-                      <label className="text-xs font-black text-red-700 dark:text-red-400 uppercase flex items-center justify-between">
-                        <span>Assessed Trade-in Credit (PKR) *</span>
-                        {phone.assessed_value && (
-                          <span className="font-mono text-xs">
-                            Rs. {parseFloat(phone.assessed_value || 0).toLocaleString('en-PK')}
-                          </span>
+                        {phone.expanded && (
+                          <div className="mt-2 pt-2 border-t border-red-100 dark:border-red-900/30 grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <label className="text-[10px] text-gray-500 block">Battery Health %</label>
+                              <input
+                                type="number"
+                                placeholder="e.g. 88"
+                                value={phone.battery_health}
+                                onChange={e => updateIncomingPhone(phone.id, 'battery_health', e.target.value)}
+                                className="w-full text-xs p-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-gray-500 block">Screen Condition</label>
+                              <select
+                                value={phone.screen_condition}
+                                onChange={e => updateIncomingPhone(phone.id, 'screen_condition', e.target.value)}
+                                className="w-full text-xs p-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+                              >
+                                {SCREEN_CONDITIONS.map(sc => (
+                                  <option key={sc} value={sc}>
+                                    {sc}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-gray-500 block">IMEI 2 (Optional)</label>
+                              <input
+                                type="text"
+                                placeholder="Secondary IMEI"
+                                value={phone.imei_2}
+                                onChange={e => updateIncomingPhone(phone.id, 'imei_2', e.target.value.replace(/\s+/g, ''))}
+                                className="w-full text-xs font-mono p-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-gray-500 block">Defects / Notes</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. minor dent on corner"
+                                value={phone.notes}
+                                onChange={e => updateIncomingPhone(phone.id, 'notes', e.target.value)}
+                                className="w-full text-xs p-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+                              />
+                            </div>
+                          </div>
                         )}
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="0.00"
-                        value={phone.assessed_value}
-                        onChange={e => updateIncomingPhone(phone.id, 'assessed_value', e.target.value)}
-                        className="w-full text-sm font-bold p-2 mt-1 rounded-lg border-2 border-red-300 dark:border-red-900 bg-white dark:bg-slate-800 text-red-700 dark:text-red-400"
-                      />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
-              {/* Total Trade-in Credit Footer */}
-              <div className="mt-4 pt-3 border-t border-gray-200 dark:border-slate-800 flex justify-between items-center">
-                <span className="text-xs font-black uppercase text-gray-600 dark:text-gray-400">
-                  Total Trade-in Credit:
-                </span>
-                <span className="text-lg font-black text-red-600 dark:text-red-400 font-mono">
+              {/* Total Old Phone Value Footer */}
+              <div className="p-2.5 px-3 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0 bg-gray-50/70 dark:bg-slate-800/40">
+                <span className="text-xs font-bold text-gray-500">Total Old Phone Value:</span>
+                <span className="text-sm font-black text-red-600 dark:text-red-400 font-mono">
                   Rs. {totalTradeInCredit.toLocaleString('en-PK')}
                 </span>
               </div>
             </div>
 
-            {/* ── PANEL B: OUTGOING REPLACEMENT SELECTION ── */}
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-200 dark:border-slate-800 shadow-xs flex flex-col min-h-0">
-              <div className="flex justify-between items-center pb-3 border-b border-gray-200 dark:border-slate-800 mb-3">
+            {/* ══════════════════════════════════════════════════════════
+                PANEL B: NEW PHONE / ITEM (دکان کا نیا فون / سامان)
+            ══════════════════════════════════════════════════════════ */}
+            <div className="flex flex-col h-full min-h-0 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-2xs overflow-hidden">
+              {/* Header */}
+              <div className="p-2.5 px-3 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0 bg-gray-50/70 dark:bg-slate-800/40">
                 <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 flex items-center justify-center font-bold text-xs">
+                  <span className="w-5 h-5 rounded-md bg-green-100 dark:bg-green-950/40 text-green-600 flex items-center justify-center font-black text-xs">
                     📤
                   </span>
                   <div>
-                    <h2 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider">
-                      Outgoing Replacement Items
+                    <h2 className="text-xs font-black uppercase text-gray-900 dark:text-white tracking-wider">
+                      New Phone / Item (دکان کا نیا فون / سامان)
                     </h2>
-                    <p className="text-[11px] text-gray-500">Phones from stock & catalog accessories</p>
+                    <p className="text-[10px] text-gray-400">Available shop phones & accessories</p>
                   </div>
                 </div>
 
@@ -1006,8 +1133,10 @@ export default function Exchange() {
                   <button
                     type="button"
                     onClick={() => setInventoryFilter('phones')}
-                    className={`px-2 py-0.5 rounded-md font-bold transition ${
-                      inventoryFilter === 'phones' ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-xs' : 'text-gray-500'
+                    className={`px-2 py-0.5 rounded-md font-bold transition cursor-pointer ${
+                      inventoryFilter === 'phones'
+                        ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-2xs'
+                        : 'text-gray-500'
                     }`}
                   >
                     Phones ({availablePhones.length})
@@ -1015,8 +1144,10 @@ export default function Exchange() {
                   <button
                     type="button"
                     onClick={() => setInventoryFilter('accessories')}
-                    className={`px-2 py-0.5 rounded-md font-bold transition ${
-                      inventoryFilter === 'accessories' ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-xs' : 'text-gray-500'
+                    className={`px-2 py-0.5 rounded-md font-bold transition cursor-pointer ${
+                      inventoryFilter === 'accessories'
+                        ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-2xs'
+                        : 'text-gray-500'
                     }`}
                   >
                     Accessories
@@ -1024,298 +1155,276 @@ export default function Exchange() {
                 </div>
               </div>
 
-              {/* Quick Stock Search */}
-              <div className="relative mb-3">
-                <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search in-stock phones by Model, Brand, or IMEI..."
-                  value={inventorySearch}
-                  onChange={e => setInventorySearch(e.target.value)}
-                  className="w-full text-xs pl-8 pr-3 py-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                />
+              {/* Stock Search Input (shrink-0) */}
+              <div className="p-2.5 pb-1 shrink-0">
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search shop stock by Model, Brand, or IMEI..."
+                    value={inventorySearch}
+                    onChange={e => setInventorySearch(e.target.value)}
+                    className="w-full text-xs pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
+                  />
+                </div>
               </div>
 
-              {/* Stock Selector Picker (Compact Scroll Area) */}
-              <div className="h-44 overflow-y-auto custom-scrollbar border border-gray-200 dark:border-slate-800 rounded-lg p-1.5 space-y-1 mb-4 bg-gray-50/50 dark:bg-slate-950/20">
-                {inventoryFilter === 'phones' ? (
-                  filteredAvailablePhones.length > 0 ? (
-                    filteredAvailablePhones.map(phone => {
-                      const isAdded = outgoingItems.some(i => i.phone_id === phone.id)
-                      return (
-                        <div
-                          key={phone.id}
-                          onClick={() => !isAdded && addPhoneToOutgoing(phone)}
-                          className={`flex items-center justify-between p-2 rounded-lg text-xs transition cursor-pointer ${
-                            isAdded
-                              ? 'bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 opacity-60 cursor-not-allowed'
-                              : 'bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-700'
-                          }`}
-                        >
-                          <div className="min-w-0 pr-2">
-                            <div className="font-bold text-gray-900 dark:text-gray-100 truncate">
-                              {phone.brand} {phone.model}
-                              <span className="text-gray-400 font-normal ml-1">
+              {/* Quick Available Stock Selector (Compact height, scrolls internally) */}
+              <div className="p-2.5 pt-0 shrink-0">
+                <div className="h-28 overflow-y-auto custom-scrollbar border border-gray-200 dark:border-slate-800 rounded-lg p-1 space-y-1 bg-gray-50/50 dark:bg-slate-950/20">
+                  {inventoryFilter === 'phones' ? (
+                    filteredAvailablePhones.length > 0 ? (
+                      filteredAvailablePhones.map(phone => {
+                        const isAdded = outgoingItems.some(i => i.phone_id === phone.id)
+                        return (
+                          <div
+                            key={phone.id}
+                            onClick={() => !isAdded && addPhoneToOutgoing(phone)}
+                            className={`flex items-center justify-between p-1.5 rounded-md text-xs transition cursor-pointer ${
+                              isAdded
+                                ? 'bg-blue-50 dark:bg-blue-950/30 opacity-60 cursor-not-allowed'
+                                : 'bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-700'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <span className="font-bold text-gray-900 dark:text-gray-100 truncate mr-1">
+                                {phone.brand} {phone.model}
+                              </span>
+                              <span className="text-[10px] text-gray-400">
                                 ({phone.storage || ''} {phone.color || ''})
                               </span>
+                              <span className="text-[9px] text-gray-500 font-mono ml-2">
+                                {phone.imei_1 ? phone.imei_1.slice(0, 6) + '...' : ''}
+                              </span>
                             </div>
-                            <div className="text-[10px] text-gray-500 font-mono flex items-center gap-2">
-                              <span>IMEI: {phone.imei_1 ? phone.imei_1.slice(0, 8) + '...' : 'N/A'}</span>
-                              <span className="px-1.5 py-0.2 bg-gray-100 dark:bg-slate-700 rounded text-[9px] font-semibold">
-                                {phone.condition || 'Used'}
+                            <div className="text-right shrink-0 flex items-center gap-2">
+                              <span className="font-black text-blue-600 dark:text-blue-400 font-mono text-xs">
+                                Rs. {parseFloat(phone.sale_price || 0).toLocaleString('en-PK')}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                  isAdded ? 'text-gray-400' : 'bg-blue-600 text-white'
+                                }`}
+                              >
+                                {isAdded ? 'Added' : '+ Add'}
                               </span>
                             </div>
                           </div>
-                          <div className="text-right shrink-0">
-                            <div className="font-black text-blue-600 dark:text-blue-400 font-mono">
-                              Rs. {parseFloat(phone.sale_price || 0).toLocaleString('en-PK')}
-                            </div>
-                            <button
-                              type="button"
-                              disabled={isAdded}
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded transition ${
-                                isAdded ? 'text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700'
-                              }`}
-                            >
-                              {isAdded ? 'Added' : '+ Select'}
-                            </button>
+                        )
+                      })
+                    ) : (
+                      <div className="p-3 text-center text-xs text-gray-400">No phones match search.</div>
+                    )
+                  ) : (
+                    filteredAvailableProducts.length > 0 ? (
+                      filteredAvailableProducts.map(prod => (
+                        <div
+                          key={prod.id}
+                          onClick={() => addProductToOutgoing(prod)}
+                          className="flex items-center justify-between p-1.5 rounded-md text-xs bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-700 transition cursor-pointer"
+                        >
+                          <div>
+                            <span className="font-bold text-gray-900 dark:text-gray-100 mr-1">{prod.name}</span>
+                            <span className="text-[10px] text-gray-400">Qty: {prod.stock_quantity ?? 0}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-blue-600 dark:text-blue-400 font-mono text-xs">
+                              Rs. {parseFloat(prod.price || prod.sale_price || 0).toLocaleString('en-PK')}
+                            </span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 bg-blue-600 text-white rounded">
+                              + Add
+                            </span>
                           </div>
                         </div>
-                      )
-                    })
-                  ) : (
-                    <div className="p-4 text-center text-xs text-gray-400">
-                      No phones found matching your search.
-                    </div>
-                  )
-                ) : (
-                  filteredAvailableProducts.length > 0 ? (
-                    filteredAvailableProducts.map(prod => (
-                      <div
-                        key={prod.id}
-                        onClick={() => addProductToOutgoing(prod)}
-                        className="flex items-center justify-between p-2 rounded-lg text-xs bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-700 transition cursor-pointer"
-                      >
-                        <div>
-                          <div className="font-bold text-gray-900 dark:text-gray-100">{prod.name}</div>
-                          <div className="text-[10px] text-gray-500">Stock: {prod.stock_quantity ?? 0} available</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-black text-blue-600 dark:text-blue-400 font-mono">
-                            Rs. {parseFloat(prod.price || prod.sale_price || 0).toLocaleString('en-PK')}
-                          </div>
-                          <button
-                            type="button"
-                            className="text-[10px] font-bold px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700"
-                          >
-                            + Add
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-4 text-center text-xs text-gray-400">No catalog products found.</div>
-                  )
-                )}
+                      ))
+                    ) : (
+                      <div className="p-3 text-center text-xs text-gray-400">No products found.</div>
+                    )
+                  )}
+                </div>
               </div>
 
-              {/* Selected Outgoing Items Basket */}
-              <div className="flex-1 space-y-2">
-                <div className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+              {/* Selected Items Basket (Takes remaining height, scrolls internally) */}
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2.5 pt-0 space-y-1.5">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">
                   Selected Items ({outgoingItems.length})
-                </div>
+                </span>
 
                 {outgoingItems.length > 0 ? (
-                  <div className="space-y-2">
-                    {outgoingItems.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2.5 bg-green-50/40 dark:bg-green-950/10 rounded-xl border border-green-100 dark:border-green-900/30 flex items-center justify-between gap-2"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="font-bold text-xs text-gray-900 dark:text-gray-100 truncate">
-                            {item.product_name}
-                          </div>
-                          {item.imei_1 && (
-                            <div className="text-[10px] text-gray-500 font-mono">IMEI: {item.imei_1}</div>
-                          )}
+                  outgoingItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2 bg-green-50/30 dark:bg-green-950/10 rounded-lg border border-green-100 dark:border-green-900/30 flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-xs text-gray-900 dark:text-gray-100 truncate">
+                          {item.product_name}
                         </div>
-
-                        {/* Price & Qty Adjuster */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] text-gray-400">Rs.</span>
-                            <input
-                              type="number"
-                              value={item.price}
-                              onChange={e => updateOutgoingPrice(idx, e.target.value)}
-                              className="w-20 text-xs font-bold p-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-right"
-                            />
-                          </div>
-
-                          {!item.is_phone && (
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={e => updateOutgoingQty(idx, e.target.value)}
-                              className="w-12 text-xs font-bold p-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-center"
-                            />
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => removeOutgoingItem(idx)}
-                            className="p-1 text-gray-400 hover:text-red-600 transition"
-                            title="Remove"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
+                        {item.imei_1 && (
+                          <div className="text-[10px] text-gray-400 font-mono">IMEI: {item.imei_1}</div>
+                        )}
                       </div>
-                    ))}
-                  </div>
+
+                      {/* Price & Quantity Adjuster */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-0.5">
+                          <span className="text-[10px] text-gray-400">Rs.</span>
+                          <input
+                            type="number"
+                            value={item.price}
+                            onChange={e => updateOutgoingPrice(idx, e.target.value)}
+                            className="w-18 text-xs font-bold p-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-right"
+                          />
+                        </div>
+
+                        {!item.is_phone && (
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={e => updateOutgoingQty(idx, e.target.value)}
+                            className="w-10 text-xs font-bold p-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-center"
+                          />
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => removeOutgoingItem(idx)}
+                          className="p-1 text-gray-400 hover:text-red-600 transition"
+                          title="Remove"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
                 ) : (
-                  <div className="p-6 text-center text-xs text-gray-400 border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-xl">
-                    No replacement items selected yet. Choose phones or accessories from stock above.
+                  <div className="p-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 dark:border-slate-800 rounded-lg">
+                    Select phones or accessories from stock above.
                   </div>
                 )}
               </div>
 
-              {/* Total Outgoing Purchases Footer */}
-              <div className="mt-4 pt-3 border-t border-gray-200 dark:border-slate-800 flex justify-between items-center">
-                <span className="text-xs font-black uppercase text-gray-600 dark:text-gray-400">
-                  Total Outgoing Purchases:
-                </span>
-                <span className="text-lg font-black text-green-600 dark:text-green-400 font-mono">
+              {/* Total New Phone Price Footer */}
+              <div className="p-2.5 px-3 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0 bg-gray-50/70 dark:bg-slate-800/40">
+                <span className="text-xs font-bold text-gray-500">Total New Phone Price:</span>
+                <span className="text-sm font-black text-green-600 dark:text-green-400 font-mono">
                   Rs. {totalSaleAmount.toLocaleString('en-PK')}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* ── PANEL C: RECONCILIATION & SETTLEMENT CARD ── */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-purple-200 dark:border-purple-900/50 shadow-md">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-              {/* Summary Calculations */}
-              <div className="space-y-1.5 border-b md:border-b-0 md:border-r border-gray-200 dark:border-slate-800 pb-4 md:pb-0 md:pr-4">
-                <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                  <span>Outgoing Sale Purchases:</span>
+          {/* ══════════════════════════════════════════════════════════
+              BOTTOM PINNED RECONCILIATION & SETTLEMENT BAR (SHRINK-0)
+              NEVER HIDDEN, ALWAYS VISIBLE WITHOUT SCROLLING!
+          ══════════════════════════════════════════════════════════ */}
+          <div className="shrink-0 bg-white dark:bg-slate-900 border-t-2 border-purple-300 dark:border-purple-800 shadow-2xl p-2.5 px-4 z-30">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+              {/* Column 1: Reconciliation Breakdown */}
+              <div className="text-xs space-y-0.5 border-b md:border-b-0 md:border-r border-gray-200 dark:border-slate-800 pb-2 md:pb-0 md:pr-3">
+                <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                  <span>New Phone Price:</span>
                   <span className="font-bold font-mono">Rs. {totalSaleAmount.toLocaleString('en-PK')}</span>
                 </div>
-                <div className="flex justify-between text-xs text-red-600 dark:text-red-400">
-                  <span>Less: Trade-in Credit:</span>
+                <div className="flex justify-between text-red-600 dark:text-red-400">
+                  <span>Less: Old Phone Value:</span>
                   <span className="font-bold font-mono">- Rs. {totalTradeInCredit.toLocaleString('en-PK')}</span>
                 </div>
-                <div className="pt-2 border-t border-gray-200 dark:border-slate-800 flex justify-between text-sm font-black">
-                  <span className="text-gray-900 dark:text-white">Net Settlement:</span>
+                <div className="flex justify-between font-black text-sm pt-0.5 border-t border-gray-200 dark:border-slate-700">
+                  <span className="text-gray-900 dark:text-white">Net Difference:</span>
                   <span className="font-mono text-purple-700 dark:text-purple-400">
                     Rs. {absoluteSettlement.toLocaleString('en-PK')}
                   </span>
                 </div>
               </div>
 
-              {/* Big Unmistakable Settlement Indicator */}
-              <div className="flex flex-col items-center justify-center p-3 rounded-xl border">
+              {/* Column 2: Big Directional Indicator Badge */}
+              <div className="flex flex-col items-center justify-center p-2 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50">
                 {settlementDirection === 'customer_paid' && (
                   <div className="text-center">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400 text-xs font-black uppercase tracking-wider mb-1">
-                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /> Customer Pays Store
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400 text-xs font-black uppercase">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> CUSTOMER PAYS
                     </div>
-                    <div className="text-2xl font-black text-green-700 dark:text-green-400 font-mono">
+                    <div className="text-xl font-black text-green-700 dark:text-green-400 font-mono mt-0.5">
                       + Rs. {absoluteSettlement.toLocaleString('en-PK')}
                     </div>
-                    <p className="text-[11px] text-gray-500 mt-0.5">Collect this amount from the customer</p>
+                    <p className="text-[10px] text-gray-500">Collect this amount from customer</p>
                   </div>
                 )}
 
                 {settlementDirection === 'shop_payout' && (
                   <div className="text-center">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 text-xs font-black uppercase tracking-wider mb-1">
-                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> Store Pays Customer
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 text-xs font-black uppercase">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> SHOP PAYS CUSTOMER
                     </div>
-                    <div className="text-2xl font-black text-red-600 dark:text-red-400 font-mono">
+                    <div className="text-xl font-black text-red-600 dark:text-red-400 font-mono mt-0.5">
                       - Rs. {absoluteSettlement.toLocaleString('en-PK')}
                     </div>
-                    <p className="text-[11px] text-gray-500 mt-0.5">Disburse cash/bank payout to customer</p>
+                    <p className="text-[10px] text-gray-500">Pay cash/bank to customer</p>
                   </div>
                 )}
 
                 {settlementDirection === 'even' && (
                   <div className="text-center">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 text-xs font-black uppercase tracking-wider mb-1">
-                      ⚪ Even Exchange
+                    <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 text-xs font-black uppercase">
+                      ⚪ EQUAL EXCHANGE
                     </div>
-                    <div className="text-2xl font-black text-gray-700 dark:text-gray-300 font-mono">
+                    <div className="text-xl font-black text-gray-700 dark:text-gray-300 font-mono mt-0.5">
                       Rs. 0
                     </div>
-                    <p className="text-[11px] text-gray-500 mt-0.5">Trade-in credit equals purchase amount</p>
+                    <p className="text-[10px] text-gray-500">Old phone equals new phone price</p>
                   </div>
                 )}
               </div>
 
-              {/* Settlement Account & Tender Method */}
-              <div>
-                {settlementDirection !== 'even' ? (
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
-                      {settlementDirection === 'customer_paid'
-                        ? 'Payment Tender & Account'
-                        : 'Payout Source Account'}
-                    </label>
+              {/* Column 3: Payment Tender & Complete Button */}
+              <div className="space-y-1.5">
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={paymentMethod}
+                    onChange={e => setPaymentMethod(e.target.value)}
+                    className="text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-bold"
+                  >
+                    <option value="cash">Cash Vault</option>
+                    <option value="bank">Bank Account</option>
+                    {settlementDirection === 'customer_paid' && (
+                      <>
+                        <option value="split">Split Payment</option>
+                        <option value="credit">Customer Khata</option>
+                      </>
+                    )}
+                  </select>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <select
-                        value={paymentMethod}
-                        onChange={e => setPaymentMethod(e.target.value)}
-                        className="text-xs p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-bold"
-                      >
-                        <option value="cash">Cash Vault</option>
-                        <option value="bank">Bank Account</option>
-                        {settlementDirection === 'customer_paid' && (
-                          <>
-                            <option value="split">Split Payment</option>
-                            <option value="credit">Customer Khata (Credit)</option>
-                          </>
-                        )}
-                      </select>
+                  {paymentMethod !== 'split' && paymentMethod !== 'credit' && (
+                    <select
+                      value={selectedAccountId}
+                      onChange={e => setSelectedAccountId(e.target.value)}
+                      className="text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
+                    >
+                      {bankAccounts.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.account_name} ({a.bank_name}) - Rs. {Number(a.current_balance).toLocaleString('en-PK')}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
 
-                      {paymentMethod !== 'split' && paymentMethod !== 'credit' && (
-                        <select
-                          value={selectedAccountId}
-                          onChange={e => setSelectedAccountId(e.target.value)}
-                          className="text-xs p-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
-                        >
-                          {bankAccounts.map(a => (
-                            <option key={a.id} value={a.id}>
-                              {a.account_name} ({a.bank_name}) - Rs. {Number(a.current_balance).toLocaleString('en-PK')}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-xs text-gray-500 p-2 bg-gray-50 dark:bg-slate-800 rounded-lg text-center">
-                    No cash will move into or out of bank accounts for this even trade.
-                  </div>
-                )}
-
-                {/* Submit Button */}
                 <button
                   type="button"
                   onClick={handleOpenConfirm}
                   disabled={isSubmitting}
-                  className="w-full mt-3 py-2.5 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-2 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  <RefreshCw size={16} /> Process & Complete Exchange
+                  <RefreshCw size={14} /> Process & Complete Exchange
                 </button>
               </div>
             </div>
 
             {submitError && (
-              <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 text-xs rounded-xl border border-red-200 dark:border-red-900 flex items-center gap-2">
-                <AlertTriangle size={15} className="shrink-0" />
+              <div className="mt-2 p-2 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 text-xs rounded-lg border border-red-200 dark:border-red-900 flex items-center gap-2">
+                <AlertTriangle size={14} className="shrink-0" />
                 <span>{submitError}</span>
               </div>
             )}
@@ -1323,7 +1432,7 @@ export default function Exchange() {
         </div>
       ) : (
         /* ── HISTORY WORKFLOW ── */
-        <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 min-h-0">
+        <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 m-3 min-h-0">
           {/* History Search & Filters */}
           <div className="flex justify-between items-center gap-3 mb-4 shrink-0">
             <div className="relative flex-1 max-w-sm">
@@ -1340,7 +1449,7 @@ export default function Exchange() {
             <button
               type="button"
               onClick={fetchExchangeHistory}
-              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
             >
               <RefreshCw size={12} /> Refresh
             </button>
@@ -1357,9 +1466,9 @@ export default function Exchange() {
                     <th className="p-2.5">Exchange #</th>
                     <th className="p-2.5">Date & Time</th>
                     <th className="p-2.5">Customer</th>
-                    <th className="p-2.5 text-right">Outgoing Sale</th>
-                    <th className="p-2.5 text-right">Trade-in Credit</th>
-                    <th className="p-2.5 text-right">Net Settlement</th>
+                    <th className="p-2.5 text-right">New Phone Sale</th>
+                    <th className="p-2.5 text-right">Old Phone Value</th>
+                    <th className="p-2.5 text-right">Net Difference</th>
                     <th className="p-2.5 text-center">Status</th>
                     <th className="p-2.5 text-center">Actions</th>
                   </tr>
@@ -1441,7 +1550,7 @@ export default function Exchange() {
                               <button
                                 type="button"
                                 onClick={() => setSelectedExchangeForView(ex)}
-                                className="p-1 text-gray-500 hover:text-purple-600 transition"
+                                className="p-1 text-gray-500 hover:text-purple-600 transition cursor-pointer"
                                 title="View Details"
                               >
                                 <Eye size={15} />
@@ -1449,7 +1558,7 @@ export default function Exchange() {
                               <button
                                 type="button"
                                 onClick={() => handlePrintReceipt(ex)}
-                                className="p-1 text-gray-500 hover:text-blue-600 transition"
+                                className="p-1 text-gray-500 hover:text-blue-600 transition cursor-pointer"
                                 title="Reprint Memo"
                               >
                                 <Printer size={15} />
@@ -1457,7 +1566,7 @@ export default function Exchange() {
                               <button
                                 type="button"
                                 onClick={() => handleSendWhatsApp(ex)}
-                                className="p-1 text-gray-500 hover:text-green-600 transition"
+                                className="p-1 text-gray-500 hover:text-green-600 transition cursor-pointer"
                                 title="WhatsApp Memo"
                               >
                                 <Send size={15} />
@@ -1470,7 +1579,7 @@ export default function Exchange() {
                                     setVoidReason('')
                                     setVoidError('')
                                   }}
-                                  className="p-1 text-gray-400 hover:text-red-600 transition"
+                                  className="p-1 text-gray-400 hover:text-red-600 transition cursor-pointer"
                                   title="Void Exchange"
                                 >
                                   <XCircle size={15} />
@@ -1500,31 +1609,31 @@ export default function Exchange() {
             </div>
 
             <p className="text-xs text-gray-600 dark:text-gray-300">
-              Please review the transaction summary below before committing to the database. This will atomically
-              update inventory, link sales/purchases, and adjust accounting balances.
+              Please review the transaction summary below before committing. This will atomically update inventory,
+              link sales/purchases, and adjust accounting balances.
             </p>
 
             <div className="bg-gray-50 dark:bg-slate-800 p-3 rounded-xl space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-gray-500">Traded-in Devices:</span>
+                <span className="text-gray-500">Customer Old Phone(s):</span>
                 <span className="font-bold text-red-600">
-                  {incomingPhones.length} Phone(s) (Credit: Rs. {totalTradeInCredit.toLocaleString('en-PK')})
+                  {incomingPhones.length} Phone(s) (Value: Rs. {totalTradeInCredit.toLocaleString('en-PK')})
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Outgoing Replacement Items:</span>
+                <span className="text-gray-500">New Phone / Item(s):</span>
                 <span className="font-bold text-green-600">
-                  {outgoingItems.length} Item(s) (Sale: Rs. {totalSaleAmount.toLocaleString('en-PK')})
+                  {outgoingItems.length} Item(s) (Price: Rs. {totalSaleAmount.toLocaleString('en-PK')})
                 </span>
               </div>
               <div className="pt-2 border-t border-gray-200 dark:border-slate-700 flex justify-between font-bold text-sm">
-                <span>Net Settlement:</span>
+                <span>Net Difference:</span>
                 <span className="font-mono text-purple-700 dark:text-purple-400">
                   {settlementDirection === 'customer_paid'
                     ? `Customer Pays Rs. ${absoluteSettlement.toLocaleString('en-PK')}`
                     : settlementDirection === 'shop_payout'
                     ? `Shop Pays Rs. ${absoluteSettlement.toLocaleString('en-PK')}`
-                    : 'Even Exchange (Rs. 0)'}
+                    : 'Equal Exchange (Rs. 0)'}
                 </span>
               </div>
             </div>
@@ -1564,7 +1673,7 @@ export default function Exchange() {
               <CheckCircle2 size={32} />
             </div>
 
-            <h3 className="text-lg font-black text-gray-900 dark:text-white">Exchange Processed!</h3>
+            <h3 className="text-lg font-black text-gray-900 dark:text-white">Exchange Completed!</h3>
             <p className="text-xs text-gray-500">
               Exchange memo <b className="font-mono text-purple-600">{completedExchange.exchange_number}</b> recorded
               successfully.
@@ -1637,14 +1746,14 @@ export default function Exchange() {
               <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl space-y-1">
                 <span className="font-bold text-gray-500 block uppercase text-[10px]">Linked Invoices</span>
                 <div>Sale Invoice: <b>INV-{String(selectedExchangeForView.sale_id || '').slice(-8)}</b></div>
-                <div>Trade-in Purchase: <b>PR-{String(selectedExchangeForView.purchase_id || '').slice(-8)}</b></div>
+                <div>Old Phone Intake: <b>PR-{String(selectedExchangeForView.purchase_id || '').slice(-8)}</b></div>
               </div>
             </div>
 
             {/* Line Items Snapshots */}
             <div className="space-y-3">
               <div>
-                <span className="text-xs font-black text-red-600 uppercase">📥 Traded-in Device(s)</span>
+                <span className="text-xs font-black text-red-600 uppercase">📥 Customer Old Phone(s)</span>
                 <div className="mt-1 border border-gray-200 dark:border-slate-800 rounded-xl divide-y divide-gray-100 dark:divide-slate-800 text-xs">
                   {(selectedExchangeForView.exchange_items || [])
                     .filter(i => i.item_direction === 'incoming_trade_in')
@@ -1667,7 +1776,7 @@ export default function Exchange() {
               </div>
 
               <div>
-                <span className="text-xs font-black text-green-600 uppercase">📤 Outgoing Replacement Item(s)</span>
+                <span className="text-xs font-black text-green-600 uppercase">📤 New Replacement Item(s)</span>
                 <div className="mt-1 border border-gray-200 dark:border-slate-800 rounded-xl divide-y divide-gray-100 dark:divide-slate-800 text-xs">
                   {(selectedExchangeForView.exchange_items || [])
                     .filter(i => i.item_direction === 'outgoing_sale')
@@ -1691,19 +1800,19 @@ export default function Exchange() {
             {/* Reconciliation Totals */}
             <div className="p-3 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900 rounded-xl text-xs space-y-1">
               <div className="flex justify-between">
-                <span>Total Outgoing Sale:</span>
+                <span>Total New Phone Price:</span>
                 <span className="font-bold font-mono">
                   Rs. {parseFloat(selectedExchangeForView.sale_amount || 0).toLocaleString('en-PK')}
                 </span>
               </div>
               <div className="flex justify-between text-red-600">
-                <span>Less Trade-in Credit:</span>
+                <span>Less Old Phone Value:</span>
                 <span className="font-bold font-mono">
                   - Rs. {parseFloat(selectedExchangeForView.trade_in_credit || 0).toLocaleString('en-PK')}
                 </span>
               </div>
               <div className="pt-1.5 border-t border-purple-200 dark:border-purple-800 flex justify-between font-black text-sm text-purple-700 dark:text-purple-400">
-                <span>Net Settlement ({selectedExchangeForView.settlement_direction}):</span>
+                <span>Net Difference ({selectedExchangeForView.settlement_direction}):</span>
                 <span className="font-mono">
                   Rs. {parseFloat(selectedExchangeForView.settlement_amount || 0).toLocaleString('en-PK')}
                 </span>
@@ -1714,21 +1823,21 @@ export default function Exchange() {
               <button
                 type="button"
                 onClick={() => handlePrintReceipt(selectedExchangeForView)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
               >
                 <Printer size={13} /> Print
               </button>
               <button
                 type="button"
                 onClick={() => handleSendWhatsApp(selectedExchangeForView)}
-                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
               >
                 <Send size={13} /> WhatsApp
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedExchangeForView(null)}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold"
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"
               >
                 Close
               </button>
@@ -1747,8 +1856,8 @@ export default function Exchange() {
             </div>
 
             <p className="text-xs text-gray-600 dark:text-gray-300">
-              Voiding this transaction will restore the outgoing items back to available inventory, mark traded-in
-              phones as returned to the customer, and reverse cash/bank settlements.
+              Voiding this transaction will restore the new items back to available inventory, mark old phones
+              as returned to the customer, and reverse cash/bank settlements.
             </p>
 
             <div>
@@ -1774,7 +1883,7 @@ export default function Exchange() {
               <button
                 type="button"
                 onClick={() => setExchangeToVoid(null)}
-                className="px-4 py-2 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs"
+                className="px-4 py-2 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs cursor-pointer"
               >
                 Cancel
               </button>
@@ -1782,7 +1891,7 @@ export default function Exchange() {
                 type="button"
                 onClick={handleExecuteVoid}
                 disabled={voiding}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs flex items-center gap-1 disabled:opacity-50"
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs flex items-center gap-1 cursor-pointer disabled:opacity-50"
               >
                 {voiding ? 'Reversing...' : 'Confirm Void & Restore'}
               </button>
@@ -1828,13 +1937,13 @@ export default function Exchange() {
                 <button
                   type="button"
                   onClick={() => setShowAddCustomerModal(false)}
-                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold"
+                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold"
+                  className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold cursor-pointer"
                 >
                   Save Customer
                 </button>
