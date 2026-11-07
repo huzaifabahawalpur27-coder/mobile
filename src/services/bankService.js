@@ -912,4 +912,108 @@ export const recordSaleToAccounts = async ({
   return null;
 };
 
+/**
+ * Automatically deducts purchase amounts from the appropriate Cash or Bank account.
+ * Supports:
+ * - Single payment (cash, bank, partial paid)
+ * - Split payments (multiple tenders across cash vaults, banks, fintech wallets)
+ */
+export const recordPurchaseToAccounts = async ({
+  shopId,
+  purchaseId,
+  paymentType,
+  paymentMethod,
+  paymentDetails = [],
+  totalPaid = 0,
+  description = '',
+  accountId = null
+}) => {
+  const paid = Number(totalPaid || 0);
+  if (!shopId || paid <= 0) return null;
+
+  try {
+    let accounts = await getBankAccounts(shopId);
+
+    // 1. Split payments handling
+    if (paymentDetails && Array.isArray(paymentDetails) && paymentDetails.length > 0) {
+      const results = [];
+      for (const tender of paymentDetails) {
+        const tenderAmount = Number(tender.amount || 0);
+        if (tenderAmount <= 0) continue;
+
+        const tenderMethod = (tender.method || paymentType || 'cash').toLowerCase();
+        if (tenderMethod === 'credit') continue; // Credit is liability with supplier, not account outflow
+
+        const tenderProvider = tender.provider || (tenderMethod !== 'cash' ? tenderMethod : null);
+        const tenderAccId = tender.account_id || tender.accountId;
+
+        let targetAccount = null;
+        if (tenderAccId) {
+          targetAccount = accounts.find(a => String(a.id) === String(tenderAccId));
+        }
+        if (!targetAccount) {
+          targetAccount = await findOrCreateAccountForPayment({
+            shopId,
+            method: tenderMethod,
+            provider: tenderProvider,
+            accounts
+          });
+        }
+
+        if (targetAccount) {
+          const refStr = tender.ref ? ` • Ref: ${tender.ref}` : '';
+          const txDesc = description || `Purchase PR-${String(purchaseId).slice(-6)} (${targetAccount.bank_name ? `${targetAccount.bank_name} - ` : ''}${targetAccount.account_name}${refStr})`;
+          await deductBankBalance({
+            shopId,
+            accountId: targetAccount.id,
+            amount: tenderAmount,
+            purchaseId: purchaseId,
+            referenceType: 'PURCHASE',
+            referenceId: String(purchaseId),
+            description: txDesc
+          });
+          results.push({ accountId: targetAccount.id, amount: tenderAmount });
+          // refresh accounts cache in case of multiple deductions from same account
+          accounts = await getBankAccounts(shopId);
+        }
+      }
+      return results;
+    }
+
+    // 2. Single payment method deduction
+    const method = (paymentMethod || paymentType || 'cash').toLowerCase();
+    if (method === 'credit') return null;
+
+    let targetAccount = null;
+    if (accountId) {
+      targetAccount = accounts.find(a => String(a.id) === String(accountId));
+    }
+    if (!targetAccount) {
+      targetAccount = await findOrCreateAccountForPayment({
+        shopId,
+        method,
+        provider: method !== 'cash' ? method : null,
+        accounts
+      });
+    }
+
+    if (targetAccount) {
+      const txDesc = description || `Purchase PR-${String(purchaseId).slice(-6)} (${targetAccount.bank_name ? `${targetAccount.bank_name} - ` : ''}${targetAccount.account_name})`;
+      await deductBankBalance({
+        shopId,
+        accountId: targetAccount.id,
+        amount: paid,
+        purchaseId: purchaseId,
+        referenceType: 'PURCHASE',
+        referenceId: String(purchaseId),
+        description: txDesc
+      });
+      return [{ accountId: targetAccount.id, amount: paid }];
+    }
+  } catch (err) {
+    console.error('Error auto-deducting purchase from accounts:', err);
+  }
+  return null;
+};
+
 

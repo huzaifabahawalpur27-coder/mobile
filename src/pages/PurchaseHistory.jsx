@@ -638,26 +638,45 @@ function PurchaseHistory() {
                         }
                     }
 
-                    // Reverse Cash / Bank payment made for this purchase
+                    // Reverse Cash / Bank / Split payment made for this purchase
                     const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? item.total_amount : 0)) || 0
                     if (paid > 0 && item.payment_type !== 'credit') {
                         const accounts = await getBankAccounts(user.shop_id)
                         const method = String(item.payment_type || item.payment_method || '').toLowerCase()
-                        const isBank = method === 'bank' || method === 'online'
-                        const targetAcc = accounts.find(a => 
-                            isBank
-                                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
-                        ) || accounts[0]
-                        if (targetAcc) {
-                            await creditBankBalance({
-                                shopId: user.shop_id,
-                                accountId: targetAcc.id,
-                                amount: paid,
-                                referenceType: 'PURCHASE_DELETION',
-                                referenceId: String(id),
-                                description: `Purchase Deletion Refund (PR-${id})`
-                            })
+                        if (method === 'split' && Array.isArray(item.payment_details)) {
+                            for (const tender of item.payment_details) {
+                                const tAmt = Number(tender.amount || 0)
+                                if (tAmt <= 0 || tender.method === 'credit') continue
+                                const tAcc = (tender.account_id ? accounts.find(a => String(a.id) === String(tender.account_id)) : null)
+                                    || (tender.method === 'cash' ? accounts.find(a => a.bank_name?.toLowerCase().includes('cash')) : accounts[0])
+                                if (tAcc) {
+                                    await creditBankBalance({
+                                        shopId: user.shop_id,
+                                        accountId: tAcc.id,
+                                        amount: tAmt,
+                                        referenceType: 'PURCHASE_DELETION',
+                                        referenceId: String(id),
+                                        description: `Purchase Deletion Split Refund (PR-${id})`
+                                    })
+                                }
+                            }
+                        } else {
+                            const isBank = method === 'bank' || method === 'online'
+                            const targetAcc = accounts.find(a => 
+                                isBank
+                                    ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                                    : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                            ) || accounts[0]
+                            if (targetAcc) {
+                                await creditBankBalance({
+                                    shopId: user.shop_id,
+                                    accountId: targetAcc.id,
+                                    amount: paid,
+                                    referenceType: 'PURCHASE_DELETION',
+                                    referenceId: String(id),
+                                    description: `Purchase Deletion Refund (PR-${id})`
+                                })
+                            }
                         }
                     }
 
@@ -747,6 +766,7 @@ function PurchaseHistory() {
     const cashCount = filtered.filter(p => (p.payment_type || '').toLowerCase() === 'cash').length
     const bankCount = filtered.filter(p => (p.payment_type || '').toLowerCase() === 'bank').length
     const creditCount = filtered.filter(p => (p.payment_type || '').toLowerCase() === 'credit').length
+    const splitCount = filtered.filter(p => (p.payment_type || '').toLowerCase() === 'split').length
 
     if (!hasFeature('purchases')) return <UpgradeWall feature="purchases" />
 
@@ -776,6 +796,10 @@ function PurchaseHistory() {
                             <p className="text-[10px] text-gray-400 font-bold uppercase">Credit</p>
                             <p className="text-sm font-bold text-orange-600">{creditCount}</p>
                         </div>
+                        <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[90px]">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Split</p>
+                            <p className="text-sm font-bold text-purple-600">{splitCount}</p>
+                        </div>
                     </div>
                     {selected.length > 0 && (
                         <button onClick={() => requestDelete(selected)} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl transition font-bold text-sm">
@@ -801,6 +825,7 @@ function PurchaseHistory() {
                             <option value="cash">💵 Cash Only</option>
                             <option value="bank">🏦 Bank Only</option>
                             <option value="credit">📒 Credit Only</option>
+                            <option value="split">🔀 Split Payment</option>
                         </select>
                         <input
                             type="date"
@@ -878,9 +903,11 @@ function PurchaseHistory() {
                                                             ? 'bg-green-100 text-green-700'
                                                             : p.payment_type === 'bank'
                                                                 ? 'bg-blue-100 text-blue-700'
-                                                                : 'bg-orange-100 text-orange-700'
+                                                                : p.payment_type === 'split'
+                                                                    ? 'bg-purple-100 text-purple-700'
+                                                                    : 'bg-orange-100 text-orange-700'
                                                     }`}>
-                                                        {p.payment_type === 'cash' ? '💵 Cash' : p.payment_type === 'bank' ? '🏦 Bank' : '📒 Credit'}
+                                                        {p.payment_type === 'cash' ? '💵 Cash' : p.payment_type === 'bank' ? '🏦 Bank' : p.payment_type === 'split' ? '🔀 Split' : '📒 Credit'}
                                                     </span>
                                                     {p.payment_type === 'bank' && (p.payment_details?.bank_name || p.remarks?.includes('[Paid via')) && (
                                                         <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
@@ -1043,8 +1070,8 @@ function PurchaseHistory() {
                                                     </td>
                                                     <td className="px-5 py-3 whitespace-nowrap">
                                                         <div className="flex flex-col gap-1">
-                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium w-fit ${p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : p.payment_type === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                                {p.payment_type === 'cash' ? '💵 Cash' : p.payment_type === 'bank' ? '🏦 Bank' : '📒 Credit'}
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium w-fit ${p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : p.payment_type === 'bank' ? 'bg-blue-100 text-blue-700' : p.payment_type === 'split' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                                {p.payment_type === 'cash' ? '💵 Cash' : p.payment_type === 'bank' ? '🏦 Bank' : p.payment_type === 'split' ? '🔀 Split' : '📒 Credit'}
                                                             </span>
                                                         </div>
                                                     </td>
@@ -1248,9 +1275,11 @@ function PurchaseHistory() {
                                                 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300"
                                                 : selectedPurchase.payment_type === "bank"
                                                     ? "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300"
-                                                    : "bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300"
+                                                    : selectedPurchase.payment_type === "split"
+                                                        ? "bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300"
+                                                        : "bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300"
                                         )}>
-                                            {selectedPurchase.payment_type === "bank" ? "🏦 Bank" + (selectedPurchase.payment_details?.bank_name ? " (" + selectedPurchase.payment_details.bank_name + ")" : "") : selectedPurchase.payment_type}
+                                            {selectedPurchase.payment_type === "bank" ? "🏦 Bank" + (selectedPurchase.payment_details?.bank_name ? " (" + selectedPurchase.payment_details.bank_name + ")" : "") : selectedPurchase.payment_type === 'split' ? '🔀 Split Payment' : selectedPurchase.payment_type}
                                         </span>
                                         <button
                                             type="button"
@@ -1260,6 +1289,25 @@ function PurchaseHistory() {
                                             ✏️ Edit
                                         </button>
                                     </div>
+                                    {selectedPurchase.payment_type === 'split' && Array.isArray(selectedPurchase.payment_details) && (
+                                        <div className="mt-2.5 p-2 rounded-xl bg-purple-50/80 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40 space-y-1">
+                                            <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider block">
+                                                🔀 Split Tenders Breakdown
+                                            </span>
+                                            <div className="space-y-1">
+                                                {selectedPurchase.payment_details.map((t, tidx) => (
+                                                    <div key={tidx} className="flex justify-between items-center text-xs text-slate-700 dark:text-slate-300 bg-white/80 dark:bg-black/30 px-2 py-0.5 rounded border border-purple-100 dark:border-purple-900/30">
+                                                        <span className="font-medium">
+                                                            {t.method === 'cash' ? '💵 Cash' : `🏦 ${t.bank_name || t.provider || 'Bank'}`}{t.ref ? ` (Ref: ${t.ref})` : ''}
+                                                        </span>
+                                                        <span className="font-bold text-purple-700 dark:text-purple-400">
+                                                            Rs. {Number(t.amount || 0).toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

@@ -5,8 +5,9 @@ import { db } from '../services/db'
 import { useAuth } from '../context/AuthContext'
 import { Plus, Trash2, Smartphone, DollarSign, Shield, CheckCircle, AlertCircle, Scan, Landmark, ChevronDown, Check, Send } from 'lucide-react'
 import { searchIphoneModels, getIphoneColorsForModel, ALL_IPHONE_COLORS, IPHONE_MODELS } from '../utils/iphonePresets'
-import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment } from '../services/bankService'
+import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment, recordPurchaseToAccounts } from '../services/bankService'
 import BankAccountModal from './BankAccountModal'
+import PurchaseSplitPaymentModal from './PurchaseSplitPaymentModal'
 
 const COMMON_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Vivo', 'Oppo', 'Realme', 'Google', 'OnePlus', 'Infinix', 'Tecno', 'Other']
 const STORAGE_OPTIONS = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
@@ -51,6 +52,8 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
   const [phoneCart, setPhoneCart] = useState([])
   const [supplierId, setSupplierId] = useState('')
   const [paymentType, setPaymentType] = useState('cash')
+  const [splitPayments, setSplitPayments] = useState([])
+  const [showSplitModal, setShowSplitModal] = useState(false)
   const [paidAmount, setPaidAmount] = useState('')
   const [purchaseNotes, setPurchaseNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -213,7 +216,11 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
   // Calculations
   const totalCost = phoneCart.reduce((sum, p) => sum + (parseFloat(p.cost_price) || 0) + (parseFloat(p.additional_costs) || 0), 0)
   // Credit purchases default to 0 paid unless user explicitly enters an advance/partial payment amount
-  const effectivePaid = paymentType === 'credit'
+  const isSplit = paymentType === 'split'
+  const splitTendersTotal = splitPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
+  const effectivePaid = isSplit
+    ? Math.min(totalCost, splitTendersTotal)
+    : paymentType === 'credit'
     ? (paidAmount === '' ? 0 : (parseFloat(paidAmount) || 0))
     : (paidAmount === '' ? totalCost : (parseFloat(paidAmount) || 0))
   const remainingBalance = Math.max(0, totalCost - effectivePaid)
@@ -518,27 +525,62 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         notes: p.notes ? `${p.notes} [PTA: ${p.pta_status}]` : `[PTA: ${p.pta_status}]`
       }))
 
-      // Determine effective payment type: if a bank account is selected or paymentType is 'bank', it is 'bank'
+      // Sanitize split payments
+      let appliedSplitPayments = []
+      if (paymentType === 'split') {
+        appliedSplitPayments = splitPayments
+          .filter(p => (parseFloat(p.amount) || 0) > 0)
+          .map(p => {
+            const acc = bankAccounts.find(a => String(a.id) === String(p.account_id))
+            return {
+              method: p.method || 'cash',
+              provider: p.provider || (p.method !== 'cash' ? p.method : null),
+              amount: parseFloat(p.amount) || 0,
+              ref: p.ref?.trim() || null,
+              account_id: p.account_id ? Number(p.account_id) : (acc ? acc.id : null),
+              account_name: acc?.account_name || (p.method === 'cash' ? 'Cash in Hand' : p.method),
+              bank_name: acc?.bank_name || null
+            }
+          })
+
+        if (appliedSplitPayments.length === 0) {
+          setShowSplitModal(true)
+          throw new Error('Please configure at least one payment method with an amount in Split Payment!')
+        }
+      }
+
+      // Determine effective payment type
       const isBankSelected = Boolean(selectedBankAccountId)
-      const effectivePaymentType = isBankSelected || paymentType === 'bank' ? 'bank' : paymentType
+      const effectivePaymentType = paymentType === 'split'
+        ? 'split'
+        : (isBankSelected || paymentType === 'bank' ? 'bank' : paymentType)
       const isBankPurchase = effectivePaymentType === 'bank' && selectedBankAccountId
       const selectedBank = isBankPurchase ? bankAccounts.find(b => String(b.id) === String(selectedBankAccountId)) : null
 
-      // Build effective purchase notes including bank deduction reference if applicable
+      // Build effective purchase notes
       let effectiveNotes = purchaseNotes?.trim() || ''
-      if (selectedBank && effectivePaid > 0) {
+      let paymentDetailsObj = null
+
+      if (effectivePaymentType === 'split') {
+        paymentDetailsObj = appliedSplitPayments
+        const parts = appliedSplitPayments.map(p => {
+          const name = p.bank_name ? `${p.bank_name} (${p.account_name})` : p.account_name
+          return `${name}: Rs. ${Number(p.amount).toLocaleString()}${p.ref ? ` [Ref: ${p.ref}]` : ''}`
+        })
+        const splitTag = `[Paid via Split: ${parts.join(' | ')}]`
+        effectiveNotes = effectiveNotes ? `${effectiveNotes} ${splitTag}` : splitTag
+      } else if (selectedBank && effectivePaid > 0) {
+        paymentDetailsObj = {
+          bank_account_id: selectedBank.id,
+          bank_name: selectedBank.bank_name,
+          account_name: selectedBank.account_name
+        }
         const bankTag = `[Paid via ${selectedBank.bank_name ? `${selectedBank.bank_name} - ` : ''}${selectedBank.account_name}]`
         effectiveNotes = effectiveNotes ? `${effectiveNotes} ${bankTag}` : bankTag
       } else if (effectivePaymentType === 'cash' && effectivePaid > 0) {
         const cashTag = `[Paid via Cash in Hand]`
         effectiveNotes = effectiveNotes ? `${effectiveNotes} ${cashTag}` : cashTag
       }
-
-      const paymentDetailsObj = isBankPurchase && selectedBank ? {
-        bank_account_id: selectedBank.id,
-        bank_name: selectedBank.bank_name,
-        account_name: selectedBank.account_name
-      } : null
 
       // Pre-check for customer buy-backs (phones previously sold or in database)
       const imeiList = phoneCart.map(p => p.imei_1?.trim()).filter(Boolean)
@@ -921,7 +963,23 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
       // Automatically deduct from chosen bank account or cash drawer
       let bankDeductionResult = null
-      if (effectivePaymentType === 'bank' && selectedBankAccountId && effectivePaid > 0) {
+      if (effectivePaymentType === 'split' && effectivePaid > 0) {
+        try {
+          await recordPurchaseToAccounts({
+            shopId: user.shop_id,
+            purchaseId: rpcData.purchase_id,
+            paymentType: 'split',
+            paymentMethod: 'split',
+            paymentDetails: appliedSplitPayments,
+            totalPaid: effectivePaid,
+            description: `Phone Purchase PR-${rpcData.purchase_id} (${phoneCart.length} phones)`
+          })
+          const updated = await getBankAccounts(user.shop_id)
+          setBankAccounts(updated)
+        } catch (splitErr) {
+          console.warn('Split account deduction warning:', splitErr)
+        }
+      } else if (effectivePaymentType === 'bank' && selectedBankAccountId && effectivePaid > 0) {
         try {
           bankDeductionResult = await deductBankBalance({
             shopId: user.shop_id,
@@ -965,6 +1023,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
       setPhoneCart([])
       setPaidAmount('')
       setPurchaseNotes('')
+      setSplitPayments([])
 
       // Instant broadcast to POS, Inventory, and other tabs
       try {
@@ -1755,6 +1814,14 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                         }
                       } else if (val === 'cash') {
                         setSelectedBankAccountId('')
+                      } else if (val === 'split') {
+                        setSelectedBankAccountId('')
+                        if (splitPayments.length === 0) {
+                          setSplitPayments([
+                            { method: 'cash', amount: totalCost > 0 ? String(totalCost) : '', ref: '', account_id: '' }
+                          ])
+                        }
+                        setShowSplitModal(true)
                       }
                     }}
                     className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold outline-none bg-white cursor-pointer"
@@ -1762,6 +1829,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     <option value="cash">💵 Cash Paid</option>
                     <option value="bank">🏦 Bank Transfer</option>
                     <option value="credit">📒 Credit (Udhaar)</option>
+                    <option value="split">🔀 Split Payment</option>
                   </select>
                 </div>
                 <div>
@@ -1780,7 +1848,57 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
               </div>
 
               {/* Status summary banner */}
-              {paymentType === 'credit' ? (
+              {paymentType === 'split' ? (
+                <div className="rounded-xl p-3 border transition bg-purple-50/90 border-purple-300 ring-2 ring-purple-100 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="font-bold text-purple-900 flex items-center gap-1.5">
+                      <span>🔀</span>
+                      <span>Split Plan ({splitPayments.length} tender{splitPayments.length !== 1 ? 's' : ''})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowSplitModal(true)}
+                      className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer shadow-xs"
+                    >
+                      Configure Split
+                    </button>
+                  </div>
+
+                  <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar text-[11px]">
+                    {splitPayments.length === 0 ? (
+                      <p className="text-gray-500 italic py-1">No payment tenders configured yet.</p>
+                    ) : (
+                      splitPayments.map((p, idx) => {
+                        const tenderAcc = bankAccounts.find(a => String(a.id) === String(p.account_id))
+                        const pLabel = p.method === 'cash' 
+                          ? `💵 Cash (${tenderAcc?.account_name || 'Cash in Hand'})`
+                          : (tenderAcc ? `🏦 ${tenderAcc.bank_name ? `${tenderAcc.bank_name} - ` : ''}${tenderAcc.account_name}` : `📱 ${p.method.toUpperCase()}`)
+                        return (
+                          <div key={idx} className="flex justify-between items-center bg-white/90 px-2 py-0.5 rounded border border-purple-200 text-slate-700">
+                            <span className="truncate max-w-[170px]">{pLabel}{p.ref ? ` (${p.ref})` : ''}</span>
+                            <span className="font-bold text-purple-700 tabular-nums">Rs. {Number(p.amount || 0).toLocaleString()}</span>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  <div className="pt-1.5 border-t border-purple-200/80 flex items-center justify-between text-[11px]">
+                    <div>
+                      <span className="text-gray-500">Paid: </span>
+                      <span className="font-bold text-emerald-700">Rs. {Math.round(effectivePaid).toLocaleString()}</span>
+                    </div>
+                    {remainingBalance > 0 ? (
+                      <div>
+                        <span className="text-gray-500">Credit: </span>
+                        <span className="font-bold text-orange-600">Rs. {Math.round(remainingBalance).toLocaleString()}</span>
+                      </div>
+                    ) : (
+                      <span className="text-emerald-700 font-bold flex items-center gap-0.5">✓ Fully Settled</span>
+                    )}
+                  </div>
+                </div>
+              ) : paymentType === 'credit' ? (
                 <div className="flex justify-between items-center text-[11px] bg-amber-50 text-amber-900 px-2.5 py-1.5 rounded-lg border border-amber-200">
                   <span className="font-semibold">📒 Credit (Udhaar) to Supplier:</span>
                   <span className="font-bold">Rs. {remainingBalance.toLocaleString()}</span>
@@ -1949,6 +2067,19 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           }}
         />
       )}
+
+      {/* Split Payment Modal */}
+      <PurchaseSplitPaymentModal
+        isOpen={showSplitModal}
+        onClose={() => setShowSplitModal(false)}
+        total={totalCost}
+        payments={splitPayments}
+        onSave={(newPayments) => {
+          setSplitPayments(newPayments)
+        }}
+        bankAccounts={bankAccounts}
+        onAddNewBank={() => setShowBankModal(true)}
+      />
     </div>
   )
 }

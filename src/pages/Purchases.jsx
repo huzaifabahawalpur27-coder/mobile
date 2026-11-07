@@ -6,7 +6,8 @@ import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue } from '../services/db'
 import PhonePurchasePanel from '../components/PhonePurchasePanel'
-import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment } from '../services/bankService'
+import PurchaseSplitPaymentModal from '../components/PurchaseSplitPaymentModal'
+import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment, recordPurchaseToAccounts } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
 import { deduplicateProducts } from '../utils/productUtils'
 
@@ -22,6 +23,8 @@ function Purchases() {
   const [cart, setCart] = useState([])
   const [supplierId, setSupplierId] = useState('')
   const [paymentType, setPaymentType] = useState('cash')
+  const [splitPayments, setSplitPayments] = useState([])
+  const [showSplitModal, setShowSplitModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [discount, setDiscount] = useState(0)
 
@@ -226,7 +229,7 @@ function Purchases() {
   const removeFromCart = (id) => setCart(prev => prev.filter(i => i.id !== id))
 
   const clearCart = () => {
-    setCart([]); setSupplierId(''); setPaymentType('cash'); setDiscount(0)
+    setCart([]); setSupplierId(''); setPaymentType('cash'); setDiscount(0); setSplitPayments([])
   }
 
   const subtotal = cart.reduce((sum, i) => sum + i.purchase_price * i.qty, 0)
@@ -241,6 +244,8 @@ function Purchases() {
       supplier_id: supplierId || null,
       items: cart,
       total,
+      payment_type: paymentType,
+      split_payments: splitPayments,
       saved_at: new Date().toISOString()
     }
     try {
@@ -259,6 +264,8 @@ function Purchases() {
     }
     setCart(held.items)
     setSupplierId(held.supplier_id || '')
+    if (held.payment_type) setPaymentType(held.payment_type)
+    if (held.split_payments) setSplitPayments(held.split_payments)
     db.held_purchases.delete(held.id).then(fetchHeldPurchases)
     setShowHeldPurchases(false)
   }
@@ -280,26 +287,90 @@ function Purchases() {
     setSaving(true)
     // Sanitize integer FK — offline-created suppliers have UUID ids
     const toIntOrNull = (v) => { const n = parseInt(v); return isNaN(n) ? null : n }
-    const isImmediatePaid = paymentType === 'cash' || paymentType === 'bank'
-    const effectivePaymentType = selectedBankAccountId || paymentType === 'bank' ? 'bank' : paymentType
+
+    const isSplit = paymentType === 'split'
+    const isCredit = paymentType === 'credit'
+
+    // Sanitize split payments
+    let appliedSplitPayments = []
+    let splitPaidAmount = 0
+    let splitRemainingCredit = 0
+
+    if (isSplit) {
+      appliedSplitPayments = splitPayments
+        .filter(p => (parseFloat(p.amount) || 0) > 0)
+        .map(p => {
+          const acc = bankAccounts.find(a => String(a.id) === String(p.account_id))
+          return {
+            method: p.method || 'cash',
+            provider: p.provider || (p.method !== 'cash' ? p.method : null),
+            amount: parseFloat(p.amount) || 0,
+            ref: p.ref?.trim() || null,
+            account_id: p.account_id ? Number(p.account_id) : (acc ? acc.id : null),
+            account_name: acc?.account_name || (p.method === 'cash' ? 'Cash in Hand' : p.method),
+            bank_name: acc?.bank_name || null
+          }
+        })
+
+      const rawPaid = appliedSplitPayments.reduce((s, p) => s + p.amount, 0)
+      splitPaidAmount = Math.min(total, rawPaid)
+      splitRemainingCredit = Math.max(0, total - splitPaidAmount)
+
+      if (appliedSplitPayments.length === 0) {
+        setSaving(false)
+        setShowSplitModal(true)
+        return alert('Please configure at least one payment method with an amount in Split Payment!')
+      }
+    }
+
+    const effectivePaymentType = isSplit
+      ? 'split'
+      : (selectedBankAccountId || paymentType === 'bank' ? 'bank' : paymentType)
+
+    const isImmediatePaid = (paymentType === 'cash' || paymentType === 'bank')
+    const totalPaidAmount = isSplit ? splitPaidAmount : (isImmediatePaid ? total : 0)
+    const totalCreditAmount = isSplit ? splitRemainingCredit : (isCredit ? total : 0)
+
     const selectedBank = effectivePaymentType === 'bank' && selectedBankAccountId
       ? bankAccounts.find(b => String(b.id) === String(selectedBankAccountId))
       : null
     const selectedCash = effectivePaymentType === 'cash' && selectedCashVaultId
       ? bankAccounts.find(b => String(b.id) === String(selectedCashVaultId))
       : null
-    const paymentDetailsObj = selectedBank ? {
-      bank_account_id: selectedBank.id,
-      bank_name: selectedBank.bank_name,
-      account_name: selectedBank.account_name
-    } : (selectedCash ? {
-      cash_account_id: selectedCash.id,
-      account_name: selectedCash.account_name
-    } : null)
 
-    const paymentNote = selectedBank 
-      ? `[Paid via ${selectedBank.bank_name ? `${selectedBank.bank_name} - ` : ''}${selectedBank.account_name}]`
-      : (effectivePaymentType === 'bank' ? `[Paid via Bank Transfer]` : (selectedCash ? `[Paid via ${selectedCash.account_name}]` : `[Paid via Cash in Hand]`))
+    let paymentDetailsObj = null
+    let paymentNote = ''
+
+    if (isSplit) {
+      paymentDetailsObj = appliedSplitPayments
+      const parts = appliedSplitPayments.map(p => {
+        const name = p.bank_name ? `${p.bank_name} (${p.account_name})` : p.account_name
+        return `${name}: Rs. ${Number(p.amount).toLocaleString()}${p.ref ? ` [Ref: ${p.ref}]` : ''}`
+      })
+      if (splitRemainingCredit > 0) {
+        parts.push(`Credit/Udhaar: Rs. ${splitRemainingCredit.toLocaleString()}`)
+      }
+      paymentNote = `[Paid via Split: ${parts.join(' | ')}]`
+    } else if (selectedBank) {
+      paymentDetailsObj = {
+        bank_account_id: selectedBank.id,
+        bank_name: selectedBank.bank_name,
+        account_name: selectedBank.account_name
+      }
+      paymentNote = `[Paid via ${selectedBank.bank_name ? `${selectedBank.bank_name} - ` : ''}${selectedBank.account_name}]`
+    } else if (effectivePaymentType === 'bank') {
+      paymentNote = `[Paid via Bank Transfer]`
+    } else if (selectedCash) {
+      paymentDetailsObj = {
+        cash_account_id: selectedCash.id,
+        account_name: selectedCash.account_name
+      }
+      paymentNote = `[Paid via ${selectedCash.account_name}]`
+    } else if (effectivePaymentType === 'cash') {
+      paymentNote = `[Paid via Cash in Hand]`
+    } else {
+      paymentNote = `[Credit Purchase - Outstanding Balance]`
+    }
 
     const purchaseData = {
       shop_id: user.shop_id,
@@ -308,8 +379,8 @@ function Purchases() {
       total_amount: subtotal,
       discount: totalDiscount,
       net_amount: total,
-      paid_amount: isImmediatePaid ? total : 0,
-      amount_paid: isImmediatePaid ? total : 0,
+      paid_amount: totalPaidAmount,
+      amount_paid: totalPaidAmount,
       payment_type: effectivePaymentType,
       payment_method: effectivePaymentType,
       payment_details: paymentDetailsObj,
@@ -328,7 +399,7 @@ function Purchases() {
           total_amount: subtotal,
           discount: totalDiscount,
           net_amount: total,
-          amount_paid: isImmediatePaid ? total : 0,
+          amount_paid: totalPaidAmount,
           payment_method: effectivePaymentType,
           payment_type: effectivePaymentType,
           payment_details: paymentDetailsObj,
@@ -383,19 +454,22 @@ function Purchases() {
         await db.products.update(item.id, { stock_quantity: newStock, cost_price: item.purchase_price })
       }
 
-      // 4. Update Supplier Balance if Credit
-      if (paymentType === 'credit') {
+      // 4. Update Supplier Balance if credit component exists
+      if (totalCreditAmount > 0) {
         const supplier = suppliers.find(s => String(s.id) === String(supplierId))
-        const newBalance = (supplier?.outstanding_balance || 0) + total
+        const newBalance = (supplier?.outstanding_balance || 0) + totalCreditAmount
         await supabase.from('suppliers').update({ outstanding_balance: newBalance }).eq('id', supplierId)
         // Mirror to local DB
         await db.suppliers.update(supplierId, { outstanding_balance: newBalance })
-      } else if (isImmediatePaid && total > 0) {
+      }
+
+      // 5. Record Payment & Account Deductions if paid amount exists
+      if (totalPaidAmount > 0) {
         // Record the payment explicitly
         const paymentData = {
           shop_id: user.shop_id,
           supplier_id: supplierId,
-          amount: total,
+          amount: totalPaidAmount,
           payment_type: 'payment',
           payment_method: effectivePaymentType,
           note: paymentNote
@@ -405,18 +479,33 @@ function Purchases() {
           await supabase.from('supplier_payments').insert([{
             shop_id: user.shop_id,
             supplier_id: supplierId,
-            amount: total,
+            amount: totalPaidAmount,
             description: paymentNote
           }])
         }
 
-        // Deduct from selected bank account or cash vault
-        if (effectivePaymentType === 'bank' && selectedBankAccountId) {
+        // Deduct from Accounts
+        if (isSplit) {
+          try {
+            await recordPurchaseToAccounts({
+              shopId: user.shop_id,
+              purchaseId: purchase.id,
+              paymentType: 'split',
+              paymentMethod: 'split',
+              paymentDetails: appliedSplitPayments,
+              totalPaid: totalPaidAmount,
+              description: `Split Purchase PR-${String(purchase.id).slice(-6)}`
+            })
+            fetchBankAccounts()
+          } catch (splitErr) {
+            console.warn('Split account deduction error:', splitErr)
+          }
+        } else if (effectivePaymentType === 'bank' && selectedBankAccountId) {
           try {
             await deductBankBalance({
               shopId: user.shop_id,
               accountId: Number(selectedBankAccountId),
-              amount: total,
+              amount: totalPaidAmount,
               purchaseId: purchase.id,
               description: `Product Purchase PR-${String(purchase.id).slice(-6)}`
             })
@@ -431,7 +520,7 @@ function Purchases() {
               await deductBankBalance({
                 shopId: user.shop_id,
                 accountId: Number(targetCashId),
-                amount: total,
+                amount: totalPaidAmount,
                 purchaseId: purchase.id,
                 description: `Cash Purchase PR-${String(purchase.id).slice(-6)}`
               })
@@ -443,7 +532,7 @@ function Purchases() {
         }
       }
 
-      alert('Purchase complete! Stock and supplier balance updated.')
+      alert('Purchase complete! Stock, accounts, and supplier balance updated.')
       clearCart()
       fetchData()
     } catch (err) {
@@ -472,33 +561,45 @@ function Purchases() {
           await addToSyncQueue('products', 'UPDATE', { id: item.id, stock_quantity: newStock, cost_price: item.purchase_price })
         }
 
-        if (paymentType === 'credit') {
+        if (totalCreditAmount > 0) {
           const supplier = suppliers.find(s => String(s.id) === String(supplierId))
-          const newBalance = (supplier?.outstanding_balance || 0) + total
+          const newBalance = (supplier?.outstanding_balance || 0) + totalCreditAmount
           await db.suppliers.update(supplierId, { outstanding_balance: newBalance })
           await addToSyncQueue('suppliers', 'UPDATE', { id: supplierId, outstanding_balance: newBalance })
-        } else if ((paymentType === 'cash' || paymentType === 'bank') && total > 0) {
-          const selectedBank = bankAccounts.find(b => String(b.id) === String(selectedBankAccountId))
-          const paymentNote = selectedBank 
-            ? `Paid via ${selectedBank.bank_name || 'Bank'} (${selectedBank.account_name}) for Purchase PR-${String(offlineId).slice(-6)}`
-            : (paymentType === 'bank' ? `Bank Transfer for Purchase PR-${String(offlineId).slice(-6)}` : `Cash Paid for Purchase PR-${String(offlineId).slice(-6)}`)
+        }
 
+        if (totalPaidAmount > 0) {
           const paymentData = {
             shop_id: user.shop_id,
             supplier_id: supplierId,
-            amount: total,
+            amount: totalPaidAmount,
             payment_type: 'payment',
             note: paymentNote
           }
           await db.supplier_payments.add(paymentData)
           await addToSyncQueue('supplier_payments', 'INSERT', paymentData)
 
-          if (effectivePaymentType === 'bank' && selectedBankAccountId) {
+          if (isSplit) {
+            try {
+              await recordPurchaseToAccounts({
+                shopId: user.shop_id,
+                purchaseId: offlineId,
+                paymentType: 'split',
+                paymentMethod: 'split',
+                paymentDetails: appliedSplitPayments,
+                totalPaid: totalPaidAmount,
+                description: `Split Purchase PR-${String(offlineId).slice(-6)}`
+              })
+              fetchBankAccounts()
+            } catch (splitErr) {
+              console.warn('Offline split deduction error:', splitErr)
+            }
+          } else if (effectivePaymentType === 'bank' && selectedBankAccountId) {
             try {
               await deductBankBalance({
                 shopId: user.shop_id,
                 accountId: Number(selectedBankAccountId),
-                amount: total,
+                amount: totalPaidAmount,
                 purchaseId: offlineId,
                 description: `Product Purchase PR-${String(offlineId).slice(-6)}`
               })
@@ -513,7 +614,7 @@ function Purchases() {
                 await deductBankBalance({
                   shopId: user.shop_id,
                   accountId: Number(targetCashId),
-                  amount: total,
+                  amount: totalPaidAmount,
                   purchaseId: offlineId,
                   description: `Cash Purchase PR-${String(offlineId).slice(-6)}`
                 })
@@ -718,7 +819,7 @@ function Purchases() {
         </select>
 
         {/* Payment Type */}
-        <div className="grid grid-cols-3 gap-1.5 shrink-0">
+        <div className="grid grid-cols-4 gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -734,7 +835,7 @@ function Purchases() {
             onClick={() => {
               setPaymentType('bank')
               if (!selectedBankAccountId && bankAccounts.length > 0) {
-                const def = bankAccounts.find(b => b.is_default) || bankAccounts[0]
+                const def = bankAccounts.find(b => b.is_default && !b.bank_name?.toLowerCase().includes('cash')) || bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash'))
                 if (def) setSelectedBankAccountId(String(def.id))
               }
             }}
@@ -752,7 +853,87 @@ function Purchases() {
           >
             📒 Credit
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPaymentType('split')
+              setSelectedBankAccountId('')
+              if (splitPayments.length === 0) {
+                const defCash = cashVaults[0]
+                setSplitPayments([
+                  { method: 'cash', amount: total > 0 ? total : '', ref: '', account_id: defCash?.id ? String(defCash.id) : '' }
+                ])
+              }
+              setShowSplitModal(true)
+            }}
+            className={`py-1.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer ${
+              paymentType === 'split' ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            🔀 Split
+          </button>
         </div>
+
+        {/* Split Payment Summary Card */}
+        {paymentType === 'split' && (
+          <div className="shrink-0 rounded-xl p-3 border transition bg-purple-50/90 border-purple-300 ring-2 ring-purple-100 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="font-bold text-purple-900 flex items-center gap-1.5">
+                <span>🔀</span>
+                <span>Split Plan ({splitPayments.length} tender{splitPayments.length !== 1 ? 's' : ''})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSplitModal(true)}
+                className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer shadow-xs"
+              >
+                Configure
+              </button>
+            </div>
+
+            {/* Compact list of split tenders */}
+            <div className="space-y-1 max-h-28 overflow-y-auto custom-scrollbar text-[11px]">
+              {splitPayments.length === 0 ? (
+                <p className="text-gray-500 italic py-1">No payment tenders configured yet.</p>
+              ) : (
+                splitPayments.map((p, idx) => {
+                  const tenderAcc = bankAccounts.find(a => String(a.id) === String(p.account_id))
+                  const pLabel = p.method === 'cash' 
+                    ? `💵 Cash (${tenderAcc?.account_name || 'Cash in Hand'})`
+                    : (tenderAcc ? `🏦 ${tenderAcc.bank_name ? `${tenderAcc.bank_name} - ` : ''}${tenderAcc.account_name}` : `📱 ${p.method.toUpperCase()}`)
+                  return (
+                    <div key={idx} className="flex justify-between items-center bg-white/90 px-2 py-1 rounded border border-purple-200 text-slate-700">
+                      <span className="truncate max-w-[170px]">{pLabel}{p.ref ? ` (${p.ref})` : ''}</span>
+                      <span className="font-bold text-purple-700 tabular-nums">Rs. {Number(p.amount || 0).toLocaleString()}</span>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Paid vs Remaining breakdown */}
+            {(() => {
+              const splitPaid = splitPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+              const splitRemaining = Math.max(0, total - splitPaid)
+              return (
+                <div className="pt-1.5 border-t border-purple-200/80 flex items-center justify-between text-[11px]">
+                  <div>
+                    <span className="text-gray-500">Paid: </span>
+                    <span className="font-bold text-emerald-700">Rs. {Math.round(splitPaid).toLocaleString()}</span>
+                  </div>
+                  {splitRemaining > 0 ? (
+                    <div>
+                      <span className="text-gray-500">Credit: </span>
+                      <span className="font-bold text-orange-600">Rs. {Math.round(splitRemaining).toLocaleString()}</span>
+                    </div>
+                  ) : (
+                    <span className="text-emerald-700 font-bold flex items-center gap-0.5">✓ Fully Settled</span>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+        )}
 
         {/* Cash Vault Selector (for Cash purchases) */}
         {paymentType === 'cash' && cashVaults.length > 0 && (
@@ -1027,6 +1208,19 @@ function Purchases() {
           }}
         />
       )}
+
+      {/* Split Payment Modal */}
+      <PurchaseSplitPaymentModal
+        isOpen={showSplitModal}
+        onClose={() => setShowSplitModal(false)}
+        total={total}
+        payments={splitPayments}
+        onSave={(newPayments) => {
+          setSplitPayments(newPayments)
+        }}
+        bankAccounts={bankAccounts}
+        onAddNewBank={() => setShowBankModal(true)}
+      />
     </div>
   )
 }

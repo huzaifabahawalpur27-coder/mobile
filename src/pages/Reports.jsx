@@ -309,16 +309,56 @@ function Reports() {
 
         bulkPurchasedUnits += pUnits
         bulkPurchasedCost += pAmount
-        if (payType === 'cash') bulkPurchasedCash += pAmount
-        else if (['bank', 'online'].includes(payType)) bulkPurchasedBank += pAmount
-        else bulkPurchasedCredit += pAmount
+        if (payType === 'split' && Array.isArray(p.payment_details)) {
+          let paidSum = 0
+          for (const tender of p.payment_details) {
+            const tMethod = String(tender.method || tender.provider || '').toLowerCase()
+            const tAmt = Number(tender.amount || 0)
+            if (tMethod === 'cash') {
+              bulkPurchasedCash += tAmt
+              paidSum += tAmt
+            } else if (tMethod !== 'credit') {
+              bulkPurchasedBank += tAmt
+              paidSum += tAmt
+            }
+          }
+          if (pAmount > paidSum) {
+            bulkPurchasedCredit += (pAmount - paidSum)
+          }
+        } else if (payType === 'cash') {
+          bulkPurchasedCash += pAmount
+        } else if (['bank', 'online'].includes(payType)) {
+          bulkPurchasedBank += pAmount
+        } else {
+          bulkPurchasedCredit += pAmount
+        }
       } else {
         // Phone purchase
         phonePurchasedUnits += 1
         phonePurchasedCost += pAmount
-        if (payType === 'cash') phonePurchasedCash += pAmount
-        else if (['bank', 'online'].includes(payType)) phonePurchasedBank += pAmount
-        else phonePurchasedCredit += pAmount
+        if (payType === 'split' && Array.isArray(p.payment_details)) {
+          let paidSum = 0
+          for (const tender of p.payment_details) {
+            const tMethod = String(tender.method || tender.provider || '').toLowerCase()
+            const tAmt = Number(tender.amount || 0)
+            if (tMethod === 'cash') {
+              phonePurchasedCash += tAmt
+              paidSum += tAmt
+            } else if (tMethod !== 'credit') {
+              phonePurchasedBank += tAmt
+              paidSum += tAmt
+            }
+          }
+          if (pAmount > paidSum) {
+            phonePurchasedCredit += (pAmount - paidSum)
+          }
+        } else if (payType === 'cash') {
+          phonePurchasedCash += pAmount
+        } else if (['bank', 'online'].includes(payType)) {
+          phonePurchasedBank += pAmount
+        } else {
+          phonePurchasedCredit += pAmount
+        }
       }
     })
 
