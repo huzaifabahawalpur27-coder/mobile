@@ -1040,7 +1040,14 @@ function POS() {
           amount: (receivedAmount === '' ? total : Number(receivedAmount)),
           account_id: chosenAccountId
         }]
-    const totalPaid = finalPayments.reduce((s, p) => s + Number(p.amount), 0)
+    const tenderedTotal = finalPayments.reduce((s, p) => s + Math.max(0, Number(p.amount) || 0), 0)
+    let unappliedAmount = total
+    const appliedPayments = finalPayments.map(p => {
+      const amount = Math.min(unappliedAmount, Math.max(0, Number(p.amount) || 0))
+      unappliedAmount -= amount
+      return { ...p, amount }
+    })
+    const totalPaid = Math.min(total, tenderedTotal)
 
     if ((paymentType === 'credit' || totalPaid < total) && !customerId && !walkInName.trim()) {
       alert('Balance amount (Credit) ke liye customer select karein ya Walk-in Name likhein!')
@@ -1082,7 +1089,7 @@ function POS() {
     }
 
     if (saleType !== 'quotation') {
-      saleData.payment_details = finalPayments
+      saleData.payment_details = appliedPayments
     }
 
     let finalSale = null
@@ -1112,7 +1119,7 @@ function POS() {
             p_net_amount: total,
             p_paid_amount: totalPaid,
             p_payment_method: primaryPaymentMethod,
-            p_payment_details: finalPayments,
+            p_payment_details: appliedPayments,
             p_idempotency_key: idempotencyKey
           })
 
@@ -1132,7 +1139,7 @@ function POS() {
               p_net_amount: total,
               p_paid_amount: totalPaid,
               p_payment_method: primaryPaymentMethod,
-              p_payment_details: finalPayments,
+              p_payment_details: appliedPayments,
               p_idempotency_key: idempotencyKey
             })
             rpcRes = fallbackRes.data
@@ -1434,7 +1441,7 @@ function POS() {
         saleId: finalSale.id,
         paymentType: saleData.payment_type,
         paymentMethod: saleData.payment_method,
-        paymentDetails: finalPayments,
+        paymentDetails: appliedPayments,
         totalPaid: totalPaid,
         accountId: chosenAccountId,
         description: `POS Sale #${finalSale.id}${customerId ? '' : (walkInName ? ` - ${walkInName}` : '')}`
@@ -1445,7 +1452,7 @@ function POS() {
 
     // 4. GUARANTEED RECEIPT DIALOG DISPLAY
     const customer = customers.find(c => String(c.id) === String(customerId))
-    const tendered = receivedAmount !== '' ? Number(receivedAmount) : totalPaid
+    const tendered = receivedAmount !== '' ? Number(receivedAmount) : tenderedTotal
     const changeDueVal = (tendered > total && paymentType === 'cash') ? (tendered - total) : 0
 
     setLastReceipt({

@@ -230,7 +230,7 @@ function Purchases() {
   }
 
   const subtotal = cart.reduce((sum, i) => sum + i.purchase_price * i.qty, 0)
-  const totalDiscount = parseFloat(discount) || 0
+  const totalDiscount = Math.min(subtotal, Math.max(0, parseFloat(discount) || 0))
   const total = Math.max(0, subtotal - totalDiscount)
 
   // Hold Purchase
@@ -872,7 +872,7 @@ function Purchases() {
               </div>
               <div className="flex items-center justify-between">
                 <label className="text-gray-600">Disc (Rs):</label>
-                <input type="number" value={discount} onChange={e => setDiscount(e.target.value)} className="w-16 px-1 border rounded text-right outline-none" min="0" placeholder="0" />
+                <input type="number" value={discount} onChange={e => setDiscount(e.target.value)} className="w-16 px-1 border rounded text-right outline-none" min="0" max={subtotal} placeholder="0" />
               </div>
             </div>
             <div className="flex flex-col justify-end text-right border-l pl-2 border-gray-200">

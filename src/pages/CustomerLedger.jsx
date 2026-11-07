@@ -120,6 +120,34 @@ function CustomerLedger() {
             // Sort by date
             combined.sort((a, b) => new Date(a.date) - new Date(b.date))
 
+            // Check for initial opening balance / previous dues
+            const currentTotalDue = Number(custRes.data.outstanding_balance ?? custRes.data.balance ?? 0)
+            const netTxBalance = combined.reduce((acc, item) => {
+                if (item.type === 'sale') {
+                    const owed = Math.max(0, item.amount - (item.paid_amount || 0))
+                    return acc + owed
+                } else if (item.type === 'debit') {
+                    return acc + Number(item.amount || 0)
+                } else if (item.payment_type === 'refund') {
+                    return acc
+                } else {
+                    return acc - Math.abs(Number(item.amount || 0))
+                }
+            }, 0)
+
+            const openingDues = currentTotalDue - netTxBalance
+            if (Math.abs(openingDues) >= 1) {
+                combined.unshift({
+                    id: 'opening-balance',
+                    date: custRes.data.created_at || (combined[0]?.date ? new Date(new Date(combined[0].date).getTime() - 60000).toISOString() : new Date().toISOString()),
+                    type: openingDues > 0 ? 'debit' : 'payment',
+                    payment_type: openingDues > 0 ? 'debit' : 'payment',
+                    amount: Math.abs(openingDues),
+                    note: openingDues > 0 ? 'Opening Balance (Previous Unpaid Dues)' : 'Opening Credit (Advance Balance)',
+                    items: []
+                })
+            }
+
             // Calculate running balance
             let running = 0
             const withBalance = combined.map(item => {
@@ -127,28 +155,14 @@ function CustomerLedger() {
                     const owed = Math.max(0, item.amount - (item.paid_amount || 0))
                     if (owed > 0) running += owed
                 } else if (item.type === 'debit') {
-                    running += Number(item.amount)
+                    running += Number(item.amount || 0)
                 } else if (item.payment_type === 'refund') {
                     // cash refund — no balance change
                 } else {
-                    running -= Math.abs(item.amount)
+                    running -= Math.abs(Number(item.amount || 0))
                 }
                 return { ...item, balance: running }
             })
-
-            const ob = custRes.data.outstanding_balance || 0
-            if (withBalance.length === 0 && ob !== 0) {
-                withBalance.push({
-                    id: 'opening',
-                    date: custRes.data.created_at || new Date().toISOString(),
-                    type: 'sale',
-                    payment_type: 'credit',
-                    amount: Math.abs(ob),
-                    note: 'Opening Balance (previous dues)',
-                    items: [],
-                    balance: ob
-                })
-            }
 
             setLedger(withBalance.reverse()) // newest first for display
         } catch (e) {
@@ -210,13 +224,15 @@ function CustomerLedger() {
                     }
                     return { ...item, balance: running }
                 })
-                // Opening balance if no transactions but customer has dues
-                const cOb = cust?.outstanding_balance || 0
-                if (withBalance.length === 0 && cOb !== 0) {
-                    withBalance.push({
-                        id: 'opening', date: cust?.created_at || new Date().toISOString(),
-                        type: 'sale', payment_type: 'credit', amount: Math.abs(cOb),
-                        note: 'Opening Balance (previous dues)', items: [], balance: cOb
+                // Check for opening dues difference offline
+                const cOb = Number(cust?.outstanding_balance ?? cust?.balance ?? 0)
+                const offlineNet = withBalance.length > 0 ? withBalance[withBalance.length - 1].balance : 0
+                const diff = cOb - offlineNet
+                if (Math.abs(diff) >= 1) {
+                    withBalance.unshift({
+                        id: 'opening-offline', date: cust?.created_at || new Date().toISOString(),
+                        type: diff > 0 ? 'debit' : 'payment', payment_type: diff > 0 ? 'debit' : 'payment', amount: Math.abs(diff),
+                        note: diff > 0 ? 'Opening Balance (Previous Unpaid Dues)' : 'Opening Credit (Advance Balance)', items: [], balance: diff
                     })
                 }
                 setLedger(withBalance.reverse())

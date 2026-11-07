@@ -15,7 +15,9 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
     cashSales: 0,
     cashPayments: 0,
     cashExpenses: 0,
-    salesCount: 0
+    cashPurchases: 0,
+    salesCount: 0,
+    purchasesCount: 0
   })
 
   // Open shift inputs
@@ -80,16 +82,26 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
   const loadLiveStats = async (session) => {
     if (!session?.opened_at) return
     try {
-      // Cash Sales during shift
+      // Cash Sales during shift (including split cash)
       const { data: salesData } = await supabase
         .from('sales')
-        .select('id, paid_amount, amount_paid, payment_method, payment_type')
+        .select('id, paid_amount, amount_paid, payment_method, payment_type, payment_details')
         .eq('shop_id', shopId)
         .gte('created_at', session.opened_at)
 
-      const cashSales = (salesData || [])
-        .filter(s => (s.payment_method || s.payment_type || 'cash').toLowerCase() === 'cash')
-        .reduce((sum, s) => sum + (Number(s.paid_amount || s.amount_paid) || 0), 0)
+      const cashSales = (salesData || []).reduce((sum, s) => {
+        const method = (s.payment_method || s.payment_type || 'cash').toLowerCase()
+        if (method === 'cash') {
+          return sum + (Number(s.paid_amount || s.amount_paid) || 0)
+        }
+        if (method === 'split' && Array.isArray(s.payment_details)) {
+          const splitCash = s.payment_details
+            .filter(p => String(p.method || p.provider || '').toLowerCase() === 'cash')
+            .reduce((pSum, p) => pSum + (Number(p.amount) || 0), 0)
+          return sum + splitCash
+        }
+        return sum
+      }, 0)
 
       // Cash payments from customers
       const { data: paymentsData } = await supabase
@@ -109,11 +121,35 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
 
       const cashExpenses = (expensesData || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
 
+      // Cash stock purchases during shift (phones, stock, buy-backs paid in cash)
+      const { data: purchasesData } = await supabase
+        .from('purchases')
+        .select('id, paid_amount, amount_paid, total_amount, payment_method, payment_type, payment_details')
+        .eq('shop_id', shopId)
+        .gte('created_at', session.opened_at)
+
+      const cashPurchases = (purchasesData || []).reduce((sum, p) => {
+        const method = (p.payment_method || p.payment_type || 'cash').toLowerCase()
+        const paidAmt = Number(p.paid_amount ?? p.amount_paid ?? (method === 'cash' ? p.total_amount : 0)) || 0
+        if (method === 'cash') {
+          return sum + paidAmt
+        }
+        if (method === 'split' && Array.isArray(p.payment_details)) {
+          const splitCash = p.payment_details
+            .filter(d => String(d.method || d.provider || '').toLowerCase() === 'cash')
+            .reduce((dSum, d) => dSum + (Number(d.amount) || 0), 0)
+          return sum + splitCash
+        }
+        return sum
+      }, 0)
+
       setSessionStats({
         cashSales,
         cashPayments,
         cashExpenses,
-        salesCount: (salesData || []).length
+        cashPurchases,
+        salesCount: (salesData || []).length,
+        purchasesCount: (purchasesData || []).length
       })
     } catch (e) {
       console.warn('Could not load live stats:', e)
@@ -205,7 +241,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
       return
     }
 
-    const expectedCash = (Number(currentSession.opening_cash) || 0) + sessionStats.cashSales + sessionStats.cashPayments - sessionStats.cashExpenses
+    const expectedCash = (Number(currentSession.opening_cash) || 0) + sessionStats.cashSales + sessionStats.cashPayments - sessionStats.cashExpenses - (sessionStats.cashPurchases || 0)
     const variance = actualVal - expectedCash
 
     const confirmMsg = `Confirm Close Shift?\nExpected: Rs. ${expectedCash.toLocaleString()}\nCounted: Rs. ${actualVal.toLocaleString()}\nVariance: Rs. ${variance > 0 ? '+' : ''}${variance.toLocaleString()}`
@@ -250,7 +286,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
   if (!isOpen) return null
 
   const expectedTotal = currentSession
-    ? (Number(currentSession.opening_cash) || 0) + sessionStats.cashSales + sessionStats.cashPayments - sessionStats.cashExpenses
+    ? (Number(currentSession.opening_cash) || 0) + sessionStats.cashSales + sessionStats.cashPayments - sessionStats.cashExpenses - (sessionStats.cashPurchases || 0)
     : 0
 
   const calculatedVariance = actualCash !== '' ? (parseFloat(actualCash) || 0) - expectedTotal : 0
@@ -338,7 +374,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
                   </div>
 
                   {/* Cash Breakdown Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                     <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                       <div className="text-[11px] font-bold text-gray-500 uppercase">Opening Float</div>
                       <div className="text-base font-black text-gray-900 mt-0.5">
@@ -361,6 +397,12 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
                       <div className="text-[11px] font-bold text-rose-600 uppercase">Expenses Out</div>
                       <div className="text-base font-black text-rose-800 mt-0.5">
                         - Rs. {sessionStats.cashExpenses.toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-100">
+                      <div className="text-[11px] font-bold text-amber-600 uppercase">Purchases Out</div>
+                      <div className="text-base font-black text-amber-800 mt-0.5">
+                        - Rs. {(sessionStats.cashPurchases || 0).toLocaleString()}
                       </div>
                     </div>
                   </div>

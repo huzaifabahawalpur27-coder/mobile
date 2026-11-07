@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx'
 import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
+import { getBankAccounts, creditBankBalance } from '../services/bankService'
 
 const normalizePurchaseItem = (it, phonesPool = [], productsPool = []) => {
     const ph = it.phones || (phonesPool || []).find(p => p.id === it.phone_id || (it.purchase_id && p.purchase_id === it.purchase_id))
@@ -341,15 +342,30 @@ function PurchaseHistory() {
                 }
             }
 
-            // Update purchase record total
+            // Update purchase record total and paid amount
             const newPurchaseTotal = Math.max(0, (selectedPurchase.total_amount || 0) - totalReturnAmount)
-            await supabase.from('purchases').update({ total_amount: newPurchaseTotal }).eq('id', selectedPurchase.id)
+            const currentPaid = Number(selectedPurchase.paid_amount ?? selectedPurchase.amount_paid ?? 0)
+            const newPaidAmount = Math.max(0, currentPaid - (selectedPurchase.payment_type === 'credit' ? 0 : totalReturnAmount))
+            await supabase.from('purchases').update({
+                total_amount: newPurchaseTotal,
+                paid_amount: newPaidAmount,
+                amount_paid: newPaidAmount
+            }).eq('id', selectedPurchase.id)
+            if (db.purchases) {
+                await db.purchases.update(selectedPurchase.id, {
+                    total_amount: newPurchaseTotal,
+                    paid_amount: newPaidAmount,
+                    amount_paid: newPaidAmount
+                }).catch(() => {})
+            }
 
             // If credit purchase, reduce supplier balance
             if (selectedPurchase.payment_type === 'credit' && selectedPurchase.supplier_id) {
-                const { data: sup } = await supabase.from('suppliers').select('outstanding_balance').eq('id', selectedPurchase.supplier_id).maybeSingle()
-                const newBal = Math.max(0, (sup?.outstanding_balance || 0) - totalReturnAmount)
-                await supabase.from('suppliers').update({ outstanding_balance: newBal }).eq('id', selectedPurchase.supplier_id)
+                const { data: sup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', selectedPurchase.supplier_id).maybeSingle()
+                const baseBal = Number(sup?.outstanding_balance ?? sup?.balance ?? 0)
+                const newBal = Math.max(0, baseBal - totalReturnAmount)
+                await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', selectedPurchase.supplier_id)
+                if (db.suppliers) await db.suppliers.update(Number(selectedPurchase.supplier_id), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
 
                 // Log payment return in supplier_payments
                 const returnPaymentPayload = {
@@ -367,6 +383,40 @@ function PurchaseHistory() {
                         amount: -totalReturnAmount,
                         description: `Return from Purchase PR-${String(selectedPurchase.id).slice(-6)}`
                     }])
+                }
+            } else if (selectedPurchase.payment_type !== 'credit') {
+                // Cash or Bank refund to shop accounts
+                try {
+                    const accounts = await getBankAccounts(user.shop_id)
+                    const method = String(selectedPurchase.payment_type || selectedPurchase.payment_method || '').toLowerCase()
+                    const isBank = method === 'bank' || method === 'online'
+                    const targetAcc = accounts.find(a => 
+                        isBank
+                            ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                            : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                    ) || accounts[0]
+                    if (targetAcc) {
+                        await creditBankBalance({
+                            shopId: user.shop_id,
+                            accountId: targetAcc.id,
+                            amount: totalReturnAmount,
+                            referenceType: 'PURCHASE_RETURN',
+                            referenceId: String(selectedPurchase.id),
+                            description: `Purchase Return Refund (PR-${selectedPurchase.id})`
+                        })
+                    }
+                } catch (accErr) {
+                    console.warn('Could not refund account for purchase return:', accErr)
+                }
+
+                if (selectedPurchase.supplier_id) {
+                    await supabase.from('supplier_payments').insert([{
+                        shop_id: user.shop_id,
+                        supplier_id: selectedPurchase.supplier_id,
+                        amount: -totalReturnAmount,
+                        payment_type: 'refund',
+                        description: `Cash Refund from Purchase Return PR-${String(selectedPurchase.id).slice(-6)}`
+                    }]).catch(() => {})
                 }
             }
 
@@ -541,6 +591,56 @@ function PurchaseHistory() {
             const item = purchases.find(p => p.id === id)
             if (!item) continue
             try {
+                // Roll back inventory and accounts before deleting purchase
+                try {
+                    const { data: pItems } = await supabase.from('purchase_items').select('*').eq('purchase_id', id)
+                    if (pItems && pItems.length > 0) {
+                        for (const pi of pItems) {
+                            if (pi.phone_id) {
+                                await supabase.from('phones').update({ status: 'returned', purchase_id: null }).eq('id', pi.phone_id)
+                                if (db.phones) await db.phones.update(pi.phone_id, { status: 'returned', purchase_id: null }).catch(() => {})
+                            }
+                            if (pi.product_id) {
+                                const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', pi.product_id).maybeSingle()
+                                if (prod) {
+                                    const newStock = Math.max(0, (prod.stock_quantity || 0) - (pi.quantity || 1))
+                                    await supabase.from('products').update({ stock_quantity: newStock }).eq('id', pi.product_id)
+                                    if (db.products) await db.products.update(pi.product_id, { stock_quantity: newStock }).catch(() => {})
+                                }
+                            }
+                        }
+                    }
+
+                    // Reverse Cash / Bank payment made for this purchase
+                    const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? item.total_amount : 0)) || 0
+                    if (paid > 0 && item.payment_type !== 'credit') {
+                        const accounts = await getBankAccounts(user.shop_id)
+                        const method = String(item.payment_type || item.payment_method || '').toLowerCase()
+                        const isBank = method === 'bank' || method === 'online'
+                        const targetAcc = accounts.find(a => 
+                            isBank
+                                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                        ) || accounts[0]
+                        if (targetAcc) {
+                            await creditBankBalance({
+                                shopId: user.shop_id,
+                                accountId: targetAcc.id,
+                                amount: paid,
+                                referenceType: 'PURCHASE_DELETION',
+                                referenceId: String(id),
+                                description: `Purchase Deletion Refund (PR-${id})`
+                            })
+                        }
+                    }
+
+                    // Delete purchase items first
+                    await supabase.from('purchase_items').delete().eq('purchase_id', id)
+                    if (db.purchase_items) await db.purchase_items.where({ purchase_id: id }).delete().catch(() => {})
+                } catch (rollbackErr) {
+                    console.warn('Rollback warning for purchase', id, rollbackErr)
+                }
+
                 if (navigator.onLine) {
                     const { error } = await supabase.from('purchases').delete().eq('id', id)
                     if (error) {

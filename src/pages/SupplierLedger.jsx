@@ -169,10 +169,29 @@ function SupplierLedger() {
         ]
         combined.sort((a, b) => new Date(a.date) - new Date(b.date))
 
+        // Check for opening dues / payable difference
+        const currentSupDue = Number(supplier?.outstanding_balance ?? supplier?.balance ?? 0)
+        const netTx = combined.reduce((acc, item) => {
+            if (item.type === 'purchase' || item.type === 'debit') return acc + Number(item.amount || 0)
+            return acc - Math.abs(Number(item.amount || 0))
+        }, 0)
+        const openingSupDues = currentSupDue - netTx
+        if (Math.abs(openingSupDues) >= 1) {
+            combined.unshift({
+                id: 'opening-balance',
+                date: supplier?.created_at || (combined[0]?.date ? new Date(new Date(combined[0].date).getTime() - 60000).toISOString() : new Date().toISOString()),
+                type: openingSupDues > 0 ? 'debit' : 'payment',
+                payment_type: openingSupDues > 0 ? 'debit' : 'payment',
+                amount: Math.abs(openingSupDues),
+                note: openingSupDues > 0 ? 'Opening Balance (Previous Supplier Payable)' : 'Opening Credit (Advance Paid)',
+                items: []
+            })
+        }
+
         let running = 0
         const withBalance = combined.map(item => {
-            if (item.type === 'purchase' || item.type === 'debit') running += Number(item.amount)
-            else running -= Math.abs(Number(item.amount))
+            if (item.type === 'purchase' || item.type === 'debit') running += Number(item.amount || 0)
+            else running -= Math.abs(Number(item.amount || 0))
             return { ...item, balance: running }
         })
         setLedger(withBalance.reverse())

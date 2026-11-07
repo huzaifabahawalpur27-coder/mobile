@@ -417,8 +417,28 @@ function Sales() {
       }
 
       // Update sale record total
-      const newSaleTotal = Math.max(0, (selectedSale.total_amount || 0) - totalReturnAmount)
-      await supabase.from('sales').update({ total_amount: newSaleTotal }).eq('id', selectedSale.id)
+      const remainingGross = Number(selectedSale.total_amount || 0)
+      const discountReturned = remainingGross > 0
+        ? Number(selectedSale.discount || 0) * Math.min(1, totalReturnAmount / remainingGross)
+        : 0
+      const newSaleTotal = Math.max(0, Number(selectedSale.total_amount || 0) - totalReturnAmount)
+      const newDiscount = newSaleTotal === 0 ? 0 : Math.max(0, Number(selectedSale.discount || 0) - discountReturned)
+      const newNetAmount = Math.max(0, newSaleTotal - newDiscount)
+      const newPaidAmount = Math.max(0, Number(selectedSale.paid_amount || selectedSale.amount_paid || 0) - (refundType === 'credit' ? 0 : totalReturnAmount))
+      await supabase.from('sales').update({
+        total_amount: newSaleTotal,
+        discount: newDiscount,
+        net_amount: newNetAmount,
+        paid_amount: newPaidAmount,
+        amount_paid: newPaidAmount
+      }).eq('id', selectedSale.id)
+      await db.sales.update(selectedSale.id, {
+        total_amount: newSaleTotal,
+        discount: newDiscount,
+        net_amount: newNetAmount,
+        paid_amount: newPaidAmount,
+        amount_paid: newPaidAmount
+      })
 
       // Process Refund
       if (refundType === 'credit' && selectedSale.customer_id) {
@@ -504,6 +524,7 @@ function Sales() {
       const errMsg = err?.message || String(err)
       if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
         // OFFLINE RETURN LOGIC
+        totalReturnAmount = 0
         for (const item of itemsToReturn) {
           const returnQty = parseInt(returnQtys[item.id]) || 0
           totalReturnAmount += item.unit_price * returnQty
@@ -528,14 +549,28 @@ function Sales() {
         }
 
         // Update local Sale total
-        const newSaleTotal = Math.max(0, (selectedSale.total_amount || 0) - totalReturnAmount)
-        await db.sales.update(selectedSale.id, { total_amount: newSaleTotal })
-        await db.sync_queue.add({ table: 'sales', action: 'UPDATE', data: { id: selectedSale.id, total_amount: newSaleTotal }, timestamp: new Date().toISOString() })
+        const remainingGross = Number(selectedSale.total_amount || 0)
+        const discountReturned = remainingGross > 0
+          ? Number(selectedSale.discount || 0) * Math.min(1, totalReturnAmount / remainingGross)
+          : 0
+        const newSaleTotal = Math.max(0, Number(selectedSale.total_amount || 0) - totalReturnAmount)
+        const newDiscount = newSaleTotal === 0 ? 0 : Math.max(0, Number(selectedSale.discount || 0) - discountReturned)
+        const newNetAmount = Math.max(0, newSaleTotal - newDiscount)
+        const newPaidAmount = Math.max(0, Number(selectedSale.paid_amount || selectedSale.amount_paid || 0) - (refundType === 'credit' ? 0 : totalReturnAmount))
+        const offlineSaleUpdate = {
+          total_amount: newSaleTotal,
+          discount: newDiscount,
+          net_amount: newNetAmount,
+          paid_amount: newPaidAmount,
+          amount_paid: newPaidAmount
+        }
+        await db.sales.update(selectedSale.id, offlineSaleUpdate)
+        await db.sync_queue.add({ table: 'sales', action: 'UPDATE', data: { id: selectedSale.id, ...offlineSaleUpdate }, timestamp: new Date().toISOString() })
 
         alert('Offline mode: Return processed locally. Stock and Invoice updated! 🔄')
         setReturning(false)
         setReturnQtys({})
-        setSelectedSale({ ...selectedSale, total_amount: newSaleTotal })
+        setSelectedSale({ ...selectedSale, total_amount: newSaleTotal, discount: newDiscount })
         // Reflect updated returned_qty in modal items
         const localUpdated = await db.sale_items.where({ sale_id: selectedSale.id }).toArray().catch(() => [])
         const [lPhones, lProducts] = await Promise.all([
@@ -734,6 +769,31 @@ function Sales() {
               await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', item.customer_id).catch(() => {})
               if (db.customers) await db.customers.update(item.customer_id, { outstanding_balance: newBal, balance: newBal }).catch(() => {})
             }
+          } else if (item.payment_type !== 'credit') {
+            // Reverse bank or cash proceeds recorded in accounts for this sale
+            const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? (Number(item.total_amount || 0) - Number(item.discount || 0)) : 0)) || 0
+            if (paid > 0) {
+              try {
+                const accounts = await getBankAccounts(user.shop_id)
+                const method = String(item.payment_type || item.payment_method || '').toLowerCase()
+                const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(method)
+                const targetAcc = accounts.find(a => 
+                  isBank 
+                    ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                    : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                ) || accounts[0]
+                if (targetAcc) {
+                  await deductBankBalance({
+                    shopId: user.shop_id,
+                    accountId: targetAcc.id,
+                    amount: paid,
+                    description: `Sale Deletion Reversal (Invoice #${id})`
+                  })
+                }
+              } catch (accErr) {
+                console.warn('Could not reverse account balance for deleted sale:', accErr)
+              }
+            }
           }
         } catch (rollbackErr) {
           console.warn('Rollback warning for sale', id, rollbackErr)
@@ -903,7 +963,7 @@ function Sales() {
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <div>
                         <p className="text-lg font-black text-gray-900">
-                          Rs. {(Number(sale.total_amount) - Number(sale.discount || 0)).toFixed(0)}
+                          Rs. {Math.max(0, Number(sale.net_amount ?? (Number(sale.total_amount || 0) - Number(sale.discount || 0)))).toFixed(0)}
                         </p>
                         <div className="mt-1 flex flex-wrap gap-1.5 items-center">
                           {renderPaymentBadge(sale)}
@@ -1067,8 +1127,8 @@ function Sales() {
                             )}
                           </td>
                           <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
-                            Rs. {(Number(sale.total_amount) - Number(sale.discount || 0)).toFixed(0)}
-                            {sale.discount > 0 && <span className="text-xs text-gray-400 ml-1">(disc: {sale.discount})</span>}
+                            Rs. {Math.max(0, Number(sale.net_amount ?? (Number(sale.total_amount || 0) - Number(sale.discount || 0)))).toFixed(0)}
+                            {sale.discount > 0 && Number(sale.total_amount) > 0 && <span className="text-xs text-gray-400 ml-1">(disc: {sale.discount})</span>}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex flex-col gap-1 items-start">

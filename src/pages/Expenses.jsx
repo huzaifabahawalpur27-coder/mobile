@@ -6,6 +6,7 @@ import PasswordModal from '../components/PasswordModal'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import { Calendar, Search, Filter, Plus, X, Edit3, Trash2 } from 'lucide-react'
+import { getBankAccounts, deductBankBalance, creditBankBalance } from '../services/bankService'
 
 export const getTodayDateStr = () => {
   const d = new Date()
@@ -260,6 +261,27 @@ function Expenses() {
         if (error) throw error
       }
 
+      // Deduct expense from Cash Drawer / Bank Account
+      if (!editingId && payload.amount > 0) {
+        try {
+          const accounts = await getBankAccounts(user.shop_id)
+          const cashAcc = accounts.find(a => 
+            a.bank_name?.toLowerCase().includes('cash') || 
+            a.account_name?.toLowerCase().includes('cash')
+          ) || accounts[0]
+          if (cashAcc) {
+            await deductBankBalance({
+              shopId: user.shop_id,
+              accountId: cashAcc.id,
+              amount: payload.amount,
+              description: `Shop Expense: ${payload.category} - ${payload.note || payload.description || 'Misc'}`
+            })
+          }
+        } catch (accErr) {
+          console.warn('Could not deduct expense from cash account:', accErr)
+        }
+      }
+
       resetForm()
       setShowForm(false)
       fetchExpenses()
@@ -341,6 +363,30 @@ function Expenses() {
 
         await moveToTrash('expenses', id, item, user.id, user.shop_id)
         await db.expenses.delete(id)
+
+        // Refund expense back to Cash Account
+        if (item.amount > 0) {
+          try {
+            const accounts = await getBankAccounts(user.shop_id)
+            const cashAcc = accounts.find(a => 
+              a.bank_name?.toLowerCase().includes('cash') || 
+              a.account_name?.toLowerCase().includes('cash')
+            ) || accounts[0]
+            if (cashAcc) {
+              await creditBankBalance({
+                shopId: user.shop_id,
+                accountId: cashAcc.id,
+                amount: item.amount,
+                referenceType: 'EXPENSE_REVERSAL',
+                referenceId: String(id),
+                description: `Expense Deletion Refund: ${item.category}`
+              })
+            }
+          } catch (accErr) {
+            console.warn('Could not refund account for deleted expense:', accErr)
+          }
+        }
+
         successfulIds.push(id)
         successCount++
       } catch (err) {

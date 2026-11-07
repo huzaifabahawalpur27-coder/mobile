@@ -21,7 +21,6 @@ import {
   Banknote,
   ChevronRight,
   Sparkles,
-  DollarSign,
   Percent,
   Activity,
   Layers,
@@ -41,28 +40,17 @@ const AppleWidget = ({
   subValue,
   badge,
   badgeStyle,
-  cardBg,
-  cardBorder,
   valueColor,
-  glowColor,
   isHero,
   onClick
 }) => (
   <div
     onClick={onClick}
-    className={`p-4 sm:p-5 rounded-[22px] transition-all duration-200 group flex flex-col justify-between cursor-pointer relative overflow-hidden active:scale-[0.98] ${
-      cardBg || (isHero
-        ? 'bg-gradient-to-br from-emerald-500/[0.10] via-white/95 to-teal-500/[0.04] dark:from-emerald-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95'
-        : 'bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl')
-    } ${
-      cardBorder || (isHero
-        ? 'border-2 border-emerald-500/35 dark:border-emerald-500/45 shadow-[0_4px_20px_rgba(16,185,129,0.12)] hover:shadow-[0_8px_28px_rgba(16,185,129,0.2)] hover:-translate-y-0.5'
-        : 'border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5')
-    }`}
+    role="button"
+    tabIndex={0}
+    onKeyDown={e => { if (onClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick() } }}
+    className={`p-4 sm:p-5 rounded-2xl transition-all duration-200 group flex flex-col justify-between cursor-pointer relative overflow-hidden active:scale-[0.99] bg-white dark:bg-[#1c1c1e] border ${isHero ? 'border-emerald-500/40 shadow-sm' : 'border-black/[0.08] dark:border-white/[0.1] shadow-xs'} hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500`}
   >
-    {/* Apple Ambient Specular Glow */}
-    <div className={`absolute top-0 right-0 w-28 h-28 rounded-full blur-2xl pointer-events-none ${glowColor || (isHero ? 'bg-emerald-500/15' : 'bg-blue-500/10')}`} />
-
     <div>
       <div className="flex justify-between items-start mb-2.5">
         <div className={`w-10 h-10 rounded-[14px] flex items-center justify-center ${bgTint} ${color} transition-transform group-hover:scale-105 shadow-2xs`}>
@@ -111,6 +99,7 @@ function Dashboard() {
 
   const [stats, setStats] = useState({
     todaySales: 0,
+    todayNetSales: 0,
     todayCOGS: 0,
     todayProfit: 0,
     todayProfitMargin: 0,
@@ -146,7 +135,10 @@ function Dashboard() {
     lowStockItems: []
   })
 
-  const [weeklyTrend, setWeeklyTrend] = useState([])
+  const [trendSales, setTrendSales] = useState([])
+  const [trendRange, setTrendRange] = useState(7)
+  const [lastRefreshed, setLastRefreshed] = useState(null)
+  const [usingOfflineData, setUsingOfflineData] = useState(false)
   const [showEOD, setShowEOD] = useState(false)
   const [eodData, setEodData] = useState(null)
   const [eodLoading, setEodLoading] = useState(false)
@@ -170,10 +162,10 @@ function Dashboard() {
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
     const monthISO = firstDayOfMonth.toISOString()
 
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(today.getDate() - 6)
-    sevenDaysAgo.setHours(0, 0, 0, 0)
-    const sevenDaysISO = sevenDaysAgo.toISOString()
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(today.getDate() - 29)
+    thirtyDaysAgo.setHours(0, 0, 0, 0)
+    const thirtyDaysISO = thirtyDaysAgo.toISOString()
 
     try {
       if (!navigator.onLine) throw new Error('Offline')
@@ -195,13 +187,13 @@ function Dashboard() {
           .eq('sale_type', 'sale')
           .gte('created_at', monthISO),
 
-        // 3. Last 7 days sales for trend
+        // 3. Last 30 days sales for trend
         supabase
           .from('sales')
           .select('total_amount, discount, created_at')
           .eq('shop_id', user.shop_id)
           .eq('sale_type', 'sale')
-          .gte('created_at', sevenDaysISO),
+          .gte('created_at', thirtyDaysISO),
 
         // 4. Recent sales (latest 6)
         supabase
@@ -296,8 +288,11 @@ function Dashboard() {
         todayPurchasesList,
         config
       })
+      setUsingOfflineData(false)
+      setLastRefreshed(new Date())
     } catch (err) {
       console.warn('Dashboard: calculating from local DB...', err)
+      setUsingOfflineData(true)
       try {
         const sidStr = String(user.shop_id)
         const [lSales, lProducts, lPhones, lItems, lExpenses, lPurchases, lPurchaseItems] = await Promise.all([
@@ -316,7 +311,7 @@ function Dashboard() {
           sale_items: lItems.filter(i => i.sale_id === s.id)
         }))
         const monthSalesList = mySales.filter(s => new Date(s.created_at) >= firstDayOfMonth)
-        const weekSalesList = mySales.filter(s => new Date(s.created_at) >= sevenDaysAgo)
+        const weekSalesList = mySales.filter(s => new Date(s.created_at) >= thirtyDaysAgo)
         const recentSalesList = [...mySales].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6)
         const productList = lProducts.filter(p => String(p.shop_id) === sidStr)
         const phonesList = (lPhones || []).filter(p => String(p.shop_id) === sidStr)
@@ -344,6 +339,7 @@ function Dashboard() {
           todayPurchasesList,
           config
         })
+        setLastRefreshed(new Date())
       } catch (fallbackErr) {
         console.error('Final Dashboard Fallback Error:', fallbackErr)
       }
@@ -523,8 +519,17 @@ function Dashboard() {
     ;(todayPurchasesList || []).forEach(p => {
       const pCost = Number(p.total_amount || 0)
       todayPurchasesCost += pCost
-      if (String(p.payment_type || '').toLowerCase() === 'cash') {
-        todayCashPurchases += pCost
+      const method = String(p.payment_type || p.payment_method || '').toLowerCase()
+      const paidAmt = Number(p.paid_amount ?? p.amount_paid ?? (method === 'cash' ? pCost : 0)) || 0
+
+      if (method === 'cash') {
+        todayCashPurchases += paidAmt
+      } else if (method === 'split' && Array.isArray(p.payment_details)) {
+        p.payment_details.forEach(d => {
+          if (String(d.method || d.provider || '').toLowerCase() === 'cash') {
+            todayCashPurchases += Number(d.amount || 0)
+          }
+        })
       }
 
       const items = p.purchase_items || []
@@ -561,25 +566,7 @@ function Dashboard() {
       .filter(p => Number(p.stock_quantity || 0) <= Number(p.low_stock_threshold || 5))
       .sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity))
 
-    // 6. 7-Day Trend Chart
-    const daysArr = []
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      d.setHours(0, 0, 0, 0)
-      const dayLabel = d.toLocaleDateString('en-PK', { weekday: 'short' })
-      const dateStr = d.toISOString().split('T')[0]
-      daysArr.push({ day: dayLabel, date: dateStr, amount: 0 })
-    }
-
-    weekSalesList.forEach(s => {
-      const saleDate = s.created_at ? s.created_at.split('T')[0] : ''
-      const entry = daysArr.find(d => d.date === saleDate)
-      if (entry) {
-        entry.amount += (Number(s.total_amount || 0) - Number(s.discount || 0))
-      }
-    })
-    setWeeklyTrend(daysArr)
+    setTrendSales(weekSalesList)
 
     // 7. Top Selling Products Today
     const topProducts = Object.values(todayProdMap)
@@ -593,6 +580,7 @@ function Dashboard() {
 
     setStats({
       todaySales: todayGrossSales,
+      todayNetSales,
       todayCOGS,
       todayProfit,
       todayProfitMargin,
@@ -723,7 +711,26 @@ function Dashboard() {
       </body></html>`)
   }
 
-  // 7-Day total calculations
+  // Build the selected-period trend from the fetched 30-day source data.
+  const weeklyTrend = useMemo(() => {
+    const daysArr = []
+    for (let i = trendRange - 1; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      d.setHours(0, 0, 0, 0)
+      const dayLabel = trendRange === 7
+        ? d.toLocaleDateString('en-PK', { weekday: 'short' })
+        : d.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })
+      daysArr.push({ day: dayLabel, date: d.toISOString().split('T')[0], amount: 0 })
+    }
+    trendSales.forEach(s => {
+      const entry = daysArr.find(d => d.date === (s.created_at ? s.created_at.split('T')[0] : ''))
+      if (entry) entry.amount += Math.max(0, Number(s.total_amount || 0) - Number(s.discount || 0))
+    })
+    return daysArr
+  }, [trendRange, trendSales])
+
+  // Selected-period total calculations
   const weeklyTotal = useMemo(() => {
     return weeklyTrend.reduce((sum, d) => sum + d.amount, 0)
   }, [weeklyTrend])
@@ -749,11 +756,14 @@ function Dashboard() {
               • {new Date().toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
-            Store Intelligence
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
+            Dashboard
           </h1>
           <p className="text-[#86868b] text-xs sm:text-sm mt-0.5 font-normal">
-            Real-time sales velocity, net earnings, cash register balance, and inventory valuation.
+            Today’s sales, earnings, cash flow, and stock at a glance.
+          </p>
+          <p className="text-[11px] text-[#86868b] mt-1" aria-live="polite">
+            {usingOfflineData ? 'Offline data' : 'Online data'}{lastRefreshed ? ` · Updated ${lastRefreshed.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' })}` : ''}{loading ? ' · Refreshing…' : ''}
           </p>
         </div>
 
@@ -761,26 +771,10 @@ function Dashboard() {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             to="/pos"
-            className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-95 text-white text-xs font-bold rounded-full shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer"
+            className="min-h-11 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-bold rounded-xl shadow-xs hover:shadow transition-all flex items-center gap-2 cursor-pointer"
           >
             <ShoppingBag size={14} />
             <span>+ New Sale (POS)</span>
-          </Link>
-
-          <Link
-            to="/purchases"
-            className="px-3 py-2 bg-white dark:bg-[#1c1c1e] hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e] active:scale-95 text-[#1d1d1f] dark:text-[#f5f5f7] text-xs font-semibold rounded-full border border-black/[0.08] dark:border-white/[0.1] shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <Smartphone size={14} className="text-purple-600" />
-            <span>+ Buy Phone</span>
-          </Link>
-
-          <Link
-            to="/expenses"
-            className="px-3 py-2 bg-white dark:bg-[#1c1c1e] hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e] active:scale-95 text-[#1d1d1f] dark:text-[#f5f5f7] text-xs font-semibold rounded-full border border-black/[0.08] dark:border-white/[0.1] shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <DollarSign size={14} className="text-rose-500" />
-            <span>+ Expense</span>
           </Link>
 
           <button
@@ -803,18 +797,18 @@ function Dashboard() {
       </div>
 
       {/*  Apple Control Center Primary KPI Widgets (5 Core Financial Metrics with Hero Net Profit) */}
-      {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 animate-pulse">
-          {[1, 2, 3, 4, 5].map(i => (
+      {loading && !lastRefreshed ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 animate-pulse">
+          {[1, 2, 3].map(i => (
             <div key={i} className="h-32 bg-[#e5e5ea]/50 dark:bg-[#2c2c2e]/50 rounded-[22px]"></div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
           {/* 1. Today's Gross Sales - Apple Cobalt Blue */}
           <AppleWidget
-            title="Today's Sales (Rs)"
-            hint="فروخت"
+            title="Gross Sales (Rs)"
+            hint="Today"
             value={stats.todaySales}
             icon={<Banknote size={20} />}
             color="text-[#0071e3] dark:text-[#3894ff]"
@@ -827,7 +821,7 @@ function Dashboard() {
             glowColor="bg-blue-500/10"
             subValue={
               stats.todayOrdersCount > 0
-                ? `${stats.todayOrdersCount} orders • Avg: Rs. ${Math.round(stats.todayAOV).toLocaleString()}`
+              ? `${stats.todayOrdersCount} orders • Net Rs. ${Math.round(stats.todayNetSales).toLocaleString()}`
                 : 'No sales yet'
             }
             onClick={() => navigate('/sales')}
@@ -837,86 +831,59 @@ function Dashboard() {
           <AppleWidget
             isHero={true}
             title="Net Profit (Rs)"
-            hint="صافی منافع"
+            hint="After expenses"
             value={stats.todayNetProfit}
             icon={<Sparkles size={20} />}
             color="text-emerald-600 dark:text-emerald-400"
             bgTint="bg-emerald-500/15 dark:bg-emerald-500/25"
             cardBg="bg-gradient-to-br from-emerald-500/[0.12] via-white/95 to-teal-500/[0.05] dark:from-emerald-950/50 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
             cardBorder="border-2 border-emerald-500/40 dark:border-emerald-500/50 hover:border-emerald-500/70 shadow-[0_4px_24px_rgba(16,185,129,0.14)] hover:shadow-[0_8px_32px_rgba(16,185,129,0.22)]"
-            badge={stats.todayProfitMargin ? `Pure Profit • ${(stats.todayProfitMargin ?? 0).toFixed(1)}%` : 'Pure Profit'}
+            badge={stats.todayProfitMargin ? `${(stats.todayProfitMargin ?? 0).toFixed(1)}% gross margin` : 'After expenses'}
             badgeStyle="bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/35 font-black"
             valueColor="text-emerald-600 dark:text-emerald-400"
             glowColor="bg-emerald-500/20"
             subValue={
               stats.todaySales > 0
-                ? `Rs. ${Math.round(stats.todayProfit).toLocaleString()} gross − Rs. ${Math.round(stats.todayExpenses).toLocaleString()} exp`
-                : 'Pure profit after all expenses'
+                ? `Gross profit Rs. ${Math.round(stats.todayProfit).toLocaleString()} − expenses Rs. ${Math.round(stats.todayExpenses).toLocaleString()}`
+                : 'Gross profit less today’s expenses'
             }
             onClick={() => navigate('/reports')}
           />
 
-          {/* 3. Items Sold Today - Apple Royal Indigo / Violet */}
+          {/* 3. Orders completed today */}
           <AppleWidget
-            title="Units Sold Today"
-            hint="تعداد"
-            value={`${stats.todayItemsSold} Pcs`}
+            title="Orders Today"
+            hint="Today"
+            value={stats.todayOrdersCount}
             icon={<ShoppingBag size={20} />}
             color="text-[#5856d6] dark:text-[#7d7aff]"
             bgTint="bg-[#5856d6]/12 dark:bg-[#5856d6]/25"
             cardBg="bg-gradient-to-br from-indigo-500/[0.08] via-white/95 to-purple-500/[0.03] dark:from-indigo-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
             cardBorder="border border-indigo-500/25 dark:border-indigo-500/40 hover:border-indigo-500/50 shadow-[0_4px_20px_rgba(99,102,241,0.08)] hover:shadow-[0_8px_28px_rgba(99,102,241,0.16)]"
-            badge="Volume"
+            badge="Invoices"
             badgeStyle="bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 font-bold"
             valueColor="text-[#5856d6] dark:text-[#7d7aff]"
             glowColor="bg-indigo-500/10"
-            subValue={`${stats.todayPhonesSold} phones • ${stats.todayBulkSold} accessories`}
+            subValue={`Average sale: Rs. ${Math.round(stats.todayAOV).toLocaleString()}`}
             onClick={() => navigate('/sales')}
-          />
-
-          {/* 4. Today's Inward Purchases - Apple Sunset Amber / Tangerine */}
-          <AppleWidget
-            title="Purchases Today (Rs)"
-            hint="خریداری"
-            value={stats.todayPurchasesCost}
-            icon={<CreditCard size={20} />}
-            color="text-[#ff9500] dark:text-[#ffaa33]"
-            bgTint="bg-[#ff9500]/12 dark:bg-[#ff9500]/25"
-            cardBg="bg-gradient-to-br from-amber-500/[0.09] via-white/95 to-orange-500/[0.03] dark:from-amber-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
-            cardBorder="border border-amber-500/25 dark:border-amber-500/40 hover:border-amber-500/50 shadow-[0_4px_20px_rgba(245,158,11,0.08)] hover:shadow-[0_8px_28px_rgba(245,158,11,0.16)]"
-            badge="Stock In"
-            badgeStyle="bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30 font-bold"
-            valueColor="text-[#ff9500] dark:text-[#ffaa33]"
-            glowColor="bg-amber-500/10"
-            subValue={
-              stats.todayPurchasesCost > 0
-                ? `${stats.todayPurchasedPhones} phone${stats.todayPurchasedPhones === 1 ? '' : 's'}${stats.todayPurchasedBulk > 0 ? ` • ${stats.todayPurchasedBulk} acc` : ''}`
-                : 'No purchases today'
-            }
-            onClick={() => navigate('/purchase-history')}
-          />
-
-          {/* 5. Inventory Asset Valuation - Apple Orchid Magenta */}
-          <AppleWidget
-            title="Stock Value (Rs)"
-            hint="سرمایہ"
-            value={stats.totalStockValuation}
-            icon={<Smartphone size={20} />}
-            color="text-[#af52de] dark:text-[#c772f9]"
-            bgTint="bg-[#af52de]/12 dark:bg-[#af52de]/25"
-            cardBg="bg-gradient-to-br from-purple-500/[0.08] via-white/95 to-fuchsia-500/[0.03] dark:from-purple-950/40 dark:via-[#1c1c1e]/95 dark:to-[#1c1c1e]/95"
-            cardBorder="border border-purple-500/25 dark:border-purple-500/40 hover:border-purple-500/50 shadow-[0_4px_20px_rgba(168,85,247,0.08)] hover:shadow-[0_8px_28px_rgba(168,85,247,0.16)]"
-            badge="Asset"
-            badgeStyle="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30 font-bold"
-            valueColor="text-[#af52de] dark:text-[#c772f9]"
-            glowColor="bg-purple-500/10"
-            subValue={`${stats.phonesInStock} phones • ${stats.productsStockTotal} accessories`}
-            onClick={() => navigate('/products')}
           />
         </div>
       )}
 
-      {/*  Real-Time Cash Flow & Operational Health Strip */}
+      {stats.lowStockCount > 0 && (
+        <Link to="/products" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 dark:bg-amber-950/25 dark:border-amber-800 px-4 py-3 hover:bg-amber-100 dark:hover:bg-amber-950/40 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500">
+          <div className="flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center justify-center"><AlertTriangle size={20} /></span>
+            <div>
+              <p className="text-sm font-bold text-amber-950 dark:text-amber-100">Needs attention: {stats.lowStockCount} items at or below reorder level</p>
+              <p className="text-xs text-amber-800 dark:text-amber-300">Review low stock before the next sale.</p>
+            </div>
+          </div>
+          <span className="text-sm font-semibold text-amber-800 dark:text-amber-200">Review stock <ChevronRight size={16} className="inline" /></span>
+        </Link>
+      )}
+
+      {/* Daily cash flow and operating totals */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* 1. Cash in Drawer (Galla) */}
         <div
@@ -1012,7 +979,7 @@ function Dashboard() {
         </div>
       </div>
 
-      {/*  Middle Analytics Row: 7-Day Velocity Chart & Inventory Capital Split */}
+      {/* Sales trend and stock overview */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Apple Stocks-style 7-Day Sales Trend (2 Columns) */}
         <div className="lg:col-span-2 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
@@ -1021,16 +988,19 @@ function Dashboard() {
               <div>
                 <h3 className="text-[#1d1d1f] dark:text-[#f5f5f7] font-semibold text-[15px] flex items-center gap-2">
                   <span className="w-2 h-2 bg-[#0071e3] rounded-full"></span>
-                  <span>7-Day Sales Velocity</span>
+                  <span>Sales Trend</span>
                 </h3>
                 <p className="text-[#86868b] text-xs mt-0.5">
-                  Daily revenue velocity • Avg: Rs. {Math.round(weeklyAvg).toLocaleString()}/day
+                  Net sales by day • Avg: Rs. {Math.round(weeklyAvg).toLocaleString()}/day
                 </p>
               </div>
 
-              <div className="flex items-center gap-4 text-left sm:text-right">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-left sm:text-right">
+                <div className="inline-flex rounded-lg border border-black/10 dark:border-white/10 p-0.5" role="group" aria-label="Sales trend range">
+                  {[7, 30].map(days => <button key={days} type="button" aria-pressed={trendRange === days} onClick={() => setTrendRange(days)} className={`min-h-9 px-3 rounded-md text-xs font-semibold ${trendRange === days ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10'}`}>{days} days</button>)}
+                </div>
                 <div>
-                  <span className="text-[10px] font-semibold uppercase text-[#86868b] tracking-wider block">7-Day Total</span>
+                  <span className="text-[10px] font-semibold uppercase text-[#86868b] tracking-wider block">{trendRange}-Day Total</span>
                   <span className="text-base sm:text-lg font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                     Rs. {Math.round(weeklyTotal).toLocaleString()}
                   </span>
@@ -1056,6 +1026,7 @@ function Dashboard() {
                   </defs>
                   <XAxis
                     dataKey="day"
+                    interval={trendRange === 30 ? 4 : 0}
                     axisLine={false}
                     tickLine={false}
                     tick={{ fontSize: 11, fill: '#86868b', fontWeight: 600 }}
@@ -1094,7 +1065,7 @@ function Dashboard() {
           {/* Quick Metrics Bar Under Velocity Chart */}
           <div className="grid grid-cols-3 gap-2.5 pt-4 border-t border-black/[0.04] dark:border-white/[0.06] mt-3">
             <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.04] text-center border border-black/[0.02] dark:border-white/[0.04]">
-              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Average Ticket (AOV)</span>
+                  <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Today’s Avg. Sale</span>
               <span className="text-xs sm:text-sm font-bold text-[#1d1d1f] dark:text-[#f5f5f7] mt-0.5 block tabular-nums">
                 Rs. {Math.round(stats.todayAOV).toLocaleString()}
               </span>
@@ -1279,7 +1250,7 @@ function Dashboard() {
                   <Clock size={16} className="text-[#0071e3]" />
                   <span>Recent Checkout Activity</span>
                 </h3>
-                <p className="text-[#86868b] text-xs">Live store order stream</p>
+                <p className="text-[#86868b] text-xs">Most recent completed sales</p>
               </div>
               <Link to="/sales" className="text-xs text-[#0071e3] font-semibold hover:underline flex items-center gap-0.5">
                 <span>All Orders</span>
@@ -1398,7 +1369,7 @@ function Dashboard() {
 
       {/*  macOS / iOS App Launchpad */}
       <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[#86868b] mb-3">Quick Actions</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[#86868b] mb-3">More tools</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <Link
             to="/pos"
