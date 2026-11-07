@@ -290,7 +290,7 @@ function Reports() {
         (p.item_type && p.item_type !== 'phone')
       )
       const payType = String(p.payment_type || 'cash').toLowerCase()
-      const pAmount = Number(p.total_amount || 0)
+      const pAmount = Number(p.net_amount ?? (Number(p.total_amount || 0) - Number(p.discount || 0)))
 
       if (isBulkPurchase) {
         let pUnits = 0

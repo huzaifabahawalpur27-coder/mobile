@@ -658,6 +658,19 @@ export const transferBetweenAccounts = async ({
   const fromAccId = Number(fromAccountId);
   const toAccId = Number(toAccountId);
 
+  // Verify source account balance before initiating transfer
+  let sourceAcc = await db.bank_accounts.get(fromAccId);
+  if (!sourceAcc && navigator.onLine) {
+    try {
+      const { data } = await getClient().from('bank_accounts').select('*').eq('id', fromAccId).single();
+      if (data) sourceAcc = data;
+    } catch (_) {}
+  }
+  const currentSrcBal = Number(sourceAcc?.current_balance || 0);
+  if (currentSrcBal < transferAmount) {
+    throw new Error(`Insufficient balance in "${sourceAcc?.account_name || 'Source Account'}". Current balance: Rs. ${currentSrcBal.toLocaleString()}, Requested: Rs. ${transferAmount.toLocaleString()}`);
+  }
+
   // 1. Deduct from source
   await deductBankBalance({
     shopId,
@@ -666,15 +679,28 @@ export const transferBetweenAccounts = async ({
     description: `Transfer OUT to Account #${toAccId}: ${description || 'Internal Transfer'}`
   });
 
-  // 2. Credit to destination
-  await creditBankBalance({
-    shopId,
-    accountId: toAccId,
-    amount: transferAmount,
-    referenceType: 'TRANSFER',
-    referenceId: `TX-FROM-${fromAccId}`,
-    description: `Transfer IN from Account #${fromAccId}: ${description || 'Internal Transfer'}`
-  });
+  // 2. Credit to destination with automatic rollback if failed
+  try {
+    await creditBankBalance({
+      shopId,
+      accountId: toAccId,
+      amount: transferAmount,
+      referenceType: 'TRANSFER',
+      referenceId: `TX-FROM-${fromAccId}`,
+      description: `Transfer IN from Account #${fromAccId}: ${description || 'Internal Transfer'}`
+    });
+  } catch (creditErr) {
+    console.error('Destination credit failed during transfer, rolling back source deduction:', creditErr);
+    await creditBankBalance({
+      shopId,
+      accountId: fromAccId,
+      amount: transferAmount,
+      referenceType: 'TRANSFER_ROLLBACK',
+      referenceId: `TX-FAIL-${toAccId}`,
+      description: `Rollback Transfer to #${toAccId} (Credit Failed)`
+    });
+    throw new Error('Transfer failed while crediting destination account. Funds have been returned safely to the source account.');
+  }
 
   return { success: true, amount: transferAmount };
 };

@@ -132,13 +132,14 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
       // Cash stock purchases during shift (phones, stock, buy-backs paid in cash)
       const { data: purchasesData } = await supabase
         .from('purchases')
-        .select('id, paid_amount, amount_paid, total_amount, payment_method, payment_type, payment_details')
+        .select('id, paid_amount, amount_paid, total_amount, discount, net_amount, payment_method, payment_type, payment_details')
         .eq('shop_id', shopId)
         .gte('created_at', session.opened_at)
 
       const cashPurchases = (purchasesData || []).reduce((sum, p) => {
         const method = (p.payment_method || p.payment_type || 'cash').toLowerCase()
-        const paidAmt = Number(p.paid_amount ?? p.amount_paid ?? (method === 'cash' ? p.total_amount : 0)) || 0
+        const netCost = Number(p.net_amount ?? (Number(p.total_amount || 0) - Number(p.discount || 0)))
+        const paidAmt = Number(p.paid_amount ?? p.amount_paid ?? (method === 'cash' ? netCost : 0)) || 0
         if (method === 'cash') {
           return sum + paidAmt
         }
@@ -177,7 +178,82 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
         purchasesCount: (purchasesData || []).length
       })
     } catch (e) {
-      console.warn('Could not load live stats:', e)
+      console.warn('Could not load live stats online, trying local DB:', e)
+      try {
+        const sidStr = String(shopId)
+        const [lSales, lCP, lExp, lPur, lSP] = await Promise.all([
+          db.sales?.toArray().catch(() => []) || [],
+          db.customer_payments?.toArray().catch(() => []) || [],
+          db.expenses?.toArray().catch(() => []) || [],
+          db.purchases?.toArray().catch(() => []) || [],
+          db.supplier_payments?.toArray().catch(() => []) || []
+        ])
+
+        const sessionOpenTime = new Date(session.opened_at).getTime()
+        const mySales = lSales.filter(s => String(s.shop_id) === sidStr && new Date(s.created_at).getTime() >= sessionOpenTime)
+        const cashSales = mySales.reduce((sum, s) => {
+          const method = (s.payment_method || s.payment_type || 'cash').toLowerCase()
+          if (method === 'cash') return sum + (Number(s.paid_amount || s.amount_paid) || 0)
+          if (method === 'split' && Array.isArray(s.payment_details)) {
+            const splitCash = s.payment_details
+              .filter(p => String(p.method || p.provider || '').toLowerCase() === 'cash')
+              .reduce((pSum, p) => pSum + (Number(p.amount) || 0), 0)
+            return sum + splitCash
+          }
+          return sum
+        }, 0)
+
+        const myCP = lCP.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at).getTime() >= sessionOpenTime)
+        const cashPayments = myCP.reduce((sum, p) => {
+          const type = String(p.payment_type || 'payment').toLowerCase()
+          const mode = String(p.payment_mode || 'cash').toLowerCase()
+          if (type === 'payment' && (mode === 'cash' || !mode)) {
+            return sum + (Number(p.amount) || 0)
+          }
+          return sum
+        }, 0)
+
+        const sessionDateStr = session.opened_at.split('T')[0]
+        const myExp = lExp.filter(e => String(e.shop_id) === sidStr && (e.date >= sessionDateStr || new Date(e.created_at).getTime() >= sessionOpenTime))
+        const cashExpenses = myExp.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+
+        const myPur = lPur.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at).getTime() >= sessionOpenTime)
+        const cashPurchases = myPur.reduce((sum, p) => {
+          const method = (p.payment_method || p.payment_type || 'cash').toLowerCase()
+          const netCost = Number(p.net_amount ?? (Number(p.total_amount || 0) - Number(p.discount || 0)))
+          const paidAmt = Number(p.paid_amount ?? p.amount_paid ?? (method === 'cash' ? netCost : 0)) || 0
+          if (method === 'cash') return sum + paidAmt
+          if (method === 'split' && Array.isArray(p.payment_details)) {
+            const splitCash = p.payment_details
+              .filter(d => String(d.method || d.provider || '').toLowerCase() === 'cash')
+              .reduce((dSum, d) => dSum + (Number(d.amount) || 0), 0)
+            return sum + splitCash
+          }
+          return sum
+        }, 0)
+
+        const mySP = lSP.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at).getTime() >= sessionOpenTime)
+        const cashSupplierPayments = mySP.reduce((sum, p) => {
+          const type = String(p.payment_type || 'payment').toLowerCase()
+          const mode = String(p.payment_mode || 'cash').toLowerCase()
+          if (type === 'payment' && (mode === 'cash' || !mode)) {
+            return sum + (Number(p.amount) || 0)
+          }
+          return sum
+        }, 0)
+
+        setSessionStats({
+          cashSales,
+          cashPayments,
+          cashExpenses,
+          cashPurchases,
+          cashSupplierPayments,
+          salesCount: mySales.length,
+          purchasesCount: myPur.length
+        })
+      } catch (localErr) {
+        console.warn('Could not load local cash session stats:', localErr)
+      }
     }
   }
 

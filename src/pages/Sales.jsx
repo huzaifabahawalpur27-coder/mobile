@@ -416,15 +416,31 @@ function Sales() {
         }
       }
 
-      // Update sale record total
+      // Calculate prorated discount and net return amount
       const remainingGross = Number(selectedSale.total_amount || 0)
-      const discountReturned = remainingGross > 0
-        ? Number(selectedSale.discount || 0) * Math.min(1, totalReturnAmount / remainingGross)
-        : 0
-      const newSaleTotal = Math.max(0, Number(selectedSale.total_amount || 0) - totalReturnAmount)
+      const discountRate = remainingGross > 0 ? (Number(selectedSale.discount || 0) / remainingGross) : 0
+      const discountReturned = Math.round(totalReturnAmount * discountRate * 100) / 100
+      const totalNetReturn = Math.max(0, totalReturnAmount - discountReturned)
+
+      // Determine cash vs credit refund split based on actual cash paid
+      const currentPaid = Number(selectedSale.paid_amount || selectedSale.amount_paid || 0)
+      let cashRefundAmount = 0
+      let creditRefundAmount = 0
+
+      if (refundType === 'credit') {
+        cashRefundAmount = 0
+        creditRefundAmount = totalNetReturn
+      } else {
+        // Cash refund cannot exceed actual cash tendered on this invoice
+        cashRefundAmount = Math.min(totalNetReturn, currentPaid)
+        creditRefundAmount = Math.max(0, totalNetReturn - cashRefundAmount)
+      }
+
+      const newSaleTotal = Math.max(0, remainingGross - totalReturnAmount)
       const newDiscount = newSaleTotal === 0 ? 0 : Math.max(0, Number(selectedSale.discount || 0) - discountReturned)
       const newNetAmount = Math.max(0, newSaleTotal - newDiscount)
-      const newPaidAmount = Math.max(0, Number(selectedSale.paid_amount || selectedSale.amount_paid || 0) - (refundType === 'credit' ? 0 : totalReturnAmount))
+      const newPaidAmount = Math.max(0, currentPaid - cashRefundAmount)
+
       await supabase.from('sales').update({
         total_amount: newSaleTotal,
         discount: newDiscount,
@@ -440,51 +456,50 @@ function Sales() {
         amount_paid: newPaidAmount
       })
 
-      // Process Refund
-      if (refundType === 'credit' && selectedSale.customer_id) {
-        // Credit refund: reduce customer outstanding balance
+      // Process Credit Refund component if customer exists
+      if (creditRefundAmount > 0 && selectedSale.customer_id) {
         const { data: cust } = await supabase.from('customers').select('*').eq('id', selectedSale.customer_id).maybeSingle()
-        const currentBal = cust?.outstanding_balance ?? cust?.balance ?? 0
-        const newBal = Math.max(0, currentBal - totalReturnAmount)
+        const currentBal = Number(cust?.outstanding_balance ?? cust?.balance ?? 0)
+        const newBal = currentBal - creditRefundAmount
         const { error: updErr } = await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', selectedSale.customer_id)
         if (updErr && updErr.message?.includes('outstanding_balance')) {
           await supabase.from('customers').update({ balance: newBal }).eq('id', selectedSale.customer_id)
         }
         await db.customers.update(selectedSale.customer_id, { outstanding_balance: newBal, balance: newBal })
 
-        // Log credit return in customer_payments
         await supabase.from('customer_payments').insert([{
           shop_id: user.shop_id,
           customer_id: selectedSale.customer_id,
-          amount: -totalReturnAmount,
+          amount: -creditRefundAmount,
           payment_type: 'return',
-          note: `Return from Invoice #${String(selectedSale.id).slice(-6)} (Credited to Balance)`
+          note: `Return from Invoice #${String(selectedSale.id).slice(-6)} (Net: Rs. ${creditRefundAmount.toLocaleString()} Credited to Balance)`
         }])
-      } else {
-        // Cash/walk-in refund: deduct from cash drawer, log as refund
+      }
+
+      // Process Cash Refund component
+      if (cashRefundAmount > 0) {
         if (selectedSale.customer_id) {
           await supabase.from('customer_payments').insert([{
             shop_id: user.shop_id,
             customer_id: selectedSale.customer_id,
-            amount: -totalReturnAmount,
+            amount: -cashRefundAmount,
             payment_type: 'refund',
-            note: `Cash Refund from Invoice #${String(selectedSale.id).slice(-6)}`
+            note: `Cash Refund from Invoice #${String(selectedSale.id).slice(-6)} (Net: Rs. ${cashRefundAmount.toLocaleString()})`
           }])
         }
 
-        // Deduct from Cash account in Accounts section
         try {
           const accounts = await getBankAccounts(user.shop_id)
           const cashAcc = accounts.find(a => 
             a.bank_name?.toLowerCase().includes('cash') || 
             a.account_name?.toLowerCase().includes('cash')
-          )
+          ) || accounts[0]
           if (cashAcc) {
             await deductBankBalance({
               shopId: user.shop_id,
               accountId: cashAcc.id,
-              amount: totalReturnAmount,
-              description: `Sale Return Refund (Invoice #${selectedSale.id})`
+              amount: cashRefundAmount,
+              description: `Sale Return Cash Refund (Invoice #${selectedSale.id})`
             })
           }
         } catch (accErr) {

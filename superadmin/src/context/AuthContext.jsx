@@ -1,6 +1,4 @@
-import { createContext, useContext, useState } from 'react'
-import { supabaseAdmin } from '../services/supabase'
-import { hashPassword } from '../utils/authUtils'
+import { createContext, useContext, useEffect, useState } from 'react'
 
 const AuthContext = createContext()
 
@@ -15,43 +13,31 @@ export function AuthProvider({ children }) {
       return null
     }
   })
-  const [loading] = useState(false)
+  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem('admin_session_token')))
+
+  useEffect(() => {
+    const token = localStorage.getItem('admin_session_token')
+    if (!token) return
+    fetch('/api/admin/session/validate', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      .then(async response => response.ok ? response.json() : Promise.reject(new Error('Session expired')))
+      .then(({ user: verified }) => { localStorage.setItem(SESSION_KEY, JSON.stringify(verified)); setUser(verified) })
+      .catch(() => { localStorage.removeItem('admin_session_token'); localStorage.removeItem(SESSION_KEY); setUser(null) })
+      .finally(() => setLoading(false))
+  }, [])
 
   const login = async (email, password) => {
-    if (!supabaseAdmin) {
-      throw new Error('Setup Error: Missing VITE_SUPABASE_SERVICE_ROLE_KEY in .env file.')
-    }
-
-    const hashed = await hashPassword(password)
-
-    // Query the custom users table directly — no Supabase Auth required
-    // ilike for case-insensitive email matching (e.g. Admin@X.com == admin@x.com)
-    const { data, error } = await supabaseAdmin
-      .from('users')
-      .select('*')
-      .ilike('email', email.trim())
-      .eq('password', hashed)
-      .eq('role', 'superadmin')
-      .eq('is_active', true)
-      .maybeSingle()
-
-    if (error) throw new Error('Database error: ' + error.message)
-    if (!data) throw new Error('Invalid email or password, or account is not a Superadmin.')
-
-    const sessionUser = {
-      id: data.id,
-      email: data.email,
-      username: data.username,
-      role: data.role,
-      shop_id: data.shop_id,
-    }
-
+    const response = await fetch('/api/admin/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), password }) })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error || 'Unable to sign in')
+    const sessionUser = result.user
+    localStorage.setItem('admin_session_token', result.token)
     localStorage.setItem(SESSION_KEY, JSON.stringify(sessionUser))
     setUser(sessionUser)
     return sessionUser
   }
 
   const logout = () => {
+    localStorage.removeItem('admin_session_token')
     localStorage.removeItem(SESSION_KEY)
     setUser(null)
   }

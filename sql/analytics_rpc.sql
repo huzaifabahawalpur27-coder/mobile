@@ -30,7 +30,8 @@ AS $$
     ORDER BY 1 ASC;
 $$;
 
-GRANT EXECUTE ON FUNCTION get_global_growth_stats() TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION get_global_growth_stats() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION get_global_growth_stats() TO service_role;
 
 -- 2. Top Performing Shops (Last 30 days)
 CREATE OR REPLACE FUNCTION get_top_performing_shops()
@@ -58,7 +59,8 @@ AS $$
     LIMIT 10;
 $$;
 
-GRANT EXECUTE ON FUNCTION get_top_performing_shops() TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION get_top_performing_shops() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION get_top_performing_shops() TO service_role;
 
 -- 3. Inactive Shops (Over 14 days without sale)
 CREATE OR REPLACE FUNCTION get_inactive_shops()
@@ -86,7 +88,8 @@ AS $$
     ORDER BY last_sale ASC NULLS FIRST;
 $$;
 
-GRANT EXECUTE ON FUNCTION get_inactive_shops() TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION get_inactive_shops() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION get_inactive_shops() TO service_role;
 
 -- 4. Immediately reload PostgREST schema cache
 NOTIFY pgrst, 'reload schema';

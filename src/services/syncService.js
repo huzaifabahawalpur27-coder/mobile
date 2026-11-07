@@ -209,6 +209,12 @@ let isSyncing = false;
 
 export const syncOfflineData = async () => {
     if (!navigator.onLine || isSyncing) return;
+    // Never replay one shop's offline writes under another account or while
+    // logged out. Leave held writes queued until their owning shop signs in.
+    let activeUser;
+    try { activeUser = JSON.parse(localStorage.getItem('user') || 'null'); } catch (_) { return; }
+    const activeShopId = activeUser?.shop_id;
+    if (!activeShopId || activeUser?.isImpersonating) return;
     isSyncing = true;
 
     try {
@@ -216,7 +222,7 @@ export const syncOfflineData = async () => {
     if (queue.length === 0) {
         // Even if queue is empty, reconcile offline products that might have had their queue dropped
         try {
-            await reconcileOfflineProducts();
+            await reconcileOfflineProducts(activeShopId);
         } catch (_) {}
         return;
     }
@@ -226,6 +232,10 @@ export const syncOfflineData = async () => {
     for (const item of queue) {
         if (LOCAL_ONLY_TABLES.includes(item.table)) {
             await db.sync_queue.delete(item.id);
+        } else if (String(item.shop_id ?? item.data?.shop_id ?? '') !== String(activeShopId)) {
+            // Records lacking an explicit shop id are held for manual recovery;
+            // inferring ownership here risks replaying them into the wrong shop.
+            continue;
         } else {
             syncable.push(item);
         }
@@ -630,6 +640,7 @@ export const syncOfflineData = async () => {
                             table: item.table,
                             action: item.action,
                             data: item.data,
+                            shop_id: item.shop_id || item.data?.shop_id || activeShopId,
                             error: error?.message || String(error),
                             failed_at: new Date().toISOString()
                         });
@@ -646,7 +657,7 @@ export const syncOfflineData = async () => {
 
     // Always run reconciliation after queue pass to catch any un-queued or dropped offline products
     try {
-        await reconcileOfflineProducts();
+        await reconcileOfflineProducts(activeShopId);
     } catch (_) {}
 
     try {

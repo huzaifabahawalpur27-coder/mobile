@@ -92,8 +92,8 @@ function POS() {
 
   const subtotal = cart.reduce((sum, i) => sum + (Number(i.custom_price) || 0) * (Number(i.qty) || 0), 0)
   const totalDiscount = discountMode === 'percent'
-    ? Math.round((subtotal * (parseFloat(discountPercent) || 0)) / 100 * 100) / 100
-    : parseFloat(discount) || 0
+    ? Math.min(subtotal, Math.max(0, Math.round((subtotal * (parseFloat(discountPercent) || 0)) / 100 * 100) / 100))
+    : Math.min(subtotal, Math.max(0, parseFloat(discount) || 0))
   const total = Math.max(0, subtotal - totalDiscount)
   const totalProfit = cart.reduce((sum, i) => {
     const itemTotalCost = (Number(i.cost_price) || 0) + (Number(i.additional_costs) || 0)
@@ -893,7 +893,44 @@ function POS() {
     if (cart.length > 0) {
       if (!confirm('Current cart replace ho jayegi. Continue?')) return
     }
-    setCart(held.items)
+    const heldItems = held.items || []
+    const validItems = []
+    const removedItems = []
+
+    for (const item of heldItems) {
+      if (item.phone_id || item.item_type === 'phone') {
+        const phId = item.phone_id || (typeof item.id === 'string' && item.id.startsWith('phone-') ? item.id.replace('phone-', '') : item.id)
+        const ph = phones.find(p => String(p.id) === String(phId))
+        if (ph && ph.status === 'in_stock') {
+          validItems.push(item)
+        } else {
+          removedItems.push(item.name || `Phone (IMEI: ${item.imei_1 || item.imei || ''})`)
+        }
+      } else {
+        const prod = products.find(p => String(p.id) === String(item.id))
+        const availStock = Number(prod?.stock_quantity ?? 0)
+        const reqQty = Number(item.qty || 1)
+        if (prod && availStock >= reqQty) {
+          validItems.push(item)
+        } else if (prod && availStock > 0) {
+          validItems.push({ ...item, qty: availStock })
+          removedItems.push(`${item.name} (Qty adjusted to available: ${availStock})`)
+        } else {
+          removedItems.push(item.name || 'Product (Out of stock)')
+        }
+      }
+    }
+
+    if (removedItems.length > 0) {
+      alert(`⚠️ Notice: Some items in this held bill are no longer in stock and were removed or adjusted:\n- ${removedItems.join('\n- ')}`)
+    }
+
+    if (validItems.length === 0) {
+      alert('⚠️ This held bill contains no items that are currently in stock.')
+      return
+    }
+
+    setCart(validItems)
     setCustomerId(held.customer_id || '')
     setWalkInName(held.customer_name || '')
     db.held_carts.delete(held.id).then(fetchHeldCarts)
@@ -1076,6 +1113,7 @@ function POS() {
       customer_name: customerId ? null : (walkInName || 'Walk-in Customer'),
       total_amount: subtotal,
       discount: totalDiscount,
+      net_amount: total,
       paid_amount: saleType === 'quotation' ? 0 : totalPaid,
       payment_type: primaryPaymentMethod,
       payment_method: primaryPaymentMethod,
@@ -1242,7 +1280,6 @@ function POS() {
           delete cleanSaleData.payment_details
           delete cleanSaleData.created_by
           delete cleanSaleData.branch_id
-          delete cleanSaleData.idempotency_key
           if (saleError.code === '23503' || saleError.message?.includes('customer_id') || saleError.message?.includes('foreign key')) {
             cleanSaleData.customer_id = null
           }
@@ -1253,6 +1290,17 @@ function POS() {
           }
           sale = retryRes.data
           saleError = retryRes.error
+        }
+
+        // A network failure can hide a successful insert response. Resolve by
+        // the sale idempotency key before creating a local queued duplicate.
+        if (saleError && saleData.idempotency_key) {
+          const existing = await supabase.from('sales').select('*')
+            .eq('idempotency_key', saleData.idempotency_key).maybeSingle()
+          if (!existing.error && existing.data) {
+            sale = existing.data
+            saleError = null
+          }
         }
 
         if (saleError) throw saleError
@@ -1351,7 +1399,25 @@ function POS() {
         }
       }
     } catch (error) {
-      console.warn('POS: Cloud sale creation encountered an issue (' + (error?.message || error) + '). Automatically completing via offline sync queue...', error)
+      console.warn('POS: Cloud sale creation encountered an issue (' + (error?.message || error) + ').', error)
+      // If the header was already committed, prove it was removed before
+      // falling back to a queued local sale. Otherwise a later sync could
+      // create a second copy of the sale after the line write failed.
+      if (finalSale?.id && navigator.onLine) {
+        try {
+          const rollback = await supabase.from('sales').delete().eq('id', finalSale.id).select('id').maybeSingle()
+          if (rollback.error || !rollback.data) {
+            alert('The sale could not be completed or safely rolled back. Check the sales list before retrying to avoid a duplicate.')
+            setSaving(false)
+            return
+          }
+          finalSale = null
+        } catch (_) {
+          alert('The sale could not be safely rolled back. Check the sales list before retrying to avoid a duplicate.')
+          setSaving(false)
+          return
+        }
+      }
       // 3. RESILIENT OFFLINE FALLBACK (Always guarantees sale completion)
       const offlineId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
         ? crypto.randomUUID()

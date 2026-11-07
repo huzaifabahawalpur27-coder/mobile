@@ -304,7 +304,9 @@ function Purchases() {
     const purchaseData = {
       shop_id: user.shop_id,
       supplier_id: toIntOrNull(supplierId),
-      total_amount: total,
+      subtotal: subtotal,
+      total_amount: subtotal,
+      discount: totalDiscount,
       net_amount: total,
       paid_amount: isImmediatePaid ? total : 0,
       amount_paid: isImmediatePaid ? total : 0,
@@ -323,7 +325,9 @@ function Purchases() {
         const minimalPurchase = {
           shop_id: user.shop_id,
           supplier_id: toIntOrNull(supplierId),
-          total_amount: total,
+          total_amount: subtotal,
+          discount: totalDiscount,
+          net_amount: total,
           amount_paid: isImmediatePaid ? total : 0,
           payment_method: effectivePaymentType,
           payment_type: effectivePaymentType,

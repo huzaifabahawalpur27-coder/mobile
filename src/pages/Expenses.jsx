@@ -261,25 +261,47 @@ function Expenses() {
         if (error) throw error
       }
 
-      // Deduct expense from Cash Drawer / Bank Account
-      if (!editingId && payload.amount > 0) {
-        try {
-          const accounts = await getBankAccounts(user.shop_id)
-          const cashAcc = accounts.find(a => 
-            a.bank_name?.toLowerCase().includes('cash') || 
-            a.account_name?.toLowerCase().includes('cash')
-          ) || accounts[0]
-          if (cashAcc) {
+      // Deduct or adjust expense in Cash Drawer / Bank Account
+      try {
+        const accounts = await getBankAccounts(user.shop_id)
+        const cashAcc = accounts.find(a => 
+          a.bank_name?.toLowerCase().includes('cash') || 
+          a.account_name?.toLowerCase().includes('cash')
+        ) || accounts[0]
+        if (cashAcc) {
+          if (!editingId && payload.amount > 0) {
             await deductBankBalance({
               shopId: user.shop_id,
               accountId: cashAcc.id,
               amount: payload.amount,
               description: `Shop Expense: ${payload.category} - ${payload.note || payload.description || 'Misc'}`
             })
+          } else if (editingId) {
+            const oldExpense = expenses.find(e => e.id === editingId)
+            const oldAmount = Number(oldExpense?.amount || 0)
+            const newAmount = Number(payload.amount || 0)
+            const diff = newAmount - oldAmount
+            if (diff > 0) {
+              await deductBankBalance({
+                shopId: user.shop_id,
+                accountId: cashAcc.id,
+                amount: diff,
+                description: `Expense Edit Increase: ${payload.category} (+Rs. ${diff.toLocaleString()})`
+              })
+            } else if (diff < 0) {
+              await creditBankBalance({
+                shopId: user.shop_id,
+                accountId: cashAcc.id,
+                amount: Math.abs(diff),
+                referenceType: 'EXPENSE_ADJUSTMENT',
+                referenceId: String(editingId),
+                description: `Expense Edit Reduction: ${payload.category} (-Rs. ${Math.abs(diff).toLocaleString()})`
+              })
+            }
           }
-        } catch (accErr) {
-          console.warn('Could not deduct expense from cash account:', accErr)
         }
+      } catch (accErr) {
+        console.warn('Could not adjust bank balance on expense change:', accErr)
       }
 
       resetForm()

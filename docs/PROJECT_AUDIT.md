@@ -3,6 +3,25 @@
 Audit date: 2026-09-30  
 Scope: static review of the current workspace, parallel security/mobile reviews, and root lint/build commands. Existing working-tree edits were preserved. Database policies and deployment secrets were not independently inspected in the live Supabase project; SQL findings below apply if the checked-in scripts are deployed.
 
+## Remediation Update: 2026-11-07
+
+Repository changes made after the audit:
+
+- Replaced both browser service-role clients with authenticated `/api/admin/*` proxies. The root and standalone admin apps now store/use server-issued admin session tokens; privileged keys use server-only `SUPABASE_SERVICE_ROLE_KEY`.
+- Replaced the unauthenticated email relay with an authenticated, origin-restricted, size-limited, rate-limited bulk endpoint. Admin email screens call that endpoint.
+- Added Vite development proxies for `/api`, an `npm run api` command, and real environment/deployment guidance in `.env.example` and this README.
+- Added `sql/production_security_hardening.sql` and tightened `FIX_RLS_DATA_ACCESS.sql`: no shop-id header/default-shop fallback, no open session or child-row policies, strict session tenant checks, removal of broad public grants, and guarded shop configuration RPCs. The global analytics functions no longer grant execution to anon/authenticated.
+- Prevented automatic offline queue replay while logged out or under a different shop. Dead-lettered sync records now carry their shop id, appear in Settings with export/retry controls, and are surfaced in the app shell. POS now attempts an idempotency-key recovery and verifies remote sale-header rollback before queuing an offline duplicate.
+- Updated server-side scripts and replaced the Vite-template README.
+
+Outstanding items requiring external state or a broader auth/transaction migration:
+
+- The hardening SQL has **not** been applied to a live/staging Supabase project. Deploy it after reviewing the target schema and running cross-shop negative access checks. The code cannot rotate a previously deployed service-role key; rotate it in Supabase and deployment secrets.
+- Offline/root login still relies on the legacy fast SHA-256 password representation. Replace it with a server-side slow salted verifier and revoke/expire legacy sessions before treating it as production-secure.
+- The standard accessory checkout still performs header, line, stock, and balance operations as separate requests. The new rollback/recovery reduces duplicate risk but does not make the workflow atomic; move it to a single idempotent server/database transaction.
+- Older SQL files outside `FIX_RLS_DATA_ACCESS.sql` still contain permissive setup grants/policies. `production_security_hardening.sql` must remain the final migration; consolidate/remove historical setup scripts in a dedicated migration cleanup.
+- Root lint currently exits 0 with 200 warnings (0 errors); standalone admin lint exits 0 with 3 warnings. Both production builds exit 0; the standalone bundle remains ~1.5 MB minified and root export chunk ~1.05 MB. Device/browser, accessibility, load, and live database validation remain outstanding.
+
 ## Verification Snapshot
 
 - `npm run lint`: exits 0; 0 errors and 113 warnings. Warnings include missing React hook dependencies, unused variables, empty catches, and refresh-boundary warnings. Prioritize hook warnings that can cause stale or missed data refreshes; avoid suppressing the rules globally.

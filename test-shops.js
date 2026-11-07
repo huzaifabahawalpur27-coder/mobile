@@ -1,7 +1,9 @@
 
 import { createClient } from "@supabase/supabase-js";
-const supabaseAdmin = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY);
-const supabaseAnon = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+import dotenv from 'dotenv';
+dotenv.config();
+const supabaseAdmin = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabaseAnon = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 
 async function check() {
   const { data: adminData } = await supabaseAdmin.from("shops").select("id, name, status");

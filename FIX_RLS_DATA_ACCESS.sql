@@ -190,37 +190,13 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-    v_token UUID;
-    v_shop_id INTEGER;
-    v_headers JSONB;
-    v_header_shop_id TEXT;
+DECLARE v_shop_id INTEGER;
 BEGIN
-    -- Step A: Resolve from active session token
-    v_token := current_session_token();
-    IF v_token IS NOT NULL THEN
-        SELECT shop_id INTO v_shop_id
-        FROM sessions
-        WHERE token = v_token AND expires_at > NOW()
-        LIMIT 1;
-        IF v_shop_id IS NOT NULL THEN
-            RETURN v_shop_id;
-        END IF;
-    END IF;
-
-    -- Step B: Resolve from x-shop-id header if present
-    BEGIN
-        v_headers := current_setting('request.headers', true)::jsonb;
-        v_header_shop_id := COALESCE(v_headers->>'x-shop-id', v_headers->>'X-Shop-Id');
-        IF v_header_shop_id IS NOT NULL AND v_header_shop_id ~ '^[0-9]+$' THEN
-            RETURN v_header_shop_id::INTEGER;
-        END IF;
-    EXCEPTION WHEN OTHERS THEN
-        NULL;
-    END;
-
-    -- Step C: Fallback to Shop 1
-    RETURN 1;
+    SELECT s.shop_id INTO v_shop_id
+    FROM sessions s JOIN users u ON u.id = s.user_id AND u.is_active = true
+    WHERE s.token = current_session_token() AND s.expires_at > NOW()
+    LIMIT 1;
+    RETURN v_shop_id;
 END;
 $$;
 
@@ -232,62 +208,29 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-    v_token UUID;
-    v_count INTEGER;
-    v_headers JSONB;
-    v_header_shop_id TEXT;
 BEGIN
-    -- 1. Check if token matches active session
-    v_token := current_session_token();
-    IF v_token IS NOT NULL THEN
-        SELECT COUNT(*) INTO v_count
-        FROM sessions
-        WHERE token = v_token
-          AND (p_shop_id IS NULL OR shop_id = p_shop_id)
-          AND expires_at > NOW();
-        IF v_count > 0 THEN
-            RETURN TRUE;
-        END IF;
-    END IF;
-
-    -- 2. Check x-shop-id header
-    BEGIN
-        v_headers := current_setting('request.headers', true)::jsonb;
-        v_header_shop_id := COALESCE(v_headers->>'x-shop-id', v_headers->>'X-Shop-Id');
-        IF v_header_shop_id IS NOT NULL AND v_header_shop_id ~ '^[0-9]+$' THEN
-            IF p_shop_id IS NULL OR v_header_shop_id::INTEGER = p_shop_id THEN
-                RETURN TRUE;
-            END IF;
-        END IF;
-    EXCEPTION WHEN OTHERS THEN
-        NULL;
-    END;
-
-    -- 3. Graceful fallback for authenticated & single/demo store operations
-    IF p_shop_id IS NOT NULL AND p_shop_id > 0 THEN
-        RETURN TRUE;
-    END IF;
-
-    RETURN TRUE;
+    RETURN p_shop_id IS NOT NULL AND p_shop_id = current_user_shop_id();
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION current_session_token() TO anon, authenticated, public;
-GRANT EXECUTE ON FUNCTION current_user_shop_id() TO anon, authenticated, public;
-GRANT EXECUTE ON FUNCTION is_valid_session(INTEGER) TO anon, authenticated, public;
+GRANT EXECUTE ON FUNCTION current_session_token() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION current_user_shop_id() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION is_valid_session(INTEGER) TO anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 3. Grant schema and table permissions
 -- ----------------------------------------------------------------------------
-GRANT USAGE ON SCHEMA public TO anon, authenticated, public;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, public;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, public;
-GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, public;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, public;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, public;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, public;
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION current_session_token() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION current_user_shop_id() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION is_valid_session(INTEGER) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION secure_login(TEXT, TEXT) TO anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 4. Open sessions table RLS (prevents circular lockup)
@@ -296,10 +239,7 @@ ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Sessions Access" ON sessions;
 DROP POLICY IF EXISTS "Sessions Open Read" ON sessions;
 DROP POLICY IF EXISTS "Sessions Open Access" ON sessions;
-CREATE POLICY "Sessions Open Access" ON sessions
-AS PERMISSIVE FOR ALL TO anon, authenticated, public
-USING (true)
-WITH CHECK (true);
+REVOKE ALL ON sessions FROM PUBLIC, anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 5. Set up resilient RLS on all tenant-scoped tables
@@ -307,6 +247,8 @@ WITH CHECK (true);
 DO $$
 DECLARE
     tbl TEXT;
+    seq_name TEXT;
+    policy_rec RECORD;
     tenant_tables TEXT[] := ARRAY[
         'categories', 'brands', 'units', 'products', 'phones', 'suppliers',
         'customers', 'sales', 'purchases', 'expenses', 'customer_payments',
@@ -316,6 +258,9 @@ BEGIN
     FOREACH tbl IN ARRAY tenant_tables LOOP
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = tbl) THEN
             EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
+            FOR policy_rec IN SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = tbl LOOP
+                EXECUTE format('DROP POLICY %I ON public.%I', policy_rec.policyname, tbl);
+            END LOOP;
             EXECUTE format('DROP POLICY IF EXISTS "Tenant Isolation" ON %I', tbl);
             EXECUTE format('DROP POLICY IF EXISTS "%s_tenant_isolation" ON %I', tbl, tbl);
             EXECUTE format('DROP POLICY IF EXISTS "Shop Self Access" ON %I', tbl);
@@ -325,16 +270,15 @@ BEGIN
             -- Insert allows any valid record with a shop_id
             EXECUTE format('
                 CREATE POLICY "Tenant Isolation" ON %I
-                AS PERMISSIVE FOR ALL TO anon, authenticated, public
-                USING (
-                    shop_id = current_user_shop_id()
-                    OR is_valid_session(shop_id)
-                    OR shop_id IS NOT NULL
-                )
-                WITH CHECK (
-                    shop_id IS NOT NULL
-                )
+                AS PERMISSIVE FOR ALL TO anon, authenticated
+                USING (shop_id = current_user_shop_id())
+                WITH CHECK (shop_id = current_user_shop_id())
             ', tbl);
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon, authenticated', tbl);
+            seq_name := pg_get_serial_sequence(format('public.%I', tbl), 'id');
+            IF seq_name IS NOT NULL THEN
+                EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO anon, authenticated', seq_name);
+            END IF;
         END IF;
     END LOOP;
 END $$;
@@ -342,25 +286,37 @@ END $$;
 -- ----------------------------------------------------------------------------
 -- 6. Child tables without shop_id: purchase_items and sale_items
 -- ----------------------------------------------------------------------------
-DO $$ BEGIN
+DO $$ DECLARE policy_rec RECORD; seq_name TEXT; BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'purchase_items') THEN
         ALTER TABLE purchase_items ENABLE ROW LEVEL SECURITY;
+        FOR policy_rec IN SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = 'purchase_items' LOOP
+            EXECUTE format('DROP POLICY %I ON public.purchase_items', policy_rec.policyname);
+        END LOOP;
         DROP POLICY IF EXISTS "Purchase Items Isolation" ON purchase_items;
         DROP POLICY IF EXISTS purchase_items_tenant_isolation ON purchase_items;
         CREATE POLICY "Purchase Items Isolation" ON purchase_items
-        AS PERMISSIVE FOR ALL TO anon, authenticated, public
-        USING (true)
-        WITH CHECK (purchase_id IS NOT NULL);
+        AS PERMISSIVE FOR ALL TO anon, authenticated
+        USING (EXISTS (SELECT 1 FROM purchases p WHERE p.id = purchase_items.purchase_id AND p.shop_id = current_user_shop_id()))
+        WITH CHECK (EXISTS (SELECT 1 FROM purchases p WHERE p.id = purchase_items.purchase_id AND p.shop_id = current_user_shop_id()));
+        GRANT SELECT, INSERT, UPDATE, DELETE ON purchase_items TO anon, authenticated;
+        seq_name := pg_get_serial_sequence('public.purchase_items', 'id');
+        IF seq_name IS NOT NULL THEN EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO anon, authenticated', seq_name); END IF;
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sale_items') THEN
         ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
+        FOR policy_rec IN SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = 'sale_items' LOOP
+            EXECUTE format('DROP POLICY %I ON public.sale_items', policy_rec.policyname);
+        END LOOP;
         DROP POLICY IF EXISTS "Sale Items Isolation" ON sale_items;
         DROP POLICY IF EXISTS sale_items_tenant_isolation ON sale_items;
         CREATE POLICY "Sale Items Isolation" ON sale_items
-        AS PERMISSIVE FOR ALL TO anon, authenticated, public
-        USING (true)
-        WITH CHECK (sale_id IS NOT NULL);
+        AS PERMISSIVE FOR ALL TO anon, authenticated
+        USING (EXISTS (SELECT 1 FROM sales s WHERE s.id = sale_items.sale_id AND s.shop_id = current_user_shop_id()))
+        WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = sale_items.sale_id AND s.shop_id = current_user_shop_id()));
+        GRANT SELECT, INSERT, UPDATE, DELETE ON sale_items TO anon, authenticated;
+        seq_name := pg_get_serial_sequence('public.sale_items', 'id');
+        IF seq_name IS NOT NULL THEN EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO anon, authenticated', seq_name); END IF;
     END IF;
 END $$;
 
@@ -368,13 +324,18 @@ END $$;
 -- 7. Shops table policy
 -- ----------------------------------------------------------------------------
 ALTER TABLE shops ENABLE ROW LEVEL SECURITY;
+DO $$ DECLARE policy_rec RECORD; BEGIN
+    FOR policy_rec IN SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = 'shops' LOOP
+        EXECUTE format('DROP POLICY %I ON public.shops', policy_rec.policyname);
+    END LOOP;
+END $$;
 DROP POLICY IF EXISTS "Shop Self Access" ON shops;
 DROP POLICY IF EXISTS "Shop Self Read" ON shops;
 DROP POLICY IF EXISTS "Tenant Isolation" ON shops;
 CREATE POLICY "Shop Self Access" ON shops
-AS PERMISSIVE FOR ALL TO anon, authenticated, public
-USING (true)
-WITH CHECK (true);
+AS PERMISSIVE FOR SELECT TO anon, authenticated
+USING (id = current_user_shop_id());
+GRANT SELECT ON shops TO anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 8. Foreign key relationships for PostgREST embeds

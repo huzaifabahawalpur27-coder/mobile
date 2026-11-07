@@ -267,7 +267,7 @@ function CustomerLedger() {
         <div class="row bold" style="font-size:16px;"><span>Amount Received</span><span>Rs. ${Number(amount).toLocaleString()}</span></div>
         ${note ? `<div class="row"><span>Note:</span><span>${note}</span></div>` : ''}
         <hr/>
-        <div class="row"><span>Remaining Balance:</span><span class="bold">Rs. ${Math.max(0, (customer.outstanding_balance || 0) - Number(amount)).toLocaleString()}</span></div>
+        <div class="row"><span>Remaining Balance:</span><span class="bold">Rs. ${((customer.outstanding_balance || 0) - Number(amount)).toLocaleString()}</span></div>
         <hr/>
         <p class="c" style="font-size:11px;color:#888;">Thank you! Payment received in full.</p>
         </body></html>`)
@@ -371,7 +371,7 @@ function CustomerLedger() {
                     error = retryRes.error
                 }
                 if (error) throw error
-                const newBal = Math.max(0, (customer?.outstanding_balance || 0) + balanceDelta)
+                const newBal = (customer?.outstanding_balance || 0) + balanceDelta
                 try {
                     await supabase.from('customers').update({ outstanding_balance: newBal }).eq('id', id)
                     setCustomer(c => c ? { ...c, outstanding_balance: newBal } : c)
@@ -382,7 +382,7 @@ function CustomerLedger() {
                     await db.customer_payments.add(rec)
                     await db.sync_queue.add({ table: 'customer_payments', action: 'INSERT', data: rec, timestamp: rec.created_at })
                 }
-                const newBal = Math.max(0, (customer?.outstanding_balance || 0) + balanceDelta)
+                const newBal = (customer?.outstanding_balance || 0) + balanceDelta
                 await db.customers.update(parseInt(id), { outstanding_balance: newBal })
                 setCustomer(c => c ? { ...c, outstanding_balance: newBal } : c)
             }
@@ -435,7 +435,7 @@ function CustomerLedger() {
                 error = retryRes.error
             }
             if (error) throw error
-            const newBalance = Math.max(0, (customer.outstanding_balance || 0) + saleAmt - payAmt)
+            const newBalance = (customer.outstanding_balance || 0) + saleAmt - payAmt
             try {
                 await supabase.from('customers').update({ outstanding_balance: newBalance }).eq('id', id)
                 setCustomer(c => c ? { ...c, outstanding_balance: newBalance } : c)
@@ -476,7 +476,7 @@ function CustomerLedger() {
                     await db.customer_payments.add(rec)
                     await db.sync_queue.add({ table: 'customer_payments', action: 'INSERT', data: rec, timestamp: ts })
                 }
-                const newBal = Math.max(0, (customer.outstanding_balance || 0) + saleAmt - payAmt)
+                const newBal = (customer.outstanding_balance || 0) + saleAmt - payAmt
                 await db.customers.update(parseInt(id), { outstanding_balance: newBal })
                 await db.sync_queue.add({ table: 'customers', action: 'UPDATE', data: { id, outstanding_balance: newBal }, timestamp: ts })
                 setCustomer(c => c ? { ...c, outstanding_balance: newBal } : c)
@@ -570,7 +570,7 @@ function CustomerLedger() {
                 }
                 // Reverse: sale was adding unpaid portion to balance
                 const owed = Math.max(0, item.amount - (item.paid_amount || 0))
-                newBalance = Math.max(0, newBalance - owed)
+                newBalance = newBalance - owed
             } else {
                 // payment or return — delete from customer_payments
                 const payAmt = Math.abs(Number(item.amount || 0))
@@ -622,7 +622,7 @@ function CustomerLedger() {
                 if (item.payment_type === 'refund') {
                     // no change
                 } else if (item.payment_type === 'debit') {
-                    newBalance = Math.max(0, newBalance - Number(item.amount))
+                    newBalance = newBalance - Number(item.amount)
                 } else {
                     newBalance = newBalance + Math.abs(item.amount)
                 }
@@ -631,11 +631,11 @@ function CustomerLedger() {
             // Update customer outstanding balance (skip gracefully if customer no longer exists)
             try {
                 if (navigator.onLine) {
-                    await supabase.from('customers').update({ outstanding_balance: Math.max(0, newBalance) }).eq('id', id)
+                    await supabase.from('customers').update({ outstanding_balance: newBalance }).eq('id', id)
                 } else {
-                    await db.customers.update(parseInt(id), { outstanding_balance: Math.max(0, newBalance) })
+                    await db.customers.update(parseInt(id), { outstanding_balance: newBalance })
                 }
-                setCustomer(c => c ? ({ ...c, outstanding_balance: Math.max(0, newBalance) }) : c)
+                setCustomer(c => c ? ({ ...c, outstanding_balance: newBalance }) : c)
             } catch (_) { /* customer may already be deleted — ignore */ }
             fetchCustomerData()
         } catch (err) {
@@ -690,17 +690,17 @@ function CustomerLedger() {
                         await db.sync_queue.add({ table: 'customer_payments', action: 'DELETE', data: { id: item.id }, timestamp: new Date().toISOString() })
                     }
                     if (item.payment_type === 'refund') { /* no change */ }
-                    else if (item.payment_type === 'debit') { newBalance = Math.max(0, newBalance - Number(item.amount)) }
+                    else if (item.payment_type === 'debit') { newBalance = newBalance - Number(item.amount) }
                     else { newBalance = newBalance + Math.abs(item.amount) }
                 }
             }
             try {
                 if (navigator.onLine) {
-                    await supabase.from('customers').update({ outstanding_balance: Math.max(0, newBalance) }).eq('id', id)
+                    await supabase.from('customers').update({ outstanding_balance: newBalance }).eq('id', id)
                 } else {
-                    await db.customers.update(parseInt(id), { outstanding_balance: Math.max(0, newBalance) })
+                    await db.customers.update(parseInt(id), { outstanding_balance: newBalance })
                 }
-                setCustomer(c => c ? ({ ...c, outstanding_balance: Math.max(0, newBalance) }) : c)
+                setCustomer(c => c ? ({ ...c, outstanding_balance: newBalance }) : c)
             } catch (_) { /* customer may already be deleted — ignore */ }
             setSelectedIds(new Set())
         } catch (err) {
@@ -717,13 +717,13 @@ function CustomerLedger() {
 
         try {
             if (navigator.onLine) {
-                await supabase.from('customers').update({ outstanding_balance: Math.max(0, computedBalance) }).eq('id', id)
+                await supabase.from('customers').update({ outstanding_balance: computedBalance }).eq('id', id)
             } else {
-                await db.customers.update(parseInt(id), { outstanding_balance: Math.max(0, computedBalance) })
-                await db.sync_queue.add({ table: 'customers', action: 'UPDATE', data: { id, outstanding_balance: Math.max(0, computedBalance) }, timestamp: new Date().toISOString() })
+                await db.customers.update(parseInt(id), { outstanding_balance: computedBalance })
+                await db.sync_queue.add({ table: 'customers', action: 'UPDATE', data: { id, outstanding_balance: computedBalance }, timestamp: new Date().toISOString() })
             }
-            setCustomer(c => c ? { ...c, outstanding_balance: Math.max(0, computedBalance) } : c)
-            alert(`✅ Balance reconciled successfully to Rs. ${Math.max(0, computedBalance)}`)
+            setCustomer(c => c ? { ...c, outstanding_balance: computedBalance } : c)
+            alert(`✅ Balance reconciled successfully to Rs. ${computedBalance}`)
         } catch (err) {
             alert('Reconcile error: ' + err.message)
         }

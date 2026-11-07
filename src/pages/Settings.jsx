@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue } from '../services/db'
@@ -74,6 +74,16 @@ function Settings() {
   const [reportLoading, setReportLoading] = useState(false)
   const [previewTemplateId, setPreviewTemplateId] = useState(null)
   const [previewSize, setPreviewSize] = useState('thermal')
+  const [syncDeadLetters, setSyncDeadLetters] = useState([])
+
+  const loadSyncDeadLetters = useCallback(async () => {
+    try {
+      const rows = await db.sync_dead_letter?.toArray?.() || []
+      setSyncDeadLetters(rows.filter(row => String(row.shop_id) === String(user?.shop_id)))
+    } catch (_) { setSyncDeadLetters([]) }
+  }, [user?.shop_id])
+
+  useEffect(() => { loadSyncDeadLetters() }, [loadSyncDeadLetters])
 
   // Bank Accounts Management State
   const [bankAccounts, setBankAccounts] = useState([])
@@ -1085,6 +1095,37 @@ function Settings() {
           </div>
         </div>
 
+        {syncDeadLetters.length > 0 && (
+          <section aria-labelledby="sync-recovery-title" className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 id="sync-recovery-title" className="font-bold text-amber-950">Offline changes need attention</h3>
+                <p className="text-sm text-amber-900">{syncDeadLetters.length} change{syncDeadLetters.length === 1 ? '' : 's'} could not sync. Export the details before retrying so you keep a recovery copy.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => {
+                  const blob = new Blob([JSON.stringify(syncDeadLetters, null, 2)], { type: 'application/json' })
+                  const url = URL.createObjectURL(blob)
+                  const link = document.createElement('a')
+                  link.href = url
+                  link.download = `EdgeXPOS_SyncRecovery_${new Date().toISOString().slice(0, 10)}.json`
+                  link.click()
+                  URL.revokeObjectURL(url)
+                }} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-950">Export recovery copy</button>
+                <button type="button" onClick={async () => {
+                  if (!confirm(`Retry ${syncDeadLetters.length} failed changes for this shop?`)) return
+                  for (const entry of syncDeadLetters) {
+                    await db.sync_queue.add({ table: entry.table, action: entry.action, data: entry.data, timestamp: new Date().toISOString(), retry_count: 0 })
+                    await db.sync_dead_letter.delete(entry.id)
+                  }
+                  await syncOfflineData()
+                  await loadSyncDeadLetters()
+                }} className="rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white">Retry changes</button>
+              </div>
+            </div>
+          </section>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {hasFeature('data_export') ? (
           <div className="p-4 bg-green-50/50 rounded-2xl border border-green-100 flex flex-col gap-3">
@@ -1108,6 +1149,7 @@ function Settings() {
                     expenses: await db.expenses.toArray(),
                     users: await db.users.toArray(),
                     sync_queue: await db.sync_queue.toArray(),
+                    sync_dead_letter: await db.sync_dead_letter?.toArray?.() || [],
                     exported_at: new Date().toISOString(),
                     shop_id: user.shop_id,
                     version: '3.0'

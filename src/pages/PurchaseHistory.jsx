@@ -342,50 +342,77 @@ function PurchaseHistory() {
                 }
             }
 
-            // Update purchase record total and paid amount
-            const newPurchaseTotal = Math.max(0, (selectedPurchase.total_amount || 0) - totalReturnAmount)
+            // Calculate prorated discount and net return amount
+            const remainingPurchaseGross = Number(selectedPurchase.total_amount || 0)
+            const discountRate = remainingPurchaseGross > 0 ? (Number(selectedPurchase.discount || 0) / remainingPurchaseGross) : 0
+            const discountReturned = Math.round(totalReturnAmount * discountRate * 100) / 100
+            const netReturnAmount = Math.max(0, totalReturnAmount - discountReturned)
+
+            // Determine cash vs credit refund split based on actual cash paid to supplier
             const currentPaid = Number(selectedPurchase.paid_amount ?? selectedPurchase.amount_paid ?? 0)
-            const newPaidAmount = Math.max(0, currentPaid - (selectedPurchase.payment_type === 'credit' ? 0 : totalReturnAmount))
+            let cashRefundAmount = 0
+            let creditRefundAmount = 0
+
+            if (selectedPurchase.payment_type === 'credit') {
+                cashRefundAmount = 0
+                creditRefundAmount = netReturnAmount
+            } else {
+                // Cash refund cannot exceed what was actually paid to the supplier
+                cashRefundAmount = Math.min(netReturnAmount, currentPaid)
+                creditRefundAmount = Math.max(0, netReturnAmount - cashRefundAmount)
+            }
+
+            const newPurchaseTotal = Math.max(0, remainingPurchaseGross - totalReturnAmount)
+            const newDiscount = newPurchaseTotal === 0 ? 0 : Math.max(0, Number(selectedPurchase.discount || 0) - discountReturned)
+            const newNetAmount = Math.max(0, newPurchaseTotal - newDiscount)
+            const newPaidAmount = Math.max(0, currentPaid - cashRefundAmount)
+
             await supabase.from('purchases').update({
                 total_amount: newPurchaseTotal,
+                discount: newDiscount,
+                net_amount: newNetAmount,
                 paid_amount: newPaidAmount,
                 amount_paid: newPaidAmount
             }).eq('id', selectedPurchase.id)
             if (db.purchases) {
                 await db.purchases.update(selectedPurchase.id, {
                     total_amount: newPurchaseTotal,
+                    discount: newDiscount,
+                    net_amount: newNetAmount,
                     paid_amount: newPaidAmount,
                     amount_paid: newPaidAmount
                 }).catch(() => {})
             }
 
-            // If credit purchase, reduce supplier balance
-            if (selectedPurchase.payment_type === 'credit' && selectedPurchase.supplier_id) {
+            // Reduce supplier liability if credit balance is affected
+            if (creditRefundAmount > 0 && selectedPurchase.supplier_id) {
                 const { data: sup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', selectedPurchase.supplier_id).maybeSingle()
                 const baseBal = Number(sup?.outstanding_balance ?? sup?.balance ?? 0)
-                const newBal = Math.max(0, baseBal - totalReturnAmount)
+                const newBal = baseBal - creditRefundAmount
                 await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', selectedPurchase.supplier_id)
                 if (db.suppliers) await db.suppliers.update(Number(selectedPurchase.supplier_id), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
 
-                // Log payment return in supplier_payments
+                // Log credit return in supplier_payments
                 const returnPaymentPayload = {
                     shop_id: user.shop_id,
                     supplier_id: selectedPurchase.supplier_id,
-                    amount: -totalReturnAmount,
+                    amount: -creditRefundAmount,
                     payment_type: 'return',
-                    note: `Return from Purchase PR-${String(selectedPurchase.id).slice(-6)}`
+                    note: `Return from Purchase PR-${String(selectedPurchase.id).slice(-6)} (Net: Rs. ${creditRefundAmount.toLocaleString()} Credited to Balance)`
                 }
                 const { error: spErr } = await supabase.from('supplier_payments').insert([returnPaymentPayload])
                 if (spErr && (spErr.code === 'PGRST204' || spErr.code === '42703' || String(spErr.status) === '400' || spErr.message?.includes('column') || spErr.message?.includes('schema cache'))) {
                     await supabase.from('supplier_payments').insert([{
                         shop_id: user.shop_id,
                         supplier_id: selectedPurchase.supplier_id,
-                        amount: -totalReturnAmount,
-                        description: `Return from Purchase PR-${String(selectedPurchase.id).slice(-6)}`
+                        amount: -creditRefundAmount,
+                        description: `Return from Purchase PR-${String(selectedPurchase.id).slice(-6)} (Net: Rs. ${creditRefundAmount.toLocaleString()})`
                     }])
                 }
-            } else if (selectedPurchase.payment_type !== 'credit') {
-                // Cash or Bank refund to shop accounts
+            }
+
+            // Cash or Bank refund to shop accounts for the cash component
+            if (cashRefundAmount > 0) {
                 try {
                     const accounts = await getBankAccounts(user.shop_id)
                     const method = String(selectedPurchase.payment_type || selectedPurchase.payment_method || '').toLowerCase()
@@ -399,10 +426,10 @@ function PurchaseHistory() {
                         await creditBankBalance({
                             shopId: user.shop_id,
                             accountId: targetAcc.id,
-                            amount: totalReturnAmount,
+                            amount: cashRefundAmount,
                             referenceType: 'PURCHASE_RETURN',
                             referenceId: String(selectedPurchase.id),
-                            description: `Purchase Return Refund (PR-${selectedPurchase.id})`
+                            description: `Purchase Return Cash Refund (PR-${selectedPurchase.id})`
                         })
                     }
                 } catch (accErr) {
@@ -413,9 +440,9 @@ function PurchaseHistory() {
                     await supabase.from('supplier_payments').insert([{
                         shop_id: user.shop_id,
                         supplier_id: selectedPurchase.supplier_id,
-                        amount: -totalReturnAmount,
+                        amount: -cashRefundAmount,
                         payment_type: 'refund',
-                        description: `Cash Refund from Purchase Return PR-${String(selectedPurchase.id).slice(-6)}`
+                        description: `Cash Refund from Purchase Return PR-${String(selectedPurchase.id).slice(-6)} (Net: Rs. ${cashRefundAmount.toLocaleString()})`
                     }]).catch(() => {})
                 }
             }

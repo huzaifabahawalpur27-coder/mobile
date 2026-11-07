@@ -325,10 +325,13 @@ db.version(18).stores({
 });
 
 export const addToSyncQueue = async (table, action, data) => {
+  let activeShopId = null;
+  try { activeShopId = JSON.parse(localStorage.getItem('user') || 'null')?.shop_id || null; } catch (_) {}
   await db.sync_queue.add({
     table,
     action,
     data,
+    shop_id: data?.shop_id || activeShopId,
     timestamp: new Date().toISOString()
   });
 };

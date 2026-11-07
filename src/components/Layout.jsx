@@ -1,8 +1,9 @@
 import { useAuth } from '../context/AuthContext'
 import { useTheme, THEME_STYLES } from '../context/ThemeContext'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../services/supabase'
+import { db } from '../services/db'
 import { hasFeature } from '../utils/featureGate'
 import {
   LayoutDashboard, ShoppingCart, Package, Layers, Boxes,
@@ -45,6 +46,8 @@ function Layout({ children }) {
     return saved === null ? true : saved === 'true'
   })
   const [waQueueCount, setWaQueueCount] = useState(0)
+  const [syncAttentionCount, setSyncAttentionCount] = useState(0)
+  const [pendingSyncCount, setPendingSyncCount] = useState(0)
   const dropdownRef = useRef(null)
   const userDropdownRef = useRef(null)
 
@@ -55,6 +58,14 @@ function Layout({ children }) {
       setWaQueueCount(count)
     } catch (_) {}
   }
+
+  const fetchSyncAttentionCount = useCallback(async () => {
+    try {
+      const [failed, queued] = await Promise.all([db.sync_dead_letter?.toArray?.() || [], db.sync_queue.toArray()])
+      setSyncAttentionCount(failed.filter(row => String(row.shop_id) === String(user?.shop_id)).length)
+      setPendingSyncCount(queued.filter(row => String(row.shop_id ?? row.data?.shop_id ?? '') === String(user?.shop_id)).length)
+    } catch (_) {}
+  }, [user?.shop_id])
 
   const toggleSidebar = () => {
     const newVal = !sidebarCollapsed
@@ -78,6 +89,7 @@ function Layout({ children }) {
       fetchShopName()
       fetchAnnouncements()
       fetchWaQueueCount()
+      fetchSyncAttentionCount()
     }
 
     const interval = setInterval(() => {
@@ -86,9 +98,10 @@ function Layout({ children }) {
       fetchShopName()
       fetchAnnouncements()
       fetchWaQueueCount()
+      fetchSyncAttentionCount()
     }, 30 * 1000)
     return () => clearInterval(interval)
-  }, [user?.shop_id])
+  }, [user?.shop_id, fetchSyncAttentionCount])
 
   const fetchShopName = async () => {
     if (!user?.shop_id) return
@@ -668,6 +681,17 @@ function Layout({ children }) {
 
         {/* Global SuperAdmin Broadcast Banner */}
         <BroadcastBanner />
+
+        {(syncAttentionCount > 0 || pendingSyncCount > 0) && (
+          <div role="status" className="px-4 py-2 bg-amber-50 text-amber-950 border-b border-amber-200 text-sm flex items-center justify-between gap-3">
+            <span>
+              {pendingSyncCount > 0 && `${pendingSyncCount} offline change${pendingSyncCount === 1 ? '' : 's'} waiting to sync.`}
+              {pendingSyncCount > 0 && syncAttentionCount > 0 && ' '}
+              {syncAttentionCount > 0 && `${syncAttentionCount} failed change${syncAttentionCount === 1 ? '' : 's'} need review.`}
+            </span>
+            <Link to="/settings" className="font-semibold underline underline-offset-2 shrink-0">Review sync</Link>
+          </div>
+        )}
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 custom-scrollbar relative">

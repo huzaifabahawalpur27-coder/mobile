@@ -87,7 +87,8 @@ function TrashBin() {
         try {
             if (table === 'purchases') {
                 if (data?.supplier_id) {
-                    const unpaid = Math.max(0, Number(data.total_amount || 0) - Number(data.paid_amount || 0))
+                    const netAmount = Number(data.net_amount ?? (Number(data.total_amount || 0) - Number(data.discount || 0)))
+                    const unpaid = Math.max(0, netAmount - Number(data.paid_amount || 0))
                     if (unpaid > 0) {
                         const supId = data.supplier_id
                         const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supId).maybeSingle()
@@ -123,12 +124,22 @@ function TrashBin() {
                 const isDebit = data.payment_type === 'debit'
                 const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supId).maybeSingle()
                 const baseBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
-                const newBal = Math.max(0, isDebit ? baseBal + amt : baseBal - amt)
+                const newBal = isDebit ? baseBal + amt : baseBal - amt
                 await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', supId)
                 await db.suppliers?.update(Number(supId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
+            } else if (table === 'customer_payments' && data?.customer_id) {
+                const custId = data.customer_id
+                const amt = Number(data.amount || 0)
+                const isDebit = data.payment_type === 'debit'
+                const { data: curCust } = await supabase.from('customers').select('outstanding_balance, balance').eq('id', custId).maybeSingle()
+                const baseBal = Number(curCust?.outstanding_balance ?? curCust?.balance ?? 0)
+                const newBal = isDebit ? baseBal + amt : baseBal - amt
+                await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', custId)
+                await db.customers?.update(Number(custId), { outstanding_balance: newBal, balance: newBal }).catch(() => {})
             } else if (table === 'sales') {
                 if (data?.customer_id) {
-                    const unpaid = Math.max(0, Number(data.total_amount || 0) - Number(data.paid_amount || 0))
+                    const netAmount = Number(data.net_amount ?? (Number(data.total_amount || 0) - Number(data.discount || 0)))
+                    const unpaid = Math.max(0, netAmount - Number(data.paid_amount || 0))
                     if (unpaid > 0) {
                         const custId = data.customer_id
                         const { data: curCust } = await supabase.from('customers').select('outstanding_balance, balance').eq('id', custId).maybeSingle()

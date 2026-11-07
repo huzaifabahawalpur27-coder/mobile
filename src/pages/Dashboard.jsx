@@ -554,7 +554,7 @@ function Dashboard() {
     let todayPurchasedBulk = 0
 
     ;(todayPurchasesList || []).forEach(p => {
-      const pCost = Number(p.total_amount || 0)
+      const pCost = Number(p.net_amount ?? (Number(p.total_amount || 0) - Number(p.discount || 0)))
       todayPurchasesCost += pCost
       const method = String(p.payment_type || p.payment_method || '').toLowerCase()
       const paidAmt = Number(p.paid_amount ?? p.amount_paid ?? (method === 'cash' ? pCost : 0)) || 0

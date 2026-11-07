@@ -413,7 +413,7 @@ function SupplierLedger() {
                     await db.sync_queue.add({ table: 'purchases', action: 'DELETE', data: { id: item.id }, timestamp: new Date().toISOString() })
                 }
                 // Reverse: purchase was adding to balance (we owe supplier more)
-                newBalance = Math.max(0, newBalance - Number(item.amount))
+                newBalance = newBalance - Number(item.amount)
             } else {
                 // debit / payment / return — from supplier_payments table
                 if (item.type === 'payment') {
@@ -458,11 +458,11 @@ function SupplierLedger() {
 
             try {
                 if (navigator.onLine) {
-                    await supabase.from('suppliers').update({ outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) }).eq('id', id)
+                    await supabase.from('suppliers').update({ outstanding_balance: newBalance, balance: newBalance }).eq('id', id)
                 } else {
-                    await db.suppliers.update(parseInt(id), { outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) })
+                    await db.suppliers.update(parseInt(id), { outstanding_balance: newBalance, balance: newBalance })
                 }
-                setSupplier(s => s ? ({ ...s, outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) }) : s)
+                setSupplier(s => s ? ({ ...s, outstanding_balance: newBalance, balance: newBalance }) : s)
             } catch (_) { /* supplier may already be deleted — ignore */ }
             fetchSupplierData()
         } catch (err) {
@@ -661,7 +661,7 @@ function SupplierLedger() {
                         await db.purchases.delete(item.id)
                         await db.sync_queue.add({ table: 'purchases', action: 'DELETE', data: { id: item.id }, timestamp: new Date().toISOString() })
                     }
-                    newBalance = Math.max(0, newBalance - Number(item.amount))
+                    newBalance = newBalance - Number(item.amount)
                 } else {
                     if (navigator.onLine) {
                         const { error } = await supabase.from('supplier_payments').delete().eq('id', item.id)
@@ -680,11 +680,11 @@ function SupplierLedger() {
         // Update supplier balance (skip gracefully if supplier no longer exists)
         try {
             if (navigator.onLine) {
-                await supabase.from('suppliers').update({ outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) }).eq('id', id)
+                await supabase.from('suppliers').update({ outstanding_balance: newBalance, balance: newBalance }).eq('id', id)
             } else {
-                await db.suppliers.update(parseInt(id), { outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) })
+                await db.suppliers.update(parseInt(id), { outstanding_balance: newBalance, balance: newBalance })
             }
-            setSupplier(s => s ? ({ ...s, outstanding_balance: Math.max(0, newBalance), balance: Math.max(0, newBalance) }) : s)
+            setSupplier(s => s ? ({ ...s, outstanding_balance: newBalance, balance: newBalance }) : s)
         } catch (_) { /* supplier may already be deleted — ignore */ }
         setSelectedIds(new Set())
         if (errors.length) alert(`${errors.length} entries delete nahi huin:\n${errors.slice(0, 3).join('\n')}`)
@@ -699,13 +699,13 @@ function SupplierLedger() {
 
         try {
             if (navigator.onLine) {
-                await supabase.from('suppliers').update({ outstanding_balance: Math.max(0, computedBalance), balance: Math.max(0, computedBalance) }).eq('id', id)
+                await supabase.from('suppliers').update({ outstanding_balance: computedBalance, balance: computedBalance }).eq('id', id)
             } else {
-                await db.suppliers.update(parseInt(id), { outstanding_balance: Math.max(0, computedBalance), balance: Math.max(0, computedBalance) })
-                await db.sync_queue.add({ table: 'suppliers', action: 'UPDATE', data: { id, outstanding_balance: Math.max(0, computedBalance), balance: Math.max(0, computedBalance) }, timestamp: new Date().toISOString() })
+                await db.suppliers.update(parseInt(id), { outstanding_balance: computedBalance, balance: computedBalance })
+                await db.sync_queue.add({ table: 'suppliers', action: 'UPDATE', data: { id, outstanding_balance: computedBalance, balance: computedBalance }, timestamp: new Date().toISOString() })
             }
-            setSupplier(s => s ? { ...s, outstanding_balance: Math.max(0, computedBalance), balance: Math.max(0, computedBalance) } : s)
-            alert(`✅ Balance reconciled successfully to Rs. ${Math.max(0, computedBalance)}`)
+            setSupplier(s => s ? { ...s, outstanding_balance: computedBalance, balance: computedBalance } : s)
+            alert(`✅ Balance reconciled successfully to Rs. ${computedBalance}`)
         } catch (err) {
             alert('Reconcile error: ' + err.message)
         }

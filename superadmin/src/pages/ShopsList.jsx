@@ -32,7 +32,7 @@ export default function ShopsList() {
 
   const fetchShops = async () => {
     if (!supabaseAdmin) {
-      setErrorMsg('Service Role Key required. Add VITE_SUPABASE_SERVICE_ROLE_KEY to .env')
+      setErrorMsg('The administrator API is unavailable. Start the server API and check its configuration.')
       setLoading(false)
       return
     }
@@ -392,7 +392,7 @@ export default function ShopsList() {
   }
 
   const handleQuickBackup = async (shop) => {
-    if (!supabaseAdmin) return alert('Service role key required.')
+    if (!supabaseAdmin) return alert('The administrator API is unavailable.')
     setBackingUp(prev => ({ ...prev, [shop.id]: true }))
     try {
       const TABLES = [

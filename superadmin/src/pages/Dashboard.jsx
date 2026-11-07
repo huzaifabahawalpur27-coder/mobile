@@ -23,7 +23,7 @@ export default function Dashboard() {
 
   const fetchStats = async () => {
     if (!supabaseAdmin) {
-      setError('Please add VITE_SUPABASE_SERVICE_ROLE_KEY to your .env to fetch global stats.')
+      setError('The administrator API is unavailable. Start the server API and check its configuration.')
       setLoading(false)
       return
     }
@@ -149,7 +149,7 @@ export default function Dashboard() {
   }
 
   const handlePushUpdate = async () => {
-    if (!supabaseAdmin) return alert('Service role key required.')
+    if (!supabaseAdmin) return alert('The administrator API is unavailable.')
     if (!confirm('This will force ALL active POS clients to reload within 5 minutes. Continue?')) return
     setPushingUpdate(true)
     try {

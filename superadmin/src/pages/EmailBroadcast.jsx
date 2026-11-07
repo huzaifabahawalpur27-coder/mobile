@@ -111,39 +111,15 @@ export default function EmailBroadcast() {
         let failCount = 0
 
         try {
-            // Send individual emails via the local Express API
-            for (const shop of recipients) {
-                try {
-                    const emailApiUrl = import.meta.env.VITE_EMAIL_API_URL || '/api/send-email'
-                    const res = await fetch(emailApiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            to: shop.email,
-                            subject: subject,
-                            // Use HTML formatting
-                            body: `
-<div style="font-family: sans-serif; line-height: 1.5; color: #334155; padding: 20px;">
-<h2 style="color: #4f46e5; margin-bottom: 16px;">Hello ${shop.name} Team,</h2>
-<div style="font-size: 16px; margin-bottom: 20px;">${body}</div>
-<hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-<p style="font-size: 14px; color: #64748b;">Best regards,<br /><strong>EdgeX POS Administration</strong></p>
-</div>
-                            `.trim()
-                        })
-                    })
-
-                    if (!res.ok) {
-                        const errorData = await res.json()
-                        const detail = errorData.error?.message || errorData.details || 'API Server Error'
-                        throw new Error(`Failed to send to ${shop.email}: ${detail}`)
-                    }
-                    successCount++
-                } catch (err) {
-                    console.error(`Failed to send to ${shop.email}:`, err)
-                    failCount++
-                }
-            }
+            const response = await fetch('/api/admin/send-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.getItem('admin_session_token') || '') },
+                body: JSON.stringify({ recipients: recipients.map(shop => ({ to: shop.email, name: shop.name })), subject, body })
+            })
+            const result = await response.json()
+            if (!response.ok) throw new Error(result.error || 'Email service request failed')
+            successCount = result.successCount || 0
+            failCount = result.failCount || 0
 
             setStatusMsg({
                 text: `Broadcast attempted for ${recipients.length} shops. Success: ${successCount}, Failed: ${failCount}.`,

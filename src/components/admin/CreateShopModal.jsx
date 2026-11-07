@@ -61,7 +61,7 @@ export default function CreateShopModal({ onClose, onCreated }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!supabaseAdmin) {
-      setError("Setup Error: Missing VITE_SUPABASE_SERVICE_ROLE_KEY in .env file. Cannot create users without it.")
+      setError("The administrator API is unavailable. Start the server API and check its configuration.")
       return
     }
     if (!selectedPlanId) {
