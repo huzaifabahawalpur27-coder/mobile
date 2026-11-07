@@ -269,6 +269,27 @@ function Login() {
       }
 
       if (userData.shop_id) {
+        const lastShopId = localStorage.getItem('last_shop_id')
+        if (lastShopId && String(lastShopId) !== String(userData.shop_id)) {
+          try {
+            await Promise.all([
+              localDB.products.clear(),
+              localDB.categories.clear(),
+              localDB.suppliers.clear(),
+              localDB.customers.clear(),
+              localDB.brands.clear(),
+              localDB.sales.clear(),
+              localDB.sale_items.clear(),
+              localDB.purchases.clear(),
+              localDB.purchase_items.clear(),
+              localDB.expenses.clear(),
+              localDB.customer_payments.clear(),
+              localDB.supplier_payments.clear(),
+              localDB.held_carts.clear(),
+              localDB.phones?.clear ? localDB.phones.clear() : Promise.resolve()
+            ])
+          } catch (_) { /* no-op */ }
+        }
         localStorage.setItem('last_shop_id', userData.shop_id)
       }
 
