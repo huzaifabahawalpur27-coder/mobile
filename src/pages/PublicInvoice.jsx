@@ -16,13 +16,15 @@ import {
 
 // Action-time dynamic loading for PDF libraries
 async function loadPdfLibraries() {
-  const [jspdfMod, html2canvasMod] = await Promise.all([
+  const [jspdfMod, html2canvasMod, autotableMod] = await Promise.all([
     import('jspdf'),
-    import('html2canvas')
+    import('html2canvas'),
+    import('jspdf-autotable')
   ])
   const jsPDF = jspdfMod.jsPDF || jspdfMod.default?.jsPDF || jspdfMod.default
   const html2canvas = html2canvasMod.default || html2canvasMod
-  return { jsPDF, html2canvas }
+  const autoTable = autotableMod.default || autotableMod.autoTable || autotableMod
+  return { jsPDF, html2canvas, autoTable }
 }
 
 export default function PublicInvoice() {
@@ -187,58 +189,6 @@ export default function PublicInvoice() {
     return () => { isMounted = false }
   }, [id])
 
-  // PDF Download Handler (preserves authentic Nastaleeq font using high-DPI canvas)
-  const handleDownloadPDF = async () => {
-    if (!invoiceRef.current || downloadingPdf) return
-    setDownloadingPdf(true)
-
-    try {
-      const { jsPDF, html2canvas } = await loadPdfLibraries()
-      const element = invoiceRef.current
-
-      // Ensure images are crossOrigin friendly
-      const images = element.querySelectorAll('img')
-      images.forEach(img => {
-        if (img.src && !img.src.startsWith('data:') && !img.src.startsWith(window.location.origin)) {
-          img.crossOrigin = 'anonymous'
-        }
-      })
-
-      const canvas = await html2canvas(element, {
-        scale: 2.5,
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-        backgroundColor: '#ffffff'
-      })
-
-      const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      })
-
-      const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
-      const filename = `Invoice_${invoice?.invoice_no || id || 'receipt'}.pdf`
-      pdf.save(filename)
-    } catch (err) {
-      console.error('PDF Generation failed:', err)
-      // Fallback: trigger print dialog
-      window.print()
-    } finally {
-      setDownloadingPdf(false)
-    }
-  }
-
-  // Print Handler
-  const handlePrint = () => {
-    window.print()
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
@@ -338,6 +288,199 @@ export default function PublicInvoice() {
   const warrantyText = rawWarranty
     .replace(/^⚠️?\s*\*?وارنٹی[\s\S]*?(?:\*|:|\))\s*\n+/i, '')
     .trim()
+
+  // PDF Download Handler (always downloads a PDF file; never opens print dialog)
+  const handleDownloadPDF = async () => {
+    if (!invoiceRef.current || downloadingPdf) return
+    setDownloadingPdf(true)
+
+    const filename = `Invoice_${invoice?.invoice_no || id || 'receipt'}.pdf`
+
+    try {
+      const { jsPDF, html2canvas, autoTable } = await loadPdfLibraries()
+      const element = invoiceRef.current
+
+      let usedCanvas = false
+
+      // STRATEGY 1: High-DPI Visual Canvas (captures exact styling & Nastaleeq Urdu)
+      try {
+        const canvas = await html2canvas(element, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: false,
+          logging: false,
+          backgroundColor: '#ffffff',
+          onclone: (_clonedDoc, clonedEl) => {
+            // Ensure no tainted cross-origin images crash toDataURL()
+            const clonedImages = clonedEl.querySelectorAll('img')
+            clonedImages.forEach(img => {
+              try {
+                if (img.src && !img.src.startsWith('data:') && !img.src.startsWith(window.location.origin)) {
+                  img.crossOrigin = 'anonymous'
+                }
+              } catch (_) {
+                img.style.display = 'none'
+              }
+            })
+          }
+        })
+
+        const imgData = canvas.toDataURL('image/png')
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        })
+
+        const pdfWidth = pdf.internal.pageSize.getWidth()
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width
+
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+        pdf.save(filename)
+        usedCanvas = true
+      } catch (canvasErr) {
+        console.warn('Canvas rendering encountered an issue, falling back to direct vector jsPDF:', canvasErr)
+      }
+
+      // STRATEGY 2: Direct Vector jsPDF Fallback (Guaranteed to download PDF without canvas restrictions)
+      if (!usedCanvas) {
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+
+        // Header: Store Name
+        pdf.setFontSize(16)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text(shop.name || 'EdgeX Mobile Store', 105, 18, { align: 'center' })
+
+        let currentY = 25
+        pdf.setFontSize(9)
+        pdf.setFont('helvetica', 'normal')
+        const contactInfo = [shop.phone, shop.address].filter(Boolean).join('  |  ')
+        if (contactInfo) {
+          pdf.text(contactInfo, 105, currentY, { align: 'center' })
+          currentY += 6
+        }
+
+        pdf.setFontSize(11)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text(isExchange ? 'PHONE EXCHANGE INVOICE' : 'SALES INVOICE', 105, currentY, { align: 'center' })
+        currentY += 8
+
+        // Metadata Grid
+        pdf.setFontSize(9)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(`Invoice #: ${invoice.invoice_no || id}`, 14, currentY)
+        pdf.text(`Date: ${dateFormatted}`, 196, currentY, { align: 'right' })
+        currentY += 5
+        pdf.text(`Customer: ${invoice.customer_name || 'Valued Customer'}${invoice.customer_phone ? ` (+${invoice.customer_phone})` : ''}`, 14, currentY)
+        pdf.text(`Payment: ${String(invoice.payment_type || 'CASH').toUpperCase()}`, 196, currentY, { align: 'right' })
+        currentY += 7
+
+        // Items Table
+        const items = invoice.items || []
+        const tableRows = items.map((item, idx) => {
+          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
+          const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
+          const imei2 = item.imei_2 || snap.imei_2 || ''
+          const rawName = item.name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`.trim()
+          const imeiStr = imei1 ? (imei2 ? ` [IMEI: ${imei1} / ${imei2}]` : ` [IMEI: ${imei1}]`) : ''
+          const fullName = rawName.includes(imei1) ? rawName : `${rawName}${imeiStr}`
+
+          const qty = Number(item.quantity || item.qty || 1)
+          const price = Number(item.unit_price || item.custom_price || item.price || 0)
+          const total = Number(item.total || (qty * price))
+          return [String(idx + 1), fullName, String(qty), `Rs. ${price.toLocaleString()}`, `Rs. ${total.toLocaleString()}`]
+        })
+
+        autoTable(pdf, {
+          startY: currentY,
+          head: [['#', 'Description & IMEI', 'Qty', 'Unit Price', 'Total Amount']],
+          body: tableRows,
+          styles: { fontSize: 9, cellPadding: 2.5 },
+          headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
+          columnStyles: {
+            0: { cellWidth: 10, halign: 'center' },
+            1: { cellWidth: 95 },
+            2: { cellWidth: 18, halign: 'center' },
+            3: { cellWidth: 32, halign: 'right' },
+            4: { cellWidth: 35, halign: 'right' }
+          },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          margin: { left: 14, right: 14 }
+        })
+
+        currentY = (pdf.lastAutoTable?.finalY || currentY) + 6
+
+        // Financial Totals
+        pdf.setFontSize(9)
+        pdf.text('Total Amount:', 140, currentY)
+        pdf.text(`Rs. ${grossTotal.toLocaleString()}`, 196, currentY, { align: 'right' })
+        currentY += 5
+
+        if (discount > 0) {
+          pdf.text('Discount:', 140, currentY)
+          pdf.text(`- Rs. ${discount.toLocaleString()}`, 196, currentY, { align: 'right' })
+          currentY += 5
+        }
+
+        if (isExchange && tradeCredit > 0) {
+          pdf.text('Trade-in Credit:', 140, currentY)
+          pdf.text(`- Rs. ${tradeCredit.toLocaleString()}`, 196, currentY, { align: 'right' })
+          currentY += 5
+        }
+
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(11)
+        pdf.text('Net Total:', 140, currentY)
+        pdf.text(`Rs. ${netTotal.toLocaleString()}`, 196, currentY, { align: 'right' })
+        currentY += 6
+
+        pdf.setFontSize(9)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text('Amount Paid:', 140, currentY)
+        pdf.text(`Rs. ${paidTotal.toLocaleString()}`, 196, currentY, { align: 'right' })
+        currentY += 5
+
+        if (balanceDue > 0) {
+          pdf.setFont('helvetica', 'bold')
+          pdf.text('Remaining Balance:', 140, currentY)
+          pdf.text(`Rs. ${balanceDue.toLocaleString()}`, 196, currentY, { align: 'right' })
+          currentY += 6
+        }
+
+        // Footer
+        currentY += 8
+        pdf.setFontSize(8)
+        pdf.setFont('helvetica', 'italic')
+        pdf.text('This is a verified computerized digital invoice and does not require a physical signature.', 105, currentY, { align: 'center' })
+        pdf.text(`Powered by EdgeX POS Suite • Verified Digital Invoice • ${dateFormatted}`, 105, currentY + 4, { align: 'center' })
+
+        pdf.save(filename)
+      }
+    } catch (err) {
+      console.error('PDF download error:', err)
+      // Emergency raw fallback: NEVER call window.print()!
+      try {
+        const { jsPDF } = await loadPdfLibraries()
+        const emergencyPdf = new jsPDF()
+        emergencyPdf.setFontSize(14)
+        emergencyPdf.text(`Invoice #${invoice?.invoice_no || id}`, 14, 25)
+        emergencyPdf.setFontSize(11)
+        emergencyPdf.text(`Customer: ${invoice?.customer_name || 'Valued Customer'}`, 14, 35)
+        emergencyPdf.text(`Net Total: Rs. ${netTotal.toLocaleString()}`, 14, 45)
+        emergencyPdf.text(`Status: ${balanceDue > 0 ? `Balance Due: Rs. ${balanceDue.toLocaleString()}` : 'Paid'}`, 14, 55)
+        emergencyPdf.save(filename)
+      } catch (emergErr) {
+        console.error('Emergency PDF save failed:', emergErr)
+      }
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
+  // Print Handler (explicitly triggers browser print dialog)
+  const handlePrint = () => {
+    window.print()
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 py-6 px-3 sm:px-6 font-sans">
