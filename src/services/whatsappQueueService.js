@@ -297,11 +297,157 @@ ${itemsList}
 Thank you for your partnership! 🤝`
 }
 
+export const DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE = `السلام علیکم [Name]! 🤝
+*[Shop Name]* میں تشریف لانے اور فون ایکسچینج کرنے کا بہت بہت شکریہ!
+
+🔄 *فون ایکسچینج بل و رسید (PHONE EXCHANGE INVOICE)*
+📄 انوائس نمبر: [Exchange ID]
+📅 تاریخ: [Date]
+
+📤 *خریدا گیا فون / سامان (Purchased Items):*
+[Outgoing Items]
+• کل قیمت خرید: Rs. [Sale Total]
+
+📥 *آپ کی طرف سے جمع کروایا گیا فون (Exchanged / Traded-in Phones):*
+[Incoming Phones]
+• کل ٹریڈ ان کریڈٹ: Rs. [Trade-in Total]
+
+⚖️ *حتمی حساب و بقایا ایڈجسٹمنٹ (Balance Adjustment & Settlement):*
+• خریدا گیا فون کل: Rs. [Sale Total]
+• پرانے فون کا کریڈٹ: - Rs. [Trade-in Total]
+• خالص تبادلہ فرق: Rs. [Net Difference]
+• ادا شدہ رقم (Paid): Rs. [Paid]
+• بقایا واجب الادا (Remaining Due): Rs. [Balance]
+
+[Warranty Terms]
+
+آپ کے اعتماد اور تعاون کا بے حد شکریہ! 🤝
+🏪 *[Shop Name]*
+📞 رابطہ: [Shop Phone]`.trim()
+
+/**
+ * Renders a custom WhatsApp template for phone exchanges with data substitutions.
+ */
+export function renderCustomExchangeTemplate(template, { exchange, customer = null, shopInfo = {} }) {
+  if (!template) return ''
+  const customerName = exchange.customer_name || exchange.customer?.name || exchange.customers?.name || customer?.name || 'Valued Customer'
+  const shopName = shopInfo.name || 'EdgeX Mobile Store'
+  const shopPhone = shopInfo.phone || shopInfo.mobile || ''
+  const exchangeNo = exchange.exchange_number || (exchange.id ? `EXC-${String(exchange.id).slice(-6).toUpperCase()}` : `EXC-${String(Date.now()).slice(-6)}`)
+  const dateStr = exchange.created_at
+    ? new Date(exchange.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
+    : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
+
+  // Extract Traded-in Phones (Incoming)
+  const incoming = (
+    exchange.exchange_items?.filter(i => i.item_direction === 'incoming_trade_in') ||
+    exchange.incoming_items ||
+    exchange.incomingPhones ||
+    exchange.incoming ||
+    []
+  )
+
+  // Extract Purchased Items (Outgoing)
+  const outgoing = (
+    exchange.exchange_items?.filter(i => i.item_direction === 'outgoing_sale') ||
+    exchange.outgoing_items ||
+    exchange.outgoingItems ||
+    exchange.outgoing ||
+    []
+  )
+
+  const incomingText = incoming.map((p, idx) => {
+    const brandModel = `${p.brand || ''} ${p.model || p.product_name || 'Phone'}`.trim()
+    const specs = [p.storage, p.color].filter(Boolean).join(', ')
+    const specStr = specs ? ` (${specs})` : ''
+    const imei1 = p.imei_1 ? `\n   • IMEI 1: ${p.imei_1}` : ''
+    const imei2 = p.imei_2 ? `\n   • IMEI 2: ${p.imei_2}` : ''
+    const condParts = []
+    if (p.condition) condParts.push(p.condition)
+    if (p.pta_status) condParts.push(p.pta_status)
+    const condStr = condParts.length > 0 ? `\n   • حالت و پی ٹی اے: ${condParts.join(' | ')}` : ''
+    const battery = p.inspection_details?.battery_health || p.battery_health
+    const batteryStr = battery ? `\n   • بیٹری ہیلتھ: ${battery}%` : ''
+    const val = Number(p.assessed_value || p.trade_in_value || p.subtotal || 0).toLocaleString('en-PK')
+    return `${idx + 1}. *${brandModel}*${specStr}${imei1}${imei2}${condStr}${batteryStr}\n   • ٹریڈ ان ویلیو (Trade-in Credit): Rs. ${val}`
+  }).join('\n\n') || 'کوئی پرانا فون نہیں (None)'
+
+  const outgoingText = outgoing.map((i, idx) => {
+    const desc = i.product_name || `${i.brand || ''} ${i.model || 'Phone'}`.trim()
+    const specs = [i.storage, i.color].filter(Boolean).join(', ')
+    const specStr = specs && !desc.includes(specs) ? ` (${specs})` : ''
+    const imei1 = i.imei_1 ? `\n   • IMEI 1: ${i.imei_1}` : ''
+    const imei2 = i.imei_2 ? `\n   • IMEI 2: ${i.imei_2}` : ''
+    const qty = Number(i.quantity || i.qty || 1)
+    const qtyStr = qty > 1 ? ` × ${qty}` : ''
+    const lineTotal = Number(i.subtotal || i.line_total || ((Number(i.price || i.sale_price || i.assessed_value || 0)) * qty)).toLocaleString('en-PK')
+    return `${idx + 1}. *${desc}*${specStr}${imei1}${imei2}\n   • قیمت خرید (Price): Rs. ${lineTotal}${qtyStr}`
+  }).join('\n\n') || 'کوئی خریدا گیا فون نہیں (None)'
+
+  const saleAmt = Number(exchange.sale_amount || 0)
+  const tradeAmt = Number(exchange.trade_in_credit || 0)
+  const settleAmt = Number(exchange.settlement_amount || 0)
+  const direction = exchange.settlement_direction || 'even'
+  const payMethod = (exchange.settlement_payment_method || 'Cash').toUpperCase()
+  const netDiff = Math.abs(saleAmt - tradeAmt)
+
+  let settlementText = ''
+  if (direction === 'customer_paid') {
+    settlementText = `• کسٹمر نے ادا کیا (Customer Paid via ${payMethod}): Rs. ${settleAmt.toLocaleString('en-PK')}`
+  } else if (direction === 'shop_payout') {
+    settlementText = `• دکان نے کسٹمر کو ادا کیا (Store Payout via ${payMethod}): Rs. ${settleAmt.toLocaleString('en-PK')}`
+  } else {
+    settlementText = `• برابری کا تبادلہ (Even Exchange): کوئی نقد لین دین نہیں (Rs. 0 ✅)`
+  }
+
+  const custBalance = Number(customer?.outstanding_balance ?? customer?.balance ?? exchange.customer_balance ?? 0)
+  const shopId = shopInfo.id || shopInfo.shop_id || exchange.shop_id
+  const effectiveWarranty = shopInfo.warranty_terms || (shopId ? getShopWarrantyTerms(shopId) : DEFAULT_WARRANTY_TERMS_URDU)
+
+  let result = template
+    .replace(/\[Name\]/g, customerName)
+    .replace(/\[Customer Name\]/g, customerName)
+    .replace(/\[Shop Name\]/g, shopName)
+    .replace(/\[Exchange ID\]/g, exchangeNo)
+    .replace(/\[ID\]/g, exchangeNo)
+    .replace(/\[Invoice ID\]/g, exchangeNo)
+    .replace(/\[Date\]/g, dateStr)
+    .replace(/\[Outgoing Items\]/g, outgoingText)
+    .replace(/\[Purchased Items\]/g, outgoingText)
+    .replace(/\[Incoming Phones\]/g, incomingText)
+    .replace(/\[Exchanged Phones\]/g, incomingText)
+    .replace(/\[Trade-in Items\]/g, incomingText)
+    .replace(/\[Sale Total\]/g, saleAmt.toLocaleString('en-PK'))
+    .replace(/\[Trade-in Total\]/g, tradeAmt.toLocaleString('en-PK'))
+    .replace(/\[Net Difference\]/g, netDiff.toLocaleString('en-PK'))
+    .replace(/\[Settlement Details\]/g, settlementText)
+    .replace(/\[Settlement\]/g, settlementText)
+    .replace(/\[Paid\]/g, `${settleAmt.toLocaleString('en-PK')} (${payMethod})`)
+    .replace(/\[Balance\]/g, custBalance > 0 ? custBalance.toLocaleString('en-PK') : '0 (مکمل کلیئر ✅)')
+    .replace(/\[Remaining Due\]/g, '0 (مکمل کلیئر ✅)')
+    .replace(/\[Customer Balance\]/g, custBalance.toLocaleString('en-PK'))
+    .replace(/\[Warranty Terms\]/g, effectiveWarranty)
+    .replace(/\[Warranty\]/g, effectiveWarranty)
+    .replace(/\[Shop Phone\]/g, shopPhone)
+    .replace(/\[Phone\]/g, shopPhone)
+
+  if (!template.includes('[Warranty Terms]') && !template.includes('[Warranty]') && !result.includes(effectiveWarranty)) {
+    result = replaceOrInjectWarrantyInTemplate(result, effectiveWarranty)
+  }
+
+  return result
+}
+
 /**
  * Builds exchange confirmation memo for WhatsApp with traded-in phones,
  * purchased replacement devices, financial balance adjustment, and shop warranty terms.
  */
 export function buildExchangeWhatsAppText({ exchange, customer = null, shopInfo = {} }) {
+  // If custom exchange template is configured, render it
+  if (shopInfo.wa_exchange_template && shopInfo.wa_exchange_template.trim().length > 20) {
+    return renderCustomExchangeTemplate(shopInfo.wa_exchange_template, { exchange, customer, shopInfo })
+  }
+
   const customerName = exchange.customer_name || exchange.customer?.name || exchange.customers?.name || customer?.name || 'Valued Customer'
   const shopName = shopInfo.name || 'EdgeX Mobile Store'
   const shopPhone = shopInfo.phone || shopInfo.mobile || ''
@@ -363,7 +509,7 @@ export function buildExchangeWhatsAppText({ exchange, customer = null, shopInfo 
   const payMethod = (exchange.settlement_payment_method || 'Cash').toUpperCase()
 
   const balanceLines = []
-  balanceLines.push(`• نئی خریداری کل (New Purchase Total): Rs. ${saleAmt.toLocaleString('en-PK')}`)
+  balanceLines.push(`• خریدا گیا فون کل (Purchased Items Total): Rs. ${saleAmt.toLocaleString('en-PK')}`)
   balanceLines.push(`• پرانے فون کا کریڈٹ (Less Trade-in Credit): - Rs. ${tradeAmt.toLocaleString('en-PK')}`)
   balanceLines.push(`• خالص تبادلہ فرق (Net Exchange Difference): Rs. ${Math.abs(saleAmt - tradeAmt).toLocaleString('en-PK')}`)
 
@@ -394,7 +540,7 @@ export function buildExchangeWhatsAppText({ exchange, customer = null, shopInfo 
 📄 انوائس نمبر: ${exchangeNo}
 📅 تاریخ: ${dateStr}
 
-📤 *خریدا گیا نیا فون / سامان (Purchased Items):*
+📤 *خریدا گیا فون / سامان (Purchased Items):*
 ${outgoingText}
 • کل قیمت خرید: Rs. ${saleAmt.toLocaleString('en-PK')}
 

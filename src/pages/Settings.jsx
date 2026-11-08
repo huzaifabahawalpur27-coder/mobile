@@ -38,6 +38,7 @@ import { getBankAccounts } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
 import {
   DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
+  DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE,
   DEFAULT_WARRANTY_TERMS_URDU,
   updateExistingQueueMessagesWithWarranty,
   replaceOrInjectWarrantyInTemplate
@@ -77,6 +78,7 @@ function Settings() {
       print_mode: 'manual',
       wa_reminder_template: 'Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!',
       wa_bill_template: DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
+      wa_exchange_template: (sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || parsedSaved?.wa_exchange_template || DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE,
       wa_reorder_template: '',
       invoice_prefix: '',
       warranty_terms: savedWarranty || parsedSaved?.warranty_terms || DEFAULT_WARRANTY_TERMS_URDU,
@@ -275,6 +277,7 @@ function Settings() {
         print_mode:           data.print_mode           || saved.print_mode           || prev.print_mode           || 'manual',
         wa_reminder_template: data.wa_reminder_template || saved.wa_reminder_template || prev.wa_reminder_template || '',
         wa_bill_template:     data.wa_bill_template     || saved.wa_bill_template     || prev.wa_bill_template     || DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
+        wa_exchange_template: (sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || data.wa_exchange_template || saved.wa_exchange_template || prev.wa_exchange_template || DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE,
         wa_reorder_template:  '',
         invoice_prefix:       data.invoice_prefix       || saved.invoice_prefix       || prev.invoice_prefix       || '',
         warranty_terms:       (sid ? localStorage.getItem(`shop_warranty_${sid}`) : null) || data.warranty_terms || saved.warranty_terms || prev.warranty_terms || DEFAULT_WARRANTY_TERMS_URDU,
@@ -347,6 +350,9 @@ function Settings() {
     if (form.warranty_terms) {
       localStorage.setItem(`shop_warranty_${sid}`, form.warranty_terms)
     }
+    if (form.wa_exchange_template) {
+      localStorage.setItem(`shop_wa_exchange_${sid}`, form.wa_exchange_template)
+    }
 
     const supabasePayload = {
       name: form.name,
@@ -388,6 +394,15 @@ function Settings() {
           await supabase.from('shops').update({
             batch_costing_enabled: Boolean(form.batch_costing_enabled),
             costing_method: form.costing_method || 'fifo'
+          }).eq('id', sid)
+        } catch (_) {}
+      }
+
+      // Sync exchange template if column exists
+      if (form.wa_exchange_template) {
+        try {
+          await supabase.from('shops').update({
+            wa_exchange_template: form.wa_exchange_template
           }).eq('id', sid)
         } catch (_) {}
       }
@@ -490,9 +505,14 @@ function Settings() {
   }
 
   const handleApplyWarrantyToTemplate = () => {
-    const updated = replaceOrInjectWarrantyInTemplate(form.wa_bill_template, form.warranty_terms)
-    setForm(prev => ({ ...prev, wa_bill_template: updated }))
-    alert('وارنٹی شرائط کو بل میسج میں لاگو کر دیا گیا ہے! ✅\n\nWarranty terms have been synced to the bill template.')
+    const updatedBill = replaceOrInjectWarrantyInTemplate(form.wa_bill_template, form.warranty_terms)
+    const updatedExchange = replaceOrInjectWarrantyInTemplate(form.wa_exchange_template, form.warranty_terms)
+    setForm(prev => ({
+      ...prev,
+      wa_bill_template: updatedBill,
+      wa_exchange_template: updatedExchange
+    }))
+    alert('وارنٹی شرائط کو سیلز بل اور فون ایکسچینج ٹیمپلیٹس دونوں میں کامیابی سے شامل کر دیا گیا ہے! ✅\n\nWarranty terms have been synced to both invoice and exchange templates.')
   }
 
   const handleUpdateOutboxWarranty = async () => {
@@ -1060,6 +1080,100 @@ function Settings() {
                       <span>💡 جو وارنٹی شرائط آپ یہاں لکھیں گے، وہ بل ٹیمپلیٹ، پی او ایس بلز اور آؤٹ باکس میں استعمال ہوں گی۔</span>
                       <span className="font-mono text-[10px] opacity-75 self-end sm:self-auto">{form.warranty_terms?.length || 0} characters</span>
                     </div>
+                  </div>
+                </div>
+
+                {/* ── 2. PHONE TRADE-IN & EXCHANGE WHATSAPP BILL TEMPLATE ── */}
+                <div className="space-y-3 bg-purple-50/60 dark:bg-purple-950/20 p-4 rounded-2xl border border-purple-200/80 dark:border-purple-800/60">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-200/60 dark:border-purple-800/40 pb-2.5">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                        <RefreshCw size={16} className="text-purple-600 dark:text-purple-400" />
+                        <span>🔄 فون ایکسچینج واٹس ایپ ٹیمپلیٹ (Phone Exchange WhatsApp Template)</span>
+                      </label>
+                      <p className="text-xs text-gray-500 dark:text-slate-400">
+                        کسٹمر کو پرانا فون جمع کروانے اور خریدا گیا فون / سامان کی رسید و حتمی حساب بھیجنے کا ٹیمپلیٹ۔
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('کیا آپ فون ایکسچینج کی تجویز کردہ ڈیفالٹ رسید لوڈ کرنا چاہتے ہیں؟')) {
+                            setForm(prev => ({ ...prev, wa_exchange_template: DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE }))
+                          }
+                        }}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-100 hover:bg-purple-200/80 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 transition flex items-center gap-1 cursor-pointer"
+                        title="Load recommended exchange template with trade-in devices and settlement"
+                      >
+                        ✨ تجویز کردہ ایکسچینج ٹیمپلیٹ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm(prev => ({
+                            ...prev,
+                            wa_exchange_template: replaceOrInjectWarrantyInTemplate(prev.wa_exchange_template, prev.warranty_terms)
+                          }))
+                        }}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 transition flex items-center gap-1 cursor-pointer"
+                        title="Insert or update warranty terms in exchange template"
+                      >
+                        🛡️ + وارنٹی شرائط شامل کریں
+                      </button>
+                    </div>
+                  </div>
+
+                  <textarea
+                    dir="auto"
+                    rows={8}
+                    value={form.wa_exchange_template}
+                    onChange={e => setForm({ ...form, wa_exchange_template: e.target.value })}
+                    className="w-full px-4 py-3 border border-purple-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-xs sm:text-sm font-sans h-56 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 leading-relaxed"
+                    placeholder="Phone Exchange Bill Template..."
+                  />
+
+                  {/* Tag Inserters */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mr-1">
+                      ٹیگز شامل کریں (Insert Tags):
+                    </span>
+                    {[
+                      { tag: '[Name]', desc: 'Customer Name' },
+                      { tag: '[Shop Name]', desc: 'Shop Name' },
+                      { tag: '[Exchange ID]', desc: 'Exchange Number' },
+                      { tag: '[Date]', desc: 'Date & Time' },
+                      { tag: '[Outgoing Items]', desc: 'Purchased Phone(s) with IMEI & Price' },
+                      { tag: '[Incoming Phones]', desc: 'Traded-in Phone(s) with IMEI & Credit' },
+                      { tag: '[Sale Total]', desc: 'Total Price of Purchased Items' },
+                      { tag: '[Trade-in Total]', desc: 'Total Value of Old Phones' },
+                      { tag: '[Net Difference]', desc: 'Difference Payable/Receivable' },
+                      { tag: '[Paid]', desc: 'Settlement Amount Paid' },
+                      { tag: '[Balance]', desc: 'Remaining / Ledger Balance' },
+                      { tag: '[Warranty Terms]', desc: 'Warranty Terms' },
+                      { tag: '[Shop Phone]', desc: 'Shop Contact Phone' }
+                    ].map(({ tag, desc }) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          setForm(prev => ({
+                            ...prev,
+                            wa_exchange_template: (prev.wa_exchange_template || '') + ' ' + tag
+                          }))
+                        }}
+                        className="px-2 py-0.5 text-[10px] font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-purple-400 text-gray-700 dark:text-gray-300 rounded cursor-pointer transition shadow-xs"
+                        title={desc}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-between items-center text-[11px] text-purple-800 dark:text-purple-300 pt-1">
+                    <span>💡 ایکسچینج ٹرانزیکشن پر کسٹمر کو یہ فارمیٹ واٹس ایپ پر اور آؤٹ باکس میں بھیجا جائے گا۔</span>
+                    <span className="font-mono text-[10px] opacity-75">{form.wa_exchange_template?.length || 0} characters</span>
                   </div>
                 </div>
 

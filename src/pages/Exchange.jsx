@@ -186,16 +186,30 @@ export default function Exchange() {
       const { data: prodData } = await supabase.from('products').select('*').eq('shop_id', sid).order('name')
       if (prodData) setAvailableProducts(prodData)
 
-      // 6. Shop settings & warranty terms
+      // 6. Shop settings & warranty terms & exchange template
       const { data: sData } = await supabase.from('shops').select('*').eq('id', sid).maybeSingle()
       const savedWarranty = localStorage.getItem(`shop_warranty_${sid}`)
+      const localShopSettings = (() => {
+        try {
+          return JSON.parse(localStorage.getItem(`shop_settings_${sid}`) || '{}')
+        } catch (_) {
+          return {}
+        }
+      })()
+      const savedExchangeTemplate = localStorage.getItem(`shop_wa_exchange_${sid}`) || localShopSettings?.wa_exchange_template
       if (sData) {
         setShopSettings({
+          ...localShopSettings,
           ...sData,
-          warranty_terms: savedWarranty || sData.warranty_terms
+          warranty_terms: savedWarranty || sData.warranty_terms,
+          wa_exchange_template: savedExchangeTemplate || sData.wa_exchange_template
         })
-      } else if (savedWarranty) {
-        setShopSettings({ warranty_terms: savedWarranty })
+      } else if (savedWarranty || savedExchangeTemplate || Object.keys(localShopSettings).length > 0) {
+        setShopSettings({
+          ...localShopSettings,
+          warranty_terms: savedWarranty,
+          wa_exchange_template: savedExchangeTemplate
+        })
       }
 
       // 7. Extract known phone models from DB (all past & current phones)
@@ -729,13 +743,19 @@ export default function Exchange() {
           try {
             const sid = user?.shop_id || 1
             const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+            const localSettings = (() => {
+              try { return JSON.parse(localStorage.getItem(`shop_settings_${sid}`) || '{}') } catch (_) { return {} }
+            })()
+            const savedExchangeTpl = (sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || localSettings?.wa_exchange_template
             const shopInfo = {
+              ...localSettings,
               ...shopSettings,
               id: sid,
               shop_id: sid,
               name: shopSettings?.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX Mobile Store',
               phone: shopSettings?.phone || '',
-              warranty_terms: savedWarranty || shopSettings?.warranty_terms
+              warranty_terms: savedWarranty || shopSettings?.warranty_terms,
+              wa_exchange_template: savedExchangeTpl || shopSettings?.wa_exchange_template
             }
             const msgText = buildExchangeWhatsAppText({
               exchange: { ...completedSnapshot, shop_id: sid },
@@ -840,13 +860,19 @@ export default function Exchange() {
     if (!exchangeRecord) return
     const sid = user?.shop_id || 1
     const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+    const localSettings = (() => {
+      try { return JSON.parse(localStorage.getItem(`shop_settings_${sid}`) || '{}') } catch (_) { return {} }
+    })()
+    const savedExchangeTpl = (sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || localSettings?.wa_exchange_template
     const shopInfo = {
+      ...localSettings,
       ...shopSettings,
       id: sid,
       shop_id: sid,
       name: shopSettings?.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX Mobile Store',
       phone: shopSettings?.phone || '',
-      warranty_terms: savedWarranty || shopSettings?.warranty_terms
+      warranty_terms: savedWarranty || shopSettings?.warranty_terms,
+      wa_exchange_template: savedExchangeTpl || shopSettings?.wa_exchange_template
     }
     const text = buildExchangeWhatsAppText({
       exchange: { ...exchangeRecord, shop_id: sid },
@@ -910,13 +936,19 @@ export default function Exchange() {
     try {
       const sid = user?.shop_id || 1
       const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+      const localSettings = (() => {
+        try { return JSON.parse(localStorage.getItem(`shop_settings_${sid}`) || '{}') } catch (_) { return {} }
+      })()
+      const savedExchangeTpl = (sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || localSettings?.wa_exchange_template
       const shopInfo = {
+        ...localSettings,
         ...shopSettings,
         id: sid,
         shop_id: sid,
         name: shopSettings?.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX Mobile Store',
         phone: shopSettings?.phone || '',
-        warranty_terms: savedWarranty || shopSettings?.warranty_terms
+        warranty_terms: savedWarranty || shopSettings?.warranty_terms,
+        wa_exchange_template: savedExchangeTpl || shopSettings?.wa_exchange_template
       }
       const updatedExchange = {
         ...completedExchange,
@@ -1413,7 +1445,7 @@ export default function Exchange() {
             </div>
 
             {/* ══════════════════════════════════════════════════════════
-                PANEL B: NEW PHONE / ITEM (دکان کا نیا فون / سامان)
+                PANEL B: PHONE / ITEM (دکان کا فون / سامان)
             ══════════════════════════════════════════════════════════ */}
             <div className="flex flex-col h-full min-h-0 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-2xs overflow-hidden">
               {/* Header */}
@@ -1424,7 +1456,7 @@ export default function Exchange() {
                   </span>
                   <div>
                     <h2 className="text-xs font-black uppercase text-gray-900 dark:text-white tracking-wider">
-                      New Phone / Item (دکان کا نیا فون / سامان)
+                      Phone / Item (دکان کا فون / سامان)
                     </h2>
                     <p className="text-[10px] text-gray-400">Available shop phones & accessories</p>
                   </div>
