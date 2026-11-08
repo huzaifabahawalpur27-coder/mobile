@@ -300,6 +300,11 @@ export default function PublicInvoice() {
       const { jsPDF, html2canvas, autoTable } = await loadPdfLibraries()
       const element = invoiceRef.current
 
+      // Ensure fonts are loaded before capturing canvas
+      if (document.fonts?.ready) {
+        await document.fonts.ready
+      }
+
       let usedCanvas = false
 
       // STRATEGY 1: High-DPI Visual Canvas (captures exact styling & Nastaleeq Urdu)
@@ -310,9 +315,9 @@ export default function PublicInvoice() {
           allowTaint: false,
           logging: false,
           backgroundColor: '#ffffff',
-          onclone: (_clonedDoc, clonedEl) => {
+          onclone: (clonedDoc) => {
             // Ensure no tainted cross-origin images crash toDataURL()
-            const clonedImages = clonedEl.querySelectorAll('img')
+            const clonedImages = clonedDoc.querySelectorAll('img')
             clonedImages.forEach(img => {
               try {
                 if (img.src && !img.src.startsWith('data:') && !img.src.startsWith(window.location.origin)) {
@@ -332,10 +337,33 @@ export default function PublicInvoice() {
           format: 'a4'
         })
 
-        const pdfWidth = pdf.internal.pageSize.getWidth()
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width
+        const pageWidth = pdf.internal.pageSize.getWidth()
+        const pageHeight = pdf.internal.pageSize.getHeight()
+        const margin = 8
+        const printableWidth = pageWidth - (margin * 2)
+        const printableHeight = (canvas.height * printableWidth) / canvas.width
 
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+        if (printableHeight <= pageHeight - (margin * 2)) {
+          pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, printableHeight)
+        } else if (printableHeight <= pageHeight + 25) {
+          const maxAvailableHeight = pageHeight - (margin * 2)
+          const scaledWidth = (canvas.width * maxAvailableHeight) / canvas.height
+          const xOffset = (pageWidth - scaledWidth) / 2
+          pdf.addImage(imgData, 'PNG', xOffset, margin, scaledWidth, maxAvailableHeight)
+        } else {
+          let heightLeft = printableHeight
+          let position = margin
+          pdf.addImage(imgData, 'PNG', margin, position, printableWidth, printableHeight)
+          heightLeft -= (pageHeight - (margin * 2))
+
+          while (heightLeft > 0) {
+            position = position - pageHeight + margin
+            pdf.addPage()
+            pdf.addImage(imgData, 'PNG', margin, position, printableWidth, printableHeight)
+            heightLeft -= (pageHeight - (margin * 2))
+          }
+        }
+
         pdf.save(filename)
         usedCanvas = true
       } catch (canvasErr) {
@@ -446,6 +474,22 @@ export default function PublicInvoice() {
           pdf.text(`Rs. ${balanceDue.toLocaleString()}`, 196, currentY, { align: 'right' })
           currentY += 6
         }
+
+        // Strategy 2 Warranty Terms Box (Guarantee warranty is never missing even in vector fallback)
+        currentY += 6
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(9)
+        pdf.setTextColor(180, 83, 9)
+        pdf.text('OFFICIAL STORE WARRANTY TERMS / WARANTI SHARAIT:', 14, currentY)
+        currentY += 4
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(8)
+        pdf.setTextColor(51, 65, 85)
+        const warrantyFallback = warrantyText || '1. LCD, Face ID, and Camera carry no warranty.\n2. Dead mobile phones are non-refundable.\n3. Used/Second-hand mobile phones carry no warranty.'
+        const splitWarranty = pdf.splitTextToSize(warrantyFallback, 182)
+        pdf.text(splitWarranty, 14, currentY)
+        currentY += (splitWarranty.length * 4) + 6
+        pdf.setTextColor(0, 0, 0)
 
         // Footer
         currentY += 8
@@ -647,7 +691,7 @@ export default function PublicInvoice() {
                       const conditionParts = [item.condition || snap.condition, item.pta_status || snap.pta_status].filter(Boolean).join(' • ')
 
                       return (
-                        <tr key={idx} className="hover:bg-slate-50/50">
+                        <tr key={idx} className="hover:bg-slate-50">
                           <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
                           <td className="py-3 px-3">
                             <div className="font-bold text-slate-900 text-xs sm:text-sm flex flex-wrap items-baseline gap-1.5">
@@ -688,7 +732,7 @@ export default function PublicInvoice() {
                   <span>📤</span>
                   <span>Purchased Replacement Devices:</span>
                 </span>
-                <div className="border border-emerald-200 bg-emerald-50/30 rounded-xl p-3 space-y-2 text-xs">
+                <div className="border border-emerald-200 bg-emerald-50 rounded-xl p-3 space-y-2 text-xs">
                   {(invoice.outgoing_items || []).map((item, idx) => {
                     const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
                     const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
@@ -727,7 +771,7 @@ export default function PublicInvoice() {
                   <span>📥</span>
                   <span>Traded-in / Exchanged Phones:</span>
                 </span>
-                <div className="border border-purple-200 bg-purple-50/30 rounded-xl p-3 space-y-2 text-xs">
+                <div className="border border-purple-200 bg-purple-50 rounded-xl p-3 space-y-2 text-xs">
                   {(invoice.incoming_items || []).map((item, idx) => {
                     const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
                     const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
@@ -795,7 +839,7 @@ export default function PublicInvoice() {
                 <span className="font-mono font-bold">Rs. {paidTotal.toLocaleString()}</span>
               </div>
               {balanceDue > 0 && (
-                <div className="flex justify-between text-red-600 font-bold border-t border-slate-200/60 pt-1.5">
+                <div className="flex justify-between text-red-600 font-bold border-t border-slate-200 pt-1.5">
                   <span>Remaining Balance:</span>
                   <span className="font-mono">Rs. {balanceDue.toLocaleString()}</span>
                 </div>
@@ -806,18 +850,35 @@ export default function PublicInvoice() {
           {/* ============================================================== */}
           {/* 5. AUTHENTIC NASTALEEQ URDU WARRANTY CERTIFICATE SECTION       */}
           {/* ============================================================== */}
-          <div className="border-2 border-amber-300/80 bg-gradient-to-br from-amber-50/40 via-white to-amber-50/30 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-2.5">
-            <div className="flex items-center justify-between border-b border-amber-200/70 pb-2">
+          <div
+            style={{
+              backgroundColor: '#fffdf5',
+              border: '2px solid #fcd34d',
+              borderRadius: '1rem',
+              padding: '1.25rem'
+            }}
+            className="space-y-2.5"
+          >
+            <div
+              style={{ borderBottom: '1px solid #fde68a', paddingBottom: '0.5rem' }}
+              className="flex items-center justify-between"
+            >
               <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-amber-500 text-white flex items-center justify-center text-xs shadow-xs">
+                <span
+                  style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}
+                  className="w-6 h-6 rounded-lg flex items-center justify-center text-xs"
+                >
                   🛡️
                 </span>
                 <h3 className="text-xs sm:text-sm font-bold text-amber-950 tracking-wide flex items-center gap-1.5">
                   <span>Official Warranty Terms</span>
-                  <span className="font-nastaliq text-[11px] font-normal text-amber-800/90">(دکان کی وارنٹی شرائط)</span>
+                  <span className="font-nastaliq text-[11px] font-normal text-amber-900">(دکان کی وارنٹی شرائط)</span>
                 </h3>
               </div>
-              <span className="text-[10px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-200 font-mono">
+              <span
+                style={{ backgroundColor: '#fef3c7', borderColor: '#fde68a', color: '#92400e' }}
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full border font-mono"
+              >
                 WARRANTY
               </span>
             </div>
@@ -830,7 +891,10 @@ export default function PublicInvoice() {
               {warrantyText}
             </div>
 
-            <div className="pt-2 border-t border-amber-200/50 flex flex-wrap items-center justify-between text-[10px] sm:text-[11px] text-amber-900/80">
+            <div
+              style={{ borderTop: '1px solid #fde68a', paddingTop: '0.5rem' }}
+              className="flex flex-wrap items-center justify-between text-[10px] sm:text-[11px] text-amber-900"
+            >
               <div className="font-nastaliq">
                 آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝
               </div>
