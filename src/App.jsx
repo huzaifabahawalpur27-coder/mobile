@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react'
+import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
@@ -35,6 +35,7 @@ const Support = lazy(() => import('./pages/Support'))
 const UserGuide = lazy(() => import('./pages/UserGuide'))
 const WhatsAppMessaging = lazy(() => import('./pages/WhatsAppMessaging'))
 const WhatsAppQueue = lazy(() => import('./pages/WhatsAppQueue'))
+const PublicInvoice = lazy(() => import('./pages/PublicInvoice'))
 
 // Superadmin Portal
 const AdminLayout = lazy(() => import('./components/admin/AdminLayout'))
@@ -71,6 +72,10 @@ function App() {
               <Route path="/app/dashboard" element={<Navigate to="/dashboard" replace />} />
               <Route path="/app/pos" element={<Navigate to="/pos" replace />} />
               <Route path="/app/*" element={<Navigate to="/" replace />} />
+
+              {/* ── Public Digital Invoice (Customer Receipt & PDF) ── */}
+              <Route path="/invoice/:id" element={<PublicInvoice />} />
+              <Route path="/view-invoice/:id" element={<PublicInvoice />} />
 
               {/* ── Superadmin Platform Portal (Role: superadmin only) ── */}
               <Route

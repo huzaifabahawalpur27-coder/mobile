@@ -26,6 +26,63 @@ export const DEFAULT_WARRANTY_TERMS_ENGLISH = `⚠️ *Warranty Terms:*
 2. No warranty or return accepted if the phone becomes dead.
 3. No warranty on second-hand mobile devices.`.trim()
 
+/**
+ * Constructs the canonical public digital invoice link for WhatsApp messages.
+ */
+export function buildPublicInvoiceUrl(referenceId) {
+  if (!referenceId) return ''
+  const origin = typeof window !== 'undefined' && window.location && window.location.origin
+    ? window.location.origin
+    : 'https://pos.edgexsuite.com'
+  const clean = String(referenceId).trim()
+  return `${origin}/invoice/${encodeURIComponent(clean)}`
+}
+
+/**
+ * Injects or replaces the online digital invoice link in any WhatsApp message template.
+ */
+export function replaceOrInjectInvoiceLinkInTemplate(template, invoiceUrl) {
+  if (!template || !invoiceUrl) return template || ''
+  if (template.includes(invoiceUrl)) return template
+
+  const linkBlock = `🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*\n${invoiceUrl}`
+
+  if (template.includes('[Invoice Link]') || template.includes('[Link]') || template.includes('[URL]')) {
+    return template
+      .replace(/\[Invoice Link\]/g, invoiceUrl)
+      .replace(/\[Link\]/g, invoiceUrl)
+      .replace(/\[URL\]/g, invoiceUrl)
+  }
+
+  // Inject before warranty if present
+  const warrantyAnchors = [
+    '⚠️ *وارنٹی شرائط',
+    '⚠️ *Warranty Terms',
+    '[Warranty Terms]',
+    '[Warranty]',
+    '۱۔ LCD',
+    '1. No warranty'
+  ]
+
+  for (const anchor of warrantyAnchors) {
+    if (template.includes(anchor)) {
+      const parts = template.split(anchor)
+      return `${parts[0].trim()}\n\n${linkBlock}\n\n${anchor}${parts.slice(1).join(anchor)}`.trim()
+    }
+  }
+
+  // Fallback: inject before footer anchors
+  const footerAnchors = ['آپ کے اعتماد', 'Thank you', 'Shukriya', 'شکریہ', '🏪', '📞']
+  for (const anchor of footerAnchors) {
+    if (template.includes(anchor)) {
+      const parts = template.split(anchor)
+      return `${parts[0].trim()}\n\n${linkBlock}\n\n${anchor}${parts.slice(1).join(anchor)}`.trim()
+    }
+  }
+
+  return `${template.trim()}\n\n${linkBlock}`.trim()
+}
+
 export const DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE = `السلام علیکم [Name]! 🤝
 *[Shop Name]* سے خریداری کرنے کا بہت بہت شکریہ!
 
@@ -40,6 +97,9 @@ export const DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE = `السلام علیکم [N
 • کل رقم (Total): Rs. [Total]
 • وصول رقم (Paid): Rs. [Paid]
 • بقایا کھاتہ (Balance): Rs. [Balance]
+
+🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*
+[Invoice Link]
 
 ⚠️ *وارنٹی شرائط (Warranty Terms):*
 ۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔
@@ -107,6 +167,7 @@ export function upgradeLegacyWhatsAppMessage(text, shopId, referenceData = null)
     const dateStr = dateMatch ? dateMatch[1].trim() : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
 
     const paidStr = referenceData?.paid ? Number(referenceData.paid).toLocaleString('en-PK') : amountStr
+    const invoiceUrl = buildPublicInvoiceUrl('INV-' + invoiceId)
 
     return `السلام علیکم ${customerName}! 🤝
 *${shopName}* سے خریداری کرنے کا بہت بہت شکریہ!
@@ -123,18 +184,33 @@ export function upgradeLegacyWhatsAppMessage(text, shopId, referenceData = null)
 • وصول رقم (Paid): Rs. ${paidStr}
 • بقایا کھاتہ (Balance): Rs. 0 (مکمل کلیئر ✅)
 
+🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*
+${invoiceUrl}
+
 ${warranty}
 
 آپ کے اعتماد اور تعاون کا شکریہ! 🤝
 🏪 *${shopName}*`
   }
 
-  // If not legacy English stub, but missing warranty terms:
-  if (!hasWarrantyTerms(text)) {
-    return replaceOrInjectWarrantyInTemplate(text, warranty)
+  let result = text
+
+  // If missing online invoice link, inject if reference id or INV-/EXC- can be extracted
+  if (!result.includes('/invoice/')) {
+    const invMatch = result.match(/(?:INV-|EXC-)[A-Za-z0-9-]+/i) || result.match(/(?:انوائس نمبر|Invoice #):\s*([A-Za-z0-9-]+)/i)
+    const ref = invMatch ? (invMatch[1] || invMatch[0]) : (referenceData?.reference_id || referenceData?.exchange_number || null)
+    if (ref) {
+      const url = buildPublicInvoiceUrl(ref)
+      result = replaceOrInjectInvoiceLinkInTemplate(result, url)
+    }
   }
 
-  return text
+  // If not legacy English stub, but missing warranty terms:
+  if (!hasWarrantyTerms(result)) {
+    result = replaceOrInjectWarrantyInTemplate(result, warranty)
+  }
+
+  return result
 }
 
 /**
@@ -195,6 +271,18 @@ export function renderCustomWhatsAppTemplate(template, { sale, customer, items =
     .replace(/\[Warranty\]/g, effectiveWarranty)
     .replace(/\[Phone\]/g, shopPhone)
     .replace(/\[Shop Phone\]/g, shopPhone)
+
+  // Inject or substitute online digital invoice & PDF download link
+  const invoiceUrl = buildPublicInvoiceUrl('INV-' + invoiceId)
+  rendered = rendered
+    .replace(/\[Invoice Link\]/g, invoiceUrl)
+    .replace(/\[Invoice URL\]/g, invoiceUrl)
+    .replace(/\[Link\]/g, invoiceUrl)
+    .replace(/\[URL\]/g, invoiceUrl)
+
+  if (!rendered.includes(invoiceUrl)) {
+    rendered = replaceOrInjectInvoiceLinkInTemplate(rendered, invoiceUrl)
+  }
 
   // Permanently enforce warranty terms in rendered result
   if (!hasWarrantyTerms(rendered)) {
@@ -299,6 +387,8 @@ export function buildPhoneSaleReceiptText({ sale, customer, items = [], shopInfo
   const change = Number(sale?.changeDue || 0)
   const balance = Number(customer?.outstanding_balance || 0)
 
+  const invoiceUrl = buildPublicInvoiceUrl('INV-' + invoiceId)
+
   if (language === 'english') {
     const itemsText = items.map((i, idx) => {
       const name = i.name || i.model || 'Item'
@@ -334,6 +424,9 @@ ${itemsText}
 
 💰 *Payment Summary:*
 ${paymentSummary}
+
+🔗 *Online Invoice & Download PDF:*
+${invoiceUrl}
 
 ${effectiveWarranty}
 
@@ -371,6 +464,9 @@ ${itemsText}
 
 💰 *ادائیگی کا خلاصہ:*
 ${paymentInfoUrdu}
+
+🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*
+${invoiceUrl}
 
 ${effectiveWarranty}
 
@@ -438,6 +534,9 @@ export const DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE = `السلام علیکم [Name
 • خالص تبادلہ فرق: Rs. [Net Difference]
 • ادا شدہ رقم (Paid): Rs. [Paid]
 • بقایا واجب الادا (Remaining Due): Rs. [Balance]
+
+🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*
+[Invoice Link]
 
 [Warranty Terms]
 
@@ -551,6 +650,18 @@ export function renderCustomExchangeTemplate(template, { exchange, customer = nu
     .replace(/\[Shop Phone\]/g, shopPhone)
     .replace(/\[Phone\]/g, shopPhone)
 
+  // Inject or substitute online digital invoice & PDF download link
+  const exchangeUrl = buildPublicInvoiceUrl(exchangeNo)
+  result = result
+    .replace(/\[Invoice Link\]/g, exchangeUrl)
+    .replace(/\[Invoice URL\]/g, exchangeUrl)
+    .replace(/\[Link\]/g, exchangeUrl)
+    .replace(/\[URL\]/g, exchangeUrl)
+
+  if (!result.includes(exchangeUrl)) {
+    result = replaceOrInjectInvoiceLinkInTemplate(result, exchangeUrl)
+  }
+
   if (!template.includes('[Warranty Terms]') && !template.includes('[Warranty]') && !result.includes(effectiveWarranty)) {
     result = replaceOrInjectWarrantyInTemplate(result, effectiveWarranty)
   }
@@ -652,6 +763,7 @@ export function buildExchangeWhatsAppText({ exchange, customer = null, shopInfo 
   // Fetch shop warranty details from settings/localStorage
   const shopId = shopInfo.id || shopInfo.shop_id || exchange.shop_id
   const effectiveWarranty = shopInfo.warranty_terms || (shopId ? getShopWarrantyTerms(shopId) : DEFAULT_WARRANTY_TERMS_URDU)
+  const exchangeUrl = buildPublicInvoiceUrl(exchangeNo)
 
   return `السلام علیکم ${customerName}! 🤝
 *${shopName}* میں تشریف لانے اور فون ایکسچینج کرنے کا بہت بہت شکریہ!
@@ -670,6 +782,9 @@ ${incomingText}
 
 ⚖️ *حتمی حساب و بقایا ایڈجسٹمنٹ (Balance Adjustment & Settlement):*
 ${balanceLines.join('\n')}
+
+🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*
+${exchangeUrl}
 
 ${effectiveWarranty}
 

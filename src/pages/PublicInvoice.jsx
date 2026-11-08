@@ -1,0 +1,625 @@
+import { useState, useEffect, useRef } from 'react'
+import { useParams } from 'react-router-dom'
+import { supabase } from '../services/supabase'
+import { db } from '../services/db'
+import {
+  Smartphone,
+  Download,
+  Printer,
+  CheckCircle2,
+  Calendar,
+  Phone,
+  MapPin,
+  RefreshCw,
+  ExternalLink
+} from 'lucide-react'
+
+// Action-time dynamic loading for PDF libraries
+async function loadPdfLibraries() {
+  const [jspdfMod, html2canvasMod] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas')
+  ])
+  const jsPDF = jspdfMod.jsPDF || jspdfMod.default?.jsPDF || jspdfMod.default
+  const html2canvas = html2canvasMod.default || html2canvasMod
+  return { jsPDF, html2canvas }
+}
+
+export default function PublicInvoice() {
+  const { id } = useParams()
+  const [invoice, setInvoice] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const invoiceRef = useRef(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function fetchInvoice() {
+      if (!id) {
+        setError('انوائس نمبر درج نہیں ہے۔ (Invoice reference missing)')
+        setLoading(false)
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        // 1. Try public RPC function (SECURITY DEFINER)
+        const { data, error: rpcErr } = await supabase.rpc('get_public_invoice', {
+          p_reference: id
+        })
+
+        if (!rpcErr && data) {
+          if (isMounted) {
+            setInvoice(data)
+            setLoading(false)
+          }
+          return
+        }
+
+        // 2. Fallback: Check Dexie local sales cache (if viewed on same device / local cache)
+        if (db?.sales) {
+          try {
+            const cleanId = id.replace(/^(INV-|EXC-)/i, '')
+            let localSale = null
+            if (!isNaN(Number(cleanId))) {
+              localSale = await db.sales.get(Number(cleanId))
+            }
+            if (!localSale) {
+              const allSales = await db.sales.toArray()
+              localSale = allSales.find(s => String(s.id) === cleanId || s.idempotency_key === cleanId)
+            }
+
+            if (localSale && isMounted) {
+              const shopSettings = (() => {
+                try {
+                  return JSON.parse(localStorage.getItem(`shop_settings_${localSale.shop_id}`) || '{}')
+                } catch (_) {
+                  return {}
+                }
+              })()
+
+              const formatted = {
+                type: 'sale',
+                id: localSale.id,
+                invoice_no: `INV-${localSale.id}`,
+                created_at: localSale.created_at || new Date().toISOString(),
+                subtotal: localSale.subtotal || localSale.total,
+                discount: localSale.discount || 0,
+                total: localSale.total,
+                paid_amount: localSale.paid_amount ?? localSale.total,
+                payment_type: localSale.payment_type || 'cash',
+                customer_name: localSale.customer_name || 'Valued Customer',
+                customer_phone: localSale.customer_phone || '',
+                status: localSale.status || 'completed',
+                shop: {
+                  name: shopSettings.name || localStorage.getItem(`shop_name_${localSale.shop_id}`) || 'EdgeX Mobile Store',
+                  phone: shopSettings.phone || '',
+                  address: shopSettings.address || '',
+                  logo_url: shopSettings.logo_url || localStorage.getItem(`shop_logo_${localSale.shop_id}`) || '',
+                  warranty_terms: shopSettings.warranty_terms || ''
+                },
+                items: (localSale.sale_items || []).map(i => ({
+                  name: i.name || i.product_name || 'Item',
+                  brand: i.brand || '',
+                  model: i.model || '',
+                  storage: i.storage || '',
+                  color: i.color || '',
+                  condition: i.condition || '',
+                  pta_status: i.pta_status || '',
+                  imei_1: i.imei_1 || '',
+                  imei_2: i.imei_2 || '',
+                  quantity: i.quantity || i.qty || 1,
+                  unit_price: i.unit_price || i.custom_price || i.sale_price || 0,
+                  total: (i.quantity || 1) * (i.unit_price || i.custom_price || 0)
+                }))
+              }
+
+              setInvoice(formatted)
+              setLoading(false)
+              return
+            }
+          } catch (e) {
+            console.debug('Dexie sales lookup error:', e)
+          }
+        }
+
+        // 3. Fallback: Check Dexie whatsapp_queue reference_data
+        if (db?.whatsapp_queue) {
+          try {
+            const cleanId = id.replace(/^(INV-|EXC-)/i, '')
+            const qItems = await db.whatsapp_queue.toArray()
+            const match = qItems.find(q =>
+              q.reference_id === id ||
+              q.reference_id === cleanId ||
+              (q.reference_data && (String(q.reference_data.exchange_number) === id || String(q.reference_data.exchange_id) === cleanId))
+            )
+
+            if (match && isMounted) {
+              const text = match.message_text || ''
+              // Render basic receipt container from message text
+              setInvoice({
+                type: match.message_type?.includes('exchange') ? 'exchange' : 'sale',
+                invoice_no: id,
+                created_at: match.created_at || new Date().toISOString(),
+                customer_name: match.recipient_name || 'Customer',
+                customer_phone: match.recipient_phone || '',
+                total: match.reference_data?.total || match.reference_data?.sale_amount || 0,
+                paid_amount: match.reference_data?.paid || match.reference_data?.settlement_amount || 0,
+                fallback_text: text,
+                shop: {
+                  name: localStorage.getItem(`shop_name_${match.shop_id}`) || 'EdgeX Mobile Store',
+                  phone: '',
+                  warranty_terms: ''
+                }
+              })
+              setLoading(false)
+              return
+            }
+          } catch (e) {
+            console.debug('Dexie queue lookup error:', e)
+          }
+        }
+
+        if (isMounted) {
+          setError('انوائس نہیں مل سکی۔ براہ کرم لنک درست ہونے کی تصدیق کریں۔\n(Invoice not found or expired)')
+          setLoading(false)
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err?.message || 'انوائس لوڈ کرنے میں مسئلہ پیش آیا۔ (Error loading invoice)')
+          setLoading(false)
+        }
+      }
+    }
+
+    fetchInvoice()
+    return () => { isMounted = false }
+  }, [id])
+
+  // PDF Download Handler (preserves authentic Nastaleeq font using high-DPI canvas)
+  const handleDownloadPDF = async () => {
+    if (!invoiceRef.current || downloadingPdf) return
+    setDownloadingPdf(true)
+
+    try {
+      const { jsPDF, html2canvas } = await loadPdfLibraries()
+      const element = invoiceRef.current
+
+      // Ensure images are crossOrigin friendly
+      const images = element.querySelectorAll('img')
+      images.forEach(img => {
+        if (img.src && !img.src.startsWith('data:') && !img.src.startsWith(window.location.origin)) {
+          img.crossOrigin = 'anonymous'
+        }
+      })
+
+      const canvas = await html2canvas(element, {
+        scale: 2.5,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        backgroundColor: '#ffffff'
+      })
+
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      })
+
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width
+
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      const filename = `Invoice_${invoice?.invoice_no || id || 'receipt'}.pdf`
+      pdf.save(filename)
+    } catch (err) {
+      console.error('PDF Generation failed:', err)
+      // Fallback: trigger print dialog
+      window.print()
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
+  // Print Handler
+  const handlePrint = () => {
+    window.print()
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
+        <div className="w-12 h-12 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin mb-4" />
+        <h2 className="text-base font-bold text-slate-800 dark:text-slate-200">سرکاری ڈیجیٹل بل لوڈ ہو رہا ہے...</h2>
+        <p className="text-xs text-slate-500 mt-1">Loading verified digital invoice...</p>
+      </div>
+    )
+  }
+
+  if (error || !invoice) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-red-100 dark:bg-red-900/30 text-red-600 flex items-center justify-center text-3xl mb-4">
+          ⚠️
+        </div>
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">بل دستیاب نہیں ہے (Invoice Not Found)</h2>
+        <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm whitespace-pre-line leading-relaxed mb-6">
+          {error || 'The requested invoice reference could not be located.'}
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm"
+        >
+          <RefreshCw size={14} />
+          <span>دوبارہ کوشش کریں (Retry)</span>
+        </button>
+      </div>
+    )
+  }
+
+  const isExchange = invoice.type === 'exchange'
+  const shop = invoice.shop || {}
+  const dateFormatted = invoice.created_at
+    ? new Date(invoice.created_at).toLocaleString('en-PK', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      })
+    : ''
+
+  const grandTotal = Number(invoice.total || invoice.sale_amount || 0)
+  const paidTotal = Number(invoice.paid_amount ?? invoice.settlement_paid_amount ?? grandTotal)
+  const balanceDue = grandTotal - paidTotal
+
+  // Extract warranty terms
+  const warrantyText = shop.warranty_terms || `⚠️ *وارنٹی شرائط (Warranty Terms):*
+۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔
+۲۔ موبائل ڈیڈ ہونے کی صورت میں کوئی وارنٹی یا واپسی قبول نہیں کی جائے گی۔
+۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔`
+
+  return (
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 py-6 px-3 sm:px-6 font-sans">
+      <div className="max-w-2xl mx-auto space-y-4">
+
+        {/* Top Customer Actions Bar (Non-printed) */}
+        <div className="print:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-base">
+              ✓
+            </span>
+            <div>
+              <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <span>تصدیق شدہ ڈیجیٹل رسید</span>
+                <span className="px-1.5 py-0.2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 rounded text-[10px] font-black">
+                  VERIFIED
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">Official EdgeX Certified Receipt</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadPDF}
+              disabled={downloadingPdf}
+              className="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+              title="Download high-resolution official PDF with Nastaleeq Urdu warranty"
+            >
+              <Download size={14} className={downloadingPdf ? 'animate-bounce' : ''} />
+              <span>{downloadingPdf ? 'پی ڈی ایف بن رہا ہے...' : 'پی ڈی ایف ڈاؤن لوڈ (PDF)'}</span>
+            </button>
+
+            <button
+              onClick={handlePrint}
+              className="py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              title="Print bill"
+            >
+              <Printer size={14} />
+              <span className="hidden sm:inline">پرنٹ (Print)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ============================================================== */}
+        {/* Printable & Canvas-Capturable Digital Invoice Card             */}
+        {/* ============================================================== */}
+        <div
+          ref={invoiceRef}
+          className="bg-white text-slate-900 rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-8 space-y-6 print:border-none print:shadow-none print:p-0 print:rounded-none"
+        >
+          {/* 1. Header & Store Branding */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-200 pb-5">
+            <div className="space-y-1">
+              {shop.logo_url && (
+                <img
+                  src={shop.logo_url}
+                  alt={shop.name || 'Store Logo'}
+                  className="h-12 max-w-[160px] object-contain mb-2"
+                />
+              )}
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-950">
+                {shop.name || 'EdgeX Mobile Store'}
+              </h1>
+              {shop.address && (
+                <p className="text-xs text-slate-600 flex items-center gap-1">
+                  <MapPin size={12} className="text-slate-400 shrink-0" />
+                  <span>{shop.address}</span>
+                </p>
+              )}
+              {shop.phone && (
+                <p className="text-xs text-slate-600 flex items-center gap-1 font-mono">
+                  <Phone size={12} className="text-slate-400 shrink-0" />
+                  <span>{shop.phone}</span>
+                </p>
+              )}
+            </div>
+
+            <div className="sm:text-right space-y-1">
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <CheckCircle2 size={12} />
+                <span>{isExchange ? 'فون ایکسچینج انوائس' : 'سیلز انوائس بل'}</span>
+              </span>
+              <div className="text-base font-black font-mono tracking-wide text-slate-950 pt-1">
+                #{invoice.invoice_no || id}
+              </div>
+              <div className="text-xs text-slate-500 flex items-center sm:justify-end gap-1">
+                <Calendar size={12} className="text-slate-400" />
+                <span>{dateFormatted}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Customer & Transaction Meta Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">کسٹمر کا نام</span>
+              <span className="font-bold text-slate-900 truncate block mt-0.5">
+                {invoice.customer_name || 'Valued Customer'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">موبائل نمبر</span>
+              <span className="font-mono font-semibold text-slate-800 block mt-0.5">
+                {invoice.customer_phone ? `+${invoice.customer_phone}` : 'Walk-in'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">ادائیگی کی قسم</span>
+              <span className="font-bold text-slate-800 uppercase block mt-0.5">
+                {invoice.payment_type || invoice.settlement_payment_method || 'Cash'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">اسٹیٹس</span>
+              <span className={`font-black block mt-0.5 ${balanceDue > 0 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                {balanceDue > 0 ? `باقی: Rs. ${balanceDue.toLocaleString()}` : '✓ مکمل ادا شدہ (Paid)'}
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Products / Devices Table (For Standard Sales) */}
+          {!isExchange && (
+            <div className="space-y-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <Smartphone size={13} className="text-emerald-600" />
+                <span>خریدی گئی اشیاء و موبائل فونز (Items & Devices)</span>
+              </h2>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                    <tr>
+                      <th className="py-2.5 px-3">#</th>
+                      <th className="py-2.5 px-3">تفصیل سامان / ماڈل</th>
+                      <th className="py-2.5 px-2 text-center">تعداد</th>
+                      <th className="py-2.5 px-3 text-right">فی قیمت</th>
+                      <th className="py-2.5 px-3 text-right">کل رقم</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(invoice.items || []).map((item, idx) => {
+                      const name = item.name || `${item.brand || ''} ${item.model || 'Phone'}`.trim()
+                      const specs = [item.storage, item.color].filter(Boolean).join(', ')
+                      const imei1 = item.imei_1 ? `IMEI 1: ${item.imei_1}` : ''
+                      const imei2 = item.imei_2 ? `IMEI 2: ${item.imei_2}` : ''
+                      const imeiStr = [imei1, imei2].filter(Boolean).join(' | ')
+                      const conditionParts = [item.condition, item.pta_status].filter(Boolean).join(' • ')
+
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/50">
+                          <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-slate-900 text-xs sm:text-sm">{name}</div>
+                            {specs && <div className="text-[11px] text-slate-500">{specs}</div>}
+                            {conditionParts && <div className="text-[10px] text-emerald-700 font-medium">{conditionParts}</div>}
+                            {imeiStr && (
+                              <div className="font-mono text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded mt-0.5 inline-block border border-slate-200/60">
+                                {imeiStr}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-2 text-center font-bold text-slate-700">
+                            {item.quantity || 1}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-medium text-slate-700">
+                            Rs. {Number(item.unit_price || 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
+                            Rs. {Number(item.total || ((item.quantity || 1) * (item.unit_price || 0))).toLocaleString()}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 3B. Exchange Sections (For Phone Exchanges) */}
+          {isExchange && (
+            <div className="space-y-4">
+              {/* Outgoing Purchased Phone */}
+              <div className="space-y-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                  <span>📤</span>
+                  <span>خریدا گیا فون / نیا سامان (Purchased Items):</span>
+                </span>
+                <div className="border border-emerald-200 bg-emerald-50/30 rounded-xl p-3 space-y-2 text-xs">
+                  {(invoice.outgoing_items || []).map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-start border-b border-emerald-100 pb-2 last:border-b-0 last:pb-0">
+                      <div>
+                        <div className="font-bold text-slate-900">{item.product_name}</div>
+                        <div className="text-[11px] text-slate-500">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
+                        {item.imei_1 && <div className="font-mono text-[10px] text-slate-600">IMEI: {item.imei_1}</div>}
+                      </div>
+                      <div className="font-mono font-bold text-slate-900 text-right">
+                        Rs. {Number(item.subtotal || item.price || 0).toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center pt-1 font-bold text-xs text-slate-800">
+                    <span>کل قیمت خرید:</span>
+                    <span className="font-mono">Rs. {Number(invoice.sale_amount || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Incoming Traded-in Phones */}
+              <div className="space-y-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-800 flex items-center gap-1">
+                  <span>📥</span>
+                  <span>آپ کا جمع کروایا گیا فون (Exchanged / Traded-in Phones):</span>
+                </span>
+                <div className="border border-purple-200 bg-purple-50/30 rounded-xl p-3 space-y-2 text-xs">
+                  {(invoice.incoming_items || []).map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-start border-b border-purple-100 pb-2 last:border-b-0 last:pb-0">
+                      <div>
+                        <div className="font-bold text-slate-900">{item.product_name}</div>
+                        <div className="text-[11px] text-slate-500">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
+                        {item.imei_1 && <div className="font-mono text-[10px] text-slate-600">IMEI: {item.imei_1}</div>}
+                        {item.battery_health && <div className="text-[10px] text-emerald-700">بیٹری ہیلتھ: {item.battery_health}%</div>}
+                      </div>
+                      <div className="font-mono font-bold text-purple-900 text-right">
+                        Rs. {Number(item.assessed_value || item.subtotal || 0).toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center pt-1 font-bold text-xs text-slate-800">
+                    <span>کل ٹریڈ ان کریڈٹ:</span>
+                    <span className="font-mono text-purple-900">- Rs. {Number(invoice.trade_in_credit || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 4. Financial Summary Card */}
+          <div className="flex justify-end pt-2">
+            <div className="w-full sm:w-72 bg-slate-50 rounded-xl border border-slate-200 p-3.5 space-y-2 text-xs">
+              <div className="flex justify-between text-slate-600">
+                <span>کل رقم (Total Amount):</span>
+                <span className="font-mono font-bold text-slate-900">Rs. {grandTotal.toLocaleString()}</span>
+              </div>
+              {invoice.discount > 0 && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>رعایت (Discount):</span>
+                  <span className="font-mono font-bold">- Rs. {Number(invoice.discount).toLocaleString()}</span>
+                </div>
+              )}
+              {isExchange && (
+                <div className="flex justify-between text-purple-700">
+                  <span>ٹریڈ ان کریڈٹ (Trade-in):</span>
+                  <span className="font-mono font-bold">- Rs. {Number(invoice.trade_in_credit || 0).toLocaleString()}</span>
+                </div>
+              )}
+              <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-900 font-black text-sm">
+                <span>خالص واجب الادا (Net Total):</span>
+                <span className="font-mono text-emerald-700">
+                  Rs. {Number(isExchange ? Math.abs(grandTotal - (invoice.trade_in_credit || 0)) : grandTotal).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-700 pt-0.5">
+                <span>وصول رقم (Amount Paid):</span>
+                <span className="font-mono font-bold">Rs. {paidTotal.toLocaleString()}</span>
+              </div>
+              {balanceDue > 0 && (
+                <div className="flex justify-between text-red-600 font-bold border-t border-slate-200/60 pt-1.5">
+                  <span>بقایا رقم (Remaining Balance):</span>
+                  <span className="font-mono">Rs. {balanceDue.toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ============================================================== */}
+          {/* 5. AUTHENTIC NASTALEEQ URDU WARRANTY CERTIFICATE SECTION       */}
+          {/* ============================================================== */}
+          <div className="border-2 border-amber-300/80 bg-gradient-to-br from-amber-50/50 via-white to-amber-50/40 rounded-2xl p-4 sm:p-6 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between border-b border-amber-200/70 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center text-sm shadow-xs">
+                  🛡️
+                </span>
+                <h3 className="font-nastaliq text-base sm:text-lg font-bold text-amber-950 tracking-wide">
+                  دکان کی سرکاری وارنٹی شرائط (Official Warranty Terms)
+                </h3>
+              </div>
+              <span className="text-[11px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-200 font-mono">
+                WARRANTY
+              </span>
+            </div>
+
+            {/* Authentic Nastaleeq Typography */}
+            <div
+              dir="rtl"
+              className="font-nastaliq text-xs sm:text-sm text-slate-900 leading-[2.3] whitespace-pre-line text-right selection:bg-amber-200"
+            >
+              {warrantyText}
+            </div>
+
+            <div className="pt-2 border-t border-amber-200/50 flex flex-wrap items-center justify-between text-[11px] text-amber-900/80">
+              <div className="font-nastaliq">
+                آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝
+              </div>
+              <div className="font-semibold text-amber-950">
+                {shop.name || 'EdgeX Mobile Store'}
+              </div>
+            </div>
+          </div>
+
+          {/* 6. Footer Disclaimer & Verification Stamp */}
+          <div className="pt-4 border-t border-slate-200 text-center text-slate-500 text-[11px] space-y-1">
+            <div className="font-medium text-slate-700">
+              یہ ایک تصدیق شدہ کمپیوٹرائزڈ ڈیجیٹل بل ہے جس پر کسی دستی دستخط کی ضرورت نہیں ہے۔
+            </div>
+            <div className="text-[10px] text-slate-400">
+              Powered by EdgeX POS Suite • Verified Digital Invoice • {dateFormatted}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Contact Affordance */}
+        {shop.phone && (
+          <div className="print:hidden text-center pt-2 pb-6">
+            <a
+              href={`https://wa.me/${shop.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Assalam-o-Alaikum, I have a question regarding Invoice #${invoice.invoice_no}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 py-2 px-4 rounded-xl shadow-xs transition"
+            >
+              <span>💬 دکان کے واٹس ایپ پر رابطہ کریں (Contact Store)</span>
+              <ExternalLink size={12} />
+            </a>
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}

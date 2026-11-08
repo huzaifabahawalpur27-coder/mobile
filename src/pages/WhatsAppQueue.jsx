@@ -29,7 +29,8 @@ import {
   Check,
   Pencil,
   Save,
-  CheckCircle2
+  CheckCircle2,
+  FileText
 } from 'lucide-react'
 
 export default function WhatsAppQueue() {
@@ -670,6 +671,25 @@ export default function WhatsAppQueue() {
                     >
                       <span>🛡️ + Warranty</span>
                     </button>
+
+                    {/* View Digital Invoice / PDF Button */}
+                    {(() => {
+                      const match = (item.message_text || '').match(/https?:\/\/[^\s]+\/invoice\/([^\s]+)/i)
+                      const invoiceParam = match ? match[1] : (item.reference_id ? (String(item.reference_id).startsWith('INV-') || String(item.reference_id).startsWith('EXC-') ? item.reference_id : `INV-${item.reference_id}`) : null)
+                      if (!invoiceParam) return null
+                      return (
+                        <a
+                          href={`/invoice/${encodeURIComponent(invoiceParam)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="View customer digital invoice & download PDF with Nastaleeq warranty"
+                          className="py-2.5 px-3 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-200 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer border border-blue-200/60 dark:border-blue-800/60 shadow-2xs"
+                        >
+                          <FileText size={13} className="text-blue-600" />
+                          <span>PDF / بل</span>
+                        </a>
+                      )
+                    })()}
 
                     {isPending ? (
                       <button

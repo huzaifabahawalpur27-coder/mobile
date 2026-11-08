@@ -1019,6 +1019,7 @@ function Settings() {
                       { tag: '[Total]', desc: 'Total Amount' },
                       { tag: '[Paid]', desc: 'Paid Amount' },
                       { tag: '[Balance]', desc: 'Customer Balance' },
+                      { tag: '[Invoice Link]', desc: 'Online Invoice & PDF Link' },
                       { tag: '[Phone]', desc: 'Shop Phone' }
                     ].map(({ tag, desc }) => (
                       <button
@@ -1157,6 +1158,7 @@ function Settings() {
                       { tag: '[Net Difference]', desc: 'Difference Payable/Receivable' },
                       { tag: '[Paid]', desc: 'Settlement Amount Paid' },
                       { tag: '[Balance]', desc: 'Remaining / Ledger Balance' },
+                      { tag: '[Invoice Link]', desc: 'Online Invoice & PDF Link' },
                       { tag: '[Warranty Terms]', desc: 'Warranty Terms' },
                       { tag: '[Shop Phone]', desc: 'Shop Contact Phone' }
                     ].map(({ tag, desc }) => (
