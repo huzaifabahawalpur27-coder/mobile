@@ -203,7 +203,10 @@ BEGIN
     FROM public.sales s
     LEFT JOIN public.customers c ON c.id = s.customer_id
     LEFT JOIN public.shops sh ON sh.id = s.shop_id
-    WHERE upper(s.invoice_token) = v_clean
+    WHERE upper(COALESCE(s.invoice_number, '')) = upper(p_reference)
+       OR upper(COALESCE(s.invoice_number, '')) = ('INV-' || v_clean)
+       OR upper(COALESCE(s.invoice_number, '')) = v_clean
+       OR upper(COALESCE(s.invoice_token, '')) = v_clean
        OR (v_clean ~ '^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$' AND s.idempotency_key = v_clean::UUID);
 
     IF v_res IS NOT NULL THEN

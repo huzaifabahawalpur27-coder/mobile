@@ -3,28 +3,21 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
 import {
-  Smartphone,
   Download,
   Printer,
-  CheckCircle2,
-  Calendar,
-  Phone,
-  MapPin,
   RefreshCw,
   ExternalLink
 } from 'lucide-react'
 
 // Action-time dynamic loading for PDF libraries
 async function loadPdfLibraries() {
-  const [jspdfMod, html2canvasMod, autotableMod] = await Promise.all([
+  const [jspdfMod, html2canvasMod] = await Promise.all([
     import('jspdf'),
-    import('html2canvas'),
-    import('jspdf-autotable')
+    import('html2canvas')
   ])
   const jsPDF = jspdfMod.jsPDF || jspdfMod.default?.jsPDF || jspdfMod.default
   const html2canvas = html2canvasMod.default || html2canvasMod
-  const autoTable = autotableMod.default || autotableMod.autoTable || autotableMod
-  return { jsPDF, html2canvas, autoTable }
+  return { jsPDF, html2canvas }
 }
 
 export default function PublicInvoice() {
@@ -49,67 +42,268 @@ export default function PublicInvoice() {
       setError(null)
 
       try {
-        // 1. Try public RPC function (SECURITY DEFINER)
-        const { data, error: rpcErr } = await supabase.rpc('get_public_invoice', {
-          p_reference: id
-        })
+        const cleanId = id.replace(/^(INV-|EXC-)/i, '').trim().toUpperCase()
+        const candidateNumbers = [id, cleanId, `INV-${cleanId}`, `EXC-${cleanId}`]
 
-        if (!rpcErr && data) {
-          const enriched = { ...data }
-          try {
-            // Check local db.customers by customer_id if phone or name is missing
-            if (db?.customers && enriched.customer_id && (!enriched.customer_phone || enriched.customer_name === 'Valued Customer')) {
-              const cust = await db.customers.get(Number(enriched.customer_id))
-              if (cust) {
-                if (cust.name && (enriched.customer_name === 'Valued Customer' || !enriched.customer_name)) {
-                  enriched.customer_name = cust.name
-                }
-                if (cust.phone && !enriched.customer_phone) {
-                  enriched.customer_phone = cust.phone
-                }
-              }
+        // 1. Direct Supabase REST lookup for sales by invoice_number
+        // (Bypasses any potential RPC cache/subtotal column discrepancies)
+        try {
+          const { data: directSale } = await supabase
+            .from('sales')
+            .select('*, sale_items(*)')
+            .in('invoice_number', candidateNumbers)
+            .maybeSingle()
+
+          if (directSale && isMounted) {
+            let shopInfo = {}
+            if (directSale.shop_id) {
+              try {
+                const { data: sData } = await supabase.from('shops').select('*').eq('id', directSale.shop_id).maybeSingle()
+                if (sData) shopInfo = sData
+              } catch (_) {}
             }
 
-            // Also check whatsapp_queue if customer is still Valued Customer or phone missing
-            if (db?.whatsapp_queue && (!enriched.customer_phone || enriched.customer_name === 'Valued Customer')) {
-              const cleanId = id.replace(/^(INV-|EXC-)/i, '').trim().toUpperCase()
-              const qItems = await db.whatsapp_queue.toArray()
-              const match = qItems.find(q =>
-                (q.reference_id && q.reference_id.toUpperCase().includes(cleanId)) ||
-                (q.reference_data && (
-                  (q.reference_data.invoice_token && q.reference_data.invoice_token.toUpperCase() === cleanId) ||
-                  (q.reference_data.invoice_number && q.reference_data.invoice_number.toUpperCase().includes(cleanId)) ||
-                  (q.reference_data.sale_id && String(q.reference_data.sale_id) === String(enriched.id))
-                ))
-              )
-              if (match) {
-                if (match.recipient_name && (enriched.customer_name === 'Valued Customer' || !enriched.customer_name)) {
-                  enriched.customer_name = match.recipient_name
-                }
-                if (match.recipient_phone && !enriched.customer_phone) {
-                  enriched.customer_phone = match.recipient_phone
-                }
-              }
+            let custInfo = {}
+            if (directSale.customer_id) {
+              try {
+                const { data: cData } = await supabase.from('customers').select('*').eq('id', directSale.customer_id).maybeSingle()
+                if (cData) custInfo = cData
+              } catch (_) {}
             }
-          } catch (enrichErr) {
-            console.debug('Customer enrichment error:', enrichErr)
-          }
 
-          if (isMounted) {
-            setInvoice(enriched)
+            const localShopSettings = (() => {
+              try {
+                return JSON.parse(localStorage.getItem(`shop_settings_${directSale.shop_id}`) || '{}')
+              } catch (_) {
+                return {}
+              }
+            })()
+
+            const effectiveShopName = shopInfo.name || localShopSettings.name || localStorage.getItem(`shop_name_${directSale.shop_id}`) || 'EdgeX Mobile Store'
+            const effectiveShopPhone = shopInfo.phone || localShopSettings.phone || ''
+            const effectiveShopAddress = shopInfo.address || localShopSettings.address || ''
+            const effectiveShopLogo = shopInfo.logo_url || localShopSettings.logo_url || localStorage.getItem(`shop_logo_${directSale.shop_id}`) || ''
+            const effectiveWarranty = shopInfo.warranty_terms || localShopSettings.warranty_terms || ''
+
+            const effectiveCustName = directSale.customer_name || custInfo.name || 'Valued Customer'
+            const effectiveCustPhone = directSale.customer_phone || custInfo.phone || ''
+
+            const formatted = {
+              type: 'sale',
+              id: directSale.id,
+              invoice_no: directSale.invoice_number || id,
+              reference_id: directSale.invoice_number || id,
+              created_at: directSale.created_at || new Date().toISOString(),
+              subtotal: directSale.total_amount || directSale.net_amount || 0,
+              discount: directSale.discount || 0,
+              total: directSale.net_amount || directSale.total_amount || 0,
+              net_amount: directSale.net_amount || directSale.total_amount || 0,
+              total_amount: directSale.total_amount || directSale.net_amount || 0,
+              paid_amount: directSale.paid_amount ?? directSale.amount_paid ?? directSale.net_amount,
+              payment_type: directSale.payment_type || directSale.payment_method || 'cash',
+              customer_name: effectiveCustName,
+              customer_phone: effectiveCustPhone,
+              status: directSale.status || 'completed',
+              shop: {
+                name: effectiveShopName,
+                phone: effectiveShopPhone,
+                address: effectiveShopAddress,
+                logo_url: effectiveShopLogo,
+                warranty_terms: effectiveWarranty
+              },
+              items: (directSale.sale_items || []).map(si => {
+                let snap = {}
+                if (typeof si.imei_snapshot === 'object' && si.imei_snapshot !== null) {
+                  snap = si.imei_snapshot
+                } else if (typeof si.imei_snapshot === 'string') {
+                  try { snap = JSON.parse(si.imei_snapshot) } catch (_) {}
+                }
+                const imei1 = si.imei_1 || snap.imei_1 || si.imei || ''
+                const imei2 = si.imei_2 || snap.imei_2 || ''
+                const rawName = si.product_name || `${snap.brand || ''} ${snap.model || 'Phone'}`.trim()
+                const hasImeiInName = Boolean(imei1 && rawName.includes(imei1))
+                const fullName = !hasImeiInName && imei1 ? (imei2 ? `${rawName} [IMEI: ${imei1} / ${imei2}]` : `${rawName} [IMEI: ${imei1}]`) : rawName
+
+                return {
+                  id: si.id,
+                  name: fullName,
+                  brand: snap.brand || '',
+                  model: snap.model || '',
+                  storage: snap.storage || '',
+                  color: snap.color || '',
+                  condition: snap.condition || '',
+                  pta_status: snap.pta_status || '',
+                  imei_1: imei1,
+                  imei_2: imei2,
+                  quantity: si.quantity || 1,
+                  unit_price: si.unit_price || si.price || 0,
+                  total: si.total_price || si.line_total || si.subtotal || ((si.quantity || 1) * (si.unit_price || si.price || 0))
+                }
+              })
+            }
+
+            setInvoice(formatted)
             setLoading(false)
+            return
           }
-          return
+        } catch (saleLookupErr) {
+          console.debug('Direct sale lookup error:', saleLookupErr)
         }
 
-        // 2. Fallback: Check Dexie local sales cache (if viewed on same device / local cache)
+        // 2. Direct Supabase REST lookup for phone exchanges
+        try {
+          const { data: directExchange } = await supabase
+            .from('exchanges')
+            .select('*, exchange_items(*)')
+            .in('exchange_number', candidateNumbers)
+            .maybeSingle()
+
+          if (directExchange && isMounted) {
+            let shopInfo = {}
+            if (directExchange.shop_id) {
+              try {
+                const { data: sData } = await supabase.from('shops').select('*').eq('id', directExchange.shop_id).maybeSingle()
+                if (sData) shopInfo = sData
+              } catch (_) {}
+            }
+            let custInfo = {}
+            if (directExchange.customer_id) {
+              try {
+                const { data: cData } = await supabase.from('customers').select('*').eq('id', directExchange.customer_id).maybeSingle()
+                if (cData) custInfo = cData
+              } catch (_) {}
+            }
+
+            const localShopSettings = (() => {
+              try {
+                return JSON.parse(localStorage.getItem(`shop_settings_${directExchange.shop_id}`) || '{}')
+              } catch (_) {
+                return {}
+              }
+            })()
+
+            const effectiveShopName = shopInfo.name || localShopSettings.name || localStorage.getItem(`shop_name_${directExchange.shop_id}`) || 'EdgeX Mobile Store'
+            const effectiveShopPhone = shopInfo.phone || localShopSettings.phone || ''
+            const effectiveShopAddress = shopInfo.address || localShopSettings.address || ''
+            const effectiveShopLogo = shopInfo.logo_url || localShopSettings.logo_url || ''
+            const effectiveWarranty = shopInfo.warranty_terms || localShopSettings.warranty_terms || ''
+
+            const incoming = (directExchange.exchange_items || []).filter(i => i.item_direction === 'incoming_trade_in')
+            const outgoing = (directExchange.exchange_items || []).filter(i => i.item_direction === 'outgoing_sale')
+
+            const formatted = {
+              type: 'exchange',
+              id: directExchange.id,
+              invoice_no: directExchange.exchange_number || id,
+              reference_id: directExchange.exchange_number || id,
+              created_at: directExchange.created_at || new Date().toISOString(),
+              sale_amount: directExchange.sale_amount || 0,
+              trade_in_credit: directExchange.trade_in_credit || 0,
+              settlement_amount: directExchange.settlement_amount || 0,
+              settlement_direction: directExchange.settlement_direction,
+              settlement_payment_method: directExchange.settlement_payment_method || 'Cash',
+              settlement_paid_amount: directExchange.settlement_paid_amount || 0,
+              paid_amount: directExchange.settlement_paid_amount || 0,
+              customer_name: directExchange.customer_name || custInfo.name || 'Valued Customer',
+              customer_phone: directExchange.customer_phone || custInfo.phone || '',
+              status: directExchange.status || 'completed',
+              shop: {
+                name: effectiveShopName,
+                phone: effectiveShopPhone,
+                address: effectiveShopAddress,
+                logo_url: effectiveShopLogo,
+                warranty_terms: effectiveWarranty
+              },
+              incoming_items: incoming.map(i => ({
+                product_name: i.product_name,
+                imei_1: i.imei_1,
+                storage: i.storage,
+                color: i.color,
+                condition: i.condition,
+                pta_status: i.pta_status,
+                assessed_value: i.assessed_value || i.subtotal || 0,
+                battery_health: i.inspection_details?.battery_health
+              })),
+              outgoing_items: outgoing.map(i => ({
+                product_name: i.product_name,
+                imei_1: i.imei_1,
+                storage: i.storage,
+                color: i.color,
+                condition: i.condition,
+                pta_status: i.pta_status,
+                subtotal: i.subtotal || i.assessed_value || 0
+              }))
+            }
+
+            setInvoice(formatted)
+            setLoading(false)
+            return
+          }
+        } catch (exchangeLookupErr) {
+          console.debug('Direct exchange lookup error:', exchangeLookupErr)
+        }
+
+        // 3. Try public RPC function (SECURITY DEFINER)
+        try {
+          const { data, error: rpcErr } = await supabase.rpc('get_public_invoice', {
+            p_reference: id
+          })
+
+          if (!rpcErr && data) {
+            const enriched = { ...data }
+            try {
+              // Check local db.customers by customer_id if phone or name is missing
+              if (db?.customers && enriched.customer_id && (!enriched.customer_phone || enriched.customer_name === 'Valued Customer')) {
+                const cust = await db.customers.get(Number(enriched.customer_id))
+                if (cust) {
+                  if (cust.name && (enriched.customer_name === 'Valued Customer' || !enriched.customer_name)) {
+                    enriched.customer_name = cust.name
+                  }
+                  if (cust.phone && !enriched.customer_phone) {
+                    enriched.customer_phone = cust.phone
+                  }
+                }
+              }
+
+              // Also check whatsapp_queue if customer is still Valued Customer or phone missing
+              if (db?.whatsapp_queue && (!enriched.customer_phone || enriched.customer_name === 'Valued Customer')) {
+                const qItems = await db.whatsapp_queue.toArray()
+                const match = qItems.find(q =>
+                  (q.reference_id && q.reference_id.toUpperCase().includes(cleanId)) ||
+                  (q.reference_data && (
+                    (q.reference_data.invoice_token && q.reference_data.invoice_token.toUpperCase() === cleanId) ||
+                    (q.reference_data.invoice_number && q.reference_data.invoice_number.toUpperCase().includes(cleanId)) ||
+                    (q.reference_data.sale_id && String(q.reference_data.sale_id) === String(enriched.id))
+                  ))
+                )
+                if (match) {
+                  if (match.recipient_name && (enriched.customer_name === 'Valued Customer' || !enriched.customer_name)) {
+                    enriched.customer_name = match.recipient_name
+                  }
+                  if (match.recipient_phone && !enriched.customer_phone) {
+                    enriched.customer_phone = match.recipient_phone
+                  }
+                }
+              }
+            } catch (enrichErr) {
+              console.debug('Customer enrichment error:', enrichErr)
+            }
+
+            if (isMounted) {
+              setInvoice(enriched)
+              setLoading(false)
+            }
+            return
+          }
+        } catch (_) {}
+
+        // 4. Fallback: Check Dexie local sales cache (if viewed on same device / offline)
         if (db?.sales) {
           try {
-            const cleanId = id.replace(/^(INV-|EXC-)/i, '').trim().toUpperCase()
             const allSales = await db.sales.toArray()
-            // Strictly match by invoice_token or idempotency_key to prevent incremental ID enumeration
             const localSale = allSales.find(s =>
               (s.invoice_token && s.invoice_token.toUpperCase() === cleanId) ||
+              (s.invoice_number && s.invoice_number.toUpperCase().includes(cleanId)) ||
               (s.idempotency_key && s.idempotency_key.toUpperCase() === cleanId)
             )
 
@@ -122,12 +316,11 @@ export default function PublicInvoice() {
                 }
               })()
 
-              const formattedNo = localSale.invoice_token ? `INV-${localSale.invoice_token}` : (id.startsWith('INV-') ? id : `INV-${cleanId}`)
+              const formattedNo = localSale.invoice_number || (localSale.invoice_token ? `INV-${localSale.invoice_token}` : (id.startsWith('INV-') ? id : `INV-${cleanId}`))
               const formatted = {
                 type: 'sale',
                 id: localSale.id,
                 invoice_no: formattedNo,
-                invoice_token: localSale.invoice_token || cleanId,
                 reference_id: formattedNo,
                 created_at: localSale.created_at || new Date().toISOString(),
                 subtotal: localSale.total_amount || localSale.subtotal || localSale.net_amount || localSale.total || 0,
@@ -150,16 +343,22 @@ export default function PublicInvoice() {
                 items: (localSale.sale_items || []).map(i => {
                   const snap = typeof i.imei_snapshot === 'object' && i.imei_snapshot !== null ? i.imei_snapshot : {}
                   const rawSnapStr = typeof i.imei_snapshot === 'string' ? i.imei_snapshot : ''
+                  const imei1 = i.imei_1 || snap.imei_1 || i.imei || rawSnapStr || ''
+                  const imei2 = i.imei_2 || snap.imei_2 || ''
+                  const rawName = i.name || i.product_name || 'Item'
+                  const hasImei = Boolean(imei1 && rawName.includes(imei1))
+                  const fullName = !hasImei && imei1 ? (imei2 ? `${rawName} [IMEI: ${imei1} / ${imei2}]` : `${rawName} [IMEI: ${imei1}]`) : rawName
+
                   return {
-                    name: i.name || i.product_name || 'Item',
+                    name: fullName,
                     brand: i.brand || snap.brand || '',
                     model: i.model || snap.model || '',
                     storage: i.storage || snap.storage || '',
                     color: i.color || snap.color || '',
                     condition: i.condition || snap.condition || '',
                     pta_status: i.pta_status || snap.pta_status || '',
-                    imei_1: i.imei_1 || snap.imei_1 || i.imei || rawSnapStr || '',
-                    imei_2: i.imei_2 || snap.imei_2 || '',
+                    imei_1: imei1,
+                    imei_2: imei2,
                     quantity: i.quantity || i.qty || 1,
                     unit_price: i.unit_price || i.custom_price || i.sale_price || 0,
                     total: (i.quantity || 1) * (i.unit_price || i.custom_price || 0)
@@ -176,20 +375,22 @@ export default function PublicInvoice() {
           }
         }
 
-        // 3. Fallback: Check Dexie whatsapp_queue reference_data
+        // 5. Fallback: Check Dexie whatsapp_queue reference_data
         if (db?.whatsapp_queue) {
           try {
-            const cleanId = id.replace(/^(INV-|EXC-)/i, '')
             const qItems = await db.whatsapp_queue.toArray()
             const match = qItems.find(q =>
               q.reference_id === id ||
               q.reference_id === cleanId ||
-              (q.reference_data && (String(q.reference_data.exchange_number) === id || String(q.reference_data.exchange_id) === cleanId))
+              (q.reference_data && (
+                String(q.reference_data.invoice_number) === id ||
+                String(q.reference_data.exchange_number) === id ||
+                String(q.reference_data.exchange_id) === cleanId
+              ))
             )
 
             if (match && isMounted) {
               const text = match.message_text || ''
-              // Render basic receipt container from message text
               setInvoice({
                 type: match.message_type?.includes('exchange') ? 'exchange' : 'sale',
                 invoice_no: id,
@@ -329,7 +530,8 @@ export default function PublicInvoice() {
     .replace(/^⚠️?\s*\*?وارنٹی[\s\S]*?(?:\*|:|\))\s*\n+/i, '')
     .trim()
 
-  // PDF Download Handler (always downloads a PDF file; never opens print dialog)
+  // High-Resolution Visual PDF Download Handler
+  // Renders the exact screen invoice (store header, customer grid, items + IMEI, totals, and yellow Urdu Nastaleeq warranty)
   const handleDownloadPDF = async () => {
     if (!invoiceRef.current || downloadingPdf) return
     setDownloadingPdf(true)
@@ -337,7 +539,7 @@ export default function PublicInvoice() {
     const filename = `Invoice_${invoice?.invoice_no || id || 'receipt'}.pdf`
 
     try {
-      const { jsPDF, html2canvas, autoTable } = await loadPdfLibraries()
+      const { jsPDF, html2canvas } = await loadPdfLibraries()
       const element = invoiceRef.current
 
       // Ensure fonts are loaded before capturing canvas
@@ -347,208 +549,84 @@ export default function PublicInvoice() {
         }
       } catch (_) {}
 
-      let usedCanvas = false
+      // Clone element into a dedicated A4-proportioned off-screen container (794px = A4 at 96 DPI).
+      // This ensures identical desktop proportions (4-column grid, side-by-side header, authentic yellow warranty)
+      // on mobile phones and desktop displays alike, without scroll clipping or mobile layout collapse.
+      const clone = element.cloneNode(true)
+      const wrapper = document.createElement('div')
+      wrapper.style.position = 'fixed'
+      wrapper.style.left = '-9999px'
+      wrapper.style.top = '0'
+      wrapper.style.width = '794px'
+      wrapper.style.backgroundColor = '#ffffff'
+      wrapper.style.padding = '32px'
+      wrapper.style.boxSizing = 'border-box'
+      wrapper.style.zIndex = '-9999'
 
-      // STRATEGY 1: High-DPI Visual Canvas (captures exact styling & Nastaleeq Urdu)
-      try {
-        const canvas = await html2canvas(element, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: false,
-          logging: false,
-          backgroundColor: '#ffffff'
-        })
+      clone.style.width = '100%'
+      clone.style.maxWidth = '100%'
+      clone.style.boxShadow = 'none'
+      clone.style.border = 'none'
 
-        if (canvas && canvas.width > 0 && canvas.height > 0) {
-          const imgData = canvas.toDataURL('image/png')
-          const pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'mm',
-            format: 'a4'
-          })
+      wrapper.appendChild(clone)
+      document.body.appendChild(wrapper)
 
-          const pageWidth = pdf.internal.pageSize.getWidth()
-          const pageHeight = pdf.internal.pageSize.getHeight()
-          const margin = 8
-          const printableWidth = pageWidth - (margin * 2)
-          const printableHeight = (canvas.height * printableWidth) / canvas.width
+      // Short pause to guarantee font rendering and layout metrics in the clone
+      await new Promise(r => setTimeout(r, 150))
 
-          if (printableHeight <= pageHeight - (margin * 2)) {
-            pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, printableHeight)
-          } else {
-            const maxAvailableHeight = pageHeight - (margin * 2)
-            const scaledWidth = (canvas.width * maxAvailableHeight) / canvas.height
-            const xOffset = (pageWidth - scaledWidth) / 2
-            pdf.addImage(imgData, 'PNG', xOffset, margin, scaledWidth, maxAvailableHeight)
-          }
+      const canvas = await html2canvas(wrapper, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        width: 794,
+        windowWidth: 794,
+        scrollX: 0,
+        scrollY: 0,
+        logging: false
+      })
 
-          pdf.save(filename)
-          usedCanvas = true
-        }
-      } catch (canvasErr) {
-        console.warn('Canvas rendering encountered an issue, falling back to direct vector jsPDF:', canvasErr)
+      if (wrapper.parentNode) {
+        wrapper.parentNode.removeChild(wrapper)
       }
 
-      // STRATEGY 2: Direct Vector jsPDF Fallback (Guaranteed to download PDF without canvas restrictions)
-      if (!usedCanvas) {
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      if (canvas && canvas.width > 0 && canvas.height > 0) {
+        const imgData = canvas.toDataURL('image/png')
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        })
 
-        // Header: Store Name
-        pdf.setFontSize(16)
-        pdf.setFont('helvetica', 'bold')
-        pdf.text(shop.name || 'EdgeX Mobile Store', 105, 18, { align: 'center' })
+        const pageWidth = pdf.internal.pageSize.getWidth()
+        const pageHeight = pdf.internal.pageSize.getHeight()
+        const margin = 8
+        const printableWidth = pageWidth - (margin * 2)
+        const printableHeight = (canvas.height * printableWidth) / canvas.width
 
-        let currentY = 25
-        pdf.setFontSize(9)
-        pdf.setFont('helvetica', 'normal')
-        const contactInfo = [shop.phone, shop.address].filter(Boolean).join('  |  ')
-        if (contactInfo) {
-          pdf.text(contactInfo, 105, currentY, { align: 'center' })
-          currentY += 6
-        }
-
-        pdf.setFontSize(11)
-        pdf.setFont('helvetica', 'bold')
-        pdf.text(isExchange ? 'PHONE EXCHANGE INVOICE' : 'SALES INVOICE', 105, currentY, { align: 'center' })
-        currentY += 8
-
-        // Metadata Grid
-        pdf.setFontSize(9)
-        pdf.setFont('helvetica', 'normal')
-        pdf.text(`Invoice #: ${invoice.invoice_no || id}`, 14, currentY)
-        pdf.text(`Date: ${dateFormatted}`, 196, currentY, { align: 'right' })
-        currentY += 5
-        pdf.text(`Customer Name: ${invoice.customer_name || 'Valued Customer'}`, 14, currentY)
-        pdf.text(`Payment: ${String(invoice.payment_type || 'CASH').toUpperCase()}`, 196, currentY, { align: 'right' })
-        currentY += 5
-        if (invoice.customer_phone) {
-          pdf.text(`Mobile: +${invoice.customer_phone}`, 14, currentY)
+        if (printableHeight <= pageHeight - (margin * 2)) {
+          pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, printableHeight)
         } else {
-          pdf.text('Mobile: Walk-in', 14, currentY)
+          const maxAvailableHeight = pageHeight - (margin * 2)
+          const scaledWidth = (canvas.width * maxAvailableHeight) / canvas.height
+          const xOffset = (pageWidth - scaledWidth) / 2
+          pdf.addImage(imgData, 'PNG', xOffset, margin, scaledWidth, maxAvailableHeight)
         }
-        currentY += 7
-
-        // Items Table
-        const items = invoice.items || []
-        const tableRows = items.map((item, idx) => {
-          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
-          const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
-          const imei2 = item.imei_2 || snap.imei_2 || ''
-          const rawName = item.name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`.trim()
-          const imeiStr = imei1 ? (imei2 ? ` [IMEI: ${imei1} / ${imei2}]` : ` [IMEI: ${imei1}]`) : ''
-          const fullName = rawName.includes(imei1) ? rawName : `${rawName}${imeiStr}`
-
-          const qty = Number(item.quantity || item.qty || 1)
-          const price = Number(item.unit_price || item.custom_price || item.price || 0)
-          const total = Number(item.total || (qty * price))
-          return [String(idx + 1), fullName, String(qty), `Rs. ${price.toLocaleString()}`, `Rs. ${total.toLocaleString()}`]
-        })
-
-        autoTable(pdf, {
-          startY: currentY,
-          head: [['#', 'Description & IMEI', 'Qty', 'Unit Price', 'Total Amount']],
-          body: tableRows,
-          styles: { fontSize: 9, cellPadding: 2.5 },
-          headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold' },
-          columnStyles: {
-            0: { cellWidth: 10, halign: 'center' },
-            1: { cellWidth: 95 },
-            2: { cellWidth: 18, halign: 'center' },
-            3: { cellWidth: 32, halign: 'right' },
-            4: { cellWidth: 35, halign: 'right' }
-          },
-          alternateRowStyles: { fillColor: [248, 250, 252] },
-          margin: { left: 14, right: 14 }
-        })
-
-        currentY = (pdf.lastAutoTable?.finalY || currentY) + 6
-
-        // Financial Totals
-        pdf.setFontSize(9)
-        pdf.text('Total Amount:', 140, currentY)
-        pdf.text(`Rs. ${grossTotal.toLocaleString()}`, 196, currentY, { align: 'right' })
-        currentY += 5
-
-        if (discount > 0) {
-          pdf.text('Discount:', 140, currentY)
-          pdf.text(`- Rs. ${discount.toLocaleString()}`, 196, currentY, { align: 'right' })
-          currentY += 5
-        }
-
-        if (isExchange && tradeCredit > 0) {
-          pdf.text('Trade-in Credit:', 140, currentY)
-          pdf.text(`- Rs. ${tradeCredit.toLocaleString()}`, 196, currentY, { align: 'right' })
-          currentY += 5
-        }
-
-        pdf.setFont('helvetica', 'bold')
-        pdf.setFontSize(11)
-        pdf.text('Net Total:', 140, currentY)
-        pdf.text(`Rs. ${netTotal.toLocaleString()}`, 196, currentY, { align: 'right' })
-        currentY += 6
-
-        pdf.setFontSize(9)
-        pdf.setFont('helvetica', 'normal')
-        pdf.text('Amount Paid:', 140, currentY)
-        pdf.text(`Rs. ${paidTotal.toLocaleString()}`, 196, currentY, { align: 'right' })
-        currentY += 5
-
-        if (balanceDue > 0) {
-          pdf.setFont('helvetica', 'bold')
-          pdf.text('Remaining Balance:', 140, currentY)
-          pdf.text(`Rs. ${balanceDue.toLocaleString()}`, 196, currentY, { align: 'right' })
-          currentY += 6
-        }
-
-        // Strategy 2 Warranty Terms Box (Guarantee clean English text so helvetica never prints mojibake)
-        currentY += 6
-        pdf.setFont('helvetica', 'bold')
-        pdf.setFontSize(9)
-        pdf.setTextColor(180, 83, 9)
-        pdf.text('OFFICIAL STORE WARRANTY TERMS / WARANTI SHARAIT:', 14, currentY)
-        currentY += 4
-        pdf.setFont('helvetica', 'normal')
-        pdf.setFontSize(8)
-        pdf.setTextColor(51, 65, 85)
-        const warrantyEnglish = `1. No warranty on LCD, Touch, Camera, or Face ID.
-2. Dead/Power-off phones are strictly non-refundable and non-exchangeable.
-3. Second-hand / Used phones carry no store warranty.`
-        const splitWarranty = pdf.splitTextToSize(warrantyEnglish, 182)
-        pdf.text(splitWarranty, 14, currentY)
-        currentY += (splitWarranty.length * 4) + 6
-        pdf.setTextColor(0, 0, 0)
-
-        // Footer
-        currentY += 8
-        pdf.setFontSize(8)
-        pdf.setFont('helvetica', 'italic')
-        pdf.text('This is a verified computerized digital invoice and does not require a physical signature.', 105, currentY, { align: 'center' })
-        pdf.text(`Powered by EdgeX POS Suite • Verified Digital Invoice • ${dateFormatted}`, 105, currentY + 4, { align: 'center' })
 
         pdf.save(filename)
+      } else {
+        throw new Error('Canvas render returned empty dimensions')
       }
     } catch (err) {
       console.error('PDF download error:', err)
-      // Emergency raw fallback: NEVER call window.print()!
-      try {
-        const { jsPDF } = await loadPdfLibraries()
-        const emergencyPdf = new jsPDF()
-        emergencyPdf.setFontSize(14)
-        emergencyPdf.text(`Invoice #${invoice?.invoice_no || id}`, 14, 25)
-        emergencyPdf.setFontSize(11)
-        emergencyPdf.text(`Customer: ${invoice?.customer_name || 'Valued Customer'}`, 14, 35)
-        emergencyPdf.text(`Net Total: Rs. ${netTotal.toLocaleString()}`, 14, 45)
-        emergencyPdf.text(`Status: ${balanceDue > 0 ? `Balance Due: Rs. ${balanceDue.toLocaleString()}` : 'Paid'}`, 14, 55)
-        emergencyPdf.save(filename)
-      } catch (emergErr) {
-        console.error('Emergency PDF save failed:', emergErr)
-      }
+      // Fallback to browser print dialog if canvas rendering fails
+      window.print()
     } finally {
       setDownloadingPdf(false)
     }
   }
 
-  // Print Handler (explicitly triggers browser print dialog)
+  // Print Handler
   const handlePrint = () => {
     window.print()
   }
@@ -560,13 +638,19 @@ export default function PublicInvoice() {
         {/* Top Customer Actions Bar (Non-printed) */}
         <div className="print:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-base">
+            <span
+              style={{ backgroundColor: '#ecfdf5', color: '#059669' }}
+              className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-base"
+            >
               ✓
             </span>
             <div>
               <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                 <span>Verified Digital Invoice</span>
-                <span className="px-1.5 py-0.2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 rounded text-[10px] font-black">
+                <span
+                  style={{ backgroundColor: '#ecfdf5', color: '#065f46' }}
+                  className="px-1.5 py-0.2 rounded text-[10px] font-black"
+                >
                   VERIFIED
                 </span>
               </div>
@@ -601,30 +685,37 @@ export default function PublicInvoice() {
         {/* ============================================================== */}
         <div
           ref={invoiceRef}
-          style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+          style={{ backgroundColor: '#ffffff', color: '#0f172a', borderColor: '#e2e8f0' }}
           className="bg-white text-slate-900 rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-8 space-y-6 print:border-none print:shadow-none print:p-0 print:rounded-none"
         >
           {/* 1. Header & Store Branding */}
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-200 pb-5">
+          <div
+            style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '1.25rem' }}
+            className="flex flex-col sm:flex-row sm:items-start justify-between gap-4"
+          >
             <div className="space-y-1">
               {shop.logo_url && (
                 <img
                   src={shop.logo_url}
                   alt={shop.name || 'Store Logo'}
                   className="h-12 max-w-[160px] object-contain mb-2"
+                  crossOrigin="anonymous"
                 />
               )}
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-950">
+              <h1
+                style={{ color: '#020617' }}
+                className="text-xl sm:text-2xl font-black tracking-tight"
+              >
                 {shop.name || 'EdgeX Mobile Store'}
               </h1>
               {shop.address && (
-                <p className="text-xs text-slate-600 flex items-center gap-1">
+                <p style={{ color: '#475569' }} className="text-xs flex items-center gap-1">
                   <span className="text-[11px]">📍</span>
                   <span>{shop.address}</span>
                 </p>
               )}
               {shop.phone && (
-                <p className="text-xs text-slate-600 flex items-center gap-1 font-mono">
+                <p style={{ color: '#475569' }} className="text-xs flex items-center gap-1 font-mono">
                   <span className="text-[11px]">📞</span>
                   <span>{shop.phone}</span>
                 </p>
@@ -632,14 +723,20 @@ export default function PublicInvoice() {
             </div>
 
             <div className="sm:text-right space-y-1">
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <span
+                style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }}
+                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black"
+              >
                 <span>✓</span>
                 <span>{isExchange ? 'Phone Exchange Invoice' : 'Sales Invoice'}</span>
               </span>
-              <div className="text-base font-black font-mono tracking-wide text-slate-950 pt-1">
+              <div
+                style={{ color: '#020617' }}
+                className="text-base font-black font-mono tracking-wide pt-1"
+              >
                 #{invoice.invoice_no || id}
               </div>
-              <div className="text-xs text-slate-500 flex items-center sm:justify-end gap-1">
+              <div style={{ color: '#64748b' }} className="text-xs flex items-center sm:justify-end gap-1">
                 <span className="text-[11px]">📅</span>
                 <span>{dateFormatted}</span>
               </div>
@@ -647,28 +744,42 @@ export default function PublicInvoice() {
           </div>
 
           {/* 2. Customer & Transaction Meta Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+          <div
+            style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}
+            className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl text-xs"
+          >
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Customer Name</span>
-              <span className="font-bold text-slate-900 truncate block mt-0.5">
+              <span style={{ color: '#64748b' }} className="text-[10px] uppercase font-bold block tracking-wider">
+                Customer Name
+              </span>
+              <span style={{ color: '#0f172a' }} className="font-bold truncate block mt-0.5">
                 {invoice.customer_name || 'Valued Customer'}
               </span>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Mobile Number</span>
-              <span className="font-mono font-semibold text-slate-800 block mt-0.5">
+              <span style={{ color: '#64748b' }} className="text-[10px] uppercase font-bold block tracking-wider">
+                Mobile Number
+              </span>
+              <span style={{ color: '#1e293b' }} className="font-mono font-semibold block mt-0.5">
                 {invoice.customer_phone ? `+${invoice.customer_phone}` : 'Walk-in'}
               </span>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Payment Method</span>
-              <span className="font-bold text-slate-800 uppercase block mt-0.5">
+              <span style={{ color: '#64748b' }} className="text-[10px] uppercase font-bold block tracking-wider">
+                Payment Method
+              </span>
+              <span style={{ color: '#1e293b' }} className="font-bold uppercase block mt-0.5">
                 {invoice.payment_type || invoice.settlement_payment_method || 'Cash'}
               </span>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Payment Status</span>
-              <span className={`font-black block mt-0.5 ${balanceDue > 0 ? 'text-amber-600' : 'text-emerald-700'}`}>
+              <span style={{ color: '#64748b' }} className="text-[10px] uppercase font-bold block tracking-wider">
+                Payment Status
+              </span>
+              <span
+                style={{ color: balanceDue > 0 ? '#d97706' : '#047857' }}
+                className="font-black block mt-0.5"
+              >
                 {balanceDue > 0 ? `Balance: Rs. ${balanceDue.toLocaleString()}` : 'Paid ✓'}
               </span>
             </div>
@@ -677,14 +788,14 @@ export default function PublicInvoice() {
           {/* 3. Products / Devices Table (For Standard Sales) */}
           {!isExchange && (
             <div className="space-y-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <h2 style={{ color: '#64748b' }} className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <span className="text-xs">📱</span>
                 <span>Items & Purchased Devices</span>
               </h2>
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div style={{ border: '1px solid #e2e8f0' }} className="rounded-xl overflow-hidden">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                  <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }} className="font-bold uppercase text-[10px] tracking-wider">
                     <tr>
                       <th className="py-2.5 px-3">#</th>
                       <th className="py-2.5 px-3">Description / Item Details</th>
@@ -719,27 +830,30 @@ export default function PublicInvoice() {
                       const conditionParts = [item.condition || snap.condition, item.pta_status || snap.pta_status].filter(Boolean).join(' • ')
 
                       return (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }} className="hover:bg-slate-50">
+                          <td style={{ color: '#94a3b8' }} className="py-3 px-3 font-mono text-[11px]">{idx + 1}</td>
                           <td className="py-3 px-3">
-                            <div className="font-bold text-slate-900 text-xs sm:text-sm flex flex-wrap items-baseline gap-1.5">
+                            <div style={{ color: '#0f172a' }} className="font-bold text-xs sm:text-sm flex flex-wrap items-baseline gap-1.5">
                               <span>{rawName}</span>
                               {imeiTag && (
-                                <span className="font-mono text-[11px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                <span
+                                  style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }}
+                                  className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded"
+                                >
                                   {imeiTag}
                                 </span>
                               )}
                             </div>
-                            {specs && <div className="text-[11px] text-slate-500 mt-0.5">{specs}</div>}
-                            {conditionParts && <div className="text-[10px] text-emerald-700 font-medium mt-0.5">{conditionParts}</div>}
+                            {specs && <div style={{ color: '#64748b' }} className="text-[11px] mt-0.5">{specs}</div>}
+                            {conditionParts && <div style={{ color: '#047857' }} className="text-[10px] font-medium mt-0.5">{conditionParts}</div>}
                           </td>
-                          <td className="py-3 px-2 text-center font-bold text-slate-700">
+                          <td style={{ color: '#334155' }} className="py-3 px-2 text-center font-bold">
                             {item.quantity || 1}
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-medium text-slate-700">
+                          <td style={{ color: '#334155' }} className="py-3 px-3 text-right font-mono font-medium">
                             Rs. {Number(item.unit_price || 0).toLocaleString()}
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
+                          <td style={{ color: '#0f172a' }} className="py-3 px-3 text-right font-mono font-bold">
                             Rs. {Number(item.total || ((item.quantity || 1) * (item.unit_price || 0))).toLocaleString()}
                           </td>
                         </tr>
@@ -756,11 +870,11 @@ export default function PublicInvoice() {
             <div className="space-y-4">
               {/* Outgoing Purchased Phone */}
               <div className="space-y-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                <span style={{ color: '#065f46' }} className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
                   <span>📤</span>
                   <span>Purchased Replacement Devices:</span>
                 </span>
-                <div className="border border-emerald-200 bg-emerald-50 rounded-xl p-3 space-y-2 text-xs">
+                <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0' }} className="rounded-xl p-3 space-y-2 text-xs">
                   {(invoice.outgoing_items || []).map((item, idx) => {
                     const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
                     const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
@@ -768,25 +882,25 @@ export default function PublicInvoice() {
                     const imeiTag = !hasImeiInName && imei1 ? `[IMEI: ${imei1}]` : ''
 
                     return (
-                      <div key={idx} className="flex justify-between items-start border-b border-emerald-100 pb-2 last:border-b-0 last:pb-0">
+                      <div key={idx} style={{ borderBottom: '1px solid #a7f3d0' }} className="flex justify-between items-start pb-2 last:border-b-0 last:pb-0">
                         <div>
-                          <div className="font-bold text-slate-900 flex flex-wrap items-baseline gap-1.5">
+                          <div style={{ color: '#0f172a' }} className="font-bold flex flex-wrap items-baseline gap-1.5">
                             <span>{item.product_name}</span>
                             {imeiTag && (
-                              <span className="font-mono text-[11px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                              <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }} className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded">
                                 {imeiTag}
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
+                          <div style={{ color: '#64748b' }} className="text-[11px] mt-0.5">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
                         </div>
-                        <div className="font-mono font-bold text-slate-900 text-right">
+                        <div style={{ color: '#0f172a' }} className="font-mono font-bold text-right">
                           Rs. {Number(item.subtotal || item.price || 0).toLocaleString()}
                         </div>
                       </div>
                     )
                   })}
-                  <div className="flex justify-between items-center pt-1 font-bold text-xs text-slate-800">
+                  <div style={{ color: '#1e293b' }} className="flex justify-between items-center pt-1 font-bold text-xs">
                     <span>Total Purchase Amount:</span>
                     <span className="font-mono">Rs. {Number(invoice.sale_amount || 0).toLocaleString()}</span>
                   </div>
@@ -795,11 +909,11 @@ export default function PublicInvoice() {
 
               {/* Incoming Traded-in Phones */}
               <div className="space-y-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-purple-800 flex items-center gap-1">
+                <span style={{ color: '#6b21a8' }} className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
                   <span>📥</span>
                   <span>Traded-in / Exchanged Phones:</span>
                 </span>
-                <div className="border border-purple-200 bg-purple-50 rounded-xl p-3 space-y-2 text-xs">
+                <div style={{ backgroundColor: '#faf5ff', border: '1px solid #e9d5ff' }} className="rounded-xl p-3 space-y-2 text-xs">
                   {(invoice.incoming_items || []).map((item, idx) => {
                     const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
                     const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
@@ -807,28 +921,28 @@ export default function PublicInvoice() {
                     const imeiTag = !hasImeiInName && imei1 ? `[IMEI: ${imei1}]` : ''
 
                     return (
-                      <div key={idx} className="flex justify-between items-start border-b border-purple-100 pb-2 last:border-b-0 last:pb-0">
+                      <div key={idx} style={{ borderBottom: '1px solid #f3e8ff' }} className="flex justify-between items-start pb-2 last:border-b-0 last:pb-0">
                         <div>
-                          <div className="font-bold text-slate-900 flex flex-wrap items-baseline gap-1.5">
+                          <div style={{ color: '#0f172a' }} className="font-bold flex flex-wrap items-baseline gap-1.5">
                             <span>{item.product_name}</span>
                             {imeiTag && (
-                              <span className="font-mono text-[11px] font-bold text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                              <span style={{ backgroundColor: '#f3e8ff', color: '#6b21a8', border: '1px solid #e9d5ff' }} className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded">
                                 {imeiTag}
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
-                          {item.battery_health && <div className="text-[10px] text-emerald-700 mt-0.5">Battery Health: {item.battery_health}%</div>}
+                          <div style={{ color: '#64748b' }} className="text-[11px] mt-0.5">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
+                          {item.battery_health && <div style={{ color: '#047857' }} className="text-[10px] mt-0.5">Battery Health: {item.battery_health}%</div>}
                         </div>
-                        <div className="font-mono font-bold text-purple-900 text-right">
+                        <div style={{ color: '#581c87' }} className="font-mono font-bold text-right">
                           Rs. {Number(item.assessed_value || item.subtotal || 0).toLocaleString()}
                         </div>
                       </div>
                     )
                   })}
-                  <div className="flex justify-between items-center pt-1 font-bold text-xs text-slate-800">
+                  <div style={{ color: '#1e293b' }} className="flex justify-between items-center pt-1 font-bold text-xs">
                     <span>Total Trade-in Credit:</span>
-                    <span className="font-mono text-purple-900">- Rs. {Number(invoice.trade_in_credit || 0).toLocaleString()}</span>
+                    <span style={{ color: '#6b21a8' }} className="font-mono">- Rs. {Number(invoice.trade_in_credit || 0).toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -837,37 +951,46 @@ export default function PublicInvoice() {
 
           {/* 4. Financial Summary Card */}
           <div className="flex justify-end pt-2">
-            <div className="w-full sm:w-72 bg-slate-50 rounded-xl border border-slate-200 p-3.5 space-y-2 text-xs">
-              <div className="flex justify-between text-slate-600">
+            <div
+              style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}
+              className="w-full sm:w-72 rounded-xl p-3.5 space-y-2 text-xs"
+            >
+              <div style={{ color: '#475569' }} className="flex justify-between">
                 <span>Total Amount:</span>
-                <span className="font-mono font-bold text-slate-900">
+                <span style={{ color: '#0f172a' }} className="font-mono font-bold">
                   Rs. {grossTotal.toLocaleString()}
                 </span>
               </div>
               {discount > 0 && (
-                <div className="flex justify-between text-emerald-700">
+                <div style={{ color: '#047857' }} className="flex justify-between">
                   <span>Discount:</span>
                   <span className="font-mono font-bold">- Rs. {discount.toLocaleString()}</span>
                 </div>
               )}
               {isExchange && (
-                <div className="flex justify-between text-purple-700">
+                <div style={{ color: '#6b21a8' }} className="flex justify-between">
                   <span>Trade-in Credit:</span>
                   <span className="font-mono font-bold">- Rs. {tradeCredit.toLocaleString()}</span>
                 </div>
               )}
-              <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-900 font-black text-sm">
+              <div
+                style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.5rem', color: '#0f172a' }}
+                className="flex justify-between font-black text-sm"
+              >
                 <span>Net Total:</span>
-                <span className="font-mono text-emerald-700">
+                <span style={{ color: '#047857' }} className="font-mono">
                   Rs. {netTotal.toLocaleString()}
                 </span>
               </div>
-              <div className="flex justify-between text-slate-700 pt-0.5">
+              <div style={{ color: '#334155' }} className="flex justify-between pt-0.5">
                 <span>Amount Paid:</span>
-                <span className="font-mono font-bold">Rs. {paidTotal.toLocaleString()}</span>
+                <span style={{ color: '#0f172a' }} className="font-mono font-bold">Rs. {paidTotal.toLocaleString()}</span>
               </div>
               {balanceDue > 0 && (
-                <div className="flex justify-between text-red-600 font-bold border-t border-slate-200 pt-1.5">
+                <div
+                  style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.375rem', color: '#dc2626' }}
+                  className="flex justify-between font-bold"
+                >
                   <span>Remaining Balance:</span>
                   <span className="font-mono">Rs. {balanceDue.toLocaleString()}</span>
                 </div>
@@ -898,9 +1021,9 @@ export default function PublicInvoice() {
                 >
                   🛡️
                 </span>
-                <h3 className="text-xs sm:text-sm font-bold text-amber-950 tracking-wide flex items-center gap-1.5">
+                <h3 style={{ color: '#451a03' }} className="text-xs sm:text-sm font-bold tracking-wide flex items-center gap-1.5">
                   <span>Official Warranty Terms</span>
-                  <span className="font-nastaliq text-[11px] font-normal text-amber-900">(دکان کی وارنٹی شرائط)</span>
+                  <span style={{ color: '#78350f' }} className="font-nastaliq text-[11px] font-normal">(دکان کی وارنٹی شرائط)</span>
                 </h3>
               </div>
               <span
@@ -914,30 +1037,34 @@ export default function PublicInvoice() {
             {/* Authentic Small Nastaleeq Typography */}
             <div
               dir="rtl"
-              className="font-nastaliq text-[10px] sm:text-[11px] text-slate-800 leading-[1.8] sm:leading-[1.85] whitespace-pre-line text-right selection:bg-amber-200 py-1"
+              style={{ color: '#1e293b' }}
+              className="font-nastaliq text-[10px] sm:text-[11px] leading-[1.8] sm:leading-[1.85] whitespace-pre-line text-right selection:bg-amber-200 py-1"
             >
               {warrantyText}
             </div>
 
             <div
-              style={{ borderTop: '1px solid #fde68a', paddingTop: '0.5rem' }}
-              className="flex flex-wrap items-center justify-between text-[10px] sm:text-[11px] text-amber-900"
+              style={{ borderTop: '1px solid #fde68a', paddingTop: '0.5rem', color: '#78350f' }}
+              className="flex flex-wrap items-center justify-between text-[10px] sm:text-[11px]"
             >
               <div className="font-nastaliq">
                 آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝
               </div>
-              <div className="font-bold text-amber-950">
+              <div style={{ color: '#451a03' }} className="font-bold">
                 {shop.name || 'EdgeX Mobile Store'}
               </div>
             </div>
           </div>
 
           {/* 6. Footer Disclaimer & Verification Stamp */}
-          <div className="pt-4 border-t border-slate-200 text-center text-slate-500 text-[11px] space-y-1">
-            <div className="font-medium text-slate-700">
+          <div
+            style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', color: '#64748b' }}
+            className="text-center text-[11px] space-y-1"
+          >
+            <div style={{ color: '#334155' }} className="font-medium">
               This is a verified computerized digital invoice and does not require a physical signature.
             </div>
-            <div className="text-[10px] text-slate-400">
+            <div style={{ color: '#94a3b8' }} className="text-[10px]">
               Powered by EdgeX POS Suite • Verified Digital Invoice • {dateFormatted}
             </div>
           </div>
