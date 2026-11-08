@@ -11,6 +11,7 @@ import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
 import { getBankAccounts, creditBankBalance } from '../services/bankService'
+import { checkPurchaseBatchesBeforeVoid, voidPurchaseBatches } from '../services/batchService'
 
 const normalizePurchaseItem = (it, phonesPool = [], productsPool = []) => {
     const ph = it.phones || (phonesPool || []).find(p => p.id === it.phone_id || (it.purchase_id && p.purchase_id === it.purchase_id))
@@ -618,6 +619,18 @@ function PurchaseHistory() {
             const item = purchases.find(p => p.id === id)
             if (!item) continue
             try {
+                // Rule: void_purchase allowed only if none of its batches has been sold
+                try {
+                    const batchCheck = await checkPurchaseBatchesBeforeVoid(id)
+                    if (batchCheck && batchCheck.can_void === false) {
+                        alert(batchCheck.error || `Purchase #${id} cannot be deleted because items have already been sold via FIFO batches.`)
+                        failCount++
+                        continue
+                    }
+                } catch (batchChkErr) {
+                    console.warn('Batch check warning:', batchChkErr)
+                }
+
                 // Roll back inventory and accounts before deleting purchase
                 try {
                     const { data: pItems } = await supabase.from('purchase_items').select('*').eq('purchase_id', id)
@@ -683,6 +696,9 @@ function PurchaseHistory() {
                     // Delete purchase items first
                     await supabase.from('purchase_items').delete().eq('purchase_id', id)
                     if (db.purchase_items) await db.purchase_items.where({ purchase_id: id }).delete().catch(() => {})
+
+                    // Delete unconsumed batches for this purchase
+                    await voidPurchaseBatches(id).catch(() => {})
                 } catch (rollbackErr) {
                     console.warn('Rollback warning for purchase', id, rollbackErr)
                 }

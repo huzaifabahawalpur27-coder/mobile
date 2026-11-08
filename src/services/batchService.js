@@ -194,3 +194,87 @@ export async function adjustBatchStock({ batchId, qtyChange, reason }) {
     return { success: false, error: err.message || 'Failed to adjust batch stock' }
   }
 }
+
+/**
+ * Adjust current unit cost for a batch (Admin / Manager only)
+ * Follows Cost Adjustment rule: never modifies historical sales.
+ * cogs_impact = (new_cost - old_cost) * qty_sold
+ */
+export async function adjustBatchCost({ batchId, newCost, reason }) {
+  try {
+    const { data, error } = await supabase.rpc('adjust_batch_cost', {
+      p_batch_id: Number(batchId),
+      p_new_cost: Number(newCost),
+      p_reason: String(reason || '').trim()
+    })
+    if (error) throw error
+    return data
+  } catch (err) {
+    console.error('adjustBatchCost error:', err)
+    return { success: false, error: err.message || 'Failed to adjust batch cost' }
+  }
+}
+
+/**
+ * Check if a purchase can be safely voided (allowed ONLY if none of its batches has been sold)
+ */
+export async function checkPurchaseBatchesBeforeVoid(purchaseId) {
+  try {
+    const { data, error } = await supabase.rpc('check_purchase_batches_before_void', {
+      p_purchase_id: Number(purchaseId)
+    })
+    if (error) throw error
+    return data
+  } catch (err) {
+    console.error('checkPurchaseBatchesBeforeVoid error:', err)
+    return { success: false, error: err.message || 'Failed to check purchase batches' }
+  }
+}
+
+/**
+ * Void/delete batches associated with a purchase
+ */
+export async function voidPurchaseBatches(purchaseId) {
+  try {
+    const { data, error } = await supabase.rpc('void_purchase_batches', {
+      p_purchase_id: Number(purchaseId)
+    })
+    if (error) throw error
+    return data
+  } catch (err) {
+    console.error('voidPurchaseBatches error:', err)
+    return { success: false, error: err.message || 'Failed to void purchase batches' }
+  }
+}
+
+/**
+ * Get FIFO inventory valuation for all active batches in the shop
+ */
+export async function getFifoInventoryValuation() {
+  try {
+    const { data, error } = await supabase.rpc('get_fifo_inventory_valuation')
+    if (error) throw error
+    return data
+  } catch (err) {
+    console.error('getFifoInventoryValuation error:', err)
+    return { success: false, error: err.message || 'Failed to fetch inventory valuation' }
+  }
+}
+
+/**
+ * Fetch cost adjustment audit history for a batch
+ */
+export async function getBatchCostAdjustments(batchId) {
+  try {
+    const { data, error } = await supabase
+      .from('batch_cost_adjustments')
+      .select('*, users(name)')
+      .eq('batch_id', batchId)
+      .order('adjusted_at', { ascending: false })
+    if (error) throw error
+    return data || []
+  } catch (err) {
+    console.error('getBatchCostAdjustments error:', err)
+    return []
+  }
+}

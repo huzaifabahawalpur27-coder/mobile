@@ -40,6 +40,7 @@ function Reports() {
   const [stats, setStats] = useState({
     grossSales: 0,
     costOfSales: 0,
+    costAdjustments: 0,
     grossProfit: 0,
     expenses: 0,
     netProfit: 0,
@@ -128,16 +129,18 @@ function Reports() {
       // Parallel fetching from Supabase
       const fetchPromise = Promise.all([
         supabase.from('sales').select('*').eq('shop_id', user.shop_id).eq('sale_type', 'sale').gte('created_at', startISO).lte('created_at', endISO),
-        supabase.from('sale_items').select('*, products(name, category_id, categories(name)), sales!inner(created_at, sale_type, shop_id)').eq('sales.shop_id', user.shop_id).eq('sales.sale_type', 'sale').gte('sales.created_at', startISO).lte('sales.created_at', endISO),
+        supabase.from('sale_items').select('*, products(name, category_id, inventory_mode, categories(name)), sales!inner(created_at, sale_type, shop_id)').eq('sales.shop_id', user.shop_id).eq('sales.sale_type', 'sale').gte('sales.created_at', startISO).lte('sales.created_at', endISO),
         supabase.from('expenses').select('*').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO),
         supabase.from('purchases').select('*, purchase_items(*)').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO),
-        supabase.from('products').select('id, name, stock_quantity, cost_price, sale_price, category_id, categories(name)').eq('shop_id', user.shop_id),
+        supabase.from('products').select('id, name, stock_quantity, cost_price, sale_price, category_id, inventory_mode, categories(name)').eq('shop_id', user.shop_id),
         supabase.from('categories').select('*').eq('shop_id', user.shop_id),
-        supabase.from('phones').select('id, brand, model, storage, color, status, cost_price, sale_price, additional_costs').eq('shop_id', user.shop_id)
+        supabase.from('phones').select('id, brand, model, storage, color, status, cost_price, sale_price, additional_costs').eq('shop_id', user.shop_id),
+        supabase.from('batch_cost_adjustments').select('*').eq('shop_id', user.shop_id).gte('adjusted_at', startISO).lte('adjusted_at', endISO),
+        supabase.from('stock_batches').select('*').eq('shop_id', user.shop_id).eq('status', 'active').gt('qty_remaining', 0)
       ])
 
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-      const [salesRes, itemsRes, expensesRes, purchasesRes, productsRes, catsRes, phonesRes] = await Promise.race([fetchPromise, timeoutPromise])
+      const [salesRes, itemsRes, expensesRes, purchasesRes, productsRes, catsRes, phonesRes, costAdjRes, activeBatchesRes] = await Promise.race([fetchPromise, timeoutPromise])
 
       const sales = salesRes.data || []
       const items = itemsRes.data || []
@@ -146,6 +149,8 @@ function Reports() {
       const liveProducts = productsRes.data || []
       const catList = catsRes.data || []
       const phones = phonesRes.data || []
+      const costAdjustments = costAdjRes?.data || []
+      const activeBatches = activeBatchesRes?.data || []
       setCategories(catList)
 
       // Cache for offline use
@@ -161,7 +166,7 @@ function Reports() {
       if (purchasesRes.data) await db.purchases.bulkPut(JSON.parse(JSON.stringify(purchasesRes.data))).catch(() => {})
       if (phonesRes.data && db.phones) await db.phones.bulkPut(JSON.parse(JSON.stringify(phonesRes.data))).catch(() => {})
 
-      processData({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate })
+      processData({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate, costAdjustments, activeBatches })
     } catch (e) {
       console.warn('Reports: calculating from local DB...', e)
       try {
@@ -207,7 +212,9 @@ function Reports() {
         const phones = (lPhones || []).filter(x => String(x.shop_id) === sid)
         setCategories(catList)
 
-        processData({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate })
+        const costAdjustments = []
+        const activeBatches = []
+        processData({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate, costAdjustments, activeBatches })
       } catch (err) {
         console.error('Final Reports Fallback Error:', err)
       } finally {
@@ -218,7 +225,7 @@ function Reports() {
     }
   }
 
-  const processData = ({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate }) => {
+  const processData = ({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate, costAdjustments = [], activeBatches = [] }) => {
     // 1. Build Lookups for Product Names, Costs and Inventory Stock
     const phoneMap = (phones || []).reduce((acc, p) => {
       const pName = `${p.brand || ''} ${p.model || ''}${p.storage ? ` ${p.storage}` : ''}`.trim()
@@ -491,6 +498,7 @@ function Reports() {
           name,
           category: categoryName,
           item_type: isPhone ? 'phone' : 'product',
+          inventory_mode: i.products?.inventory_mode || (liveProducts.find(lp => lp.name === name)?.inventory_mode) || null,
           qty: 0,
           revenue: 0,
           grossRevenue: 0,
@@ -526,6 +534,7 @@ function Reports() {
           name: pName,
           category: catName,
           item_type: isPhone ? 'phone' : 'product',
+          inventory_mode: p.inventory_mode,
           qty: 0,
           revenue: 0,
           cost: 0,
@@ -566,12 +575,29 @@ function Reports() {
     const costOfSales = phoneSoldCost + bulkSoldCost
     const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
     const totalPurchases = purchases.reduce((sum, p) => sum + Number(p.total_amount || 0), 0)
-    const grossProfit = netSalesValue - costOfSales
+    const totalCostAdjustments = (costAdjustments || []).reduce((sum, a) => sum + Number(a.cogs_impact || 0), 0)
+    const grossProfit = netSalesValue - costOfSales - totalCostAdjustments
     const netProfit = grossProfit - totalExpenses
 
     // 5. Stock Valuations
+    const batchesByProd = (activeBatches || []).reduce((acc, b) => {
+      const pid = String(b.product_id)
+      if (!acc[pid]) acc[pid] = { units: 0, value: 0 }
+      const rem = Number(b.qty_remaining || 0)
+      const cost = Number(b.current_unit_cost || 0)
+      acc[pid].units += rem
+      acc[pid].value += (rem * cost)
+      return acc
+    }, {})
+
     const bulkStockUnits = (liveProducts || []).reduce((sum, p) => sum + Math.max(0, Number(p.stock_quantity || 0)), 0)
-    const bulkStockValue = (liveProducts || []).reduce((sum, p) => sum + (Number(p.cost_price || 0) * Math.max(0, Number(p.stock_quantity || 0))), 0)
+    const bulkStockValue = (liveProducts || []).reduce((sum, p) => {
+      const pid = String(p.id)
+      if (p.inventory_mode === 'batch_tracked' && batchesByProd[pid]) {
+        return sum + batchesByProd[pid].value
+      }
+      return sum + (Number(p.cost_price || 0) * Math.max(0, Number(p.stock_quantity || 0)))
+    }, 0)
     const inStockPhones = (phones || []).filter(p => p.status === 'in_stock')
     const phoneStockUnits = inStockPhones.length
     const phoneStockValue = inStockPhones.reduce((sum, p) => sum + Number(p.cost_price || 0) + Number(p.additional_costs || 0), 0)
@@ -615,6 +641,7 @@ function Reports() {
     setStats({
       grossSales,
       costOfSales,
+      costAdjustments: totalCostAdjustments,
       grossProfit,
       expenses: totalExpenses,
       netProfit,
@@ -2583,9 +2610,16 @@ function Reports() {
                           <tr key={p.name} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition">
                             <td className="px-4 py-3 text-[#86868b] font-medium">{idx + 1}</td>
                             <td className="px-5 py-3">
-                              <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] block">
-                                {p.name}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] block">
+                                  {p.name}
+                                </span>
+                                {p.inventory_mode === 'batch_tracked' && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 shrink-0">
+                                    FIFO Lot
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-3 py-3 text-center">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
@@ -2797,6 +2831,14 @@ function Reports() {
                     <div className="flex justify-between items-center pb-2.5 border-b border-black/[0.04] dark:border-white/[0.06] text-xs">
                       <span className="text-amber-600 font-medium pl-3">↳ of which Direct Costs (Courier/Tax)</span>
                       <span className="font-semibold text-amber-600 tabular-nums">Rs. {stats.totalDirectCosts.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {Boolean(stats.costAdjustments) && stats.costAdjustments !== 0 && (
+                    <div className="flex justify-between items-center pb-2.5 border-b border-black/[0.04] dark:border-white/[0.06] text-xs">
+                      <span className="text-purple-600 font-medium pl-3">↳ FIFO Batch Cost Corrections</span>
+                      <span className={`font-semibold tabular-nums ${stats.costAdjustments > 0 ? 'text-[#ff3b30]' : 'text-[#34c759]'}`}>
+                        {stats.costAdjustments > 0 ? `- Rs. ${stats.costAdjustments.toLocaleString()}` : `+ Rs. ${Math.abs(stats.costAdjustments).toLocaleString()}`}
+                      </span>
                     </div>
                   )}
                   <div className="flex justify-between items-center p-2.5 rounded-[14px] bg-[#34c759]/5 border border-[#34c759]/10">

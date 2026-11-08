@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { fetchProductBatches, reconcileProductBatches } from '../services/batchService'
 import BatchStockAdjustmentModal from './BatchStockAdjustmentModal'
+import BatchCostAdjustmentModal from './BatchCostAdjustmentModal'
 
 export default function BatchManagementModal({
   isOpen,
@@ -27,6 +28,7 @@ export default function BatchManagementModal({
   const [errorMsg, setErrorMsg] = useState('')
   const [statusFilter, setStatusFilter] = useState('active') // 'active' | 'all' | 'depleted'
   const [selectedAdjustBatch, setSelectedAdjustBatch] = useState(null)
+  const [selectedCostBatch, setSelectedCostBatch] = useState(null)
 
   useEffect(() => {
     if (!isOpen || !product?.id) return
@@ -280,6 +282,14 @@ export default function BatchManagementModal({
                             Adjust Stock
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCostBatch(batch)}
+                          className="px-2 py-0.5 rounded text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 transition cursor-pointer"
+                          title="Adjust batch cost price"
+                        >
+                          Adjust Cost
+                        </button>
                       </div>
                     </div>
 
@@ -352,6 +362,18 @@ export default function BatchManagementModal({
           batch={selectedAdjustBatch}
           product={product}
           onSuccess={() => {
+            loadData()
+          }}
+        />
+      )}
+
+      {/* Batch Cost Adjustment Modal */}
+      {selectedCostBatch && (
+        <BatchCostAdjustmentModal
+          batch={selectedCostBatch}
+          productName={product?.name}
+          onClose={() => setSelectedCostBatch(null)}
+          onAdjusted={() => {
             loadData()
           }}
         />
