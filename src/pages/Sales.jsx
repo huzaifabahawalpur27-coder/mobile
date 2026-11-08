@@ -9,6 +9,7 @@ import PasswordModal from '../components/PasswordModal'
 import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
 import { getBankAccounts, deductBankBalance } from '../services/bankService'
+import { returnSaleItemBatches } from '../services/batchService'
 
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
   let snap = null
@@ -405,7 +406,7 @@ function Sales() {
             await db.phones.update(item.phone_id, { status: 'in_stock', sale_id: null, sold_at: null })
           }
         } else if (item.product_id) {
-          const { data: liveProduct } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).maybeSingle()
+          const { data: liveProduct } = await supabase.from('products').select('stock_quantity, inventory_mode').eq('id', item.product_id).maybeSingle()
           const currentStock = liveProduct?.stock_quantity ?? 0
           const newStock = currentStock + returnQty
           await supabase.from('products')
@@ -413,6 +414,17 @@ function Sales() {
             .eq('id', item.product_id)
           // Keep local DB in sync
           await db.products.update(item.product_id, { stock_quantity: newStock })
+
+          // FIFO Batch Reversal for batch_tracked items
+          try {
+            await returnSaleItemBatches({
+              saleItemId: item.id,
+              returnQty,
+              fallbackCost: item.cost_price || item.unit_price || 0
+            })
+          } catch (batchErr) {
+            console.warn('[FIFO Return] Batch reversal error:', batchErr)
+          }
         }
       }
 

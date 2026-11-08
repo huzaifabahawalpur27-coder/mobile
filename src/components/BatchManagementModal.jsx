@@ -13,6 +13,7 @@ import {
   ShieldCheck
 } from 'lucide-react'
 import { fetchProductBatches, reconcileProductBatches } from '../services/batchService'
+import BatchStockAdjustmentModal from './BatchStockAdjustmentModal'
 
 export default function BatchManagementModal({
   isOpen,
@@ -25,6 +26,7 @@ export default function BatchManagementModal({
   const [reconcile, setReconcile] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [statusFilter, setStatusFilter] = useState('active') // 'active' | 'all' | 'depleted'
+  const [selectedAdjustBatch, setSelectedAdjustBatch] = useState(null)
 
   useEffect(() => {
     if (!isOpen || !product?.id) return
@@ -263,9 +265,21 @@ export default function BatchManagementModal({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-1 text-[11px] text-gray-500 font-mono">
-                        <Calendar size={12} className="text-gray-400" />
-                        <span>{new Date(batch.purchase_date || batch.created_at).toLocaleDateString()}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 text-[11px] text-gray-500 font-mono">
+                          <Calendar size={12} className="text-gray-400" />
+                          <span>{new Date(batch.purchase_date || batch.created_at).toLocaleDateString()}</span>
+                        </div>
+                        {!isDepleted && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAdjustBatch(batch)}
+                            className="px-2 py-0.5 rounded text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 transition cursor-pointer"
+                            title="Adjust batch stock for damage or loss"
+                          >
+                            Adjust Stock
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -329,6 +343,19 @@ export default function BatchManagementModal({
         </div>
 
       </div>
+
+      {/* Batch Stock Adjustment Modal */}
+      {selectedAdjustBatch && (
+        <BatchStockAdjustmentModal
+          isOpen={!!selectedAdjustBatch}
+          onClose={() => setSelectedAdjustBatch(null)}
+          batch={selectedAdjustBatch}
+          product={product}
+          onSuccess={() => {
+            loadData()
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx'
 import { generatePurchaseOrderPDF, shareOrDownloadPDF } from '../utils/pdfShare'
 import { printHTML, getShopBranding, brandedA4Header } from '../utils/printUtils'
 import BarcodeLabelModal from '../components/BarcodeLabelModal'
+import BatchManagementModal from '../components/BatchManagementModal'
 import PhoneInventoryView from '../components/PhoneInventoryView'
 import { deduplicateProducts } from '../utils/productUtils'
 
@@ -181,6 +182,7 @@ function Inventory() {
 
   // Adjustment Modal
   const [selectedProduct, setSelectedProduct] = useState(null)
+  const [batchModalProduct, setBatchModalProduct] = useState(null)
   const [newStock, setNewStock] = useState('')
   const [adjustmentNote, setAdjustmentNote] = useState('')
   const [returnProduct, setReturnProduct] = useState(null)
@@ -612,6 +614,10 @@ function Inventory() {
   }
 
   const openAdjustModal = (p) => {
+    if (p.inventory_mode === 'batch_tracked') {
+      setBatchModalProduct(p)
+      return
+    }
     setSelectedProduct(p)
     setNewStock(p.stock_quantity)
   }
@@ -1039,6 +1045,23 @@ function Inventory() {
               <button onClick={() => setSelectedProduct(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
             <p className="text-sm text-gray-500 mb-4">Update stock for <b>{selectedProduct.name}</b></p>
+            {selectedProduct.inventory_mode === 'batch_tracked' && (
+              <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 flex flex-col gap-2">
+                <p className="font-semibold">📦 FIFO Batch Tracked Product</p>
+                <p>To preserve accurate FIFO cost calculations, please adjust stock on specific lots.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const p = selectedProduct
+                    setSelectedProduct(null)
+                    setBatchModalProduct(p)
+                  }}
+                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-xs"
+                >
+                  Open Batch Manager →
+                </button>
+              </div>
+            )}
             <form onSubmit={handleAdjustStock} className="space-y-4">
               <div>
                 <label className="block text-gray-700 font-medium mb-1">New Stock Quantity</label>
@@ -1444,6 +1467,15 @@ function Inventory() {
           onClose={() => setShowBarcodeModal(false)}
           products={filtered}
           shopName={localStorage.getItem(`shop_name_${user?.shop_id}`) || 'EdgeX POS'}
+        />
+      )}
+
+      {/* FIFO Batch Management Modal */}
+      {batchModalProduct && (
+        <BatchManagementModal
+          product={batchModalProduct}
+          onClose={() => setBatchModalProduct(null)}
+          onBatchesUpdated={fetchInventory}
         />
       )}
     </div>

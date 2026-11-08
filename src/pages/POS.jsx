@@ -1380,6 +1380,32 @@ function POS() {
         await db.sales.put(sale).catch(() => {})
         if (resItems) await db.sale_items.bulkPut(resItems).catch(() => {})
 
+        // FIFO Batch Allocation for converted batch_tracked accessories
+        let isBatchCostingActive = false
+        try {
+          const s = JSON.parse(localStorage.getItem(`shop_settings_${user?.shop_id}`) || '{}')
+          isBatchCostingActive = Boolean(s.batch_costing_enabled)
+        } catch (_) {}
+
+        if (saleType === 'sale' && isBatchCostingActive && resItems && resItems.length > 0) {
+          for (const item of cart) {
+            if (!item.phone_id && item.inventory_mode === 'batch_tracked') {
+              const matchedLine = resItems.find(ri => String(ri.product_id) === String(item.id))
+              if (matchedLine?.id) {
+                try {
+                  await supabase.rpc('allocate_sale_line_fifo', {
+                    p_sale_item_id: matchedLine.id,
+                    p_product_id: Number(item.id),
+                    p_quantity: Number(item.qty || 1)
+                  })
+                } catch (allocErr) {
+                  console.warn('FIFO allocation warning for item ' + item.id, allocErr)
+                }
+              }
+            }
+          }
+        }
+
         if (saleType === 'sale') {
           for (const item of cart) {
             if (item.phone_id) {

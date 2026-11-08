@@ -137,3 +137,60 @@ export async function fetchProductBatches({ productId, shopId }) {
     return { success: false, error: err.message || 'Failed to fetch batches', batches: [] }
   }
 }
+
+/**
+ * Allocate stock from active lots for a completed sale item line using FIFO
+ */
+export async function allocateSaleLineFIFO({ saleItemId, productId, quantity }) {
+  try {
+    const { data, error } = await supabase.rpc('allocate_sale_line_fifo', {
+      p_sale_item_id: Number(saleItemId),
+      p_product_id: Number(productId),
+      p_quantity: parseFloat(quantity)
+    })
+
+    if (error) throw error
+    return data
+  } catch (err) {
+    console.error('allocateSaleLineFIFO error:', err)
+    return { success: false, error: err.message || 'Failed to allocate FIFO lots' }
+  }
+}
+
+/**
+ * Reverses lot allocations when a sale item is returned
+ */
+export async function returnSaleItemBatches({ saleItemId, returnQty, fallbackCost = null }) {
+  try {
+    const { data, error } = await supabase.rpc('return_sale_item_batches', {
+      p_sale_item_id: Number(saleItemId),
+      p_return_qty: parseFloat(returnQty),
+      p_fallback_cost: fallbackCost !== null ? parseFloat(fallbackCost) : null
+    })
+
+    if (error) throw error
+    return data
+  } catch (err) {
+    console.error('returnSaleItemBatches error:', err)
+    return { success: false, error: err.message || 'Failed to reverse batch allocations' }
+  }
+}
+
+/**
+ * Adjust stock on an individual batch (Damage, loss, physical count correction)
+ */
+export async function adjustBatchStock({ batchId, qtyChange, reason }) {
+  try {
+    const { data, error } = await supabase.rpc('adjust_batch_stock', {
+      p_batch_id: Number(batchId),
+      p_qty_change: parseFloat(qtyChange),
+      p_reason: String(reason).trim()
+    })
+
+    if (error) throw error
+    return data
+  } catch (err) {
+    console.error('adjustBatchStock error:', err)
+    return { success: false, error: err.message || 'Failed to adjust batch stock' }
+  }
+}
