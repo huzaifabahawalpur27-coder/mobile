@@ -9,6 +9,8 @@ import {
   updateExistingQueueMessagesWithWarranty,
   getShopWarrantyTerms,
   replaceOrInjectWarrantyInTemplate,
+  upgradeLegacyWhatsAppMessage,
+  hasWarrantyTerms,
   DEFAULT_WARRANTY_TERMS_URDU
 } from '../services/whatsappQueueService'
 import {
@@ -176,21 +178,47 @@ export default function WhatsAppQueue() {
   }
 
   const handleSaveEdit = async (e, id) => {
-    e.stopPropagation()
+    e?.stopPropagation()
     try {
       await updateWhatsAppMessageText(id, editingText)
       setMessages(prev => prev.map(m => m.id === id ? { ...m, message_text: editingText } : m))
       setEditingId(null)
       setEditingText('')
+      setWarrantyStatusMsg('✅ میسج محفوظ کر دیا گیا ہے! (Message saved successfully)')
+      setTimeout(() => setWarrantyStatusMsg(null), 3000)
     } catch (err) {
       alert('Failed to save message: ' + (err?.message || String(err)))
     }
   }
 
   const handleAppendWarrantyToEdit = (e) => {
-    e.stopPropagation()
+    e?.stopPropagation()
     const shopWarranty = getShopWarrantyTerms(user?.shop_id)
     setEditingText(prev => replaceOrInjectWarrantyInTemplate(prev, shopWarranty))
+  }
+
+  // 1-Click reset to full professional Urdu template with warranty in editor
+  const handleResetToUrduInEdit = (e, item) => {
+    e?.stopPropagation()
+    const shopWarranty = getShopWarrantyTerms(item.shop_id || user?.shop_id)
+    const upgraded = upgradeLegacyWhatsAppMessage(item.message_text, item.shop_id || user?.shop_id, item.reference_data)
+    const finalText = hasWarrantyTerms(upgraded) ? upgraded : replaceOrInjectWarrantyInTemplate(upgraded, shopWarranty)
+    setEditingText(finalText)
+  }
+
+  // 1-Click direct add / refresh warranty for an individual card without opening editor
+  const handleDirectAddWarranty = async (e, item) => {
+    e?.stopPropagation()
+    try {
+      const shopWarranty = getShopWarrantyTerms(item.shop_id || user?.shop_id)
+      const newText = replaceOrInjectWarrantyInTemplate(item.message_text, shopWarranty)
+      await updateWhatsAppMessageText(item.id, newText)
+      setMessages(prev => prev.map(m => m.id === item.id ? { ...m, message_text: newText } : m))
+      setWarrantyStatusMsg(`✅ وارنٹی شرائط شامل کر دی گئیں! (Warranty terms added for ${item.recipient_name})`)
+      setTimeout(() => setWarrantyStatusMsg(null), 3500)
+    } catch (err) {
+      alert('Failed to update warranty: ' + (err?.message || String(err)))
+    }
   }
 
   // Bulk update all pending with warranty terms
@@ -355,30 +383,49 @@ export default function WhatsAppQueue() {
         </div>
       )}
 
-      {/* Quick Action Banner */}
-      {filterTab === 'pending' && pendingCount > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/50 rounded-xl text-xs">
-          <span className="text-emerald-800 dark:text-emerald-300 font-medium">
-            💡 Tap <b>"Send on WhatsApp"</b> to dispatch from your phone.
-          </span>
-          <div className="flex items-center gap-2.5 self-end sm:self-auto">
-            <button
-              onClick={handleUpdateAllPendingWarranty}
-              disabled={updatingWarranty}
-              className="text-[11px] font-bold text-amber-700 hover:text-amber-900 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-900/40 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
-              title="Add warranty terms to all pending outbox messages"
-            >
-              🛡️ {updatingWarranty ? 'Updating...' : 'Add Warranty to All Pending'}
-            </button>
+      {/* Quick Global Action Bar - Available across all tabs and mobile devices */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-3 bg-white/90 dark:bg-[#1c1c1e]/90 border border-black/[0.06] dark:border-white/[0.08] rounded-2xl shadow-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleUpdateAllPendingWarranty}
+            disabled={updatingWarranty}
+            className="text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/50 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+            title="Add or refresh shop warranty terms across all pending outbox messages"
+          >
+            <span>🛡️</span>
+            <span>{updatingWarranty ? 'Updating...' : 'تمام میسجز میں وارنٹی شامل کریں (Add Warranty to All)'}</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+          {pendingCount > 0 && (
             <button
               onClick={handleMarkAllPendingSent}
-              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 underline shrink-0 cursor-pointer"
+              className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 underline cursor-pointer px-1"
             >
               Mark all sent
             </button>
-          </div>
+          )}
+
+          <button
+            onClick={() => {
+              if (window.confirm('کیا آپ تمام پیجز کا کیشے صاف کر کے تازہ ترین اپڈیٹ لوڈ کرنا چاہتے ہیں؟\n\nForce refresh and purge device cache to load the latest app update?')) {
+                if ('caches' in window) {
+                  caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+                }
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.update()))
+                }
+                window.location.reload()
+              }
+            }}
+            className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-2.5 py-1.5 rounded-xl transition flex items-center gap-1 cursor-pointer"
+            title="Clear device cache and update app"
+          >
+            <span>⚡ اپڈیٹ چیک کریں (Update App)</span>
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Loading State */}
       {loading && messages.length === 0 && (
@@ -475,75 +522,96 @@ export default function WhatsAppQueue() {
 
                 {/* Message Box: Edit Mode or Preview Mode */}
                 {editingId === item.id ? (
-                  <div className="bg-[#f8f9fa] dark:bg-[#252528] rounded-xl p-3 border border-emerald-300 dark:border-emerald-700/80 space-y-2">
-                    <div className="flex items-center justify-between pb-1.5 border-b border-gray-200 dark:border-gray-700">
-                      <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                        <Pencil size={12} /> ترمیم میسج (Edit Message)
+                  <div className="bg-[#f8f9fa] dark:bg-[#252528] rounded-xl p-3 sm:p-4 border-2 border-emerald-500/80 shadow-md space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 pb-2 border-b border-gray-200 dark:border-gray-700">
+                      <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                        <Pencil size={13} />
+                        <span>ترمیم میسج (Edit Message & Warranty)</span>
                       </span>
-                      <button
-                        type="button"
-                        onClick={handleAppendWarrantyToEdit}
-                        className="text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer"
-                        title="Append standard warranty terms"
-                      >
-                        🛡️ + وارنٹی شامل کریں
-                      </button>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={handleAppendWarrantyToEdit}
+                          className="px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/50 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                          title="Append or refresh shop warranty terms"
+                        >
+                          <span>🛡️ + وارنٹی شامل کریں</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleResetToUrduInEdit(e, item)}
+                          className="px-2 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/40 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                          title="Reset to professional Urdu template with warranty"
+                        >
+                          <span>✨ ری سیٹ رسید</span>
+                        </button>
+                      </div>
                     </div>
                     <textarea
                       dir="auto"
                       value={editingText}
                       onChange={(e) => setEditingText(e.target.value)}
-                      className="w-full p-2.5 bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-800 dark:text-gray-100 font-sans leading-relaxed focus:ring-2 focus:ring-emerald-500 focus:outline-none min-h-[140px]"
+                      className="w-full p-3 bg-white dark:bg-[#1c1c1e] border border-gray-300 dark:border-gray-700 rounded-xl text-xs sm:text-sm text-gray-800 dark:text-gray-100 font-sans leading-relaxed focus:ring-2 focus:ring-emerald-500 focus:outline-none min-h-[160px] shadow-inner"
+                      placeholder="Enter WhatsApp invoice text and warranty terms..."
                     />
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <button
                         type="button"
                         onClick={handleCancelEdit}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition cursor-pointer"
                       >
-                        Cancel
+                        Cancel (منسوخ)
                       </button>
                       <button
                         type="button"
                         onClick={(e) => handleSaveEdit(e, item.id)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center gap-1 shadow-xs cursor-pointer"
+                        className="px-4 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                       >
-                        <Save size={12} /> Save
+                        <Save size={13} />
+                        <span>Save (محفوظ کریں)</span>
                       </button>
                     </div>
                   </div>
                 ) : (
                   <div className="bg-[#f8f9fa] dark:bg-[#252528] rounded-xl p-3 border border-black/[0.04] dark:border-white/[0.04]">
-                    <div className="flex items-center justify-between pb-1.5 border-b border-gray-200/60 dark:border-gray-700/60 mb-2">
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500">
-                        Message Content (Invoice & Warranty)
+                    <div className="flex items-center justify-between pb-1.5 border-b border-gray-200/60 dark:border-gray-700/60 mb-2 gap-1 flex-wrap">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 flex items-center gap-1">
+                        <span>📄</span>
+                        <span>Message Content (رسید و وارنٹی)</span>
                       </span>
-                      <div className="flex items-center gap-2">
-                        {isPending && (
-                          <>
-                            <button
-                              onClick={(e) => handleStartEdit(e, item)}
-                              className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-emerald-600 flex items-center gap-1 cursor-pointer"
-                              title="Edit message text"
-                            >
-                              <Pencil size={11} />
-                              <span>Edit</span>
-                            </button>
-                            <span className="text-gray-300 dark:text-gray-600">•</span>
-                          </>
-                        )}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* Direct Edit Button */}
+                        <button
+                          onClick={(e) => handleStartEdit(e, item)}
+                          className="px-2 py-0.5 text-[11px] font-bold rounded-lg bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 transition flex items-center gap-1 cursor-pointer"
+                          title="Edit message text and warranty terms"
+                        >
+                          <Pencil size={11} />
+                          <span>ترمیم (Edit)</span>
+                        </button>
+
+                        {/* Direct Add Warranty Button */}
+                        <button
+                          onClick={(e) => handleDirectAddWarranty(e, item)}
+                          className="px-2 py-0.5 text-[11px] font-bold rounded-lg bg-amber-100/80 hover:bg-amber-200 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 transition flex items-center gap-1 cursor-pointer"
+                          title="Directly append or refresh shop warranty terms"
+                        >
+                          <span>🛡️ + وارنٹی</span>
+                        </button>
+
                         <button
                           onClick={(e) => handleCopyText(e, item)}
-                          className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-emerald-600 flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-emerald-600 flex items-center gap-1 cursor-pointer"
+                          title="Copy text"
                         >
                           {copiedId === item.id ? (
                             <>
-                              <Check size={12} className="text-emerald-600" />
-                              <span className="text-emerald-600">Copied!</span>
+                              <Check size={11} className="text-emerald-600" />
+                              <span className="text-emerald-600 font-bold">Copied!</span>
                             </>
                           ) : (
                             <>
-                              <Copy size={12} />
+                              <Copy size={11} />
                               <span>Copy</span>
                             </>
                           )}
@@ -562,9 +630,9 @@ export default function WhatsAppQueue() {
                     {item.message_text && item.message_text.split('\n').length > 3 && (
                       <button
                         onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                        className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline mt-1 block cursor-pointer"
+                        className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline mt-1.5 block cursor-pointer"
                       >
-                        {isExpanded ? '▲ Show less' : '▼ Read full invoice details...'}
+                        {isExpanded ? '▲ Show less (کم تفصیل)' : '▼ Read full invoice details & warranty (مکمل تفصیل دیکھیں)...'}
                       </button>
                     )}
                   </div>
@@ -583,13 +651,32 @@ export default function WhatsAppQueue() {
                   </button>
 
                   {/* Secondary buttons */}
-                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                  <div className="flex items-center gap-1.5 self-end sm:self-auto flex-wrap">
+                    {/* Direct Edit Button */}
+                    <button
+                      onClick={(e) => handleStartEdit(e, item)}
+                      title="Edit this invoice message"
+                      className="py-2.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    >
+                      <Pencil size={13} className="text-emerald-600" />
+                      <span>Edit</span>
+                    </button>
+
+                    {/* Direct Add / Refresh Warranty Button */}
+                    <button
+                      onClick={(e) => handleDirectAddWarranty(e, item)}
+                      title="Add or update shop warranty terms in this invoice"
+                      className="py-2.5 px-3 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer border border-amber-200/60 dark:border-amber-800/60 shadow-2xs"
+                    >
+                      <span>🛡️ + Warranty</span>
+                    </button>
+
                     {isPending ? (
                       <button
                         onClick={(e) => handleMarkSent(e, item)}
                         disabled={processingId === item.id}
                         title="Mark as already sent without opening WhatsApp"
-                        className="py-2.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-xl transition flex items-center gap-1"
+                        className="py-2.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer shadow-2xs"
                       >
                         <Check size={14} className="text-emerald-600" />
                         <span>Mark Sent</span>
@@ -597,7 +684,7 @@ export default function WhatsAppQueue() {
                     ) : (
                       <button
                         onClick={() => handleSendViaWhatsApp(item)}
-                        className="py-2.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-xl transition flex items-center gap-1"
+                        className="py-2.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer shadow-2xs"
                       >
                         <RefreshCw size={12} />
                         <span>Resend</span>
@@ -607,7 +694,7 @@ export default function WhatsAppQueue() {
                     <button
                       onClick={(e) => handleDelete(e, item.id)}
                       title="Delete from queue"
-                      className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition"
+                      className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition cursor-pointer"
                     >
                       <Trash2 size={16} />
                     </button>

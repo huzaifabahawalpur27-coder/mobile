@@ -3,6 +3,57 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import './services/syncService'
+import { registerSW } from 'virtual:pwa-register'
+
+// ── PWA Instant Auto-Update on all mobile & desktop devices ────────────────
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    console.log('[EdgeX PWA] New version ready. Updating client immediately...')
+    updateSW(true)
+  },
+  onOfflineReady() {
+    console.log('[EdgeX PWA] App ready offline.')
+  },
+  onRegisteredSW(swUrl, registration) {
+    if (registration) {
+      // Check for updates periodically every 30 minutes
+      setInterval(() => {
+        registration.update().catch(() => {})
+      }, 30 * 60 * 1000)
+    }
+  }
+})
+
+// Hard deployment version stamp - auto-busts caches on every device
+const APP_DEPLOY_STAMP = '2026.11.08.2045_v3'
+const DEPLOY_STAMP_KEY = 'edgex_deploy_stamp'
+
+if (typeof window !== 'undefined') {
+  const currentStamp = localStorage.getItem(DEPLOY_STAMP_KEY)
+  if (currentStamp !== APP_DEPLOY_STAMP) {
+    localStorage.setItem(DEPLOY_STAMP_KEY, APP_DEPLOY_STAMP)
+    if ('caches' in window) {
+      caches.keys().then(keys => {
+        Promise.all(keys.map(k => caches.delete(k))).catch(() => {})
+      }).catch(() => {})
+    }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => r.update().catch(() => {}))
+      }).catch(() => {})
+    }
+  }
+
+  // Also check for updates when user brings app to foreground on mobile
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg) reg.update().catch(() => {})
+      }).catch(() => {})
+    }
+  })
+}
 
 // ── Vite dynamic chunk import error recovery ─────────────────────────────
 // When a new deployment is pushed to production, old chunk hashes 404 (MIME text/html).
