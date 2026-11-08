@@ -60,13 +60,13 @@ BEGIN
   END IF;
 END $$;
 
--- Safe initial classification: Products with serialized phones become 'serialized'; all others remain 'non_batch'
+-- Safe initial classification: Products in phone/mobile categories become 'serialized'; all others remain 'non_batch'
 UPDATE public.products
 SET inventory_mode = 'serialized'
 WHERE inventory_mode = 'non_batch'
-  AND (
-    category_id IN (SELECT id FROM public.categories WHERE lower(name) LIKE '%phone%' OR lower(name) LIKE '%mobile%')
-    OR id IN (SELECT DISTINCT product_id FROM public.phones WHERE product_id IS NOT NULL)
+  AND category_id IN (
+    SELECT id FROM public.categories 
+    WHERE lower(name) LIKE '%phone%' OR lower(name) LIKE '%mobile%'
   );
 
 -- 3. Table: stock_batches (Core Lot / Batch Inventory Tracking)
