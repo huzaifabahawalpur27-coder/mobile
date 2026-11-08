@@ -38,7 +38,7 @@ export default function PublicInvoice() {
 
     async function fetchInvoice() {
       if (!id) {
-        setError('انوائس نمبر درج نہیں ہے۔ (Invoice reference missing)')
+        setError('Invoice reference missing')
         setLoading(false)
         return
       }
@@ -166,12 +166,12 @@ export default function PublicInvoice() {
         }
 
         if (isMounted) {
-          setError('انوائس نہیں مل سکی۔ براہ کرم لنک درست ہونے کی تصدیق کریں۔\n(Invoice not found or expired)')
+          setError('Invoice not found or expired. Please verify that the link is correct.')
           setLoading(false)
         }
       } catch (err) {
         if (isMounted) {
-          setError(err?.message || 'انوائس لوڈ کرنے میں مسئلہ پیش آیا۔ (Error loading invoice)')
+          setError(err?.message || 'Error loading verified invoice.')
           setLoading(false)
         }
       }
@@ -237,8 +237,8 @@ export default function PublicInvoice() {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
         <div className="w-12 h-12 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin mb-4" />
-        <h2 className="text-base font-bold text-slate-800 dark:text-slate-200">سرکاری ڈیجیٹل بل لوڈ ہو رہا ہے...</h2>
-        <p className="text-xs text-slate-500 mt-1">Loading verified digital invoice...</p>
+        <h2 className="text-base font-bold text-slate-800 dark:text-slate-200">Loading verified digital invoice...</h2>
+        <p className="text-xs text-slate-500 mt-1">Please wait a moment while the official receipt is loaded</p>
       </div>
     )
   }
@@ -249,16 +249,16 @@ export default function PublicInvoice() {
         <div className="w-16 h-16 rounded-2xl bg-red-100 dark:bg-red-900/30 text-red-600 flex items-center justify-center text-3xl mb-4">
           ⚠️
         </div>
-        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">بل دستیاب نہیں ہے (Invoice Not Found)</h2>
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Invoice Not Found</h2>
         <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm whitespace-pre-line leading-relaxed mb-6">
-          {error || 'The requested invoice reference could not be located.'}
+          {error || 'The requested invoice reference could not be located or has expired.'}
         </p>
         <button
           onClick={() => window.location.reload()}
           className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm"
         >
           <RefreshCw size={14} />
-          <span>دوبارہ کوشش کریں (Retry)</span>
+          <span>Retry</span>
         </button>
       </div>
     )
@@ -277,11 +277,15 @@ export default function PublicInvoice() {
   const paidTotal = Number(invoice.paid_amount ?? invoice.settlement_paid_amount ?? grandTotal)
   const balanceDue = grandTotal - paidTotal
 
-  // Extract warranty terms
-  const warrantyText = shop.warranty_terms || `⚠️ *وارنٹی شرائط (Warranty Terms):*
+  // Extract warranty terms and clean redundant subheader lines
+  const rawWarranty = shop.warranty_terms || `⚠️ *وارنٹی شرائط (Warranty Terms):*
 ۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔
 ۲۔ موبائل ڈیڈ ہونے کی صورت میں کوئی وارنٹی یا واپسی قبول نہیں کی جائے گی۔
 ۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔`
+
+  const warrantyText = rawWarranty
+    .replace(/^⚠️?\s*\*?وارنٹی[\s\S]*?(?:\*|:|\))\s*\n+/i, '')
+    .trim()
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 py-6 px-3 sm:px-6 font-sans">
@@ -295,7 +299,7 @@ export default function PublicInvoice() {
             </span>
             <div>
               <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                <span>تصدیق شدہ ڈیجیٹل رسید</span>
+                <span>Verified Digital Invoice</span>
                 <span className="px-1.5 py-0.2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 rounded text-[10px] font-black">
                   VERIFIED
                 </span>
@@ -312,7 +316,7 @@ export default function PublicInvoice() {
               title="Download high-resolution official PDF with Nastaleeq Urdu warranty"
             >
               <Download size={14} className={downloadingPdf ? 'animate-bounce' : ''} />
-              <span>{downloadingPdf ? 'پی ڈی ایف بن رہا ہے...' : 'پی ڈی ایف ڈاؤن لوڈ (PDF)'}</span>
+              <span>{downloadingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
             </button>
 
             <button
@@ -321,7 +325,7 @@ export default function PublicInvoice() {
               title="Print bill"
             >
               <Printer size={14} />
-              <span className="hidden sm:inline">پرنٹ (Print)</span>
+              <span className="hidden sm:inline">Print</span>
             </button>
           </div>
         </div>
@@ -363,7 +367,7 @@ export default function PublicInvoice() {
             <div className="sm:text-right space-y-1">
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
                 <CheckCircle2 size={12} />
-                <span>{isExchange ? 'فون ایکسچینج انوائس' : 'سیلز انوائس بل'}</span>
+                <span>{isExchange ? 'Phone Exchange Invoice' : 'Sales Invoice'}</span>
               </span>
               <div className="text-base font-black font-mono tracking-wide text-slate-950 pt-1">
                 #{invoice.invoice_no || id}
@@ -378,27 +382,27 @@ export default function PublicInvoice() {
           {/* 2. Customer & Transaction Meta Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">کسٹمر کا نام</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Customer Name</span>
               <span className="font-bold text-slate-900 truncate block mt-0.5">
                 {invoice.customer_name || 'Valued Customer'}
               </span>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">موبائل نمبر</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Mobile Number</span>
               <span className="font-mono font-semibold text-slate-800 block mt-0.5">
                 {invoice.customer_phone ? `+${invoice.customer_phone}` : 'Walk-in'}
               </span>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">ادائیگی کی قسم</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Payment Method</span>
               <span className="font-bold text-slate-800 uppercase block mt-0.5">
                 {invoice.payment_type || invoice.settlement_payment_method || 'Cash'}
               </span>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">اسٹیٹس</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Payment Status</span>
               <span className={`font-black block mt-0.5 ${balanceDue > 0 ? 'text-amber-600' : 'text-emerald-700'}`}>
-                {balanceDue > 0 ? `باقی: Rs. ${balanceDue.toLocaleString()}` : '✓ مکمل ادا شدہ (Paid)'}
+                {balanceDue > 0 ? `Balance: Rs. ${balanceDue.toLocaleString()}` : 'Paid ✓'}
               </span>
             </div>
           </div>
@@ -408,7 +412,7 @@ export default function PublicInvoice() {
             <div className="space-y-2">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                 <Smartphone size={13} className="text-emerald-600" />
-                <span>خریدی گئی اشیاء و موبائل فونز (Items & Devices)</span>
+                <span>Items & Purchased Devices</span>
               </h2>
 
               <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -416,10 +420,10 @@ export default function PublicInvoice() {
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                     <tr>
                       <th className="py-2.5 px-3">#</th>
-                      <th className="py-2.5 px-3">تفصیل سامان / ماڈل</th>
-                      <th className="py-2.5 px-2 text-center">تعداد</th>
-                      <th className="py-2.5 px-3 text-right">فی قیمت</th>
-                      <th className="py-2.5 px-3 text-right">کل رقم</th>
+                      <th className="py-2.5 px-3">Description / Item Details</th>
+                      <th className="py-2.5 px-2 text-center">Qty</th>
+                      <th className="py-2.5 px-3 text-right">Unit Price</th>
+                      <th className="py-2.5 px-3 text-right">Total Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -469,7 +473,7 @@ export default function PublicInvoice() {
               <div className="space-y-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
                   <span>📤</span>
-                  <span>خریدا گیا فون / نیا سامان (Purchased Items):</span>
+                  <span>Purchased Replacement Devices:</span>
                 </span>
                 <div className="border border-emerald-200 bg-emerald-50/30 rounded-xl p-3 space-y-2 text-xs">
                   {(invoice.outgoing_items || []).map((item, idx) => (
@@ -485,7 +489,7 @@ export default function PublicInvoice() {
                     </div>
                   ))}
                   <div className="flex justify-between items-center pt-1 font-bold text-xs text-slate-800">
-                    <span>کل قیمت خرید:</span>
+                    <span>Total Purchase Amount:</span>
                     <span className="font-mono">Rs. {Number(invoice.sale_amount || 0).toLocaleString()}</span>
                   </div>
                 </div>
@@ -495,7 +499,7 @@ export default function PublicInvoice() {
               <div className="space-y-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-purple-800 flex items-center gap-1">
                   <span>📥</span>
-                  <span>آپ کا جمع کروایا گیا فون (Exchanged / Traded-in Phones):</span>
+                  <span>Traded-in / Exchanged Phones:</span>
                 </span>
                 <div className="border border-purple-200 bg-purple-50/30 rounded-xl p-3 space-y-2 text-xs">
                   {(invoice.incoming_items || []).map((item, idx) => (
@@ -504,7 +508,7 @@ export default function PublicInvoice() {
                         <div className="font-bold text-slate-900">{item.product_name}</div>
                         <div className="text-[11px] text-slate-500">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
                         {item.imei_1 && <div className="font-mono text-[10px] text-slate-600">IMEI: {item.imei_1}</div>}
-                        {item.battery_health && <div className="text-[10px] text-emerald-700">بیٹری ہیلتھ: {item.battery_health}%</div>}
+                        {item.battery_health && <div className="text-[10px] text-emerald-700">Battery Health: {item.battery_health}%</div>}
                       </div>
                       <div className="font-mono font-bold text-purple-900 text-right">
                         Rs. {Number(item.assessed_value || item.subtotal || 0).toLocaleString()}
@@ -512,7 +516,7 @@ export default function PublicInvoice() {
                     </div>
                   ))}
                   <div className="flex justify-between items-center pt-1 font-bold text-xs text-slate-800">
-                    <span>کل ٹریڈ ان کریڈٹ:</span>
+                    <span>Total Trade-in Credit:</span>
                     <span className="font-mono text-purple-900">- Rs. {Number(invoice.trade_in_credit || 0).toLocaleString()}</span>
                   </div>
                 </div>
@@ -524,34 +528,34 @@ export default function PublicInvoice() {
           <div className="flex justify-end pt-2">
             <div className="w-full sm:w-72 bg-slate-50 rounded-xl border border-slate-200 p-3.5 space-y-2 text-xs">
               <div className="flex justify-between text-slate-600">
-                <span>کل رقم (Total Amount):</span>
+                <span>Total Amount:</span>
                 <span className="font-mono font-bold text-slate-900">Rs. {grandTotal.toLocaleString()}</span>
               </div>
               {invoice.discount > 0 && (
                 <div className="flex justify-between text-emerald-700">
-                  <span>رعایت (Discount):</span>
+                  <span>Discount:</span>
                   <span className="font-mono font-bold">- Rs. {Number(invoice.discount).toLocaleString()}</span>
                 </div>
               )}
               {isExchange && (
                 <div className="flex justify-between text-purple-700">
-                  <span>ٹریڈ ان کریڈٹ (Trade-in):</span>
+                  <span>Trade-in Credit:</span>
                   <span className="font-mono font-bold">- Rs. {Number(invoice.trade_in_credit || 0).toLocaleString()}</span>
                 </div>
               )}
               <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-900 font-black text-sm">
-                <span>خالص واجب الادا (Net Total):</span>
+                <span>Net Total:</span>
                 <span className="font-mono text-emerald-700">
                   Rs. {Number(isExchange ? Math.abs(grandTotal - (invoice.trade_in_credit || 0)) : grandTotal).toLocaleString()}
                 </span>
               </div>
               <div className="flex justify-between text-slate-700 pt-0.5">
-                <span>وصول رقم (Amount Paid):</span>
+                <span>Amount Paid:</span>
                 <span className="font-mono font-bold">Rs. {paidTotal.toLocaleString()}</span>
               </div>
               {balanceDue > 0 && (
                 <div className="flex justify-between text-red-600 font-bold border-t border-slate-200/60 pt-1.5">
-                  <span>بقایا رقم (Remaining Balance):</span>
+                  <span>Remaining Balance:</span>
                   <span className="font-mono">Rs. {balanceDue.toLocaleString()}</span>
                 </div>
               )}
@@ -561,34 +565,35 @@ export default function PublicInvoice() {
           {/* ============================================================== */}
           {/* 5. AUTHENTIC NASTALEEQ URDU WARRANTY CERTIFICATE SECTION       */}
           {/* ============================================================== */}
-          <div className="border-2 border-amber-300/80 bg-gradient-to-br from-amber-50/50 via-white to-amber-50/40 rounded-2xl p-4 sm:p-6 shadow-2xs space-y-3">
+          <div className="border-2 border-amber-300/80 bg-gradient-to-br from-amber-50/40 via-white to-amber-50/30 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-2.5">
             <div className="flex items-center justify-between border-b border-amber-200/70 pb-2">
               <div className="flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center text-sm shadow-xs">
+                <span className="w-6 h-6 rounded-lg bg-amber-500 text-white flex items-center justify-center text-xs shadow-xs">
                   🛡️
                 </span>
-                <h3 className="font-nastaliq text-base sm:text-lg font-bold text-amber-950 tracking-wide">
-                  دکان کی سرکاری وارنٹی شرائط (Official Warranty Terms)
+                <h3 className="text-xs sm:text-sm font-bold text-amber-950 tracking-wide flex items-center gap-1.5">
+                  <span>Official Warranty Terms</span>
+                  <span className="font-nastaliq text-[11px] font-normal text-amber-800/90">(دکان کی وارنٹی شرائط)</span>
                 </h3>
               </div>
-              <span className="text-[11px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-200 font-mono">
+              <span className="text-[10px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-200 font-mono">
                 WARRANTY
               </span>
             </div>
 
-            {/* Authentic Nastaleeq Typography */}
+            {/* Authentic Small Nastaleeq Typography */}
             <div
               dir="rtl"
-              className="font-nastaliq text-xs sm:text-sm text-slate-900 leading-[2.3] whitespace-pre-line text-right selection:bg-amber-200"
+              className="font-nastaliq text-[10px] sm:text-[11px] text-slate-800 leading-[1.8] sm:leading-[1.85] whitespace-pre-line text-right selection:bg-amber-200 py-1"
             >
               {warrantyText}
             </div>
 
-            <div className="pt-2 border-t border-amber-200/50 flex flex-wrap items-center justify-between text-[11px] text-amber-900/80">
+            <div className="pt-2 border-t border-amber-200/50 flex flex-wrap items-center justify-between text-[10px] sm:text-[11px] text-amber-900/80">
               <div className="font-nastaliq">
                 آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝
               </div>
-              <div className="font-semibold text-amber-950">
+              <div className="font-bold text-amber-950">
                 {shop.name || 'EdgeX Mobile Store'}
               </div>
             </div>
@@ -597,7 +602,7 @@ export default function PublicInvoice() {
           {/* 6. Footer Disclaimer & Verification Stamp */}
           <div className="pt-4 border-t border-slate-200 text-center text-slate-500 text-[11px] space-y-1">
             <div className="font-medium text-slate-700">
-              یہ ایک تصدیق شدہ کمپیوٹرائزڈ ڈیجیٹل بل ہے جس پر کسی دستی دستخط کی ضرورت نہیں ہے۔
+              This is a verified computerized digital invoice and does not require a physical signature.
             </div>
             <div className="text-[10px] text-slate-400">
               Powered by EdgeX POS Suite • Verified Digital Invoice • {dateFormatted}
@@ -614,7 +619,7 @@ export default function PublicInvoice() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 py-2 px-4 rounded-xl shadow-xs transition"
             >
-              <span>💬 دکان کے واٹس ایپ پر رابطہ کریں (Contact Store)</span>
+              <span>💬 Contact Store on WhatsApp</span>
               <ExternalLink size={12} />
             </a>
           </div>
