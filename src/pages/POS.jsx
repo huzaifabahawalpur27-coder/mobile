@@ -10,8 +10,14 @@ import { generateBillPDF, shareOrDownloadPDF } from '../utils/pdfShare'
 import { printHTML } from '../utils/printUtils'
 import { getPricingConfig } from '../utils/businessPresets'
 import CashSessionModal from '../components/CashSessionModal'
-import { formatInvoiceWhatsAppMessage, buildWhatsAppUrl, cleanPhoneNumber } from '../utils/whatsappTemplates'
-import { enqueueWhatsAppMessage, buildPhoneSaleReceiptText, DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE } from '../services/whatsappQueueService'
+import { buildWhatsAppUrl, cleanPhoneNumber } from '../utils/whatsappTemplates'
+import {
+  enqueueWhatsAppMessage,
+  buildPhoneSaleReceiptText,
+  DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
+  getShopWarrantyTerms,
+  isLegacyEnglishInvoiceTemplate
+} from '../services/whatsappQueueService'
 import { playError } from '../utils/soundEffects'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 import { recordSaleToAccounts, getBankAccounts } from '../services/bankService'
@@ -109,22 +115,30 @@ function POS() {
   const [form, setForm] = useState(() => {
     const sid = user?.shop_id
     const saved = sid ? localStorage.getItem(`shop_settings_${sid}`) : null
+    let parsedSaved = null
     if (saved) {
       try {
-        return JSON.parse(saved)
-      } catch (e) { /* fallback */ }
+        parsedSaved = JSON.parse(saved)
+      } catch (_e) { /* fallback */ }
     }
+    const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+    const rawBill = parsedSaved?.wa_bill_template
+    const cleanBill = (rawBill && !isLegacyEnglishInvoiceTemplate(rawBill))
+      ? rawBill
+      : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
+
     return {
-      name: (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX POS',
-      phone: '',
-      address: '',
-      invoice_footer: 'Thank you! Visit again',
-      quotation_footer: 'This is an estimate only',
-      print_size: 'thermal',
-      print_mode: 'manual',
-      logo_url: (sid ? localStorage.getItem(`shop_logo_${sid}`) : null) || '',
-      wa_reminder_template: 'Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!',
-      wa_bill_template: DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
+      name: (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || parsedSaved?.name || 'EdgeX POS',
+      phone: parsedSaved?.phone || '',
+      address: parsedSaved?.address || '',
+      invoice_footer: parsedSaved?.invoice_footer || 'Thank you! Visit again',
+      quotation_footer: parsedSaved?.quotation_footer || 'This is an estimate only',
+      print_size: parsedSaved?.print_size || 'thermal',
+      print_mode: parsedSaved?.print_mode || 'manual',
+      logo_url: (sid ? localStorage.getItem(`shop_logo_${sid}`) : null) || parsedSaved?.logo_url || '',
+      wa_reminder_template: parsedSaved?.wa_reminder_template || 'Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!',
+      wa_bill_template: cleanBill,
+      warranty_terms: savedWarranty || parsedSaved?.warranty_terms || getShopWarrantyTerms(sid)
     }
   })
 
@@ -532,7 +546,14 @@ function POS() {
 
       if (s.data) {
         setForm(prev => {
-          const localLogo = localStorage.getItem(`shop_logo_${user?.shop_id}`) || ''
+          const sid = user?.shop_id
+          const localLogo = sid ? (localStorage.getItem(`shop_logo_${sid}`) || '') : ''
+          const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+          const rawBill = s.data.wa_bill_template
+          const cleanBill = (rawBill && !isLegacyEnglishInvoiceTemplate(rawBill))
+            ? rawBill
+            : prev.wa_bill_template || DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
+
           return {
             ...prev,
             name: s.data.name || prev.name,
@@ -544,7 +565,8 @@ function POS() {
             print_mode: s.data.print_mode || prev.print_mode,
             logo_url: localLogo || s.data.logo_url || prev.logo_url || '',
             wa_reminder_template: s.data.wa_reminder_template || prev.wa_reminder_template,
-            wa_bill_template: s.data.wa_bill_template || prev.wa_bill_template
+            wa_bill_template: cleanBill,
+            warranty_terms: savedWarranty || s.data.warranty_terms || prev.warranty_terms || getShopWarrantyTerms(sid)
           }
         })
       }
@@ -616,7 +638,14 @@ function POS() {
         const localShop = await db.shops.get(sidNumber)
         if (localShop) {
           setForm(prev => {
-            const localLogo = localStorage.getItem(`shop_logo_${user?.shop_id}`) || ''
+            const sid = user?.shop_id
+            const localLogo = sid ? (localStorage.getItem(`shop_logo_${sid}`) || '') : ''
+            const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+            const rawBill = localShop.wa_bill_template
+            const cleanBill = (rawBill && !isLegacyEnglishInvoiceTemplate(rawBill))
+              ? rawBill
+              : prev.wa_bill_template || DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
+
             return {
               ...prev,
               name: localShop.name || prev.name,
@@ -628,7 +657,8 @@ function POS() {
               print_size: localShop.print_size || prev.print_size,
               print_mode: localShop.print_mode || prev.print_mode,
               wa_reminder_template: localShop.wa_reminder_template || prev.wa_reminder_template,
-              wa_bill_template: localShop.wa_bill_template || prev.wa_bill_template
+              wa_bill_template: cleanBill,
+              warranty_terms: savedWarranty || localShop.warranty_terms || prev.warranty_terms || getShopWarrantyTerms(sid)
             }
           })
         }
@@ -1599,21 +1629,26 @@ function POS() {
     const containsPhone = cart.some(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone')) || i.imei_1 || i.imei)
     if (customer?.phone && containsPhone) {
       try {
+        const sid = user?.shop_id || 1
         const shopInfo = {
-          name: form.name || (user?.shop_id ? localStorage.getItem(`shop_name_${user.shop_id}`) : null) || 'EdgeX POS Store',
+          id: sid,
+          shop_id: sid,
+          name: form.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX POS Store',
           phone: form.phone || user?.phone || '',
-          wa_bill_template: form.wa_bill_template || (user?.shop_id ? (() => { try { return JSON.parse(localStorage.getItem(`shop_settings_${user.shop_id}`) || '{}').wa_bill_template } catch (_) { return null } })() : null),
-          warranty_terms: (user?.shop_id ? localStorage.getItem(`shop_warranty_${user.shop_id}`) : null) || form.warranty_terms
+          wa_bill_template: (form.wa_bill_template && !isLegacyEnglishInvoiceTemplate(form.wa_bill_template))
+            ? form.wa_bill_template
+            : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
+          warranty_terms: (sid ? localStorage.getItem(`shop_warranty_${sid}`) : null) || form.warranty_terms || getShopWarrantyTerms(sid)
         }
         const msgText = buildPhoneSaleReceiptText({
           sale: finalSale,
           customer,
           items: cart,
           shopInfo,
-          language: 'english'
+          language: 'urdu'
         })
         enqueueWhatsAppMessage({
-          shop_id: user?.shop_id || 1,
+          shop_id: sid,
           recipient_name: customer.name || walkInName || 'Customer',
           recipient_phone: customer.phone,
           message_type: 'phone_sale_receipt',
@@ -1671,7 +1706,7 @@ function POS() {
     setSaving(false)
   }
 
-  const handleQueueWhatsAppInvoice = async (language = 'english', openDesktop = false) => {
+  const handleQueueWhatsAppInvoice = async (language = 'urdu', openDesktop = false) => {
     if (!lastReceipt) return
     const hasPhone = (lastReceipt.items || []).some(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone')) || i.imei_1 || i.imei)
 
@@ -1683,11 +1718,16 @@ function POS() {
       customerPhone = input.trim()
     }
 
+    const sid = user?.shop_id || 1
     const shopInfo = {
-      name: form.name || (user?.shop_id ? localStorage.getItem(`shop_name_${user.shop_id}`) : null) || 'EdgeX POS Store',
+      id: sid,
+      shop_id: sid,
+      name: form.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX POS Store',
       phone: form.phone || user?.phone || '',
-      wa_bill_template: form.wa_bill_template || (user?.shop_id ? (() => { try { return JSON.parse(localStorage.getItem(`shop_settings_${user.shop_id}`) || '{}').wa_bill_template } catch (_) { return null } })() : null),
-      warranty_terms: (user?.shop_id ? localStorage.getItem(`shop_warranty_${user.shop_id}`) : null) || form.warranty_terms
+      wa_bill_template: (form.wa_bill_template && !isLegacyEnglishInvoiceTemplate(form.wa_bill_template))
+        ? form.wa_bill_template
+        : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
+      warranty_terms: (sid ? localStorage.getItem(`shop_warranty_${sid}`) : null) || form.warranty_terms || getShopWarrantyTerms(sid)
     }
 
     // Generate invoice text using custom template or professional defaults with warranty
@@ -1696,7 +1736,7 @@ function POS() {
       customer: { ...(lastReceipt.customer || {}), name: customerName, phone: customerPhone },
       items: lastReceipt.items || [],
       shopInfo,
-      language
+      language: language || 'urdu'
     })
 
     if (!hasPhone) {
@@ -1711,7 +1751,7 @@ function POS() {
     }
 
     await enqueueWhatsAppMessage({
-      shop_id: user?.shop_id,
+      shop_id: sid,
       recipient_name: customerName,
       recipient_phone: customerPhone,
       message_type: 'phone_sale_receipt',
@@ -1738,7 +1778,7 @@ function POS() {
     }
   }
 
-  const handleSendWhatsAppInvoice = (language = 'english') => {
+  const handleSendWhatsAppInvoice = (language = 'urdu') => {
     handleQueueWhatsAppInvoice(language, false)
   }
 
@@ -3693,34 +3733,24 @@ function POS() {
               {(() => {
                 const hasPhoneItem = (lastReceipt.items || []).some(i => i.is_phone || i.phone_id || (i.category_name && i.category_name.toLowerCase().includes('phone')) || i.imei_1 || i.imei)
                 return (
-                  <div className={`grid ${hasPhoneItem ? 'grid-cols-3' : 'grid-cols-1'} gap-2`}>
+                  <div className={`grid ${hasPhoneItem ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
                     <button
                       onClick={printReceipt}
-                      className="py-2.5 px-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm"
+                      className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm"
                       title="Print invoice on thermal or A4 printer"
                     >
                       <span className="text-base">🖨️</span>
                       <span>Print</span>
                     </button>
                     {hasPhoneItem && (
-                      <>
-                        <button
-                          onClick={() => handleQueueWhatsAppInvoice('english', false)}
-                          className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm"
-                          title="Queue phone sale receipt and thank you note in English for mobile WhatsApp"
-                        >
-                          <span className="text-base">📲</span>
-                          <span className="truncate">WA (EN)</span>
-                        </button>
-                        <button
-                          onClick={() => handleQueueWhatsAppInvoice('urdu', false)}
-                          className="py-2.5 px-2 bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1 shadow-sm text-center"
-                          title="Queue phone sale receipt and shukriya note in Urdu for mobile WhatsApp"
-                        >
-                          <span className="text-base">💚</span>
-                          <span className="truncate">WA (اردو)</span>
-                        </button>
-                      </>
+                      <button
+                        onClick={() => handleQueueWhatsAppInvoice('urdu', false)}
+                        className="py-2.5 px-3 bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm text-center"
+                        title="Queue phone sale receipt and warranty in Urdu for mobile WhatsApp"
+                      >
+                        <span className="text-base">📲</span>
+                        <span className="truncate">WhatsApp Outbox</span>
+                      </button>
                     )}
                   </div>
                 )
@@ -3747,7 +3777,7 @@ function POS() {
                       await shareOrDownloadPDF(pdfBlob, `bill-${invoiceId}.pdf`, formattedPhone, msg)
                     } catch (err) {
                       console.error('PDF share failed:', err)
-                      handleQueueWhatsAppInvoice('english', false)
+                      handleQueueWhatsAppInvoice('urdu', false)
                     } finally {
                       btn.disabled = false
                       btn.innerHTML = '<span>📄</span> Send Full PDF Bill (WhatsApp)'
@@ -3764,7 +3794,7 @@ function POS() {
               <div className="flex justify-center items-center gap-3 text-[11px] text-gray-500 pt-0.5">
                 <button
                   type="button"
-                  onClick={() => handleQueueWhatsAppInvoice('english', true)}
+                  onClick={() => handleQueueWhatsAppInvoice('urdu', true)}
                   className="hover:text-emerald-600 underline cursor-pointer"
                 >
                   Open on Desktop WhatsApp

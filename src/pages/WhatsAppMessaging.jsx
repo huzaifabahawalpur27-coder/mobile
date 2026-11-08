@@ -946,7 +946,7 @@ function WhatsAppMessaging() {
               </h3>
               <button
                 onClick={() => {
-                  const tpl = '🎉 *Thank you for purchasing your phone from [Shop Name]!*\n\nHello [Name], thank you for shopping at [Shop Name]! Your bill summary for Invoice #[ID] is Rs. [Amount].\n\n📱 Model: [Model]\n📅 Date: [Date]\n\n🛡️ Official warranty / checking warranty applies.\nIf you need any setup help or accessories, we are always happy to help!\n\nThank you for your business! 🤝'
+                  const tpl = DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
                   navigator.clipboard.writeText(tpl)
                   setCopiedTemplate('phone_thanks')
                   setTimeout(() => setCopiedTemplate(null), 2000)
@@ -961,17 +961,7 @@ function WhatsAppMessaging() {
               Special warranty & appreciation message sent when customer buys a mobile phone in POS.
             </p>
             <div className="p-3 bg-[#f5f5f7] dark:bg-[#2c2c2e] rounded-xl text-xs font-mono whitespace-pre-wrap text-[#1d1d1f] dark:text-[#f5f5f7]">
-              {`🎉 *Thank you for purchasing your phone from [Shop Name]!*
-
-Hello [Name], thank you for shopping at [Shop Name]! Your bill summary for Invoice #[ID] is Rs. [Amount].
-
-📱 Model: [Model]
-📅 Date: [Date]
-
-🛡️ Official warranty / checking warranty applies.
-If you need any setup help or accessories, we are always happy to help!
-
-Thank you for your business! 🤝`}
+              {DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE}
             </div>
           </div>
 

@@ -51,12 +51,109 @@ export const DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE = `السلام علیکم [N
 📞 رابطہ: [Phone]`.trim()
 
 /**
+ * Checks whether a message text already contains warranty terms.
+ */
+export function hasWarrantyTerms(text) {
+  if (!text) return false
+  const lower = String(text).toLowerCase()
+  return (
+    lower.includes('وارنٹی') ||
+    lower.includes('warranty') ||
+    lower.includes('lcd') ||
+    lower.includes('فیس لاک') ||
+    lower.includes('ڈیڈ ہونے کی صورت')
+  )
+}
+
+/**
+ * Detects legacy English templates or rendered messages that were missing warranty terms.
+ */
+export function isLegacyEnglishInvoiceTemplate(text) {
+  if (!text) return false
+  const lower = String(text).toLowerCase()
+  return (
+    (lower.includes('hello [name]') && lower.includes('thank you for shopping')) ||
+    (lower.includes('your bill summary for invoice') && lower.includes('thank you for your business')) ||
+    (lower.includes('thank you for shopping at') && lower.includes('bill summary for invoice')) ||
+    (lower.includes('hello ') && lower.includes('thank you for shopping at') && lower.includes('bill summary for invoice'))
+  )
+}
+
+/**
+ * Upgrades a legacy English WhatsApp message or missing warranty terms into the professional Urdu format.
+ */
+export function upgradeLegacyWhatsAppMessage(text, shopId, referenceData = null) {
+  if (!text) return text
+  const warranty = getShopWarrantyTerms(shopId)
+
+  // If text is the legacy English stub, rebuild it into the Urdu professional receipt
+  if (isLegacyEnglishInvoiceTemplate(text)) {
+    const custMatch = text.match(/Hello\s+([^,!\n]+)/i)
+    const customerName = custMatch ? custMatch[1].trim() : (referenceData?.recipient_name || 'Valued Customer')
+
+    const shopMatch = text.match(/thank you for shopping at\s+([^!\n]+)/i)
+    const shopName = shopMatch ? shopMatch[1].trim() : (shopId ? localStorage.getItem(`shop_name_${shopId}`) : null) || 'EdgeX Mobile Store'
+
+    const idMatch = text.match(/Invoice\s*#?([A-Za-z0-9-]+)/i)
+    const invoiceId = idMatch ? idMatch[1].replace(/^INV-/, '') : (referenceData?.reference_id || String(Date.now()).slice(-6))
+
+    const amtMatch = text.match(/Rs\.\s*([\d,]+)/i)
+    const amountStr = amtMatch ? amtMatch[1] : (referenceData?.total ? Number(referenceData.total).toLocaleString('en-PK') : '0')
+
+    const modelMatch = text.match(/📱\s*Model:\s*([^\n]+)/i)
+    const modelStr = modelMatch ? modelMatch[1].trim() : 'Phone / Device'
+
+    const dateMatch = text.match(/📅\s*Date:\s*([^\n]+)/i)
+    const dateStr = dateMatch ? dateMatch[1].trim() : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
+
+    const paidStr = referenceData?.paid ? Number(referenceData.paid).toLocaleString('en-PK') : amountStr
+
+    return `السلام علیکم ${customerName}! 🤝
+*${shopName}* سے خریداری کرنے کا بہت بہت شکریہ!
+
+🧾 *بل کی تفصیلات (Invoice Details)*
+📄 انوائس نمبر: INV-${invoiceId}
+📅 تاریخ: ${dateStr}
+
+📱 *خریدی گئی اشیاء:*
+1. ${modelStr} = Rs. ${amountStr}
+
+💰 *ادائیگی کا خلاصہ:*
+• کل رقم (Total): Rs. ${amountStr}
+• وصول رقم (Paid): Rs. ${paidStr}
+• بقایا کھاتہ (Balance): Rs. 0 (مکمل کلیئر ✅)
+
+${warranty}
+
+آپ کے اعتماد اور تعاون کا شکریہ! 🤝
+🏪 *${shopName}*`
+  }
+
+  // If not legacy English stub, but missing warranty terms:
+  if (!hasWarrantyTerms(text)) {
+    return replaceOrInjectWarrantyInTemplate(text, warranty)
+  }
+
+  return text
+}
+
+/**
  * Renders a custom WhatsApp template with sale data substitutions.
+ * Permanently guards against legacy English stubs and guarantees warranty inclusion.
  */
 export function renderCustomWhatsAppTemplate(template, { sale, customer, items = [], shopInfo = {} }) {
   if (!template) return ''
+  const shopId = shopInfo.id || shopInfo.shop_id || sale?.shop_id
+  const effectiveWarranty = shopInfo.warranty_terms || (shopId ? getShopWarrantyTerms(shopId) : DEFAULT_WARRANTY_TERMS_URDU)
+
+  // Discard legacy English template and use professional Urdu invoice template
+  let targetTemplate = template
+  if (isLegacyEnglishInvoiceTemplate(template)) {
+    targetTemplate = DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
+  }
+
   const customerName = customer?.name || sale?.walkInName || 'Valued Customer'
-  const shopName = shopInfo.name || 'EdgeX Mobile Store'
+  const shopName = shopInfo.name || (shopId ? localStorage.getItem(`shop_name_${shopId}`) : null) || 'EdgeX Mobile Store'
   const shopPhone = shopInfo.phone || shopInfo.mobile || ''
   const invoiceId = String(sale?.id || Date.now()).slice(-8).toUpperCase()
   const dateStr = sale?.created_at
@@ -74,14 +171,14 @@ export function renderCustomWhatsAppTemplate(template, { sale, customer, items =
     const imei = i.imei_1 || i.imei || ''
     const imeiStr = imei ? ` (IMEI: ${imei})` : ''
     const qty = i.qty || i.quantity || 1
-    const price = Number(i.custom_price || i.sale_price || i.price || i.unit_price || 0).toLocaleString()
-    const lineTotal = (qty * Number(i.custom_price || i.sale_price || i.price || i.unit_price || 0)).toLocaleString()
+    const price = Number(i.custom_price || i.sale_price || i.price || i.unit_price || 0).toLocaleString('en-PK')
+    const lineTotal = (qty * Number(i.custom_price || i.sale_price || i.price || i.unit_price || 0)).toLocaleString('en-PK')
     return `${idx + 1}. ${name}${imeiStr} × ${qty} @ Rs. ${price} = Rs. ${lineTotal}`
   }).join('\n')
 
   const modelText = items.map(i => `${i.name || i.model || ''}${i.imei_1 ? ` [${i.imei_1}]` : ''}`).filter(Boolean).join(', ') || 'Phone/Accessory'
 
-  return template
+  let rendered = targetTemplate
     .replace(/\[Name\]/g, customerName)
     .replace(/\[Customer Name\]/g, customerName)
     .replace(/\[Shop Name\]/g, shopName)
@@ -90,12 +187,21 @@ export function renderCustomWhatsAppTemplate(template, { sale, customer, items =
     .replace(/\[Date\]/g, dateStr)
     .replace(/\[Items\]/g, itemsText || '1x Device')
     .replace(/\[Model\]/g, modelText)
-    .replace(/\[Amount\]/g, totalNum.toLocaleString())
-    .replace(/\[Total\]/g, totalNum.toLocaleString())
-    .replace(/\[Paid\]/g, paidNum.toLocaleString())
-    .replace(/\[Balance\]/g, balanceNum > 0 ? balanceNum.toLocaleString() : '0')
+    .replace(/\[Amount\]/g, totalNum.toLocaleString('en-PK'))
+    .replace(/\[Total\]/g, totalNum.toLocaleString('en-PK'))
+    .replace(/\[Paid\]/g, paidNum.toLocaleString('en-PK'))
+    .replace(/\[Balance\]/g, balanceNum > 0 ? balanceNum.toLocaleString('en-PK') : '0 (مکمل کلیئر ✅)')
+    .replace(/\[Warranty Terms\]/g, effectiveWarranty)
+    .replace(/\[Warranty\]/g, effectiveWarranty)
     .replace(/\[Phone\]/g, shopPhone)
     .replace(/\[Shop Phone\]/g, shopPhone)
+
+  // Permanently enforce warranty terms in rendered result
+  if (!hasWarrantyTerms(rendered)) {
+    rendered = replaceOrInjectWarrantyInTemplate(rendered, effectiveWarranty)
+  }
+
+  return rendered
 }
 
 /**
@@ -125,8 +231,8 @@ export function replaceOrInjectWarrantyInTemplate(template, newWarranty) {
   // Match existing warranty section if already present
   // Patterns:
   // Starts with "⚠️ *وارنٹی شرائط" or "⚠️ *Warranty" or contains LCD / فیس لاک up to next double newline or greeting
-  const urduWarrantyRegex = /⚠️\s*\*وارنٹی شرائط[\s\S]*?(?=\n\n(?:آپ کے اعتماد|🏪|📞|Thank you|$))/i
-  const engWarrantyRegex = /⚠️\s*\*Warranty Terms[\s\S]*?(?=\n\n(?:Thank you|آپ کے اعتماد|🏪|📞|$))/i
+  const urduWarrantyRegex = /⚠️\s*\*وارنٹی شرائط[\s\S]*?(?=\n\n(?:آپ کے اعتماد|Thank you|Shukriya|شکریہ|🏪|📞|$))/i
+  const engWarrantyRegex = /⚠️\s*\*Warranty Terms[\s\S]*?(?=\n\n(?:Thank you|آپ کے اعتماد|Shukriya|شکریہ|🏪|📞|$))/i
 
   if (urduWarrantyRegex.test(template)) {
     return template.replace(urduWarrantyRegex, warranty).trim()
@@ -136,19 +242,28 @@ export function replaceOrInjectWarrantyInTemplate(template, newWarranty) {
   }
 
   // If already has LCD / فیس لاک / سیکنڈ ہینڈ bullet points without header
-  const rawTermsRegex = /(?:۱۔|1\.)\s*LCD[\s\S]*?(?=\n\n(?:آپ کے اعتماد|🏪|📞|Thank you|$))/i
+  const rawTermsRegex = /(?:۱۔|1\.)\s*LCD[\s\S]*?(?=\n\n(?:آپ کے اعتماد|Thank you|Shukriya|شکریہ|🏪|📞|$))/i
   if (rawTermsRegex.test(template)) {
     return template.replace(rawTermsRegex, warranty).trim()
   }
 
-  // If there's a footer greeting, inject before it
-  if (template.includes('آپ کے اعتماد')) {
-    const parts = template.split('آپ کے اعتماد')
-    return `${parts[0].trim()}\n\n${warranty}\n\nآپ کے اعتماد${parts[1]}`.trim()
-  }
-  if (template.includes('Thank you for your business')) {
-    const parts = template.split('Thank you for your business')
-    return `${parts[0].trim()}\n\n${warranty}\n\nThank you for your business${parts[1]}`.trim()
+  // If there's a footer greeting or anchor, inject right before it
+  const footerAnchors = [
+    'آپ کے اعتماد',
+    'Thank you for your business',
+    'Thank you for shopping',
+    'Thank you!',
+    'Shukriya',
+    'شکریہ',
+    '🏪',
+    '📞'
+  ]
+
+  for (const anchor of footerAnchors) {
+    if (template.includes(anchor)) {
+      const parts = template.split(anchor)
+      return `${parts[0].trim()}\n\n${warranty}\n\n${anchor}${parts.slice(1).join(anchor)}`.trim()
+    }
   }
 
   return `${template.trim()}\n\n${warranty}`.trim()
@@ -156,15 +271,21 @@ export function replaceOrInjectWarrantyInTemplate(template, newWarranty) {
 
 /**
  * Builds invoice details and greetings with standard warranty terms.
+ * Defaults permanently to Urdu professional format with shop warranty terms.
  */
-export function buildPhoneSaleReceiptText({ sale, customer, items = [], shopInfo = {}, language = 'english' }) {
-  // If shop has custom template configured, render it
+export function buildPhoneSaleReceiptText({ sale, customer, items = [], shopInfo = {}, language = 'urdu' }) {
+  const shopId = shopInfo.id || shopInfo.shop_id || sale?.shop_id
+  const effectiveWarranty = shopInfo.warranty_terms || (shopId ? getShopWarrantyTerms(shopId) : DEFAULT_WARRANTY_TERMS_URDU)
+
+  // If shop has custom template configured (and not legacy English stub)
   if (shopInfo.wa_bill_template && shopInfo.wa_bill_template.trim().length > 20) {
-    return renderCustomWhatsAppTemplate(shopInfo.wa_bill_template, { sale, customer, items, shopInfo })
+    if (!isLegacyEnglishInvoiceTemplate(shopInfo.wa_bill_template)) {
+      return renderCustomWhatsAppTemplate(shopInfo.wa_bill_template, { sale, customer, items, shopInfo: { ...shopInfo, warranty_terms: effectiveWarranty } })
+    }
   }
 
   const customerName = customer?.name || sale?.walkInName || 'Valued Customer'
-  const shopName = shopInfo.name || 'EdgeX Mobile Store'
+  const shopName = shopInfo.name || (shopId ? localStorage.getItem(`shop_name_${shopId}`) : null) || 'EdgeX Mobile Store'
   const shopPhone = shopInfo.phone || ''
   const invoiceId = String(sale?.id || Date.now()).slice(-8).toUpperCase()
   const dateStr = sale?.created_at
@@ -177,70 +298,32 @@ export function buildPhoneSaleReceiptText({ sale, customer, items = [], shopInfo
   const paid = Number(sale?.receivedAmount ?? sale?.paid_amount ?? total).toFixed(0)
   const change = Number(sale?.changeDue || 0)
   const balance = Number(customer?.outstanding_balance || 0)
-  const effectiveWarranty = shopInfo.warranty_terms || (shopInfo.shop_id ? getShopWarrantyTerms(shopInfo.shop_id) : DEFAULT_WARRANTY_TERMS_URDU)
 
-  if (language === 'urdu') {
+  if (language === 'english') {
     const itemsText = items.map((i, idx) => {
       const name = i.name || i.model || 'Item'
       const imei = i.imei_1 || i.imei || ''
-      const imeiStr = imei ? ` (IMEI: ${imei})` : ''
+      const imeiStr = imei ? ` [IMEI: ${imei}]` : ''
       const qty = i.qty || 1
-      const price = Number(i.custom_price || i.sale_price || i.price || 0).toFixed(0)
-      const lineTotal = (qty * price).toFixed(0)
-      return `${idx + 1}. ${name}${imeiStr}\n   تعداد: ${qty} | فی قیمت: Rs. ${price} | کل: Rs. ${lineTotal}`
+      const price = Number(i.custom_price || i.sale_price || i.price || 0).toLocaleString('en-PK')
+      const lineTotal = (qty * Number(i.custom_price || i.sale_price || i.price || 0)).toLocaleString('en-PK')
+      return `${idx + 1}. ${name}${imeiStr} × ${qty} @ Rs. ${price} = Rs. ${lineTotal}`
     }).join('\n')
 
-    let paymentInfoUrdu = `• کل رقم: Rs. ${total}\n• وصول رقم: Rs. ${paid}`
+    let paymentSummary = `• Subtotal: Rs. ${Number(subtotal).toLocaleString('en-PK')}`
+    if (discount > 0) {
+      paymentSummary += `\n• Discount: Rs. ${Number(discount).toLocaleString('en-PK')}`
+    }
+    paymentSummary += `\n• Net Total: Rs. ${Number(total).toLocaleString('en-PK')}\n• Received: Rs. ${Number(paid).toLocaleString('en-PK')}`
     if (change > 0) {
-      paymentInfoUrdu += `\n• واپس شدہ بقایا: Rs. ${change.toFixed(0)}`
+      paymentSummary += `\n• Change Returned: Rs. ${Number(change).toLocaleString('en-PK')}`
     }
     if (sale?.paymentType === 'credit' || balance > 0) {
-      paymentInfoUrdu += `\n• کھاتہ بقایا جات: Rs. ${balance.toFixed(0)}`
+      paymentSummary += `\n• Current Account Balance: Rs. ${Number(balance).toLocaleString('en-PK')}`
     }
 
-    return `السلام علیکم ${customerName}! 🤝
-${shopName} سے خریداری کرنے کا بہت بہت شکریہ!
-
-🧾 *بل کی تفصیلات (Invoice Details)*
-انوائس نمبر: INV-${invoiceId}
-تاریخ: ${dateStr}
-
-📱 *خریدی گئی اشیاء:*
-${itemsText}
-
-💰 *ادائیگی کا خلاصہ:*
-${paymentInfoUrdu}
-
-${effectiveWarranty}
-
-آپ کے اعتماد اور تعاون کا شکریہ! 🤝${shopPhone ? `\n📞 رابطہ: ${shopPhone}` : ''}`
-  }
-
-  // English (default)
-  const itemsText = items.map((i, idx) => {
-    const name = i.name || i.model || 'Item'
-    const imei = i.imei_1 || i.imei || ''
-    const imeiStr = imei ? ` [IMEI: ${imei}]` : ''
-    const qty = i.qty || 1
-    const price = Number(i.custom_price || i.sale_price || i.price || 0).toFixed(0)
-    const lineTotal = (qty * price).toFixed(0)
-    return `${idx + 1}. ${name}${imeiStr} × ${qty} @ Rs. ${price} = Rs. ${lineTotal}`
-  }).join('\n')
-
-  let paymentSummary = `• Subtotal: Rs. ${subtotal}`
-  if (discount > 0) {
-    paymentSummary += `\n• Discount: Rs. ${discount.toFixed(0)}`
-  }
-  paymentSummary += `\n• Net Total: Rs. ${total}\n• Received: Rs. ${paid}`
-  if (change > 0) {
-    paymentSummary += `\n• Change Returned: Rs. ${change.toFixed(0)}`
-  }
-  if (sale?.paymentType === 'credit' || balance > 0) {
-    paymentSummary += `\n• Current Account Balance: Rs. ${balance.toFixed(0)}`
-  }
-
-  return `Assalam-o-Alaikum ${customerName}! 🤝
-Thank you for shopping with us at ${shopName}!
+    return `Assalam-o-Alaikum ${customerName}! 🤝
+Thank you for shopping with us at *${shopName}*!
 
 🧾 *INVOICE DETAILS*
 Invoice #: INV-${invoiceId}
@@ -252,9 +335,46 @@ ${itemsText}
 💰 *Payment Summary:*
 ${paymentSummary}
 
-${shopInfo.warranty_terms || DEFAULT_WARRANTY_TERMS_ENGLISH}
+${effectiveWarranty}
 
 Thank you for your business and trust! 🤝${shopPhone ? `\n📞 Contact: ${shopPhone}` : ''}`
+  }
+
+  // Urdu (default)
+  const itemsText = items.map((i, idx) => {
+    const name = i.name || i.model || 'Item'
+    const imei = i.imei_1 || i.imei || ''
+    const imeiStr = imei ? ` (IMEI: ${imei})` : ''
+    const qty = i.qty || 1
+    const price = Number(i.custom_price || i.sale_price || i.price || 0).toLocaleString('en-PK')
+    const lineTotal = (qty * Number(i.custom_price || i.sale_price || i.price || 0)).toLocaleString('en-PK')
+    return `${idx + 1}. ${name}${imeiStr}\n   تعداد: ${qty} | فی قیمت: Rs. ${price} | کل: Rs. ${lineTotal}`
+  }).join('\n')
+
+  let paymentInfoUrdu = `• کل رقم: Rs. ${Number(total).toLocaleString('en-PK')}\n• وصول رقم: Rs. ${Number(paid).toLocaleString('en-PK')}`
+  if (change > 0) {
+    paymentInfoUrdu += `\n• واپس شدہ بقایا: Rs. ${Number(change).toLocaleString('en-PK')}`
+  }
+  if (sale?.paymentType === 'credit' || balance > 0) {
+    paymentInfoUrdu += `\n• کھاتہ بقایا جات: Rs. ${Number(balance).toLocaleString('en-PK')}`
+  }
+
+  return `السلام علیکم ${customerName}! 🤝
+*${shopName}* سے خریداری کرنے کا بہت بہت شکریہ!
+
+🧾 *بل کی تفصیلات (Invoice Details)*
+📄 انوائس نمبر: INV-${invoiceId}
+📅 تاریخ: ${dateStr}
+
+📱 *خریدی گئی اشیاء:*
+${itemsText}
+
+💰 *ادائیگی کا خلاصہ:*
+${paymentInfoUrdu}
+
+${effectiveWarranty}
+
+آپ کے اعتماد اور تعاون کا شکریہ! 🤝${shopPhone ? `\n📞 رابطہ: ${shopPhone}` : ''}`
 }
 
 /**
@@ -640,15 +760,21 @@ export async function enqueueWhatsAppMessage({
     return { success: false, error: 'Invalid phone number' }
   }
 
+  const cleanShopId = shop_id ? (isNaN(Number(shop_id)) ? shop_id : Number(shop_id)) : null
+  const upgradedText = upgradeLegacyWhatsAppMessage(message_text || '', cleanShopId, reference_data)
+  const finalText = hasWarrantyTerms(upgradedText)
+    ? upgradedText
+    : replaceOrInjectWarrantyInTemplate(upgradedText, getShopWarrantyTerms(cleanShopId))
+
   const queueItem = {
     id: crypto.randomUUID(),
-    shop_id: shop_id ? (isNaN(Number(shop_id)) ? shop_id : Number(shop_id)) : null,
+    shop_id: cleanShopId,
     recipient_name: recipient_name || 'Customer',
     recipient_phone: cleanedPhone,
     message_type,
     reference_id: reference_id ? String(reference_id) : null,
     reference_data: reference_data ? JSON.parse(JSON.stringify(reference_data)) : null,
-    message_text: message_text || '',
+    message_text: finalText,
     status: 'pending',
     created_at: new Date().toISOString(),
     sent_at: null,
@@ -771,9 +897,30 @@ export async function fetchWhatsAppQueue(shop_id, statusFilter = 'all') {
     if (!mergedMap.has(i.id)) mergedMap.set(i.id, i)
   })
 
-  return Array.from(mergedMap.values())
+  const resultList = Array.from(mergedMap.values())
     .filter(isSoldPhoneQueueItem)
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+
+  // Permanently auto-heal pending outbox items that lack warranty terms or use legacy English stubs
+  for (const item of resultList) {
+    if (item.status === 'pending' || !item.status) {
+      const origText = item.message_text || ''
+      if (isLegacyEnglishInvoiceTemplate(origText) || !hasWarrantyTerms(origText)) {
+        const itemShopId = item.shop_id || shop_id
+        const healed = upgradeLegacyWhatsAppMessage(origText, itemShopId, item.reference_data)
+        const finalHealed = hasWarrantyTerms(healed)
+          ? healed
+          : replaceOrInjectWarrantyInTemplate(healed, getShopWarrantyTerms(itemShopId))
+        if (finalHealed && finalHealed !== origText) {
+          item.message_text = finalHealed
+          // Asynchronously persist repair so Dexie, LocalStorage, and Supabase are permanently fixed
+          updateWhatsAppMessageText(item.id, finalHealed).catch(() => {})
+        }
+      }
+    }
+  }
+
+  return resultList
 }
 
 /**
@@ -908,22 +1055,23 @@ export async function updateExistingQueueMessagesWithWarranty(shopId, customWarr
 
       for (const item of shopItems) {
         const text = item.message_text || ''
-        // Check if message already has the exact current warranty terms
-        if (!text.includes(warrantyText)) {
-          const updatedText = replaceOrInjectWarrantyInTemplate(text, warrantyText)
-          if (updatedText && updatedText !== text) {
-            await db.whatsapp_queue.update(item.id, { message_text: updatedText })
-            updatedCount++
+        const upgraded = upgradeLegacyWhatsAppMessage(text, item.shop_id || shopId, item.reference_data)
+        const finalText = hasWarrantyTerms(upgraded)
+          ? upgraded
+          : replaceOrInjectWarrantyInTemplate(upgraded, warrantyText)
 
-            // Mirror into Supabase
-            if (navigator.onLine && !isSupabaseTableMissing) {
-              try {
-                await supabase
-                  .from('whatsapp_queue')
-                  .update({ message_text: updatedText })
-                  .eq('id', item.id)
-              } catch (_) {}
-            }
+        if (finalText && finalText !== text) {
+          await db.whatsapp_queue.update(item.id, { message_text: finalText })
+          updatedCount++
+
+          // Mirror into Supabase
+          if (navigator.onLine && !isSupabaseTableMissing) {
+            try {
+              await supabase
+                .from('whatsapp_queue')
+                .update({ message_text: finalText })
+                .eq('id', item.id)
+            } catch (_) {}
           }
         }
       }
@@ -935,13 +1083,16 @@ export async function updateExistingQueueMessagesWithWarranty(shopId, customWarr
       let lsUpdated = false
       const newLocalQueue = localQueue.map(item => {
         if (shopId && String(item.shop_id) !== String(shopId)) return item
+        if (item.status && item.status !== 'pending') return item
         const text = item.message_text || ''
-        if (!text.includes(warrantyText)) {
-          const updatedText = replaceOrInjectWarrantyInTemplate(text, warrantyText)
-          if (updatedText && updatedText !== text) {
-            lsUpdated = true
-            return { ...item, message_text: updatedText }
-          }
+        const upgraded = upgradeLegacyWhatsAppMessage(text, item.shop_id || shopId, item.reference_data)
+        const finalText = hasWarrantyTerms(upgraded)
+          ? upgraded
+          : replaceOrInjectWarrantyInTemplate(upgraded, warrantyText)
+
+        if (finalText && finalText !== text) {
+          lsUpdated = true
+          return { ...item, message_text: finalText }
         }
         return item
       })

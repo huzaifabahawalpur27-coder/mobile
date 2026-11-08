@@ -58,6 +58,14 @@ export default function WhatsAppQueue() {
 
   useEffect(() => {
     loadQueue()
+    // Auto-heal any preexisting outbox items missing warranty terms in background
+    if (user?.shop_id) {
+      updateExistingQueueMessagesWithWarranty(user.shop_id)
+        .then(count => {
+          if (count > 0) loadQueue()
+        })
+        .catch(() => {})
+    }
     // Poll every 15s for new sales coming from desktop
     const timer = setInterval(() => {
       fetchWhatsAppQueue(user?.shop_id, 'all').then(data => {

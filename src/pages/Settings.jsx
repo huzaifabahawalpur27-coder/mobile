@@ -41,7 +41,8 @@ import {
   DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE,
   DEFAULT_WARRANTY_TERMS_URDU,
   updateExistingQueueMessagesWithWarranty,
-  replaceOrInjectWarrantyInTemplate
+  replaceOrInjectWarrantyInTemplate,
+  isLegacyEnglishInvoiceTemplate
 } from '../services/whatsappQueueService'
 
 function Settings() {
@@ -76,8 +77,10 @@ function Settings() {
       quotation_footer: 'This is an estimate only',
       print_size: 'thermal',
       print_mode: 'manual',
-      wa_reminder_template: 'Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!',
-      wa_bill_template: DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
+      wa_reminder_template: parsedSaved?.wa_reminder_template || 'Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!',
+      wa_bill_template: (parsedSaved?.wa_bill_template && !isLegacyEnglishInvoiceTemplate(parsedSaved.wa_bill_template))
+        ? parsedSaved.wa_bill_template
+        : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
       wa_exchange_template: (sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || parsedSaved?.wa_exchange_template || DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE,
       wa_reorder_template: '',
       invoice_prefix: '',
@@ -276,7 +279,10 @@ function Settings() {
         print_size:           data.print_size           || saved.print_size           || prev.print_size           || 'thermal',
         print_mode:           data.print_mode           || saved.print_mode           || prev.print_mode           || 'manual',
         wa_reminder_template: data.wa_reminder_template || saved.wa_reminder_template || prev.wa_reminder_template || '',
-        wa_bill_template:     data.wa_bill_template     || saved.wa_bill_template     || prev.wa_bill_template     || DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
+        wa_bill_template:     (() => {
+          const raw = data.wa_bill_template || saved.wa_bill_template || prev.wa_bill_template
+          return (raw && !isLegacyEnglishInvoiceTemplate(raw)) ? raw : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
+        })(),
         wa_exchange_template: (sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || data.wa_exchange_template || saved.wa_exchange_template || prev.wa_exchange_template || DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE,
         wa_reorder_template:  '',
         invoice_prefix:       data.invoice_prefix       || saved.invoice_prefix       || prev.invoice_prefix       || '',
@@ -996,7 +1002,7 @@ function Settings() {
                     value={form.wa_bill_template}
                     onChange={e => setForm({ ...form, wa_bill_template: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-xs sm:text-sm font-sans h-52 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 leading-relaxed"
-                    placeholder="Hello [Name], thank you for shopping! Bill #[ID] for Rs. [Amount]..."
+                    placeholder="السلام علیکم [Name]! [Shop Name] سے خریداری کا شکریہ..."
                   />
 
                   {/* Tag Inserters */}
