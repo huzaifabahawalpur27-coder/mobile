@@ -55,8 +55,48 @@ export default function PublicInvoice() {
         })
 
         if (!rpcErr && data) {
+          const enriched = { ...data }
+          try {
+            // Check local db.customers by customer_id if phone or name is missing
+            if (db?.customers && enriched.customer_id && (!enriched.customer_phone || enriched.customer_name === 'Valued Customer')) {
+              const cust = await db.customers.get(Number(enriched.customer_id))
+              if (cust) {
+                if (cust.name && (enriched.customer_name === 'Valued Customer' || !enriched.customer_name)) {
+                  enriched.customer_name = cust.name
+                }
+                if (cust.phone && !enriched.customer_phone) {
+                  enriched.customer_phone = cust.phone
+                }
+              }
+            }
+
+            // Also check whatsapp_queue if customer is still Valued Customer or phone missing
+            if (db?.whatsapp_queue && (!enriched.customer_phone || enriched.customer_name === 'Valued Customer')) {
+              const cleanId = id.replace(/^(INV-|EXC-)/i, '').trim().toUpperCase()
+              const qItems = await db.whatsapp_queue.toArray()
+              const match = qItems.find(q =>
+                (q.reference_id && q.reference_id.toUpperCase().includes(cleanId)) ||
+                (q.reference_data && (
+                  (q.reference_data.invoice_token && q.reference_data.invoice_token.toUpperCase() === cleanId) ||
+                  (q.reference_data.invoice_number && q.reference_data.invoice_number.toUpperCase().includes(cleanId)) ||
+                  (q.reference_data.sale_id && String(q.reference_data.sale_id) === String(enriched.id))
+                ))
+              )
+              if (match) {
+                if (match.recipient_name && (enriched.customer_name === 'Valued Customer' || !enriched.customer_name)) {
+                  enriched.customer_name = match.recipient_name
+                }
+                if (match.recipient_phone && !enriched.customer_phone) {
+                  enriched.customer_phone = match.recipient_phone
+                }
+              }
+            }
+          } catch (enrichErr) {
+            console.debug('Customer enrichment error:', enrichErr)
+          }
+
           if (isMounted) {
-            setInvoice(data)
+            setInvoice(enriched)
             setLoading(false)
           }
           return
@@ -301,9 +341,11 @@ export default function PublicInvoice() {
       const element = invoiceRef.current
 
       // Ensure fonts are loaded before capturing canvas
-      if (document.fonts?.ready) {
-        await document.fonts.ready
-      }
+      try {
+        if (document.fonts?.ready) {
+          await document.fonts.ready
+        }
+      } catch (_) {}
 
       let usedCanvas = false
 
@@ -314,102 +356,35 @@ export default function PublicInvoice() {
           useCORS: true,
           allowTaint: false,
           logging: false,
-          backgroundColor: '#ffffff',
-          onclone: (clonedDoc) => {
-            // Ensure no tainted cross-origin images crash toDataURL()
-            const clonedImages = clonedDoc.querySelectorAll('img')
-            clonedImages.forEach(img => {
-              try {
-                if (img.src && !img.src.startsWith('data:') && !img.src.startsWith(window.location.origin)) {
-                  img.crossOrigin = 'anonymous'
-                }
-              } catch (_) {
-                img.style.display = 'none'
-              }
-            })
-
-            // Normalize modern CSS colors (oklch, color-mix) to solid RGB on all cloned elements
-            // to ensure html2canvas's color parser succeeds without any unsupported function errors
-            try {
-              const helperCanvas = clonedDoc.createElement('canvas')
-              helperCanvas.width = 1
-              helperCanvas.height = 1
-              const ctx = helperCanvas.getContext('2d')
-
-              if (ctx) {
-                const convertColor = (val) => {
-                  if (!val || typeof val !== 'string') return val
-                  if (!val.includes('oklch') && !val.includes('color-mix') && !val.includes('oklab') && !val.includes('lab(')) {
-                    return val
-                  }
-                  try {
-                    ctx.fillStyle = '#000000'
-                    ctx.fillStyle = val
-                    return ctx.fillStyle || '#000000'
-                  } catch (_) {
-                    return '#000000'
-                  }
-                }
-
-                const allNodes = clonedDoc.querySelectorAll('*')
-                allNodes.forEach(node => {
-                  const style = window.getComputedStyle(node)
-                  if (style.backgroundColor && (style.backgroundColor.includes('oklch') || style.backgroundColor.includes('color-mix'))) {
-                    node.style.backgroundColor = convertColor(style.backgroundColor)
-                  }
-                  if (style.color && (style.color.includes('oklch') || style.color.includes('color-mix'))) {
-                    node.style.color = convertColor(style.color)
-                  }
-                  if (style.borderColor && (style.borderColor.includes('oklch') || style.borderColor.includes('color-mix'))) {
-                    node.style.borderColor = convertColor(style.borderColor)
-                  }
-                  if (style.boxShadow && (style.boxShadow.includes('oklch') || style.boxShadow.includes('color-mix'))) {
-                    node.style.boxShadow = style.boxShadow.replace(/(?:oklch|color-mix|oklab|lab)\([^)]+\)/g, (m) => convertColor(m))
-                  }
-                })
-              }
-            } catch (styleErr) {
-              console.debug('Style normalization in onclone:', styleErr)
-            }
-          }
+          backgroundColor: '#ffffff'
         })
 
-        const imgData = canvas.toDataURL('image/png')
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4'
-        })
+        if (canvas && canvas.width > 0 && canvas.height > 0) {
+          const imgData = canvas.toDataURL('image/png')
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+          })
 
-        const pageWidth = pdf.internal.pageSize.getWidth()
-        const pageHeight = pdf.internal.pageSize.getHeight()
-        const margin = 8
-        const printableWidth = pageWidth - (margin * 2)
-        const printableHeight = (canvas.height * printableWidth) / canvas.width
+          const pageWidth = pdf.internal.pageSize.getWidth()
+          const pageHeight = pdf.internal.pageSize.getHeight()
+          const margin = 8
+          const printableWidth = pageWidth - (margin * 2)
+          const printableHeight = (canvas.height * printableWidth) / canvas.width
 
-        if (printableHeight <= pageHeight - (margin * 2)) {
-          pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, printableHeight)
-        } else if (printableHeight <= pageHeight + 25) {
-          const maxAvailableHeight = pageHeight - (margin * 2)
-          const scaledWidth = (canvas.width * maxAvailableHeight) / canvas.height
-          const xOffset = (pageWidth - scaledWidth) / 2
-          pdf.addImage(imgData, 'PNG', xOffset, margin, scaledWidth, maxAvailableHeight)
-        } else {
-          let heightLeft = printableHeight
-          let position = margin
-          pdf.addImage(imgData, 'PNG', margin, position, printableWidth, printableHeight)
-          heightLeft -= (pageHeight - (margin * 2))
-
-          while (heightLeft > 0) {
-            position = position - pageHeight + margin
-            pdf.addPage()
-            pdf.addImage(imgData, 'PNG', margin, position, printableWidth, printableHeight)
-            heightLeft -= (pageHeight - (margin * 2))
+          if (printableHeight <= pageHeight - (margin * 2)) {
+            pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, printableHeight)
+          } else {
+            const maxAvailableHeight = pageHeight - (margin * 2)
+            const scaledWidth = (canvas.width * maxAvailableHeight) / canvas.height
+            const xOffset = (pageWidth - scaledWidth) / 2
+            pdf.addImage(imgData, 'PNG', xOffset, margin, scaledWidth, maxAvailableHeight)
           }
+
+          pdf.save(filename)
+          usedCanvas = true
         }
-
-        pdf.save(filename)
-        usedCanvas = true
       } catch (canvasErr) {
         console.warn('Canvas rendering encountered an issue, falling back to direct vector jsPDF:', canvasErr)
       }
@@ -443,8 +418,14 @@ export default function PublicInvoice() {
         pdf.text(`Invoice #: ${invoice.invoice_no || id}`, 14, currentY)
         pdf.text(`Date: ${dateFormatted}`, 196, currentY, { align: 'right' })
         currentY += 5
-        pdf.text(`Customer: ${invoice.customer_name || 'Valued Customer'}${invoice.customer_phone ? ` (+${invoice.customer_phone})` : ''}`, 14, currentY)
+        pdf.text(`Customer Name: ${invoice.customer_name || 'Valued Customer'}`, 14, currentY)
         pdf.text(`Payment: ${String(invoice.payment_type || 'CASH').toUpperCase()}`, 196, currentY, { align: 'right' })
+        currentY += 5
+        if (invoice.customer_phone) {
+          pdf.text(`Mobile: +${invoice.customer_phone}`, 14, currentY)
+        } else {
+          pdf.text('Mobile: Walk-in', 14, currentY)
+        }
         currentY += 7
 
         // Items Table
@@ -468,7 +449,7 @@ export default function PublicInvoice() {
           head: [['#', 'Description & IMEI', 'Qty', 'Unit Price', 'Total Amount']],
           body: tableRows,
           styles: { fontSize: 9, cellPadding: 2.5 },
-          headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
+          headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold' },
           columnStyles: {
             0: { cellWidth: 10, halign: 'center' },
             1: { cellWidth: 95 },
@@ -638,13 +619,13 @@ export default function PublicInvoice() {
               </h1>
               {shop.address && (
                 <p className="text-xs text-slate-600 flex items-center gap-1">
-                  <MapPin size={12} className="text-slate-400 shrink-0" />
+                  <span className="text-[11px]">📍</span>
                   <span>{shop.address}</span>
                 </p>
               )}
               {shop.phone && (
                 <p className="text-xs text-slate-600 flex items-center gap-1 font-mono">
-                  <Phone size={12} className="text-slate-400 shrink-0" />
+                  <span className="text-[11px]">📞</span>
                   <span>{shop.phone}</span>
                 </p>
               )}
@@ -652,14 +633,14 @@ export default function PublicInvoice() {
 
             <div className="sm:text-right space-y-1">
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
-                <CheckCircle2 size={12} />
+                <span>✓</span>
                 <span>{isExchange ? 'Phone Exchange Invoice' : 'Sales Invoice'}</span>
               </span>
               <div className="text-base font-black font-mono tracking-wide text-slate-950 pt-1">
                 #{invoice.invoice_no || id}
               </div>
               <div className="text-xs text-slate-500 flex items-center sm:justify-end gap-1">
-                <Calendar size={12} className="text-slate-400" />
+                <span className="text-[11px]">📅</span>
                 <span>{dateFormatted}</span>
               </div>
             </div>
@@ -697,7 +678,7 @@ export default function PublicInvoice() {
           {!isExchange && (
             <div className="space-y-2">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <Smartphone size={13} className="text-emerald-600" />
+                <span className="text-xs">📱</span>
                 <span>Items & Purchased Devices</span>
               </h2>
 

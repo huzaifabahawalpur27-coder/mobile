@@ -138,8 +138,8 @@ BEGIN
         'total_amount', COALESCE(s.total_amount, s.net_amount, 0),
         'paid_amount', COALESCE(s.paid_amount, s.amount_paid, s.net_amount, s.total_amount, 0),
         'payment_type', COALESCE(s.payment_type, s.payment_method, 'cash'),
-        'customer_name', COALESCE(c.name, s.customer_name, 'Valued Customer'),
-        'customer_phone', COALESCE(c.phone, s.customer_phone, ''),
+        'customer_name', COALESCE(NULLIF(s.customer_name, ''), c.name, 'Valued Customer'),
+        'customer_phone', COALESCE(NULLIF(s.customer_phone, ''), c.phone, ''),
         'customer_balance', COALESCE(c.outstanding_balance, 0),
         'status', COALESCE(s.status, 'completed'),
         'shop', jsonb_build_object(

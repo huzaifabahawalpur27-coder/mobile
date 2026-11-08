@@ -1158,11 +1158,16 @@ function POS() {
     const publicInvoiceNo = `INV-${invoiceToken}`
     const hasPhoneItems = cart.some(i => i.item_type === 'phone')
 
+    const selectedCustomer = customers.find(c => String(c.id) === String(customerId))
+    const effectiveCustName = selectedCustomer ? selectedCustomer.name : (walkInName?.trim() || 'Walk-in Customer')
+    const effectiveCustPhone = selectedCustomer ? (selectedCustomer.phone || '') : ''
+
     const saleData = {
       shop_id: user?.shop_id || 1,
       branch_id: user?.branch_id || null,
       customer_id: toIntOrNull(customerId),
-      customer_name: customerId ? null : (walkInName || 'Walk-in Customer'),
+      customer_name: effectiveCustName,
+      customer_phone: effectiveCustPhone,
       total_amount: subtotal,
       discount: totalDiscount,
       net_amount: total,
@@ -1194,9 +1199,9 @@ function POS() {
         try {
           const primaryRes = await supabase.rpc('process_phone_sale', {
             p_customer_id: toIntOrNull(customerId),
-            p_customer_name: customerId ? null : walkInName,
-            p_customer_phone: null,
-            p_customer_whatsapp: null,
+            p_customer_name: effectiveCustName,
+            p_customer_phone: effectiveCustPhone,
+            p_customer_whatsapp: effectiveCustPhone,
             p_branch_id: user?.branch_id || null,
             p_items: cart.map(i => {
               const imei = i.imei_1 || i.imei
