@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import {
   RefreshCw,
   Plus,
@@ -22,7 +23,11 @@ import { supabase } from '../services/supabase'
 import { getBankAccounts } from '../services/bankService'
 import { processPhoneExchange, getExchanges, voidPhoneExchange } from '../services/exchangeService'
 import { buildExchangeBillHTML } from '../utils/billTemplates'
-import { buildExchangeWhatsAppText } from '../services/whatsappQueueService'
+import {
+  buildExchangeWhatsAppText,
+  enqueueWhatsAppMessage,
+  cleanPakistanPhone
+} from '../services/whatsappQueueService'
 import { IPHONE_MODELS } from '../utils/iphonePresets'
 
 const PHONE_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Oppo', 'Vivo', 'Realme', 'OnePlus', 'Google', 'Infinix', 'Tecno', 'Other']
@@ -133,6 +138,8 @@ export default function Exchange() {
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [completedExchange, setCompletedExchange] = useState(null)
   const [showReceiptModal, setShowReceiptModal] = useState(false)
+  const [outboxPromptPhone, setOutboxPromptPhone] = useState('')
+  const [outboxSuccessMsg, setOutboxSuccessMsg] = useState('')
 
   // History Tab State
   const [historyList, setHistoryList] = useState([])
@@ -698,21 +705,78 @@ export default function Exchange() {
           settlement_payment_method: paymentMethod,
           notes: generalNotes,
           created_at: new Date().toISOString(),
+          customer: selectedCust || (custName ? { name: custName, phone: custPhone } : null),
+          customer_balance: selectedCust ? (selectedCust.outstanding_balance ?? selectedCust.balance ?? 0) : 0,
           exchange_items: [
-            ...payload.incomingPhones.map(p => ({
+            ...incomingPhones.map(p => ({
               ...p,
               item_direction: 'incoming_trade_in',
-              product_name: `${p.brand} ${p.model}`
+              product_name: `${p.brand} ${p.model}`.trim(),
+              assessed_value: parseFloat(p.assessed_value) || 0,
+              subtotal: parseFloat(p.assessed_value) || 0
             })),
-            ...payload.outgoingItems.map(i => ({
+            ...outgoingItems.map(i => ({
               ...i,
               item_direction: 'outgoing_sale',
-              subtotal: i.price * i.quantity
+              subtotal: (parseFloat(i.price) || 0) * (i.quantity || 1)
             }))
           ]
         }
 
+        // Auto-enqueue WhatsApp Invoice Outbox
+        let autoQueued = false
+        if (custPhone) {
+          try {
+            const sid = user?.shop_id || 1
+            const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+            const shopInfo = {
+              ...shopSettings,
+              id: sid,
+              shop_id: sid,
+              name: shopSettings?.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX Mobile Store',
+              phone: shopSettings?.phone || '',
+              warranty_terms: savedWarranty || shopSettings?.warranty_terms
+            }
+            const msgText = buildExchangeWhatsAppText({
+              exchange: { ...completedSnapshot, shop_id: sid },
+              customer: completedSnapshot.customer,
+              shopInfo
+            })
+
+            const qRes = await enqueueWhatsAppMessage({
+              shop_id: sid,
+              recipient_name: custName || 'Valued Customer',
+              recipient_phone: custPhone,
+              message_type: 'phone_exchange_receipt',
+              reference_id: String(result.exchange_number || result.exchange_id || result.id || Date.now()),
+              reference_data: {
+                exchange_id: result.exchange_id || result.id,
+                exchange_number: result.exchange_number,
+                sale_id: result.sale_id,
+                purchase_id: result.purchase_id,
+                sale_amount: totalSaleAmount,
+                trade_in_credit: totalTradeInCredit,
+                settlement_amount: absoluteSettlement,
+                settlement_direction: settlementDirection,
+                items_count: (incomingPhones.length + outgoingItems.length),
+                has_phone: true,
+                is_exchange: true
+              },
+              message_text: msgText,
+              created_by: user?.id
+            })
+            if (qRes && qRes.success) {
+              autoQueued = true
+            }
+          } catch (waErr) {
+            console.warn('Auto enqueue whatsapp exchange receipt error:', waErr)
+          }
+        }
+
+        completedSnapshot.is_queued = autoQueued
         setCompletedExchange(completedSnapshot)
+        setOutboxPromptPhone('')
+        setOutboxSuccessMsg(autoQueued ? 'Enqueued to WhatsApp Outbox! 📲' : '')
         setShowReceiptModal(true)
         resetExchangeForm()
         loadInitialData()
@@ -772,24 +836,134 @@ export default function Exchange() {
   }
 
   // WhatsApp Dispatch
-  const handleSendWhatsApp = (exchangeRecord = completedExchange) => {
+  const handleSendWhatsApp = async (exchangeRecord = completedExchange) => {
     if (!exchangeRecord) return
-    const sid = user?.shop_id
+    const sid = user?.shop_id || 1
     const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+    const shopInfo = {
+      ...shopSettings,
+      id: sid,
+      shop_id: sid,
+      name: shopSettings?.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX Mobile Store',
+      phone: shopSettings?.phone || '',
+      warranty_terms: savedWarranty || shopSettings?.warranty_terms
+    }
     const text = buildExchangeWhatsAppText({
       exchange: { ...exchangeRecord, shop_id: sid },
-      shopInfo: {
-        ...shopSettings,
-        id: sid,
-        warranty_terms: savedWarranty || shopSettings?.warranty_terms
-      }
+      customer: exchangeRecord.customer,
+      shopInfo
     })
-    const targetPhone = exchangeRecord.customer_phone || ''
-    const cleanPhone = targetPhone.replace(/[^0-9]/g, '')
-    const url = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
+
+    let targetPhone = exchangeRecord.customer_phone || exchangeRecord.customer?.phone || ''
+    if (!targetPhone) {
+      const input = window.prompt('کسٹمر کا واٹس ایپ نمبر درج کریں (Enter customer WhatsApp mobile number):', '')
+      if (!input || !input.trim()) return
+      targetPhone = input.trim()
+    }
+
+    const cleanedPhone = cleanPakistanPhone(targetPhone) || targetPhone.replace(/[^0-9]/g, '')
+
+    // Enqueue into outbox if not queued yet
+    try {
+      await enqueueWhatsAppMessage({
+        shop_id: sid,
+        recipient_name: exchangeRecord.customer_name || exchangeRecord.customer?.name || 'Valued Customer',
+        recipient_phone: cleanedPhone,
+        message_type: 'phone_exchange_receipt',
+        reference_id: String(exchangeRecord.exchange_number || exchangeRecord.id || Date.now()),
+        reference_data: {
+          exchange_id: exchangeRecord.id,
+          exchange_number: exchangeRecord.exchange_number,
+          sale_id: exchangeRecord.sale_id,
+          purchase_id: exchangeRecord.purchase_id,
+          sale_amount: exchangeRecord.sale_amount,
+          trade_in_credit: exchangeRecord.trade_in_credit,
+          settlement_amount: exchangeRecord.settlement_amount,
+          settlement_direction: exchangeRecord.settlement_direction,
+          items_count: (exchangeRecord.exchange_items || []).length,
+          has_phone: true,
+          is_exchange: true
+        },
+        message_text: text,
+        created_by: user?.id
+      })
+    } catch (enqueueErr) {
+      console.debug('WhatsApp enqueue notice:', enqueueErr)
+    }
+
+    const url = cleanedPhone
+      ? `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(text)}`
       : `https://wa.me/?text=${encodeURIComponent(text)}`
     window.open(url, '_blank')
+  }
+
+  // Manual Add to WhatsApp Outbox from Completion Modal
+  const handleManualEnqueueCompleted = async () => {
+    if (!completedExchange) return
+    const phone = outboxPromptPhone.trim()
+    const cleaned = cleanPakistanPhone(phone)
+    if (!cleaned) {
+      alert('Please enter a valid Pakistani mobile number (e.g. 03001234567)')
+      return
+    }
+
+    try {
+      const sid = user?.shop_id || 1
+      const savedWarranty = sid ? localStorage.getItem(`shop_warranty_${sid}`) : null
+      const shopInfo = {
+        ...shopSettings,
+        id: sid,
+        shop_id: sid,
+        name: shopSettings?.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX Mobile Store',
+        phone: shopSettings?.phone || '',
+        warranty_terms: savedWarranty || shopSettings?.warranty_terms
+      }
+      const updatedExchange = {
+        ...completedExchange,
+        customer_phone: cleaned,
+        shop_id: sid
+      }
+      const msgText = buildExchangeWhatsAppText({
+        exchange: updatedExchange,
+        customer: updatedExchange.customer,
+        shopInfo
+      })
+
+      const res = await enqueueWhatsAppMessage({
+        shop_id: sid,
+        recipient_name: updatedExchange.customer_name || 'Valued Customer',
+        recipient_phone: cleaned,
+        message_type: 'phone_exchange_receipt',
+        reference_id: String(updatedExchange.exchange_number || updatedExchange.id || Date.now()),
+        reference_data: {
+          exchange_id: updatedExchange.id,
+          exchange_number: updatedExchange.exchange_number,
+          sale_id: updatedExchange.sale_id,
+          purchase_id: updatedExchange.purchase_id,
+          sale_amount: updatedExchange.sale_amount,
+          trade_in_credit: updatedExchange.trade_in_credit,
+          settlement_amount: updatedExchange.settlement_amount,
+          settlement_direction: updatedExchange.settlement_direction,
+          items_count: (updatedExchange.exchange_items || []).length,
+          has_phone: true,
+          is_exchange: true
+        },
+        message_text: msgText,
+        created_by: user?.id
+      })
+
+      if (res && res.success) {
+        setCompletedExchange(updatedExchange)
+        setOutboxPromptPhone('')
+        setOutboxSuccessMsg('Added to WhatsApp Outbox! 📲')
+        setTimeout(() => setOutboxSuccessMsg(''), 4000)
+      } else {
+        alert(res?.reason || res?.error || 'Failed to add to outbox')
+      }
+    } catch (err) {
+      console.error('Manual enqueue error:', err)
+      alert('Error enqueuing message: ' + (err?.message || String(err)))
+    }
   }
 
   // Handle Void
@@ -1847,18 +2021,65 @@ export default function Exchange() {
               successfully.
             </p>
 
+            {/* WhatsApp Outbox Status Banner */}
+            {completedExchange.customer_phone ? (
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/70 dark:border-emerald-800/60 rounded-xl text-left flex items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-2 text-xs text-emerald-800 dark:text-emerald-300 font-medium">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">Added to WhatsApp Outbox</span>
+                    <span className="block text-[11px] text-emerald-700 dark:text-emerald-400">📱 +{completedExchange.customer_phone}</span>
+                  </div>
+                </div>
+                <Link
+                  to="/whatsapp-queue"
+                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shrink-0 transition"
+                >
+                  View Outbox 📲
+                </Link>
+              </div>
+            ) : (
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-800/60 rounded-xl text-left space-y-2">
+                <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
+                  ⚠️ کسٹمر کا موبائل نمبر درج نہیں تھا۔ آؤٹ باکس میں شامل کرنے کے لیے نمبر درج کریں:
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="tel"
+                    placeholder="e.g. 03001234567"
+                    value={outboxPromptPhone}
+                    onChange={(e) => setOutboxPromptPhone(e.target.value)}
+                    className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleManualEnqueueCompleted}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer"
+                  >
+                    Add to Outbox 📲
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {outboxSuccessMsg && (
+              <div className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 py-1.5 px-3 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                {outboxSuccessMsg}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => handlePrintReceipt(completedExchange)}
-                className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition active:scale-95"
               >
                 <Printer size={15} /> Print Memo
               </button>
               <button
                 type="button"
                 onClick={() => handleSendWhatsApp(completedExchange)}
-                className="py-2.5 px-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                className="py-2.5 px-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition active:scale-95"
               >
                 <Send size={15} /> WhatsApp Bill
               </button>
@@ -1869,6 +2090,8 @@ export default function Exchange() {
               onClick={() => {
                 setShowReceiptModal(false)
                 setCompletedExchange(null)
+                setOutboxPromptPhone('')
+                setOutboxSuccessMsg('')
               }}
               className="w-full py-2 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs cursor-pointer"
             >

@@ -298,45 +298,89 @@ Thank you for your partnership! 🤝`
 }
 
 /**
- * Builds exchange confirmation memo for WhatsApp.
+ * Builds exchange confirmation memo for WhatsApp with traded-in phones,
+ * purchased replacement devices, financial balance adjustment, and shop warranty terms.
  */
-export function buildExchangeWhatsAppText({ exchange, shopInfo = {} }) {
-  const customerName = exchange.customer_name || exchange.customer?.name || 'Valued Customer'
+export function buildExchangeWhatsAppText({ exchange, customer = null, shopInfo = {} }) {
+  const customerName = exchange.customer_name || exchange.customer?.name || exchange.customers?.name || customer?.name || 'Valued Customer'
   const shopName = shopInfo.name || 'EdgeX Mobile Store'
-  const shopPhone = shopInfo.phone || ''
-  const exchangeNo = exchange.exchange_number || `EXC-${String(exchange.id || Date.now()).slice(-6)}`
+  const shopPhone = shopInfo.phone || shopInfo.mobile || ''
+  const exchangeNo = exchange.exchange_number || (exchange.id ? `EXC-${String(exchange.id).slice(-6).toUpperCase()}` : `EXC-${String(Date.now()).slice(-6)}`)
   const dateStr = exchange.created_at
     ? new Date(exchange.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
     : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
 
-  const incoming = (exchange.exchange_items || exchange.incoming_items || []).filter(i => i.item_direction === 'incoming_trade_in')
-  const outgoing = (exchange.exchange_items || exchange.outgoing_items || []).filter(i => i.item_direction === 'outgoing_sale')
+  // Extract Traded-in Phones (Incoming)
+  const incoming = (
+    exchange.exchange_items?.filter(i => i.item_direction === 'incoming_trade_in') ||
+    exchange.incoming_items ||
+    exchange.incomingPhones ||
+    exchange.incoming ||
+    []
+  )
+
+  // Extract Purchased Replacement Items (Outgoing)
+  const outgoing = (
+    exchange.exchange_items?.filter(i => i.item_direction === 'outgoing_sale') ||
+    exchange.outgoing_items ||
+    exchange.outgoingItems ||
+    exchange.outgoing ||
+    []
+  )
 
   const incomingText = incoming.map((p, idx) => {
-    const brandModel = `${p.brand || ''} ${p.model || p.product_name}`.trim()
-    const imei = p.imei_1 ? ` [IMEI: ${p.imei_1}]` : ''
-    const val = Number(p.assessed_value || p.subtotal || 0).toLocaleString('en-PK')
-    return `${idx + 1}. ${brandModel}${imei} (Credit: Rs. ${val})`
-  }).join('\n') || 'None'
+    const brandModel = `${p.brand || ''} ${p.model || p.product_name || 'Phone'}`.trim()
+    const specs = [p.storage, p.color].filter(Boolean).join(', ')
+    const specStr = specs ? ` (${specs})` : ''
+    const imei1 = p.imei_1 ? `\n   • IMEI 1: ${p.imei_1}` : ''
+    const imei2 = p.imei_2 ? `\n   • IMEI 2: ${p.imei_2}` : ''
+    const condParts = []
+    if (p.condition) condParts.push(p.condition)
+    if (p.pta_status) condParts.push(p.pta_status)
+    const condStr = condParts.length > 0 ? `\n   • حالت و پی ٹی اے: ${condParts.join(' | ')}` : ''
+    const battery = p.inspection_details?.battery_health || p.battery_health
+    const batteryStr = battery ? `\n   • بیٹری ہیلتھ: ${battery}%` : ''
+    const val = Number(p.assessed_value || p.trade_in_value || p.subtotal || 0).toLocaleString('en-PK')
+    return `${idx + 1}. *${brandModel}*${specStr}${imei1}${imei2}${condStr}${batteryStr}\n   • ٹریڈ ان ویلیو (Trade-in Credit): Rs. ${val}`
+  }).join('\n\n') || 'کوئی پرانا فون نہیں (None)'
 
   const outgoingText = outgoing.map((i, idx) => {
     const desc = i.product_name || `${i.brand || ''} ${i.model || 'Phone'}`.trim()
-    const imei = i.imei_1 ? ` [IMEI: ${i.imei_1}]` : ''
-    const price = Number(i.subtotal || i.line_total || i.assessed_value || 0).toLocaleString('en-PK')
-    return `${idx + 1}. ${desc}${imei} = Rs. ${price}`
-  }).join('\n') || 'None'
+    const specs = [i.storage, i.color].filter(Boolean).join(', ')
+    const specStr = specs && !desc.includes(specs) ? ` (${specs})` : ''
+    const imei1 = i.imei_1 ? `\n   • IMEI 1: ${i.imei_1}` : ''
+    const imei2 = i.imei_2 ? `\n   • IMEI 2: ${i.imei_2}` : ''
+    const qty = Number(i.quantity || i.qty || 1)
+    const qtyStr = qty > 1 ? ` × ${qty}` : ''
+    const lineTotal = Number(i.subtotal || i.line_total || ((Number(i.price || i.sale_price || i.assessed_value || 0)) * qty)).toLocaleString('en-PK')
+    return `${idx + 1}. *${desc}*${specStr}${imei1}${imei2}\n   • قیمت خرید (Price): Rs. ${lineTotal}${qtyStr}`
+  }).join('\n\n') || 'کوئی خریدا گیا فون نہیں (None)'
 
-  const saleAmt = Number(exchange.sale_amount || 0).toLocaleString('en-PK')
-  const tradeAmt = Number(exchange.trade_in_credit || 0).toLocaleString('en-PK')
-  const settleAmt = Number(exchange.settlement_amount || 0).toLocaleString('en-PK')
+  const saleAmt = Number(exchange.sale_amount || 0)
+  const tradeAmt = Number(exchange.trade_in_credit || 0)
+  const settleAmt = Number(exchange.settlement_amount || 0)
+  const direction = exchange.settlement_direction || 'even'
+  const payMethod = (exchange.settlement_payment_method || 'Cash').toUpperCase()
 
-  let settleStatusUrdu = ''
-  if (exchange.settlement_direction === 'customer_paid') {
-    settleStatusUrdu = `🟢 وصول شدہ بقایا رقم (Customer Paid): Rs. ${settleAmt} (${(exchange.settlement_payment_method || 'Cash').toUpperCase()})`
-  } else if (exchange.settlement_direction === 'shop_payout') {
-    settleStatusUrdu = `🔴 کسٹمر کو ادا کردہ رقم (Store Payout): Rs. ${settleAmt} (${(exchange.settlement_payment_method || 'Cash').toUpperCase()})`
+  const balanceLines = []
+  balanceLines.push(`• نئی خریداری کل (New Purchase Total): Rs. ${saleAmt.toLocaleString('en-PK')}`)
+  balanceLines.push(`• پرانے فون کا کریڈٹ (Less Trade-in Credit): - Rs. ${tradeAmt.toLocaleString('en-PK')}`)
+  balanceLines.push(`• خالص تبادلہ فرق (Net Exchange Difference): Rs. ${Math.abs(saleAmt - tradeAmt).toLocaleString('en-PK')}`)
+
+  if (direction === 'customer_paid') {
+    balanceLines.push(`• کسٹمر نے ادا کیا (Customer Paid via ${payMethod}): Rs. ${settleAmt.toLocaleString('en-PK')}`)
+    balanceLines.push(`• بقایا واجب الادا (Remaining Balance Due): Rs. 0 (مکمل کلیئر ✅)`)
+  } else if (direction === 'shop_payout') {
+    balanceLines.push(`• دکان نے کسٹمر کو ادا کیا (Store Payout via ${payMethod}): Rs. ${settleAmt.toLocaleString('en-PK')}`)
+    balanceLines.push(`• بقایا حساب (Balance Settled): Rs. 0 (مکمل ادا شدہ ✅)`)
   } else {
-    settleStatusUrdu = `⚪ برابری کا تبادلہ (Even Exchange - Rs. 0)`
+    balanceLines.push(`• برابری کا تبادلہ (Even Exchange): کوئی نقد لین دین نہیں (Rs. 0 ✅)`)
+  }
+
+  // Account Ledger / Prior Balance if any
+  const custBalance = Number(customer?.outstanding_balance ?? customer?.balance ?? exchange.customer_balance ?? 0)
+  if (custBalance > 0) {
+    balanceLines.push(`• کسٹمر کھاتہ سابقہ بقایا جات (Prior Account Ledger): Rs. ${custBalance.toLocaleString('en-PK')}`)
   }
 
   // Fetch shop warranty details from settings/localStorage
@@ -344,26 +388,27 @@ export function buildExchangeWhatsAppText({ exchange, shopInfo = {} }) {
   const effectiveWarranty = shopInfo.warranty_terms || (shopId ? getShopWarrantyTerms(shopId) : DEFAULT_WARRANTY_TERMS_URDU)
 
   return `السلام علیکم ${customerName}! 🤝
-${shopName} میں تشریف لانے اور فون ایکسچینج کرنے کا شکریہ!
+*${shopName}* میں تشریف لانے اور فون ایکسچینج کرنے کا بہت بہت شکریہ!
 
-🔄 *PHONE TRADE-IN & EXCHANGE MEMO*
-ایکسچینج نمبر: ${exchangeNo}
-تاریخ: ${dateStr}
+🔄 *فون ایکسچینج بل و رسید (PHONE EXCHANGE INVOICE)*
+📄 انوائس نمبر: ${exchangeNo}
+📅 تاریخ: ${dateStr}
 
-📥 *آپ کی طرف سے جمع کروایا گیا فون (Traded-in):*
-${incomingText}
-• کل ٹریڈ ان کریڈٹ: Rs. ${tradeAmt}
-
-📤 *خریدا گیا سامان / نیا فون (Purchased):*
+📤 *خریدا گیا نیا فون / سامان (Purchased Items):*
 ${outgoingText}
-• کل قیمت خرید: Rs. ${saleAmt}
+• کل قیمت خرید: Rs. ${saleAmt.toLocaleString('en-PK')}
 
-⚖️ *حتمی حساب (Reconciliation & Settlement):*
-${settleStatusUrdu}
+📥 *آپ کی طرف سے جمع کروایا گیا فون (Exchanged / Traded-in Phones):*
+${incomingText}
+• کل ٹریڈ ان کریڈٹ: Rs. ${tradeAmt.toLocaleString('en-PK')}
+
+⚖️ *حتمی حساب و بقایا ایڈجسٹمنٹ (Balance Adjustment & Settlement):*
+${balanceLines.join('\n')}
 
 ${effectiveWarranty}
 
-آپ کے اعتماد کا بے حد شکریہ! 🤝${shopPhone ? `\n📞 رابطہ: ${shopPhone}` : ''}`
+آپ کے اعتماد اور تعاون کا بے حد شکریہ! 🤝
+🏪 *${shopName}*${shopPhone ? `\n📞 رابطہ: ${shopPhone}` : ''}`
 }
 
 let isSupabaseTableMissing = false
@@ -386,22 +431,30 @@ function saveLocalStorageQueue(items) {
 }
 
 /**
- * Returns true only if an outbox queue item represents a sold phone sale.
- * Strictly excludes all purchase memos and non-phone sales.
+ * Returns true only if an outbox queue item represents a sold phone sale or an exchange phone receipt.
+ * Strictly excludes standalone purchase memos and non-phone sales.
  */
 export function isSoldPhoneQueueItem(item) {
   if (!item) return false
   const type = String(item.message_type || '').toLowerCase()
-  if (type.includes('purchase')) return false
+  if (type.includes('purchase') && !type.includes('exchange')) return false
 
-  if (type === 'phone_sale_receipt') return true
-  if (item.reference_data?.has_phone) return true
+  if (
+    type === 'phone_sale_receipt' ||
+    type === 'phone_exchange_receipt' ||
+    type === 'exchange_receipt' ||
+    type === 'exchange'
+  ) {
+    return true
+  }
+
+  if (item.reference_data?.has_phone || item.reference_data?.is_exchange) return true
   return false
 }
 
 /**
  * Enqueues a message into the WhatsApp Queue (Supabase + Dexie + LocalStorage fallback).
- * Restricted strictly to sold phones. Purchases and non-phone sales are rejected.
+ * Restricted strictly to sold phones and exchange phones. Standalone purchases and non-phone sales are rejected.
  */
 export async function enqueueWhatsAppMessage({
   shop_id,
@@ -414,16 +467,25 @@ export async function enqueueWhatsAppMessage({
   created_by = null
 }) {
   const type = String(message_type || '').toLowerCase()
-  // Reject all purchases
-  if (type.includes('purchase')) {
+  // Reject standalone purchases
+  if (type.includes('purchase') && !type.includes('exchange')) {
     console.warn('enqueueWhatsAppMessage: Purchases are not permitted in WhatsApp Outbox')
     return { success: false, ignored: true, reason: 'Purchases excluded from WhatsApp outbox' }
   }
 
-  // Reject non-phone sales
-  if (type !== 'phone_sale_receipt' && !reference_data?.has_phone) {
-    console.warn('enqueueWhatsAppMessage: Only sold phone entries are permitted in WhatsApp Outbox')
-    return { success: false, ignored: true, reason: 'Only sold phones allowed in WhatsApp outbox' }
+  // Reject non-phone sales and non-exchange items
+  const isAllowed = (
+    type === 'phone_sale_receipt' ||
+    type === 'phone_exchange_receipt' ||
+    type === 'exchange_receipt' ||
+    type === 'exchange' ||
+    Boolean(reference_data?.has_phone) ||
+    Boolean(reference_data?.is_exchange)
+  )
+
+  if (!isAllowed) {
+    console.warn('enqueueWhatsAppMessage: Only sold phone and exchange entries are permitted in WhatsApp Outbox')
+    return { success: false, ignored: true, reason: 'Only sold phones and exchange allowed in WhatsApp outbox' }
   }
 
   const cleanedPhone = cleanPakistanPhone(recipient_phone)
@@ -482,7 +544,7 @@ export async function enqueueWhatsAppMessage({
           lastTableCheckTime = Date.now()
         }
       }
-    } catch (err) {
+    } catch (_err) {
       isSupabaseTableMissing = true
       lastTableCheckTime = Date.now()
     }

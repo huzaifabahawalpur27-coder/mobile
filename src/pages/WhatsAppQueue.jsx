@@ -217,8 +217,23 @@ export default function WhatsAppQueue() {
     loadQueue()
   }
 
-  // Render type badge (Sold Phone Receipts only)
-  const renderTypeBadge = () => {
+  // Render type badge (Sold Phone Receipts & Exchange Memos)
+  const renderTypeBadge = (messageType, referenceData) => {
+    const isExchange =
+      messageType === 'phone_exchange_receipt' ||
+      messageType === 'exchange_receipt' ||
+      messageType === 'exchange' ||
+      Boolean(referenceData?.is_exchange)
+
+    if (isExchange) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200/50">
+          <RefreshCw size={12} />
+          <span>Exchange Phone Receipt</span>
+        </span>
+      )
+    }
+
     return (
       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200/50">
         <Smartphone size={12} />
@@ -239,7 +254,7 @@ export default function WhatsAppQueue() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
-                  WhatsApp Outbox (Sold Phones)
+                  WhatsApp Outbox (Sold & Exchange Phones)
                 </h1>
                 {pendingCount > 0 && (
                   <span className="px-2 py-0.5 text-xs font-black bg-red-500 text-white rounded-full animate-pulse shadow-sm">
@@ -248,7 +263,7 @@ export default function WhatsAppQueue() {
                 )}
               </div>
               <p className="text-xs text-[#86868b] dark:text-[#98989d]">
-                1-tap mobile dispatch for customer sold phone receipts & greetings
+                1-tap mobile dispatch for customer sold phone receipts & exchange memos
               </p>
             </div>
           </div>
@@ -380,7 +395,7 @@ export default function WhatsAppQueue() {
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mx-auto leading-relaxed">
             {filterTab === 'pending'
-              ? 'When you sell a phone on the POS, customer receipts and greetings will automatically appear here for 1-tap mobile sending.'
+              ? 'When you sell or exchange a phone on the POS, customer receipts and greetings will automatically appear here for 1-tap mobile sending.'
               : 'Sent messages history will be archived here.'}
           </p>
         </div>
@@ -412,7 +427,7 @@ export default function WhatsAppQueue() {
                       <span className="font-bold text-sm sm:text-base text-gray-900 dark:text-white">
                         {item.recipient_name || 'Customer'}
                       </span>
-                      {renderTypeBadge(item.message_type)}
+                      {renderTypeBadge(item.message_type, item.reference_data)}
                     </div>
                     <div className="flex items-center gap-2 text-xs font-mono font-medium text-gray-600 dark:text-gray-400">
                       <span>📱 +{item.recipient_phone}</span>
@@ -420,7 +435,9 @@ export default function WhatsAppQueue() {
                         <>
                           <span>•</span>
                           <span className="font-semibold text-gray-800 dark:text-gray-300">
-                            INV-{item.reference_id.slice(-6).toUpperCase()}
+                            {item.message_type?.includes('exchange') || item.reference_data?.is_exchange
+                              ? (item.reference_id.startsWith('EXC-') ? item.reference_id : `EXC-${item.reference_id.slice(-6).toUpperCase()}`)
+                              : `INV-${item.reference_id.slice(-6).toUpperCase()}`}
                           </span>
                         </>
                       )}
