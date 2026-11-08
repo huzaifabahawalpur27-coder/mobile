@@ -11,11 +11,14 @@ import {
   RefreshCw,
   Barcode,
   Plus,
-  Truck
+  Truck,
+  Boxes
 } from 'lucide-react'
 import { supabase } from '../services/supabase'
 import { db, addToSyncQueue } from '../services/db'
 import { recordAuditLog } from '../services/auditService'
+import ProductConversionModal from './ProductConversionModal'
+import BatchManagementModal from './BatchManagementModal'
 
 const PHONE_STORAGES = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB']
 const PHONE_CONDITIONS = ['Brand New', 'Used - Like New', 'Used - Good', 'Used - Fair', 'Refurbished', 'Damaged']
@@ -74,6 +77,8 @@ export default function EditProductModal({
   // Submission State
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [showConversionModal, setShowConversionModal] = useState(false)
+  const [showBatchModal, setShowBatchModal] = useState(false)
 
   useEffect(() => {
     if (brands && brands.length > 0) {
@@ -752,9 +757,33 @@ export default function EditProductModal({
 
               {/* Inventory Management & Status */}
               <div className="p-4 bg-gray-50/70 dark:bg-slate-800/40 rounded-xl border border-gray-200 dark:border-slate-800 space-y-3">
-                <h3 className="font-black text-xs uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
-                  <Layers size={14} /> Stock & Visibility (اسٹاک کنٹرول)
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-black text-xs uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+                    <Layers size={14} /> Stock & Visibility (اسٹاک کنٹرول)
+                  </h3>
+
+                  {!isPhone && (
+                    <div>
+                      {product?.inventory_mode === 'batch_tracked' ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowBatchModal(true)}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <Boxes size={12} /> Manage FIFO Batches
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setShowConversionModal(true)}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-emerald-700 hover:bg-emerald-50 border border-dashed border-emerald-400 flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <Boxes size={12} /> Convert to FIFO Batches
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
@@ -838,6 +867,24 @@ export default function EditProductModal({
           </button>
         </div>
       </div>
+
+      {/* FIFO Batch Conversion & Management Modals */}
+      <ProductConversionModal
+        isOpen={showConversionModal}
+        onClose={() => setShowConversionModal(false)}
+        product={product}
+        userShopId={shopId || product?.shop_id}
+        onSuccess={() => {
+          if (onSaveSuccess) onSaveSuccess()
+        }}
+      />
+
+      <BatchManagementModal
+        isOpen={showBatchModal}
+        onClose={() => setShowBatchModal(false)}
+        product={product}
+        userShopId={shopId || product?.shop_id}
+      />
     </div>
   )
 }

@@ -441,7 +441,13 @@ function Purchases() {
       await db.purchases.put(purchase)
       await db.purchase_items.bulkPut(resItems)
 
-      // 3. Update Product Stock and Cost Price (online + local cache)
+      // 3. Update Product Stock and Cost Price (online + local cache) & Create Batches
+      let isBatchCostingOn = false
+      try {
+        const s = JSON.parse(localStorage.getItem(`shop_settings_${user.shop_id}`) || '{}')
+        isBatchCostingOn = Boolean(s.batch_costing_enabled)
+      } catch (_) {}
+
       for (const item of cart) {
         const newStock = item.stock_quantity + item.qty
         await supabase.from('products')
@@ -452,6 +458,40 @@ function Purchases() {
           .eq('id', item.id)
         // Mirror to local DB so Inventory shows accurate stock immediately
         await db.products.update(item.id, { stock_quantity: newStock, cost_price: item.purchase_price })
+
+        // If batch costing is enabled and item is batch_tracked, create lot batch
+        if (isBatchCostingOn && item.inventory_mode === 'batch_tracked') {
+          const matchedItem = (resItems || []).find(ri => String(ri.product_id) === String(item.id))
+          const cleanSku = (item.sku || `PRD${item.id}`).replace(/[^a-zA-Z0-9_-]/g, '') || `PRD${item.id}`
+          const batchNo = `BT-${cleanSku}-${purchase.id || Date.now().toString().slice(-4)}`
+
+          const batchData = {
+            shop_id: user.shop_id,
+            product_id: toIntOrNull(item.id),
+            supplier_id: toIntOrNull(supplierId),
+            purchase_id: purchase.id,
+            purchase_item_id: matchedItem?.id || null,
+            batch_no: batchNo,
+            purchase_date: new Date().toISOString(),
+            qty_received: item.qty,
+            qty_remaining: item.qty,
+            original_unit_cost: item.purchase_price,
+            current_unit_cost: item.purchase_price,
+            source: 'purchase',
+            status: 'active',
+            notes: `Purchase invoice #${purchase.id}`,
+            created_at: new Date().toISOString()
+          }
+
+          try {
+            const { data: savedBatch } = await supabase.from('stock_batches').insert([batchData]).select().single()
+            if (savedBatch && db.stock_batches) {
+              await db.stock_batches.put(savedBatch).catch(() => {})
+            }
+          } catch (batchErr) {
+            console.warn('Batch creation error for product ' + item.id, batchErr)
+          }
+        }
       }
 
       // 4. Update Supplier Balance if credit component exists

@@ -30,7 +30,8 @@ import {
   Eye,
   Upload,
   AlertTriangle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Boxes
 } from 'lucide-react'
 import { useTheme, THEME_STYLES } from '../context/ThemeContext'
 import { getBankAccounts } from '../services/bankService'
@@ -83,7 +84,9 @@ function Settings() {
       pricing_mode: 'hidden',
       custom_price_label: '',
       tax_number: '',
-      pos_layout: 'two_stage'
+      pos_layout: 'two_stage',
+      batch_costing_enabled: parsedSaved?.batch_costing_enabled || false,
+      costing_method: parsedSaved?.costing_method || 'fifo'
     }
   })
 
@@ -279,7 +282,9 @@ function Settings() {
         pricing_mode:         data.pricing_mode         || saved.pricing_mode         || prev.pricing_mode         || 'hidden',
         custom_price_label:   data.custom_price_label   || saved.custom_price_label   || prev.custom_price_label   || '',
         tax_number:           data.tax_number           || saved.tax_number           || prev.tax_number           || '',
-        pos_layout:           data.pos_layout           || saved.pos_layout           || prev.pos_layout           || 'two_stage'
+        pos_layout:           data.pos_layout           || saved.pos_layout           || prev.pos_layout           || 'two_stage',
+        batch_costing_enabled: data.batch_costing_enabled !== undefined ? Boolean(data.batch_costing_enabled) : (saved.batch_costing_enabled !== undefined ? Boolean(saved.batch_costing_enabled) : (prev.batch_costing_enabled || false)),
+        costing_method:       data.costing_method       || saved.costing_method       || prev.costing_method       || 'fifo'
       }
 
       if (sid) {
@@ -376,6 +381,16 @@ function Settings() {
       })
       if (error) throw error
       if (rpcResult && !rpcResult.success) throw new Error(rpcResult.error || 'Update failed')
+
+      // Sync batch costing settings directly to shops table
+      if (form.batch_costing_enabled !== undefined) {
+        try {
+          await supabase.from('shops').update({
+            batch_costing_enabled: Boolean(form.batch_costing_enabled),
+            costing_method: form.costing_method || 'fifo'
+          }).eq('id', sid)
+        } catch (_) {}
+      }
 
       await db.shops.put({ ...fullSettings, id: sid })
       window.dispatchEvent(new Event('storage'))
@@ -826,6 +841,51 @@ function Settings() {
                         placeholder="e.g. Tag Price / MSRP"
                         className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                       />
+                    </div>
+                  )}
+                </div>
+
+                {/* ─── FIFO Batch Inventory Costing Toggle ─── */}
+                <div className="p-4 bg-gradient-to-r from-emerald-50/60 to-teal-50/40 dark:from-emerald-950/20 dark:to-teal-950/10 rounded-2xl border border-emerald-200 dark:border-emerald-800/50 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                        <Boxes size={18} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">
+                            Batch-Based FIFO Inventory Costing (Lots)
+                          </h3>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            form.batch_costing_enabled 
+                              ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' 
+                              : 'bg-gray-100 dark:bg-slate-800 text-gray-500 border border-gray-200 dark:border-slate-700'
+                          }`}>
+                            {form.batch_costing_enabled ? 'Active (FIFO)' : 'Disabled (Legacy)'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                          Enables lot-based First-In First-Out costing for non-serialized accessories. Each purchase creates a distinct lot, and sales consume oldest lots first for exact profit and inventory valuation.
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 self-start sm:self-center">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(form.batch_costing_enabled)}
+                        onChange={e => setForm({ ...form, batch_costing_enabled: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-600"></div>
+                    </label>
+                  </div>
+
+                  {form.batch_costing_enabled && (
+                    <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-800/40 flex flex-wrap items-center justify-between text-[11px] text-emerald-800 dark:text-emerald-300">
+                      <span>Costing Strategy: <strong>First-In First-Out (FIFO)</strong></span>
+                      <span className="text-gray-500 dark:text-slate-400">Products can be converted individually from the Products screen</span>
                     </div>
                   )}
                 </div>

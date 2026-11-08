@@ -11,6 +11,9 @@ import BarcodeLabelModal from '../components/BarcodeLabelModal'
 import ProductDetailModal from '../components/ProductDetailModal'
 import EditPriceModal from '../components/EditPriceModal'
 import EditProductModal from '../components/EditProductModal'
+import ProductConversionModal from '../components/ProductConversionModal'
+import BatchManagementModal from '../components/BatchManagementModal'
+import { Boxes } from 'lucide-react'
 import { hasFeature } from '../utils/featureGate'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 
@@ -47,6 +50,11 @@ function Products() {
   const [showBarcodeModal, setShowBarcodeModal] = useState(false)
   const [barcodeModalProduct, setBarcodeModalProduct] = useState(null)
 
+  // FIFO Batch Costing Modals
+  const [convertProduct, setConvertProduct] = useState(null)
+  const [batchManageProduct, setBatchManageProduct] = useState(null)
+  const [batchCostingEnabled, setBatchCostingEnabled] = useState(false)
+
   // Import preview state
   const [showImportPreview, setShowImportPreview] = useState(false)
   const [importPreviewRows, setImportPreviewRows] = useState([])
@@ -63,6 +71,13 @@ function Products() {
   useEffect(() => {
     if (user?.shop_id) {
       fetchProducts()
+
+      // Read batch costing enabled status
+      const sid = user.shop_id
+      try {
+        const s = JSON.parse(localStorage.getItem(`shop_settings_${sid}`) || '{}')
+        setBatchCostingEnabled(Boolean(s.batch_costing_enabled))
+      } catch (_) {}
 
       const handleSynced = () => fetchProducts()
       window.addEventListener('products_reconciled', handleSynced)
@@ -1050,9 +1065,13 @@ function Products() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
-                          isPhone ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                          isPhone 
+                            ? 'bg-purple-100 text-purple-800 border border-purple-200' 
+                            : item.inventory_mode === 'batch_tracked'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : 'bg-blue-100 text-blue-800 border border-blue-200'
                         }`}>
-                          {isPhone ? '📱 Phone' : '📦 Product'}
+                          {isPhone ? '📱 Phone' : (item.inventory_mode === 'batch_tracked' ? '📦 FIFO Lot' : '📦 Product')}
                         </span>
                         <p className="truncate font-black text-gray-900 text-sm">{item.name}</p>
                       </div>
@@ -1136,6 +1155,24 @@ function Products() {
                       >
                         🏷️
                       </button>
+                      {!isPhone && item.inventory_mode === 'batch_tracked' && (
+                        <button
+                          onClick={() => setBatchManageProduct(item.raw_item || item)}
+                          title="Inspect Lots"
+                          className="rounded-lg bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-700 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Boxes size={12} /> Lots
+                        </button>
+                      )}
+                      {!isPhone && item.inventory_mode !== 'batch_tracked' && batchCostingEnabled && (
+                        <button
+                          onClick={() => setConvertProduct(item.raw_item || item)}
+                          title="Convert to FIFO"
+                          className="rounded-lg bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-700 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Boxes size={12} /> FIFO
+                        </button>
+                      )}
                       <button
                         onClick={() => setFullEditProduct(item.raw_item || item)}
                         title="Edit Full Product Details"
@@ -1289,11 +1326,29 @@ function Products() {
                       <td className="px-5 py-3.5">
                         <div className="font-bold text-gray-900 flex items-center gap-2">
                           <span>{item.name}</span>
-                          {isPhone && (
+                          {isPhone ? (
                             <span className="px-1.5 py-0.2 rounded text-[10px] font-black uppercase bg-purple-100 text-purple-800 border border-purple-200">
                               Phone
                             </span>
-                          )}
+                          ) : item.inventory_mode === 'batch_tracked' ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setBatchManageProduct(item.raw_item || item) }}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 flex items-center gap-1 cursor-pointer transition"
+                              title="FIFO Batch Tracked — Click to view lots"
+                            >
+                              <Boxes size={11} /> FIFO Batches
+                            </button>
+                          ) : batchCostingEnabled ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setConvertProduct(item.raw_item || item) }}
+                              className="px-1.5 py-0.5 rounded text-[9px] font-bold text-gray-500 hover:text-emerald-700 bg-gray-100 hover:bg-emerald-50 border border-dashed border-gray-300 hover:border-emerald-400 flex items-center gap-1 transition cursor-pointer"
+                              title="Click to convert to FIFO batch tracking"
+                            >
+                              <Boxes size={10} /> + FIFO
+                            </button>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {item.brand && (
@@ -1411,6 +1466,26 @@ function Products() {
                           >
                             🏷️
                           </button>
+                          {!isPhone && item.inventory_mode === 'batch_tracked' && (
+                            <button
+                              onClick={() => setBatchManageProduct(item.raw_item || item)}
+                              title="Inspect FIFO Lots & Valuations"
+                              className="px-2 py-1 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition font-bold text-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              <Boxes size={13} />
+                              <span>Lots</span>
+                            </button>
+                          )}
+                          {!isPhone && item.inventory_mode !== 'batch_tracked' && batchCostingEnabled && (
+                            <button
+                              onClick={() => setConvertProduct(item.raw_item || item)}
+                              title="Convert to FIFO Lot Tracking"
+                              className="px-2 py-1 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition font-bold text-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              <Boxes size={13} />
+                              <span>FIFO</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => setFullEditProduct(item.raw_item || item)}
                             title="Edit Full Product Details"
@@ -1681,6 +1756,27 @@ function Products() {
             }
             fetchProducts()
           }}
+        />
+      )}
+      {/* FIFO Batch Conversion & Management Modals */}
+      {convertProduct && (
+        <ProductConversionModal
+          isOpen={!!convertProduct}
+          onClose={() => setConvertProduct(null)}
+          product={convertProduct}
+          userShopId={user?.shop_id}
+          onSuccess={() => {
+            fetchProducts()
+          }}
+        />
+      )}
+
+      {batchManageProduct && (
+        <BatchManagementModal
+          isOpen={!!batchManageProduct}
+          onClose={() => setBatchManageProduct(null)}
+          product={batchManageProduct}
+          userShopId={user?.shop_id}
         />
       )}
     </div>
