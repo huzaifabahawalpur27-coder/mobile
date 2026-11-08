@@ -780,7 +780,7 @@ function POS() {
       id: `phone-${phone.id}`,
       phone_id: phone.id,
       item_type: 'phone',
-      name: `${phone.brand} ${phone.model} ${phone.storage || ''} ${phone.color || ''}`.trim(),
+      name: `${phone.brand} ${phone.model} ${phone.storage || ''} ${phone.color || ''}${phone.imei_1 ? ` [IMEI: ${phone.imei_1}]` : ''}`.trim(),
       brand: phone.brand,
       model: phone.model,
       imei_1: phone.imei_1,
@@ -1198,14 +1198,19 @@ function POS() {
             p_customer_phone: null,
             p_customer_whatsapp: null,
             p_branch_id: user?.branch_id || null,
-            p_items: cart.map(i => ({
-              phone_id: i.phone_id || null,
-              product_id: i.phone_id ? null : toIntOrNull(i.id),
-              name: i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone',
-              product_name: i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone',
-              price: i.custom_price,
-              quantity: i.qty
-            })),
+            p_items: cart.map(i => {
+              const imei = i.imei_1 || i.imei
+              const baseName = i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone'
+              const formattedName = imei && !baseName.includes(imei) ? `${baseName} [IMEI: ${imei}]` : baseName
+              return {
+                phone_id: i.phone_id || null,
+                product_id: i.phone_id ? null : toIntOrNull(i.id),
+                name: formattedName,
+                product_name: formattedName,
+                price: i.custom_price,
+                quantity: i.qty
+              }
+            }),
             p_total_amount: subtotal,
             p_discount: totalDiscount,
             p_net_amount: total,
@@ -1218,14 +1223,19 @@ function POS() {
           if (primaryRes.error && (primaryRes.error.code === 'PGRST202' || primaryRes.error.message?.includes('schema cache'))) {
             const fallbackRes = await supabase.rpc('process_phone_sale', {
               p_customer_id: toIntOrNull(customerId),
-              p_items: cart.map(i => ({
-              phone_id: i.phone_id || null,
-              product_id: i.phone_id ? null : toIntOrNull(i.id),
-              name: i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone',
-              product_name: i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone',
-              price: i.custom_price,
-              quantity: i.qty
-            })),
+              p_items: cart.map(i => {
+                const imei = i.imei_1 || i.imei
+                const baseName = i.name || `${i.brand || ''} ${i.model || ''}`.trim() || 'Mobile Phone'
+                const formattedName = imei && !baseName.includes(imei) ? `${baseName} [IMEI: ${imei}]` : baseName
+                return {
+                  phone_id: i.phone_id || null,
+                  product_id: i.phone_id ? null : toIntOrNull(i.id),
+                  name: formattedName,
+                  product_name: formattedName,
+                  price: i.custom_price,
+                  quantity: i.qty
+                }
+              }),
               p_total_amount: subtotal,
               p_discount: totalDiscount,
               p_net_amount: total,

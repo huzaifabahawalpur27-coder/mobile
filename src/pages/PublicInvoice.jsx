@@ -105,20 +105,24 @@ export default function PublicInvoice() {
                   logo_url: shopSettings.logo_url || localStorage.getItem(`shop_logo_${localSale.shop_id}`) || '',
                   warranty_terms: shopSettings.warranty_terms || ''
                 },
-                items: (localSale.sale_items || []).map(i => ({
-                  name: i.name || i.product_name || 'Item',
-                  brand: i.brand || '',
-                  model: i.model || '',
-                  storage: i.storage || '',
-                  color: i.color || '',
-                  condition: i.condition || '',
-                  pta_status: i.pta_status || '',
-                  imei_1: i.imei_1 || '',
-                  imei_2: i.imei_2 || '',
-                  quantity: i.quantity || i.qty || 1,
-                  unit_price: i.unit_price || i.custom_price || i.sale_price || 0,
-                  total: (i.quantity || 1) * (i.unit_price || i.custom_price || 0)
-                }))
+                items: (localSale.sale_items || []).map(i => {
+                  const snap = typeof i.imei_snapshot === 'object' && i.imei_snapshot !== null ? i.imei_snapshot : {}
+                  const rawSnapStr = typeof i.imei_snapshot === 'string' ? i.imei_snapshot : ''
+                  return {
+                    name: i.name || i.product_name || 'Item',
+                    brand: i.brand || snap.brand || '',
+                    model: i.model || snap.model || '',
+                    storage: i.storage || snap.storage || '',
+                    color: i.color || snap.color || '',
+                    condition: i.condition || snap.condition || '',
+                    pta_status: i.pta_status || snap.pta_status || '',
+                    imei_1: i.imei_1 || snap.imei_1 || i.imei || rawSnapStr || '',
+                    imei_2: i.imei_2 || snap.imei_2 || '',
+                    quantity: i.quantity || i.qty || 1,
+                    unit_price: i.unit_price || i.custom_price || i.sale_price || 0,
+                    total: (i.quantity || 1) * (i.unit_price || i.custom_price || 0)
+                  }
+                })
               }
 
               setInvoice(formatted)
@@ -476,25 +480,43 @@ export default function PublicInvoice() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {(invoice.items || []).map((item, idx) => {
-                      const name = item.name || `${item.brand || ''} ${item.model || 'Phone'}`.trim()
-                      const specs = [item.storage, item.color].filter(Boolean).join(', ')
-                      const imei1 = item.imei_1 ? `IMEI 1: ${item.imei_1}` : ''
-                      const imei2 = item.imei_2 ? `IMEI 2: ${item.imei_2}` : ''
-                      const imeiStr = [imei1, imei2].filter(Boolean).join(' | ')
-                      const conditionParts = [item.condition, item.pta_status].filter(Boolean).join(' • ')
+                      const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null
+                        ? item.imei_snapshot
+                        : {}
+                      const rawSnapStr = typeof item.imei_snapshot === 'string' ? item.imei_snapshot : ''
+
+                      const imei1 = item.imei_1 || snap.imei_1 || item.imei || rawSnapStr || ''
+                      const imei2 = item.imei_2 || snap.imei_2 || ''
+                      const rawName = item.name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`.trim()
+
+                      // Check if rawName already has the IMEI in it
+                      const hasImeiInName = Boolean(
+                        (imei1 && rawName.includes(imei1)) ||
+                        /\[(?:IMEI:?\s*)?[0-9]{14,18}\]/i.test(rawName) ||
+                        /\((?:IMEI:?\s*)?[0-9]{14,18}\)/i.test(rawName)
+                      )
+
+                      const imeiTag = !hasImeiInName && imei1
+                        ? (imei2 ? `[IMEI: ${imei1} / ${imei2}]` : `[IMEI: ${imei1}]`)
+                        : ''
+
+                      const specs = [item.storage || snap.storage, item.color || snap.color].filter(Boolean).join(', ')
+                      const conditionParts = [item.condition || snap.condition, item.pta_status || snap.pta_status].filter(Boolean).join(' • ')
 
                       return (
                         <tr key={idx} className="hover:bg-slate-50/50">
                           <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
                           <td className="py-3 px-3">
-                            <div className="font-bold text-slate-900 text-xs sm:text-sm">{name}</div>
-                            {specs && <div className="text-[11px] text-slate-500">{specs}</div>}
-                            {conditionParts && <div className="text-[10px] text-emerald-700 font-medium">{conditionParts}</div>}
-                            {imeiStr && (
-                              <div className="font-mono text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded mt-0.5 inline-block border border-slate-200/60">
-                                {imeiStr}
-                              </div>
-                            )}
+                            <div className="font-bold text-slate-900 text-xs sm:text-sm flex flex-wrap items-baseline gap-1.5">
+                              <span>{rawName}</span>
+                              {imeiTag && (
+                                <span className="font-mono text-[11px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  {imeiTag}
+                                </span>
+                              )}
+                            </div>
+                            {specs && <div className="text-[11px] text-slate-500 mt-0.5">{specs}</div>}
+                            {conditionParts && <div className="text-[10px] text-emerald-700 font-medium mt-0.5">{conditionParts}</div>}
                           </td>
                           <td className="py-3 px-2 text-center font-bold text-slate-700">
                             {item.quantity || 1}
@@ -524,18 +546,31 @@ export default function PublicInvoice() {
                   <span>Purchased Replacement Devices:</span>
                 </span>
                 <div className="border border-emerald-200 bg-emerald-50/30 rounded-xl p-3 space-y-2 text-xs">
-                  {(invoice.outgoing_items || []).map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-start border-b border-emerald-100 pb-2 last:border-b-0 last:pb-0">
-                      <div>
-                        <div className="font-bold text-slate-900">{item.product_name}</div>
-                        <div className="text-[11px] text-slate-500">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
-                        {item.imei_1 && <div className="font-mono text-[10px] text-slate-600">IMEI: {item.imei_1}</div>}
+                  {(invoice.outgoing_items || []).map((item, idx) => {
+                    const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
+                    const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
+                    const hasImeiInName = Boolean(imei1 && item.product_name && item.product_name.includes(imei1))
+                    const imeiTag = !hasImeiInName && imei1 ? `[IMEI: ${imei1}]` : ''
+
+                    return (
+                      <div key={idx} className="flex justify-between items-start border-b border-emerald-100 pb-2 last:border-b-0 last:pb-0">
+                        <div>
+                          <div className="font-bold text-slate-900 flex flex-wrap items-baseline gap-1.5">
+                            <span>{item.product_name}</span>
+                            {imeiTag && (
+                              <span className="font-mono text-[11px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                {imeiTag}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
+                        </div>
+                        <div className="font-mono font-bold text-slate-900 text-right">
+                          Rs. {Number(item.subtotal || item.price || 0).toLocaleString()}
+                        </div>
                       </div>
-                      <div className="font-mono font-bold text-slate-900 text-right">
-                        Rs. {Number(item.subtotal || item.price || 0).toLocaleString()}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                   <div className="flex justify-between items-center pt-1 font-bold text-xs text-slate-800">
                     <span>Total Purchase Amount:</span>
                     <span className="font-mono">Rs. {Number(invoice.sale_amount || 0).toLocaleString()}</span>
@@ -550,19 +585,32 @@ export default function PublicInvoice() {
                   <span>Traded-in / Exchanged Phones:</span>
                 </span>
                 <div className="border border-purple-200 bg-purple-50/30 rounded-xl p-3 space-y-2 text-xs">
-                  {(invoice.incoming_items || []).map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-start border-b border-purple-100 pb-2 last:border-b-0 last:pb-0">
-                      <div>
-                        <div className="font-bold text-slate-900">{item.product_name}</div>
-                        <div className="text-[11px] text-slate-500">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
-                        {item.imei_1 && <div className="font-mono text-[10px] text-slate-600">IMEI: {item.imei_1}</div>}
-                        {item.battery_health && <div className="text-[10px] text-emerald-700">Battery Health: {item.battery_health}%</div>}
+                  {(invoice.incoming_items || []).map((item, idx) => {
+                    const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
+                    const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
+                    const hasImeiInName = Boolean(imei1 && item.product_name && item.product_name.includes(imei1))
+                    const imeiTag = !hasImeiInName && imei1 ? `[IMEI: ${imei1}]` : ''
+
+                    return (
+                      <div key={idx} className="flex justify-between items-start border-b border-purple-100 pb-2 last:border-b-0 last:pb-0">
+                        <div>
+                          <div className="font-bold text-slate-900 flex flex-wrap items-baseline gap-1.5">
+                            <span>{item.product_name}</span>
+                            {imeiTag && (
+                              <span className="font-mono text-[11px] font-bold text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                {imeiTag}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
+                          {item.battery_health && <div className="text-[10px] text-emerald-700 mt-0.5">Battery Health: {item.battery_health}%</div>}
+                        </div>
+                        <div className="font-mono font-bold text-purple-900 text-right">
+                          Rs. {Number(item.assessed_value || item.subtotal || 0).toLocaleString()}
+                        </div>
                       </div>
-                      <div className="font-mono font-bold text-purple-900 text-right">
-                        Rs. {Number(item.assessed_value || item.subtotal || 0).toLocaleString()}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                   <div className="flex justify-between items-center pt-1 font-bold text-xs text-slate-800">
                     <span>Total Trade-in Credit:</span>
                     <span className="font-mono text-purple-900">- Rs. {Number(invoice.trade_in_credit || 0).toLocaleString()}</span>

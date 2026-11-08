@@ -153,15 +153,43 @@ BEGIN
         'items', COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
                 'id', si.id,
-                'name', COALESCE(si.product_name, p.name, ph.model, 'Phone / Accessory'),
-                'brand', COALESCE(ph.brand, ''),
-                'model', COALESCE(ph.model, ''),
-                'storage', COALESCE(ph.storage, ''),
-                'color', COALESCE(ph.color, ''),
-                'condition', COALESCE(ph.condition, ''),
-                'pta_status', COALESCE(ph.pta_status, ''),
-                'imei_1', COALESCE(si.imei_1, ph.imei_1, ''),
-                'imei_2', COALESCE(si.imei_2, ph.imei_2, ''),
+                'name', COALESCE(
+                    CASE 
+                        WHEN (si.imei_snapshot->>'imei_1') IS NOT NULL AND si.product_name NOT LIKE '%' || (si.imei_snapshot->>'imei_1') || '%'
+                        THEN si.product_name || ' [IMEI: ' || (si.imei_snapshot->>'imei_1') || ']'
+                        WHEN ph.imei_1 IS NOT NULL AND si.product_name NOT LIKE '%' || ph.imei_1 || '%'
+                        THEN si.product_name || ' [IMEI: ' || ph.imei_1 || ']'
+                        ELSE si.product_name
+                    END,
+                    p.name, 
+                    ph.model, 
+                    'Phone / Accessory'
+                ),
+                'brand', COALESCE(ph.brand, (si.imei_snapshot->>'brand'), ''),
+                'model', COALESCE(ph.model, (si.imei_snapshot->>'model'), ''),
+                'storage', COALESCE(ph.storage, (si.imei_snapshot->>'storage'), ''),
+                'color', COALESCE(ph.color, (si.imei_snapshot->>'color'), ''),
+                'condition', COALESCE(ph.condition, (si.imei_snapshot->>'condition'), ''),
+                'pta_status', COALESCE(ph.pta_status, (si.imei_snapshot->>'pta_status'), ''),
+                'imei_1', COALESCE(
+                    si.imei_1,
+                    CASE
+                        WHEN jsonb_typeof(si.imei_snapshot) = 'object' THEN si.imei_snapshot->>'imei_1'
+                        WHEN jsonb_typeof(si.imei_snapshot) = 'string' THEN trim(both '"' from si.imei_snapshot::text)
+                        ELSE NULL
+                    END,
+                    ph.imei_1,
+                    ''
+                ),
+                'imei_2', COALESCE(
+                    si.imei_2,
+                    CASE
+                        WHEN jsonb_typeof(si.imei_snapshot) = 'object' THEN si.imei_snapshot->>'imei_2'
+                        ELSE NULL
+                    END,
+                    ph.imei_2,
+                    ''
+                ),
                 'quantity', COALESCE(si.quantity, 1),
                 'unit_price', COALESCE(si.unit_price, si.price, si.sale_price, 0),
                 'total', COALESCE(si.subtotal, (COALESCE(si.quantity, 1) * COALESCE(si.unit_price, si.price, si.sale_price, 0)))
