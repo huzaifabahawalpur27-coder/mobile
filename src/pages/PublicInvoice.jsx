@@ -789,26 +789,47 @@ export default function PublicInvoice() {
       const tableRows = []
       if (!isExchange) {
         ;(invoice.items || []).forEach((item, idx) => {
-          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
+          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null
+            ? item.imei_snapshot
+            : (() => {
+                try { return JSON.parse(item.imei_snapshot || '{}') } catch (_) { return {} }
+              })()
+
           const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
           const imei2 = item.imei_2 || snap.imei_2 || ''
 
-          let cleanName = (item.name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`).trim()
-          let extractedImei = imei1
-          const imeiMatch = cleanName.match(/\[(?:IMEI:?\s*)?([0-9a-zA-Z\s/-]+)\]/i) || cleanName.match(/\((?:IMEI:?\s*)?([0-9a-zA-Z\s/-]+)\)/i)
-          if (imeiMatch) {
-            extractedImei = extractedImei || imeiMatch[1].trim()
-            cleanName = cleanName.replace(imeiMatch[0], '').trim()
+          let cleanName = (item.name || item.product_name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`).trim()
+          cleanName = cleanName
+            .replace(/\[(?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\]/gi, '')
+            .replace(/\((?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\)/gi, '')
+            .trim()
+
+          // Normalize Condition & Phone Status
+          const rawCond = (item.condition || snap.condition || '').toLowerCase()
+          const condText = rawCond.includes('brand') || rawCond === 'new'
+            ? 'Brand New'
+            : (rawCond.includes('used') ? 'Used / Pre-Owned' : (item.condition || snap.condition || ''))
+
+          const rawPta = (item.pta_status || snap.pta_status || '').toLowerCase()
+          const ptaText = rawPta === 'approved' || rawPta.includes('official')
+            ? 'Official PTA Approved'
+            : (rawPta === 'non_pta' || rawPta.includes('non') ? 'Non-PTA' : (item.pta_status || snap.pta_status || ''))
+
+          const statusParts = [condText, ptaText].filter(Boolean).join(' • ')
+          const specsParts = [item.storage || snap.storage, item.color || snap.color].filter(Boolean).join(', ')
+
+          const cellLines = [cleanName]
+          if (imei1) {
+            cellLines.push(imei2 ? `IMEI: ${imei1} / ${imei2}` : `IMEI: ${imei1}`)
+          }
+          if (specsParts && !cleanName.includes(specsParts)) {
+            cellLines.push(`Specs: ${specsParts}`)
+          }
+          if (statusParts) {
+            cellLines.push(`Status: ${statusParts}`)
           }
 
-          const specs = [item.storage || snap.storage, item.color || snap.color, item.condition || snap.condition, item.pta_status || snap.pta_status].filter(Boolean).join(' • ')
-          const specsLine = specs ? ` (${specs})` : ''
-          let imeiLine = ''
-          if (extractedImei) {
-            imeiLine = imei2 ? `\n[IMEI: ${extractedImei} / ${imei2}]` : `\n[IMEI: ${extractedImei}]`
-          }
-
-          const fullName = `${cleanName}${specsLine}${imeiLine}`
+          const fullName = cellLines.join('\n')
 
           const qty = Number(item.quantity || 1)
           const price = Number(item.unit_price || 0)
@@ -824,22 +845,60 @@ export default function PublicInvoice() {
         })
       } else {
         ;(invoice.outgoing_items || []).forEach((item, idx) => {
-          const imeiStr = item.imei_1 ? `\n[IMEI: ${item.imei_1}]` : ''
-          const specs = [item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')
+          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null
+            ? item.imei_snapshot
+            : (() => { try { return JSON.parse(item.imei_snapshot || '{}') } catch (_) { return {} } })()
+          const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
+          const imei2 = item.imei_2 || snap.imei_2 || ''
+
+          let cleanName = (item.product_name || `${snap.brand || ''} ${snap.model || 'Device'}`).trim()
+          cleanName = cleanName.replace(/\[(?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\]/gi, '').trim()
+
+          const rawCond = (item.condition || snap.condition || '').toLowerCase()
+          const condText = rawCond.includes('brand') || rawCond === 'new' ? 'Brand New' : (rawCond.includes('used') ? 'Used / Pre-Owned' : (item.condition || snap.condition || ''))
+          const rawPta = (item.pta_status || snap.pta_status || '').toLowerCase()
+          const ptaText = rawPta === 'approved' || rawPta.includes('official') ? 'Official PTA Approved' : (rawPta === 'non_pta' || rawPta.includes('non') ? 'Non-PTA' : (item.pta_status || snap.pta_status || ''))
+          const statusParts = [condText, ptaText].filter(Boolean).join(' • ')
+          const specsParts = [item.storage || snap.storage, item.color || snap.color].filter(Boolean).join(', ')
+
+          const cellLines = [`Purchased: ${cleanName}`]
+          if (imei1) cellLines.push(imei2 ? `IMEI: ${imei1} / ${imei2}` : `IMEI: ${imei1}`)
+          if (specsParts && !cleanName.includes(specsParts)) cellLines.push(`Specs: ${specsParts}`)
+          if (statusParts) cellLines.push(`Status: ${statusParts}`)
+
           tableRows.push([
             String(idx + 1),
-            `Purchased: ${item.product_name}${imeiStr} • ${specs}`,
+            cellLines.join('\n'),
             '1',
             `Rs. ${Number(item.subtotal || item.price || 0).toLocaleString()}`,
             `Rs. ${Number(item.subtotal || item.price || 0).toLocaleString()}`
           ])
         })
         ;(invoice.incoming_items || []).forEach((item) => {
-          const imeiStr = item.imei_1 ? `\n[IMEI: ${item.imei_1}]` : ''
-          const specs = [item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')
+          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null
+            ? item.imei_snapshot
+            : (() => { try { return JSON.parse(item.imei_snapshot || '{}') } catch (_) { return {} } })()
+          const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
+          const imei2 = item.imei_2 || snap.imei_2 || ''
+
+          let cleanName = (item.product_name || `${snap.brand || ''} ${snap.model || 'Device'}`).trim()
+          cleanName = cleanName.replace(/\[(?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\]/gi, '').trim()
+
+          const rawCond = (item.condition || snap.condition || '').toLowerCase()
+          const condText = rawCond.includes('brand') || rawCond === 'new' ? 'Brand New' : (rawCond.includes('used') ? 'Used / Pre-Owned' : (item.condition || snap.condition || ''))
+          const rawPta = (item.pta_status || snap.pta_status || '').toLowerCase()
+          const ptaText = rawPta === 'approved' || rawPta.includes('official') ? 'Official PTA Approved' : (rawPta === 'non_pta' || rawPta.includes('non') ? 'Non-PTA' : (item.pta_status || snap.pta_status || ''))
+          const statusParts = [condText, ptaText].filter(Boolean).join(' • ')
+          const specsParts = [item.storage || snap.storage, item.color || snap.color].filter(Boolean).join(', ')
+
+          const cellLines = [`Trade-in: ${cleanName}`]
+          if (imei1) cellLines.push(imei2 ? `IMEI: ${imei1} / ${imei2}` : `IMEI: ${imei1}`)
+          if (specsParts && !cleanName.includes(specsParts)) cellLines.push(`Specs: ${specsParts}`)
+          if (statusParts) cellLines.push(`Status: ${statusParts}`)
+
           tableRows.push([
             'Trade-in',
-            `Exchanged: ${item.product_name}${imeiStr} • ${specs}`,
+            cellLines.join('\n'),
             '1',
             `- Rs. ${Number(item.assessed_value || item.subtotal || 0).toLocaleString()}`,
             `- Rs. ${Number(item.assessed_value || item.subtotal || 0).toLocaleString()}`
@@ -896,23 +955,27 @@ export default function PublicInvoice() {
         totalsRows.push({ label: 'Remaining Balance:', val: `Rs. ${balanceDue.toLocaleString()}`, color: [220, 38, 38], bold: true })
       }
 
-      const totalsBoxHeight = (totalsRows.length * 5.2) + 4
+      const totalsBoxHeight = (totalsRows.length * 5.6) + 8
       pdf.setFillColor(248, 250, 252)
       pdf.setDrawColor(226, 232, 240)
       pdf.roundedRect(totalsBoxX, currentY, totalsBoxWidth, totalsBoxHeight, 2, 2, 'FD')
 
-      let rowY = currentY + 4.5
+      let rowY = currentY + 5.5
       totalsRows.forEach((r) => {
         if (r.isNet) {
+          // Draw subtle divider line ABOVE Net Total with clear spacing
+          const lineY = rowY - 1.8
           pdf.setDrawColor(226, 232, 240)
-          pdf.line(totalsBoxX + 3, rowY - 1.5, totalsBoxX + totalsBoxWidth - 3, rowY - 1.5)
+          pdf.setLineWidth(0.3)
+          pdf.line(totalsBoxX + 4, lineY, totalsBoxX + totalsBoxWidth - 4, lineY)
+          rowY += 4.5 // Move Net Total comfortably down below the divider line
         }
         pdf.setFont('helvetica', r.bold ? 'bold' : 'normal')
         pdf.setFontSize(r.isNet ? 9.5 : 8)
         pdf.setTextColor(...r.color)
         pdf.text(r.label, totalsBoxX + 4, rowY)
         pdf.text(r.val, totalsBoxX + totalsBoxWidth - 4, rowY, { align: 'right' })
-        rowY += 5.2
+        rowY += 5.4
       })
 
       currentY += totalsBoxHeight + 8
@@ -1151,52 +1214,71 @@ export default function PublicInvoice() {
                     {(invoice.items || []).map((item, idx) => {
                       const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null
                         ? item.imei_snapshot
-                        : {}
-                      const rawSnapStr = typeof item.imei_snapshot === 'string' ? item.imei_snapshot : ''
+                        : (() => {
+                            try { return JSON.parse(item.imei_snapshot || '{}') } catch (_) { return {} }
+                          })()
+                      const rawSnapStr = typeof item.imei_snapshot === 'string' && !item.imei_snapshot.startsWith('{') ? item.imei_snapshot : ''
 
                       const imei1 = item.imei_1 || snap.imei_1 || item.imei || rawSnapStr || ''
                       const imei2 = item.imei_2 || snap.imei_2 || ''
-                      const rawName = item.name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`.trim()
 
-                      // Check if rawName already has the IMEI in it
-                      const hasImeiInName = Boolean(
-                        (imei1 && rawName.includes(imei1)) ||
-                        /\[(?:IMEI:?\s*)?[0-9]{14,18}\]/i.test(rawName) ||
-                        /\((?:IMEI:?\s*)?[0-9]{14,18}\)/i.test(rawName)
-                      )
+                      let cleanName = (item.name || item.product_name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`).trim()
+                      cleanName = cleanName
+                        .replace(/\[(?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\]/gi, '')
+                        .replace(/\((?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\)/gi, '')
+                        .trim()
 
-                      const imeiTag = !hasImeiInName && imei1
-                        ? (imei2 ? `[IMEI: ${imei1} / ${imei2}]` : `[IMEI: ${imei1}]`)
-                        : ''
+                      const rawCond = (item.condition || snap.condition || '').toLowerCase()
+                      const condText = rawCond.includes('brand') || rawCond === 'new'
+                        ? 'Brand New'
+                        : (rawCond.includes('used') ? 'Used / Pre-Owned' : (item.condition || snap.condition || ''))
 
+                      const rawPta = (item.pta_status || snap.pta_status || '').toLowerCase()
+                      const ptaText = rawPta === 'approved' || rawPta.includes('official')
+                        ? 'Official PTA Approved'
+                        : (rawPta === 'non_pta' || rawPta.includes('non') ? 'Non-PTA' : (item.pta_status || snap.pta_status || ''))
+
+                      const statusParts = [condText, ptaText].filter(Boolean).join(' • ')
                       const specs = [item.storage || snap.storage, item.color || snap.color].filter(Boolean).join(', ')
-                      const conditionParts = [item.condition || snap.condition, item.pta_status || snap.pta_status].filter(Boolean).join(' • ')
 
                       return (
                         <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }} className="hover:bg-slate-50">
-                          <td style={{ color: '#94a3b8' }} className="py-3 px-3 font-mono text-[11px]">{idx + 1}</td>
-                          <td className="py-3 px-3">
-                            <div style={{ color: '#0f172a' }} className="font-bold text-xs sm:text-sm flex flex-wrap items-baseline gap-1.5">
-                              <span>{rawName}</span>
-                              {imeiTag && (
+                          <td style={{ color: '#94a3b8' }} className="py-3 px-3 font-mono text-[11px] align-top">{idx + 1}</td>
+                          <td className="py-3 px-3 space-y-1">
+                            <div style={{ color: '#0f172a' }} className="font-bold text-xs sm:text-sm">
+                              {cleanName}
+                            </div>
+                            {imei1 && (
+                              <div className="pt-0.5">
                                 <span
                                   style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }}
-                                  className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded"
+                                  className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1.5"
                                 >
-                                  {imeiTag}
+                                  <span>📱</span>
+                                  <span>IMEI: {imei2 ? `${imei1} / ${imei2}` : imei1}</span>
                                 </span>
-                              )}
-                            </div>
-                            {specs && <div style={{ color: '#64748b' }} className="text-[11px] mt-0.5">{specs}</div>}
-                            {conditionParts && <div style={{ color: '#047857' }} className="text-[10px] font-medium mt-0.5">{conditionParts}</div>}
+                              </div>
+                            )}
+                            {specs && !cleanName.includes(specs) && (
+                              <div style={{ color: '#64748b' }} className="text-[11px]">
+                                <span className="font-medium text-slate-400">Specs: </span>
+                                <span>{specs}</span>
+                              </div>
+                            )}
+                            {statusParts && (
+                              <div style={{ color: '#047857' }} className="text-[10.5px] font-bold flex items-center gap-1.5 pt-0.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                                <span>Status: {statusParts}</span>
+                              </div>
+                            )}
                           </td>
-                          <td style={{ color: '#334155' }} className="py-3 px-2 text-center font-bold">
+                          <td style={{ color: '#334155' }} className="py-3 px-2 text-center font-bold align-top">
                             {item.quantity || 1}
                           </td>
-                          <td style={{ color: '#334155' }} className="py-3 px-3 text-right font-mono font-medium">
+                          <td style={{ color: '#334155' }} className="py-3 px-3 text-right font-mono font-medium align-top">
                             Rs. {Number(item.unit_price || 0).toLocaleString()}
                           </td>
-                          <td style={{ color: '#0f172a' }} className="py-3 px-3 text-right font-mono font-bold">
+                          <td style={{ color: '#0f172a' }} className="py-3 px-3 text-right font-mono font-bold align-top">
                             Rs. {Number(item.total || ((item.quantity || 1) * (item.unit_price || 0))).toLocaleString()}
                           </td>
                         </tr>
