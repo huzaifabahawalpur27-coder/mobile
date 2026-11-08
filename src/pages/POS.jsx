@@ -16,7 +16,8 @@ import {
   buildPhoneSaleReceiptText,
   DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
   getShopWarrantyTerms,
-  isLegacyEnglishInvoiceTemplate
+  isLegacyEnglishInvoiceTemplate,
+  generateRandomInvoiceToken
 } from '../services/whatsappQueueService'
 import { playError } from '../utils/soundEffects'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
@@ -1149,10 +1150,12 @@ function POS() {
       ? 'quotation'
       : (finalPayments.length > 1 ? 'split' : singleMethod)
 
-    // Generate Sale Object
+    // Generate Sale Object with unguessable random invoice_token
     const idempotencyKey = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
       : (Date.now() + '-' + Math.random().toString(36).substring(2))
+    const invoiceToken = generateRandomInvoiceToken()
+    const publicInvoiceNo = `INV-${invoiceToken}`
     const hasPhoneItems = cart.some(i => i.item_type === 'phone')
 
     const saleData = {
@@ -1171,6 +1174,8 @@ function POS() {
       sale_type: saleType,
       status: 'completed',
       idempotency_key: idempotencyKey,
+      invoice_token: invoiceToken,
+      invoice_number: publicInvoiceNo,
       created_by: user?.username || user?.email || user?.name || 'cashier',
       created_at: new Date().toISOString()
     }
@@ -1640,8 +1645,11 @@ function POS() {
             : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
           warranty_terms: (sid ? localStorage.getItem(`shop_warranty_${sid}`) : null) || form.warranty_terms || getShopWarrantyTerms(sid)
         }
+        const token = finalSale?.invoice_token || invoiceToken || generateRandomInvoiceToken()
+        const publicInvoiceNo = `INV-${token}`
+        const saleWithToken = { ...finalSale, invoice_token: token, invoice_number: publicInvoiceNo }
         const msgText = buildPhoneSaleReceiptText({
-          sale: finalSale,
+          sale: saleWithToken,
           customer,
           items: cart,
           shopInfo,
@@ -1652,13 +1660,16 @@ function POS() {
           recipient_name: customer.name || walkInName || 'Customer',
           recipient_phone: customer.phone,
           message_type: 'phone_sale_receipt',
-          reference_id: finalSale?.id,
+          reference_id: publicInvoiceNo,
           reference_data: {
             total,
             paid: tendered,
             change: changeDueVal,
             items_count: cart.length,
-            has_phone: true
+            has_phone: true,
+            invoice_token: token,
+            invoice_number: publicInvoiceNo,
+            sale_id: finalSale?.id
           },
           message_text: msgText,
           created_by: user?.id
@@ -1731,8 +1742,15 @@ function POS() {
     }
 
     // Generate invoice text using custom template or professional defaults with warranty
+    const token = lastReceipt.sale?.invoice_token || generateRandomInvoiceToken()
+    const publicInvoiceNo = `INV-${token}`
+    const saleWithToken = {
+      ...(lastReceipt.sale || lastReceipt),
+      invoice_token: token,
+      invoice_number: publicInvoiceNo
+    }
     const msg = buildPhoneSaleReceiptText({
-      sale: lastReceipt.sale || lastReceipt,
+      sale: saleWithToken,
       customer: { ...(lastReceipt.customer || {}), name: customerName, phone: customerPhone },
       items: lastReceipt.items || [],
       shopInfo,
@@ -1755,13 +1773,16 @@ function POS() {
       recipient_name: customerName,
       recipient_phone: customerPhone,
       message_type: 'phone_sale_receipt',
-      reference_id: lastReceipt.sale?.id || null,
+      reference_id: publicInvoiceNo,
       reference_data: {
         total: lastReceipt.total,
         paid: lastReceipt.receivedAmount,
         change: lastReceipt.changeDue,
         items_count: (lastReceipt.items || []).length,
-        has_phone: true
+        has_phone: true,
+        invoice_token: token,
+        invoice_number: publicInvoiceNo,
+        sale_id: lastReceipt.sale?.id
       },
       message_text: msg,
       created_by: user?.id

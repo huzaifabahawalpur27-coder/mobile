@@ -26,7 +26,8 @@ import { buildExchangeBillHTML } from '../utils/billTemplates'
 import {
   buildExchangeWhatsAppText,
   enqueueWhatsAppMessage,
-  cleanPakistanPhone
+  cleanPakistanPhone,
+  generateRandomInvoiceToken
 } from '../services/whatsappQueueService'
 import { IPHONE_MODELS } from '../utils/iphonePresets'
 
@@ -757,8 +758,10 @@ export default function Exchange() {
               warranty_terms: savedWarranty || shopSettings?.warranty_terms,
               wa_exchange_template: savedExchangeTpl || shopSettings?.wa_exchange_template
             }
+            const exchangeToken = result.invoice_token || generateRandomInvoiceToken()
+            const exchangeRef = `EXC-${exchangeToken}`
             const msgText = buildExchangeWhatsAppText({
-              exchange: { ...completedSnapshot, shop_id: sid },
+              exchange: { ...completedSnapshot, invoice_token: exchangeToken, exchange_number: exchangeRef, shop_id: sid },
               customer: completedSnapshot.customer,
               shopInfo
             })
@@ -768,10 +771,11 @@ export default function Exchange() {
               recipient_name: custName || 'Valued Customer',
               recipient_phone: custPhone,
               message_type: 'phone_exchange_receipt',
-              reference_id: String(result.exchange_number || result.exchange_id || result.id || Date.now()),
+              reference_id: exchangeRef,
               reference_data: {
                 exchange_id: result.exchange_id || result.id,
-                exchange_number: result.exchange_number,
+                exchange_number: exchangeRef,
+                invoice_token: exchangeToken,
                 sale_id: result.sale_id,
                 purchase_id: result.purchase_id,
                 sale_amount: totalSaleAmount,
@@ -891,28 +895,31 @@ export default function Exchange() {
 
     // Enqueue into outbox if not queued yet
     try {
-      await enqueueWhatsAppMessage({
-        shop_id: sid,
-        recipient_name: exchangeRecord.customer_name || exchangeRecord.customer?.name || 'Valued Customer',
-        recipient_phone: cleanedPhone,
-        message_type: 'phone_exchange_receipt',
-        reference_id: String(exchangeRecord.exchange_number || exchangeRecord.id || Date.now()),
-        reference_data: {
-          exchange_id: exchangeRecord.id,
-          exchange_number: exchangeRecord.exchange_number,
-          sale_id: exchangeRecord.sale_id,
-          purchase_id: exchangeRecord.purchase_id,
-          sale_amount: exchangeRecord.sale_amount,
-          trade_in_credit: exchangeRecord.trade_in_credit,
-          settlement_amount: exchangeRecord.settlement_amount,
-          settlement_direction: exchangeRecord.settlement_direction,
-          items_count: (exchangeRecord.exchange_items || []).length,
-          has_phone: true,
-          is_exchange: true
-        },
-        message_text: text,
-        created_by: user?.id
-      })
+        const exToken = exchangeRecord.invoice_token || generateRandomInvoiceToken()
+        const exRef = `EXC-${exToken}`
+        await enqueueWhatsAppMessage({
+          shop_id: sid,
+          recipient_name: exchangeRecord.customer_name || exchangeRecord.customer?.name || 'Valued Customer',
+          recipient_phone: cleanedPhone,
+          message_type: 'phone_exchange_receipt',
+          reference_id: exRef,
+          reference_data: {
+            exchange_id: exchangeRecord.id,
+            exchange_number: exRef,
+            invoice_token: exToken,
+            sale_id: exchangeRecord.sale_id,
+            purchase_id: exchangeRecord.purchase_id,
+            sale_amount: exchangeRecord.sale_amount,
+            trade_in_credit: exchangeRecord.trade_in_credit,
+            settlement_amount: exchangeRecord.settlement_amount,
+            settlement_direction: exchangeRecord.settlement_direction,
+            items_count: (exchangeRecord.exchange_items || []).length,
+            has_phone: true,
+            is_exchange: true
+          },
+          message_text: text,
+          created_by: user?.id
+        })
     } catch (enqueueErr) {
       console.debug('WhatsApp enqueue notice:', enqueueErr)
     }
@@ -961,15 +968,18 @@ export default function Exchange() {
         shopInfo
       })
 
+      const exToken = updatedExchange.invoice_token || generateRandomInvoiceToken()
+      const exRef = `EXC-${exToken}`
       const res = await enqueueWhatsAppMessage({
         shop_id: sid,
         recipient_name: updatedExchange.customer_name || 'Valued Customer',
         recipient_phone: cleaned,
         message_type: 'phone_exchange_receipt',
-        reference_id: String(updatedExchange.exchange_number || updatedExchange.id || Date.now()),
+        reference_id: exRef,
         reference_data: {
           exchange_id: updatedExchange.id,
-          exchange_number: updatedExchange.exchange_number,
+          exchange_number: exRef,
+          invoice_token: exToken,
           sale_id: updatedExchange.sale_id,
           purchase_id: updatedExchange.purchase_id,
           sale_amount: updatedExchange.sale_amount,

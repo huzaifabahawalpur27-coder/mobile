@@ -63,15 +63,13 @@ export default function PublicInvoice() {
         // 2. Fallback: Check Dexie local sales cache (if viewed on same device / local cache)
         if (db?.sales) {
           try {
-            const cleanId = id.replace(/^(INV-|EXC-)/i, '')
-            let localSale = null
-            if (!isNaN(Number(cleanId))) {
-              localSale = await db.sales.get(Number(cleanId))
-            }
-            if (!localSale) {
-              const allSales = await db.sales.toArray()
-              localSale = allSales.find(s => String(s.id) === cleanId || s.idempotency_key === cleanId)
-            }
+            const cleanId = id.replace(/^(INV-|EXC-)/i, '').trim().toUpperCase()
+            const allSales = await db.sales.toArray()
+            // Strictly match by invoice_token or idempotency_key to prevent incremental ID enumeration
+            const localSale = allSales.find(s =>
+              (s.invoice_token && s.invoice_token.toUpperCase() === cleanId) ||
+              (s.idempotency_key && s.idempotency_key.toUpperCase() === cleanId)
+            )
 
             if (localSale && isMounted) {
               const shopSettings = (() => {
@@ -82,10 +80,13 @@ export default function PublicInvoice() {
                 }
               })()
 
+              const formattedNo = localSale.invoice_token ? `INV-${localSale.invoice_token}` : (id.startsWith('INV-') ? id : `INV-${cleanId}`)
               const formatted = {
                 type: 'sale',
                 id: localSale.id,
-                invoice_no: `INV-${localSale.id}`,
+                invoice_no: formattedNo,
+                invoice_token: localSale.invoice_token || cleanId,
+                reference_id: formattedNo,
                 created_at: localSale.created_at || new Date().toISOString(),
                 subtotal: localSale.subtotal || localSale.total,
                 discount: localSale.discount || 0,

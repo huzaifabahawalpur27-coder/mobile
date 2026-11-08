@@ -78,10 +78,19 @@ export default function WhatsAppQueue() {
     return () => clearInterval(timer)
   }, [loadQueue, user?.shop_id])
 
-  // Ensure strictly sold phone entries are displayed
+  // Ensure strictly sold phone entries are displayed and auto-healed with random tokens & invoice links
   const phoneMessages = useMemo(() => {
-    return messages.filter(isSoldPhoneQueueItem)
-  }, [messages])
+    return messages.filter(isSoldPhoneQueueItem).map(m => {
+      const text = m.message_text || ''
+      if (!text.includes('/invoice/') || /INV-\d+/i.test(text)) {
+        const upgraded = upgradeLegacyWhatsAppMessage(text, m.shop_id || user?.shop_id, m.reference_data)
+        if (upgraded && upgraded !== text) {
+          return { ...m, message_text: upgraded }
+        }
+      }
+      return m
+    })
+  }, [messages, user?.shop_id])
 
   // Counts
   const pendingCount = useMemo(() => phoneMessages.filter(m => m.status === 'pending').length, [phoneMessages])
@@ -116,12 +125,18 @@ export default function WhatsAppQueue() {
 
     setProcessingId(item.id)
     try {
+      // Ensure the text to send has the link and random token
+      let textToSend = item.message_text || ''
+      if (!textToSend.includes('/invoice/') || /INV-\d+/i.test(textToSend)) {
+        textToSend = upgradeLegacyWhatsAppMessage(textToSend, item.shop_id || user?.shop_id, item.reference_data)
+      }
+
       // Mark as sent
       await markWhatsAppMessageSent(item.id)
-      setMessages(prev => prev.map(m => m.id === item.id ? { ...m, status: 'sent', sent_at: new Date().toISOString() } : m))
+      setMessages(prev => prev.map(m => m.id === item.id ? { ...m, message_text: textToSend, status: 'sent', sent_at: new Date().toISOString() } : m))
 
       // Direct WhatsApp URL
-      const encodedMsg = encodeURIComponent(item.message_text || '')
+      const encodedMsg = encodeURIComponent(textToSend)
       const waUrl = `https://wa.me/${item.recipient_phone}?text=${encodedMsg}`
 
       // Open Native WhatsApp
@@ -160,7 +175,11 @@ export default function WhatsAppQueue() {
   // Copy text
   const handleCopyText = (e, item) => {
     e.stopPropagation()
-    navigator.clipboard.writeText(item.message_text || '')
+    let textToCopy = item.message_text || ''
+    if (!textToCopy.includes('/invoice/') || /INV-\d+/i.test(textToCopy)) {
+      textToCopy = upgradeLegacyWhatsAppMessage(textToCopy, item.shop_id || user?.shop_id, item.reference_data)
+    }
+    navigator.clipboard.writeText(textToCopy)
     setCopiedId(item.id)
     setTimeout(() => setCopiedId(null), 1800)
   }
@@ -212,7 +231,8 @@ export default function WhatsAppQueue() {
     e?.stopPropagation()
     try {
       const shopWarranty = getShopWarrantyTerms(item.shop_id || user?.shop_id)
-      const newText = replaceOrInjectWarrantyInTemplate(item.message_text, shopWarranty)
+      const upgraded = upgradeLegacyWhatsAppMessage(item.message_text, item.shop_id || user?.shop_id, item.reference_data)
+      const newText = hasWarrantyTerms(upgraded) ? upgraded : replaceOrInjectWarrantyInTemplate(upgraded, shopWarranty)
       await updateWhatsAppMessageText(item.id, newText)
       setMessages(prev => prev.map(m => m.id === item.id ? { ...m, message_text: newText } : m))
       setWarrantyStatusMsg(`✅ وارنٹی شرائط شامل کر دی گئیں! (Warranty terms added for ${item.recipient_name})`)
@@ -675,7 +695,11 @@ export default function WhatsAppQueue() {
                     {/* View Digital Invoice / PDF Button */}
                     {(() => {
                       const match = (item.message_text || '').match(/https?:\/\/[^\s]+\/invoice\/([^\s]+)/i)
-                      const invoiceParam = match ? match[1] : (item.reference_id ? (String(item.reference_id).startsWith('INV-') || String(item.reference_id).startsWith('EXC-') ? item.reference_id : `INV-${item.reference_id}`) : null)
+                      const invoiceParam = match
+                        ? match[1]
+                        : (item.reference_data?.invoice_token
+                            ? `INV-${item.reference_data.invoice_token}`
+                            : (item.reference_id && !/^\d+$/.test(String(item.reference_id)) ? item.reference_id : null))
                       if (!invoiceParam) return null
                       return (
                         <a
