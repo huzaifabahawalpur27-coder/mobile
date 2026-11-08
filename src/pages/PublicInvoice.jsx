@@ -11,13 +11,15 @@ import {
 
 // Action-time dynamic loading for PDF libraries
 async function loadPdfLibraries() {
-  const [jspdfMod, html2canvasMod] = await Promise.all([
+  const [jspdfMod, html2canvasMod, autotableMod] = await Promise.all([
     import('jspdf'),
-    import('html2canvas')
+    import('html2canvas'),
+    import('jspdf-autotable')
   ])
   const jsPDF = jspdfMod.jsPDF || jspdfMod.default?.jsPDF || jspdfMod.default
   const html2canvas = html2canvasMod.default || html2canvasMod
-  return { jsPDF, html2canvas }
+  const autoTable = autotableMod.default || autotableMod.autoTable || autotableMod
+  return { jsPDF, html2canvas, autoTable }
 }
 
 export default function PublicInvoice() {
@@ -27,6 +29,7 @@ export default function PublicInvoice() {
   const [error, setError] = useState(null)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const invoiceRef = useRef(null)
+  const warrantyRef = useRef(null)
 
   useEffect(() => {
     let isMounted = true
@@ -530,78 +533,388 @@ export default function PublicInvoice() {
     .replace(/^⚠️?\s*\*?وارنٹی[\s\S]*?(?:\*|:|\))\s*\n+/i, '')
     .trim()
 
-  // High-Resolution Visual PDF Download Handler
-  // Renders the exact screen invoice (store header, customer grid, items + IMEI, totals, and yellow Urdu Nastaleeq warranty)
-  // Always downloads a .pdf file directly; NEVER triggers the print dialog.
+  // Hybrid High-Precision PDF Exporter:
+  // Vectorizes all English store data, customer metadata, item details + IMEI, and financial totals;
+  // Flattens the Urdu Nastaleeq warranty card into a high-DPI image to eliminate mojibake and font clipping.
+  // Directly saves the .pdf file without opening the browser print dialogue.
   const handleDownloadPDF = async () => {
-    if (!invoiceRef.current || downloadingPdf) return
+    if (!invoice || downloadingPdf) return
     setDownloadingPdf(true)
 
     const filename = `Invoice_${invoice?.invoice_no || id || 'receipt'}.pdf`
 
     try {
-      const { jsPDF, html2canvas } = await loadPdfLibraries()
-      const element = invoiceRef.current
+      const { jsPDF, html2canvas, autoTable } = await loadPdfLibraries()
 
-      // Ensure fonts are loaded before capturing canvas
+      // Ensure fonts are loaded before flattening warranty canvas
       try {
         if (document.fonts?.ready) {
           await document.fonts.ready
         }
       } catch (_) {}
 
-      // Capture the exact visual bill card displayed on the screen
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: '#ffffff',
-        logging: false
+      // 1. FLATTEN URDU WARRANTY CARD INTO A HIGH-DPI IMAGE
+      let warrantyImgData = null
+      let warrantyImgRatio = 0.35
+
+      // Strategy A: html2canvas on warrantyRef
+      if (warrantyRef.current) {
+        try {
+          const canvas = await html2canvas(warrantyRef.current, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: false,
+            backgroundColor: '#fffdf5',
+            logging: false
+          })
+          if (canvas && canvas.width > 0 && canvas.height > 0) {
+            warrantyImgData = canvas.toDataURL('image/png')
+            warrantyImgRatio = canvas.height / canvas.width
+          }
+        } catch (canvasErr) {
+          console.debug('html2canvas on warrantyRef failed, using direct canvas fallback:', canvasErr)
+        }
+      }
+
+      // Strategy B: Pure HTML5 Canvas 2D fallback for Urdu Nastaleeq
+      if (!warrantyImgData) {
+        try {
+          const canvas = document.createElement('canvas')
+          const width = 1100
+          const lines = warrantyText.split('\n').filter(Boolean)
+          const lineHeight = 46
+          const height = 130 + (lines.length * lineHeight) + 65
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.fillStyle = '#fffdf5'
+            ctx.fillRect(0, 0, width, height)
+            ctx.strokeStyle = '#fcd34d'
+            ctx.lineWidth = 4
+            ctx.strokeRect(4, 4, width - 8, height - 8)
+
+            ctx.fillStyle = '#451a03'
+            ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif'
+            ctx.fillText('Official Warranty Terms  (دکان کی وارنٹی شرائط)', 30, 48)
+
+            ctx.fillStyle = '#92400e'
+            ctx.font = 'bold 16px monospace'
+            ctx.fillText('WARRANTY', width - 140, 48)
+
+            ctx.strokeStyle = '#fde68a'
+            ctx.lineWidth = 1.5
+            ctx.beginPath()
+            ctx.moveTo(30, 75)
+            ctx.lineTo(width - 30, 75)
+            ctx.stroke()
+
+            ctx.fillStyle = '#1e293b'
+            ctx.font = '22px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Typesetting", serif'
+            ctx.textAlign = 'right'
+            ctx.direction = 'rtl'
+
+            let textY = 125
+            for (const line of lines) {
+              ctx.fillText(line.trim(), width - 35, textY)
+              textY += lineHeight
+            }
+
+            ctx.beginPath()
+            ctx.moveTo(30, textY + 10)
+            ctx.lineTo(width - 30, textY + 10)
+            ctx.stroke()
+
+            textY += 45
+            ctx.fillStyle = '#78350f'
+            ctx.font = '19px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif'
+            ctx.fillText('آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝', width - 35, textY)
+
+            ctx.textAlign = 'left'
+            ctx.direction = 'ltr'
+            ctx.fillStyle = '#451a03'
+            ctx.font = 'bold 18px sans-serif'
+            ctx.fillText(shop.name || 'EdgeX Mobile Store', 35, textY)
+
+            warrantyImgData = canvas.toDataURL('image/png')
+            warrantyImgRatio = height / width
+          }
+        } catch (canvasErr2) {
+          console.debug('Pure canvas fallback error:', canvasErr2)
+        }
+      }
+
+      // 2. VECTORIZED PDF CREATION (Standard A4 Portrait)
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
       })
 
-      if (canvas && canvas.width > 0 && canvas.height > 0) {
-        const imgData = canvas.toDataURL('image/png')
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4'
-        })
+      const pageWidth = 210
+      const pageHeight = 297
+      const margin = 14
+      const contentWidth = pageWidth - (margin * 2) // 182mm
 
-        const pageWidth = pdf.internal.pageSize.getWidth()
-        const pageHeight = pdf.internal.pageSize.getHeight()
-        const margin = 8
-        const printableWidth = pageWidth - (margin * 2)
-        const printableHeight = (canvas.height * printableWidth) / canvas.width
+      // Header: Store Name
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(18)
+      pdf.setTextColor(15, 23, 42)
+      pdf.text(shop.name || 'EdgeX Mobile Store', margin, 20)
 
-        if (printableHeight <= pageHeight - (margin * 2)) {
-          pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, printableHeight)
-        } else {
-          const maxAvailableHeight = pageHeight - (margin * 2)
-          const scaledWidth = (canvas.width * maxAvailableHeight) / canvas.height
-          const xOffset = (pageWidth - scaledWidth) / 2
-          pdf.addImage(imgData, 'PNG', xOffset, margin, scaledWidth, maxAvailableHeight)
-        }
-
-        pdf.save(filename)
-      } else {
-        throw new Error('Canvas rendering returned empty dimensions')
+      // Address & Phone
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.setTextColor(71, 85, 105)
+      let subY = 25
+      if (shop.address) {
+        pdf.text(shop.address, margin, subY)
+        subY += 4
       }
+      if (shop.phone) {
+        pdf.text(`Phone: ${shop.phone}`, margin, subY)
+        subY += 4
+      }
+
+      // Top Right: Badge & Invoice Details
+      const badgeText = isExchange ? 'PHONE EXCHANGE INVOICE' : 'SALES INVOICE'
+      pdf.setFillColor(236, 253, 245)
+      pdf.setDrawColor(167, 243, 208)
+      pdf.roundedRect(pageWidth - margin - 52, 13, 52, 7.5, 2, 2, 'FD')
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(7.5)
+      pdf.setTextColor(6, 95, 70)
+      pdf.text(badgeText, pageWidth - margin - 26, 18, { align: 'center' })
+
+      // Invoice Number
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(13)
+      pdf.setTextColor(15, 23, 42)
+      pdf.text(`#${invoice.invoice_no || id}`, pageWidth - margin, 26, { align: 'right' })
+
+      // Date
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.setTextColor(100, 116, 139)
+      pdf.text(dateFormatted, pageWidth - margin, 31, { align: 'right' })
+
+      // Header Divider Line
+      const headerBottom = Math.max(subY + 2, 35)
+      pdf.setDrawColor(226, 232, 240)
+      pdf.setLineWidth(0.3)
+      pdf.line(margin, headerBottom, pageWidth - margin, headerBottom)
+
+      // Customer & Transaction Meta Box
+      const metaBoxY = headerBottom + 4
+      const metaBoxHeight = 15
+      pdf.setFillColor(248, 250, 252)
+      pdf.setDrawColor(226, 232, 240)
+      pdf.roundedRect(margin, metaBoxY, contentWidth, metaBoxHeight, 2, 2, 'FD')
+
+      const colWidth = contentWidth / 4
+
+      // Col 1: Customer Name
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(6.5)
+      pdf.setTextColor(100, 116, 139)
+      pdf.text('CUSTOMER NAME', margin + 4, metaBoxY + 5)
+      pdf.setFontSize(8.5)
+      pdf.setTextColor(15, 23, 42)
+      pdf.text(String(invoice.customer_name || 'Valued Customer').substring(0, 24), margin + 4, metaBoxY + 10.5)
+
+      // Col 2: Mobile Number
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(6.5)
+      pdf.setTextColor(100, 116, 139)
+      pdf.text('MOBILE NUMBER', margin + colWidth + 4, metaBoxY + 5)
+      pdf.setFontSize(8.5)
+      pdf.setTextColor(30, 41, 59)
+      pdf.text(invoice.customer_phone ? `+${invoice.customer_phone}` : 'Walk-in', margin + colWidth + 4, metaBoxY + 10.5)
+
+      // Col 3: Payment Method
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(6.5)
+      pdf.setTextColor(100, 116, 139)
+      pdf.text('PAYMENT METHOD', margin + (colWidth * 2) + 4, metaBoxY + 5)
+      pdf.setFontSize(8.5)
+      pdf.setTextColor(30, 41, 59)
+      pdf.text(String(invoice.payment_type || invoice.settlement_payment_method || 'Cash').toUpperCase(), margin + (colWidth * 2) + 4, metaBoxY + 10.5)
+
+      // Col 4: Payment Status
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(6.5)
+      pdf.setTextColor(100, 116, 139)
+      pdf.text('PAYMENT STATUS', margin + (colWidth * 3) + 4, metaBoxY + 5)
+      pdf.setFontSize(8.5)
+      if (balanceDue > 0) {
+        pdf.setTextColor(217, 119, 6)
+        pdf.text(`Balance: Rs. ${balanceDue.toLocaleString()}`, margin + (colWidth * 3) + 4, metaBoxY + 10.5)
+      } else {
+        pdf.setTextColor(4, 120, 87)
+        pdf.text('Paid ✓', margin + (colWidth * 3) + 4, metaBoxY + 10.5)
+      }
+
+      // 3. Items Table (autoTable)
+      const tableRows = []
+      if (!isExchange) {
+        ;(invoice.items || []).forEach((item, idx) => {
+          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
+          const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
+          const imei2 = item.imei_2 || snap.imei_2 || ''
+          const rawName = item.name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`.trim()
+          const imeiStr = imei1 ? (imei2 ? `\n[IMEI: ${imei1} / ${imei2}]` : `\n[IMEI: ${imei1}]`) : ''
+          const specs = [item.storage || snap.storage, item.color || snap.color, item.condition || snap.condition, item.pta_status || snap.pta_status].filter(Boolean).join(' • ')
+          const specsStr = specs ? ` • ${specs}` : ''
+          const fullName = rawName.includes(imei1) ? rawName : `${rawName}${imeiStr}${specsStr}`
+
+          const qty = Number(item.quantity || 1)
+          const price = Number(item.unit_price || 0)
+          const total = Number(item.total || (qty * price))
+
+          tableRows.push([
+            String(idx + 1),
+            fullName,
+            String(qty),
+            `Rs. ${price.toLocaleString()}`,
+            `Rs. ${total.toLocaleString()}`
+          ])
+        })
+      } else {
+        ;(invoice.outgoing_items || []).forEach((item, idx) => {
+          const imeiStr = item.imei_1 ? `\n[IMEI: ${item.imei_1}]` : ''
+          const specs = [item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')
+          tableRows.push([
+            String(idx + 1),
+            `Purchased: ${item.product_name}${imeiStr} • ${specs}`,
+            '1',
+            `Rs. ${Number(item.subtotal || item.price || 0).toLocaleString()}`,
+            `Rs. ${Number(item.subtotal || item.price || 0).toLocaleString()}`
+          ])
+        })
+        ;(invoice.incoming_items || []).forEach((item) => {
+          const imeiStr = item.imei_1 ? `\n[IMEI: ${item.imei_1}]` : ''
+          const specs = [item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')
+          tableRows.push([
+            'Trade-in',
+            `Exchanged: ${item.product_name}${imeiStr} • ${specs}`,
+            '1',
+            `- Rs. ${Number(item.assessed_value || item.subtotal || 0).toLocaleString()}`,
+            `- Rs. ${Number(item.assessed_value || item.subtotal || 0).toLocaleString()}`
+          ])
+        })
+      }
+
+      autoTable(pdf, {
+        startY: metaBoxY + metaBoxHeight + 5,
+        head: [['#', 'ITEMS & PURCHASED DEVICES', 'QTY', 'UNIT PRICE', 'TOTAL AMOUNT']],
+        body: tableRows,
+        styles: {
+          fontSize: 8.5,
+          cellPadding: 3,
+          textColor: [15, 23, 42],
+          lineColor: [226, 232, 240],
+          lineWidth: 0.1
+        },
+        headStyles: {
+          fillColor: [248, 250, 252],
+          textColor: [71, 85, 105],
+          fontStyle: 'bold',
+          fontSize: 8,
+          lineColor: [226, 232, 240],
+          lineWidth: 0.2
+        },
+        columnStyles: {
+          0: { cellWidth: 10, halign: 'center', textColor: [148, 163, 184] },
+          1: { cellWidth: 100 },
+          2: { cellWidth: 14, halign: 'center' },
+          3: { cellWidth: 28, halign: 'right' },
+          4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+        },
+        alternateRowStyles: { fillColor: [255, 255, 255] },
+        margin: { left: margin, right: margin }
+      })
+
+      let currentY = pdf.lastAutoTable.finalY + 4
+
+      // 4. Financial Totals Card (Right-aligned)
+      const totalsBoxWidth = 75
+      const totalsBoxX = pageWidth - margin - totalsBoxWidth
+      const totalsRows = []
+      totalsRows.push({ label: 'Total Amount:', val: `Rs. ${grossTotal.toLocaleString()}`, color: [71, 85, 105], bold: false })
+      if (discount > 0) {
+        totalsRows.push({ label: 'Discount:', val: `- Rs. ${discount.toLocaleString()}`, color: [4, 120, 87], bold: false })
+      }
+      if (isExchange && tradeCredit > 0) {
+        totalsRows.push({ label: 'Trade-in Credit:', val: `- Rs. ${tradeCredit.toLocaleString()}`, color: [107, 33, 168], bold: false })
+      }
+      totalsRows.push({ label: 'Net Total:', val: `Rs. ${netTotal.toLocaleString()}`, color: [4, 120, 87], bold: true, isNet: true })
+      totalsRows.push({ label: 'Amount Paid:', val: `Rs. ${paidTotal.toLocaleString()}`, color: [15, 23, 42], bold: false })
+      if (balanceDue > 0) {
+        totalsRows.push({ label: 'Remaining Balance:', val: `Rs. ${balanceDue.toLocaleString()}`, color: [220, 38, 38], bold: true })
+      }
+
+      const totalsBoxHeight = (totalsRows.length * 5.2) + 4
+      pdf.setFillColor(248, 250, 252)
+      pdf.setDrawColor(226, 232, 240)
+      pdf.roundedRect(totalsBoxX, currentY, totalsBoxWidth, totalsBoxHeight, 2, 2, 'FD')
+
+      let rowY = currentY + 4.5
+      totalsRows.forEach((r) => {
+        if (r.isNet) {
+          pdf.setDrawColor(226, 232, 240)
+          pdf.line(totalsBoxX + 3, rowY - 1.5, totalsBoxX + totalsBoxWidth - 3, rowY - 1.5)
+        }
+        pdf.setFont('helvetica', r.bold ? 'bold' : 'normal')
+        pdf.setFontSize(r.isNet ? 9.5 : 8)
+        pdf.setTextColor(...r.color)
+        pdf.text(r.label, totalsBoxX + 4, rowY)
+        pdf.text(r.val, totalsBoxX + totalsBoxWidth - 4, rowY, { align: 'right' })
+        rowY += 5.2
+      })
+
+      currentY += totalsBoxHeight + 5
+
+      // 5. Flattened Urdu Warranty Section
+      const warrantyHeight = Math.min(50, Math.max(34, contentWidth * warrantyImgRatio))
+      if (currentY + warrantyHeight > pageHeight - 16) {
+        pdf.addPage()
+        currentY = margin
+      }
+
+      if (warrantyImgData) {
+        pdf.addImage(warrantyImgData, 'PNG', margin, currentY, contentWidth, warrantyHeight)
+        currentY += warrantyHeight + 5
+      }
+
+      // 6. Footer Disclaimer & Timestamp
+      const footerY = Math.max(currentY + 2, pageHeight - 14)
+      pdf.setDrawColor(226, 232, 240)
+      pdf.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5)
+
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(7.5)
+      pdf.setTextColor(100, 116, 139)
+      pdf.text('This is a verified computerized digital invoice and does not require a physical signature.', pageWidth / 2, footerY + 1, { align: 'center' })
+      pdf.setFontSize(6.5)
+      pdf.setTextColor(148, 163, 184)
+      pdf.text(`Powered by EdgeX POS Suite • Verified Digital Invoice • ${dateFormatted}`, pageWidth / 2, footerY + 4.5, { align: 'center' })
+
+      pdf.save(filename)
     } catch (err) {
       console.error('PDF download error:', err)
-      // Emergency direct PDF save — NEVER open print dialog on Download button!
+      // Emergency PDF generation - ALWAYS downloads a file; NEVER calls window.print()!
       try {
         const { jsPDF } = await loadPdfLibraries()
         const fallbackPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
         fallbackPdf.setFontSize(16)
-        fallbackPdf.text(shop.name || 'EdgeX Mobile Store', 105, 20, { align: 'center' })
-        fallbackPdf.setFontSize(11)
-        fallbackPdf.text(`Invoice #${invoice?.invoice_no || id}`, 105, 28, { align: 'center' })
+        fallbackPdf.text(shop.name || 'EdgeX Mobile Store', 14, 20)
+        fallbackPdf.setFontSize(12)
+        fallbackPdf.text(`Invoice #${invoice?.invoice_no || id}`, 14, 28)
         fallbackPdf.setFontSize(10)
-        fallbackPdf.text(`Customer: ${invoice?.customer_name || 'Valued Customer'}`, 14, 40)
-        fallbackPdf.text(`Mobile: ${invoice?.customer_phone ? '+' + invoice.customer_phone : 'Walk-in'}`, 14, 46)
-        fallbackPdf.text(`Total Amount: Rs. ${grossTotal.toLocaleString()}`, 14, 54)
-        fallbackPdf.text(`Net Total: Rs. ${netTotal.toLocaleString()}`, 14, 60)
-        fallbackPdf.text(`Paid: Rs. ${paidTotal.toLocaleString()}`, 14, 66)
+        fallbackPdf.text(`Customer: ${invoice?.customer_name || 'Valued Customer'}`, 14, 38)
+        fallbackPdf.text(`Mobile: ${invoice?.customer_phone ? '+' + invoice.customer_phone : 'Walk-in'}`, 14, 44)
+        fallbackPdf.text(`Net Total: Rs. ${netTotal.toLocaleString()}`, 14, 52)
+        fallbackPdf.text(`Amount Paid: Rs. ${paidTotal.toLocaleString()}`, 14, 58)
         fallbackPdf.save(filename)
       } catch (emergErr) {
         console.error('Emergency PDF fallback save failed:', emergErr)
@@ -987,6 +1300,7 @@ export default function PublicInvoice() {
           {/* 5. AUTHENTIC NASTALEEQ URDU WARRANTY CERTIFICATE SECTION       */}
           {/* ============================================================== */}
           <div
+            ref={warrantyRef}
             style={{
               backgroundColor: '#fffdf5',
               border: '2px solid #fcd34d',
