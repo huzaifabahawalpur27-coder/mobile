@@ -327,6 +327,50 @@ export default function PublicInvoice() {
                 img.style.display = 'none'
               }
             })
+
+            // Normalize modern CSS colors (oklch, color-mix) to solid RGB on all cloned elements
+            // to ensure html2canvas's color parser succeeds without any unsupported function errors
+            try {
+              const helperCanvas = clonedDoc.createElement('canvas')
+              helperCanvas.width = 1
+              helperCanvas.height = 1
+              const ctx = helperCanvas.getContext('2d')
+
+              if (ctx) {
+                const convertColor = (val) => {
+                  if (!val || typeof val !== 'string') return val
+                  if (!val.includes('oklch') && !val.includes('color-mix') && !val.includes('oklab') && !val.includes('lab(')) {
+                    return val
+                  }
+                  try {
+                    ctx.fillStyle = '#000000'
+                    ctx.fillStyle = val
+                    return ctx.fillStyle || '#000000'
+                  } catch (_) {
+                    return '#000000'
+                  }
+                }
+
+                const allNodes = clonedDoc.querySelectorAll('*')
+                allNodes.forEach(node => {
+                  const style = window.getComputedStyle(node)
+                  if (style.backgroundColor && (style.backgroundColor.includes('oklch') || style.backgroundColor.includes('color-mix'))) {
+                    node.style.backgroundColor = convertColor(style.backgroundColor)
+                  }
+                  if (style.color && (style.color.includes('oklch') || style.color.includes('color-mix'))) {
+                    node.style.color = convertColor(style.color)
+                  }
+                  if (style.borderColor && (style.borderColor.includes('oklch') || style.borderColor.includes('color-mix'))) {
+                    node.style.borderColor = convertColor(style.borderColor)
+                  }
+                  if (style.boxShadow && (style.boxShadow.includes('oklch') || style.boxShadow.includes('color-mix'))) {
+                    node.style.boxShadow = style.boxShadow.replace(/(?:oklch|color-mix|oklab|lab)\([^)]+\)/g, (m) => convertColor(m))
+                  }
+                })
+              }
+            } catch (styleErr) {
+              console.debug('Style normalization in onclone:', styleErr)
+            }
           }
         })
 
@@ -475,7 +519,7 @@ export default function PublicInvoice() {
           currentY += 6
         }
 
-        // Strategy 2 Warranty Terms Box (Guarantee warranty is never missing even in vector fallback)
+        // Strategy 2 Warranty Terms Box (Guarantee clean English text so helvetica never prints mojibake)
         currentY += 6
         pdf.setFont('helvetica', 'bold')
         pdf.setFontSize(9)
@@ -485,8 +529,10 @@ export default function PublicInvoice() {
         pdf.setFont('helvetica', 'normal')
         pdf.setFontSize(8)
         pdf.setTextColor(51, 65, 85)
-        const warrantyFallback = warrantyText || '1. LCD, Face ID, and Camera carry no warranty.\n2. Dead mobile phones are non-refundable.\n3. Used/Second-hand mobile phones carry no warranty.'
-        const splitWarranty = pdf.splitTextToSize(warrantyFallback, 182)
+        const warrantyEnglish = `1. No warranty on LCD, Touch, Camera, or Face ID.
+2. Dead/Power-off phones are strictly non-refundable and non-exchangeable.
+3. Second-hand / Used phones carry no store warranty.`
+        const splitWarranty = pdf.splitTextToSize(warrantyEnglish, 182)
         pdf.text(splitWarranty, 14, currentY)
         currentY += (splitWarranty.length * 4) + 6
         pdf.setTextColor(0, 0, 0)
@@ -574,6 +620,7 @@ export default function PublicInvoice() {
         {/* ============================================================== */}
         <div
           ref={invoiceRef}
+          style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
           className="bg-white text-slate-900 rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-8 space-y-6 print:border-none print:shadow-none print:p-0 print:rounded-none"
         >
           {/* 1. Header & Store Branding */}

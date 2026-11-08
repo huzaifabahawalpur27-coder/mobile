@@ -7,6 +7,17 @@ export default defineConfig({
   base: '/',
   server: { proxy: { '/api': 'http://localhost:3001' } },
   plugins: [
+    {
+      name: 'patch-html2canvas-modern-colors',
+      transform(code, id) {
+        if (id.includes('html2canvas')) {
+          return code.replace(
+            /throw new Error\(["']Attempting to parse an unsupported color function [^"']+["']\);?/g,
+            'return COLORS.TRANSPARENT;'
+          )
+        }
+      }
+    },
     react(),
     tailwindcss(),
     VitePWA({
