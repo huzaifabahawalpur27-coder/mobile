@@ -131,11 +131,13 @@ BEGIN
         'invoice_token', COALESCE(s.invoice_token, s.id::text),
         'reference_id', COALESCE('INV-' || s.invoice_token, 'INV-' || s.id),
         'created_at', s.created_at,
-        'subtotal', COALESCE(s.subtotal, s.total),
+        'subtotal', COALESCE(s.total_amount, s.net_amount, 0),
         'discount', COALESCE(s.discount, 0),
-        'total', s.total,
-        'paid_amount', COALESCE(s.paid_amount, s.amount_paid, s.total),
-        'payment_type', COALESCE(s.payment_type, 'cash'),
+        'total', COALESCE(s.net_amount, s.total_amount, 0),
+        'net_amount', COALESCE(s.net_amount, s.total_amount, 0),
+        'total_amount', COALESCE(s.total_amount, s.net_amount, 0),
+        'paid_amount', COALESCE(s.paid_amount, s.amount_paid, s.net_amount, s.total_amount, 0),
+        'payment_type', COALESCE(s.payment_type, s.payment_method, 'cash'),
         'customer_name', COALESCE(c.name, s.customer_name, 'Valued Customer'),
         'customer_phone', COALESCE(c.phone, s.customer_phone, ''),
         'customer_balance', COALESCE(c.outstanding_balance, 0),
@@ -161,8 +163,8 @@ BEGIN
                 'imei_1', COALESCE(si.imei_1, ph.imei_1, ''),
                 'imei_2', COALESCE(si.imei_2, ph.imei_2, ''),
                 'quantity', COALESCE(si.quantity, 1),
-                'unit_price', COALESCE(si.unit_price, si.sale_price, 0),
-                'total', (COALESCE(si.quantity, 1) * COALESCE(si.unit_price, si.sale_price, 0))
+                'unit_price', COALESCE(si.unit_price, si.price, si.sale_price, 0),
+                'total', COALESCE(si.subtotal, (COALESCE(si.quantity, 1) * COALESCE(si.unit_price, si.price, si.sale_price, 0)))
             ))
             FROM public.sale_items si
             LEFT JOIN public.products p ON p.id = si.product_id

@@ -88,11 +88,13 @@ export default function PublicInvoice() {
                 invoice_token: localSale.invoice_token || cleanId,
                 reference_id: formattedNo,
                 created_at: localSale.created_at || new Date().toISOString(),
-                subtotal: localSale.subtotal || localSale.total,
+                subtotal: localSale.total_amount || localSale.subtotal || localSale.net_amount || localSale.total || 0,
                 discount: localSale.discount || 0,
-                total: localSale.total,
-                paid_amount: localSale.paid_amount ?? localSale.total,
-                payment_type: localSale.payment_type || 'cash',
+                total: localSale.net_amount || localSale.total_amount || localSale.total || 0,
+                net_amount: localSale.net_amount || localSale.total_amount || localSale.total || 0,
+                total_amount: localSale.total_amount || localSale.subtotal || localSale.net_amount || localSale.total || 0,
+                paid_amount: localSale.paid_amount ?? localSale.amount_paid ?? localSale.net_amount ?? localSale.total,
+                payment_type: localSale.payment_type || localSale.payment_method || 'cash',
                 customer_name: localSale.customer_name || 'Valued Customer',
                 customer_phone: localSale.customer_phone || '',
                 status: localSale.status || 'completed',
@@ -273,9 +275,55 @@ export default function PublicInvoice() {
       })
     : ''
 
-  const grandTotal = Number(invoice.total || invoice.sale_amount || 0)
-  const paidTotal = Number(invoice.paid_amount ?? invoice.settlement_paid_amount ?? grandTotal)
-  const balanceDue = grandTotal - paidTotal
+  // 1. Calculate sum from item lines as bulletproof fallback
+  const itemsSum = (invoice.items || []).reduce((sum, item) => {
+    const itemTotal = Number(
+      item.total != null
+        ? item.total
+        : ((Number(item.quantity || 1) * Number(item.unit_price || 0)) || 0)
+    ) || 0
+    return sum + itemTotal
+  }, 0)
+
+  // 2. Financial components
+  const discount = Number(invoice.discount || 0)
+  const tradeCredit = Number(invoice.trade_in_credit || 0)
+
+  // 3. Gross Total (Total Amount before discount & trade credit)
+  const grossTotal = isExchange
+    ? Number(invoice.sale_amount || itemsSum || 0)
+    : Number(
+        invoice.total_amount ||
+        invoice.subtotal ||
+        (itemsSum > 0 ? itemsSum : 0) ||
+        invoice.net_amount ||
+        invoice.total ||
+        0
+      )
+
+  // 4. Net Total (Payable amount after discount / trade credit)
+  let netTotal = 0
+  if (isExchange) {
+    netTotal = Math.max(0, grossTotal - tradeCredit)
+  } else {
+    const candidateNet = Number(invoice.net_amount || invoice.total || 0)
+    if (candidateNet > 0) {
+      netTotal = candidateNet
+    } else if (grossTotal > 0) {
+      netTotal = Math.max(0, grossTotal - discount)
+    } else if (itemsSum > 0) {
+      netTotal = Math.max(0, itemsSum - discount)
+    }
+  }
+
+  // 5. Amount Paid & Balance Due
+  const paidTotal = Number(
+    invoice.paid_amount ??
+    invoice.amount_paid ??
+    invoice.settlement_paid_amount ??
+    netTotal
+  )
+  const balanceDue = Math.max(0, netTotal - paidTotal)
 
   // Extract warranty terms and clean redundant subheader lines
   const rawWarranty = shop.warranty_terms || `⚠️ *وارنٹی شرائط (Warranty Terms):*
@@ -529,24 +577,26 @@ export default function PublicInvoice() {
             <div className="w-full sm:w-72 bg-slate-50 rounded-xl border border-slate-200 p-3.5 space-y-2 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Total Amount:</span>
-                <span className="font-mono font-bold text-slate-900">Rs. {grandTotal.toLocaleString()}</span>
+                <span className="font-mono font-bold text-slate-900">
+                  Rs. {grossTotal.toLocaleString()}
+                </span>
               </div>
-              {invoice.discount > 0 && (
+              {discount > 0 && (
                 <div className="flex justify-between text-emerald-700">
                   <span>Discount:</span>
-                  <span className="font-mono font-bold">- Rs. {Number(invoice.discount).toLocaleString()}</span>
+                  <span className="font-mono font-bold">- Rs. {discount.toLocaleString()}</span>
                 </div>
               )}
               {isExchange && (
                 <div className="flex justify-between text-purple-700">
                   <span>Trade-in Credit:</span>
-                  <span className="font-mono font-bold">- Rs. {Number(invoice.trade_in_credit || 0).toLocaleString()}</span>
+                  <span className="font-mono font-bold">- Rs. {tradeCredit.toLocaleString()}</span>
                 </div>
               )}
               <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-900 font-black text-sm">
                 <span>Net Total:</span>
                 <span className="font-mono text-emerald-700">
-                  Rs. {Number(isExchange ? Math.abs(grandTotal - (invoice.trade_in_credit || 0)) : grandTotal).toLocaleString()}
+                  Rs. {netTotal.toLocaleString()}
                 </span>
               </div>
               <div className="flex justify-between text-slate-700 pt-0.5">
