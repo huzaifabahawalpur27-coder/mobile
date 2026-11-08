@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 
@@ -126,6 +127,32 @@ function Support() {
           </button>
         )}
       </div>
+
+      {/* FIFO Urdu Guide Card */}
+      {!showForm && (
+        <div className="bg-gradient-to-r from-purple-800 via-indigo-800 to-purple-950 text-white rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-purple-400/20 shadow-lg shadow-purple-950/20">
+          <div className="flex items-start gap-3">
+            <span className="text-3xl shrink-0 mt-0.5">📦</span>
+            <div>
+              <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/20 text-purple-100 uppercase tracking-wider mb-1">
+                نئی خصوصیت اور مکمل گائیڈ
+              </span>
+              <h3 className="font-bold text-base sm:text-lg font-nastaliq" dir="rtl">
+                FIFO بیچ انوینٹری اور اصل منافع گائیڈ
+              </h3>
+              <p className="text-xs text-purple-200 mt-1 leading-relaxed">
+                اسیسریز کی مختلف قیمتوں، موجودہ اسٹاک کو کنورٹ کرنے اور درست منافع کی اردو گائیڈ۔
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/guide?tab=fifo"
+            className="px-4 py-2.5 bg-white hover:bg-purple-50 text-purple-900 font-bold rounded-xl text-xs whitespace-nowrap transition shadow-xs text-center font-nastaliq"
+          >
+            گائیڈ کھولیں ←
+          </Link>
+        </div>
+      )}
 
       {/* In-progress alert banner */}
       {inProgressCount > 0 && !showForm && (

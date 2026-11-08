@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   BookOpen, PhoneCall, ShoppingCart, Truck,
   Boxes, Wallet, Users, MessageSquare, CheckCircle2,
@@ -8,10 +8,13 @@ import {
 } from 'lucide-react'
 
 export default function UserGuide() {
-  const [activeTab, setActiveTab] = useState('custody')
+  const [searchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') || 'fifo'
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [searchQuery, setSearchQuery] = useState('')
 
   const tabs = [
+    { id: 'fifo', label: '📦 FIFO Batch Costing (Urdu)', labelUrdu: 'بیچ انوینٹری اور اصل منافع' },
     { id: 'custody', label: '📱 Phone Custody & Returns', labelUrdu: 'عارضی فون اور کسٹڈی واپسی' },
     { id: 'pos', label: '🧾 POS & WhatsApp Billing', labelUrdu: 'سیل اور واٹس ایپ بلنگ' },
     { id: 'purchases', label: '📦 Purchases & IMEI Stock', labelUrdu: 'خریداری اور نیا سٹاک' },
@@ -57,6 +60,183 @@ export default function UserGuide() {
           </button>
         ))}
       </div>
+
+      {/* Tab: FIFO Batch Costing (Urdu Nastaleeq) */}
+      {activeTab === 'fifo' && (
+        <div className="space-y-6 animate-fadeIn font-nastaliq" dir="rtl">
+          {/* Header Card */}
+          <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-950 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+            <div className="space-y-3">
+              <span className="inline-block bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-purple-100">
+                مکمل اردو عملی گائیڈ (User Manual)
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black">
+                FIFO بیچ انوینٹری اور اصل منافع کا طریقہ کار
+              </h2>
+              <p className="text-purple-100 text-sm sm:text-base leading-loose max-w-3xl">
+                موبائل دکان پر اسیسریز، کیبلز اور بغیر IMEI والے سامان کی خریداری، مختلف قیمتوں کی لاٹس، فروخت اور خالص منافع کا بالکل درست حساب کتاب۔
+              </p>
+            </div>
+          </div>
+
+          {/* Core Concept: Why FIFO */}
+          <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-2xl p-6 text-purple-950 dark:text-purple-100 space-y-4">
+            <h3 className="text-xl font-black text-purple-900 dark:text-purple-200 flex items-center gap-2">
+              <span>💡</span> FIFO کیا ہے اور آپ کی دکان کے لیے کیوں ضروری ہے؟
+            </h3>
+            <p className="text-sm leading-loose">
+              <strong>FIFO کا مطلب ہے: First-In, First-Out (جو مال پہلے خریدا، وہ پہلے بکے گا)۔</strong>
+            </p>
+            <div className="bg-white dark:bg-[#1c1c1e] p-4 rounded-xl border border-purple-200 dark:border-purple-900/50 space-y-2 text-xs sm:text-sm">
+              <p className="font-bold text-gray-800 dark:text-gray-200">
+                📊 موبائل شاپ کی عام مثال:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-gray-700 dark:text-gray-300 leading-loose">
+                <li>آپ نے 10 چارجنگ کیبلز <strong>300 روپے</strong> میں خریدیں۔</li>
+                <li>دو ہفتے بعد مارکیٹ میں ریٹ بڑھ گیا اور آپ نے مزید 15 کیبلز <strong>500 روپے</strong> میں خریدیں۔</li>
+                <li>اب دکان میں کل 25 کیبلز ہیں۔</li>
+                <li><strong>سابقہ سسٹم میں نقص:</strong> نئی خریداری آتے ہی پرانے 10 پیسز کا منافع بھی گڑبڑ ہو جاتا تھا کیونکہ سسٹم ایک ہی فکس قیمت رکھتا تھا۔</li>
+                <li><strong>FIFO کا حل:</strong> جب گاہک کو کیبل بکے گی تو سسٹم پہلے <strong>300 روپے</strong> والی لاٹ سے کیبل بیچے گا اور اسی حساب سے منافع بتائے گا۔ جب وہ 10 پیس ختم ہو جائیں گے تو اگلی کیبل خود بخود <strong>500 روپے</strong> والی لاٹ سے بکے گی۔</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Step 1: Enable in Settings */}
+          <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0">1</span>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                سیٹنگز سے FIFO فیچر آن کرنا (Enable Feature)
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-loose">
+              بائیں مینو سے <strong>Settings (سیٹنگز)</strong> کھولیں۔ وہاں <strong>Store Profile</strong> کے اندر آپ کو <strong>FIFO Batch-Based Inventory Costing</strong> کا کارڈ نظر آئے گا۔ ٹوگل کو <strong>ON</strong> کر کے نیچے <strong>Save Settings</strong> دبا دیں۔
+            </p>
+            <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl text-xs text-blue-800 dark:text-blue-300 leading-loose">
+              ℹ️ <strong>نوٹ:</strong> جب تک آپ یہ آپشن آن نہیں کریں گے، آپ کا سافٹ ویئر بالکل روایتی طریقے سے چلتا رہے گا اور کوئی پرانا ڈیٹا متاثر نہیں ہوگا۔
+            </div>
+          </div>
+
+          {/* Step 2: Convert Current Stock */}
+          <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-purple-600 text-white font-bold flex items-center justify-center shrink-0">2</span>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                موجودہ اسٹاک کو FIFO میں تبدیل کرنا (Convert Current Stock)
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-loose">
+              <strong>Products</strong> پیج پر جائیں۔ جس آئٹم کو کنورٹ کرنا ہو، اس کے سامنے <strong>Convert to FIFO Batches</strong> پر کلک کریں۔
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs leading-loose">
+              <div className="p-4 bg-gray-50 dark:bg-slate-800/40 rounded-xl border border-gray-200 dark:border-slate-700">
+                <h4 className="font-bold text-gray-900 dark:text-white text-sm mb-1">طریقہ الف: عام سنگل اوپننگ لاٹ</h4>
+                <p className="text-gray-600 dark:text-gray-300">
+                  اگر آپ دکان کا سارا موجودہ اسٹاک ایک ہی اوسط قیمت خرید پر شروع کرنا چاہتے ہیں، تو قیمت درج کریں اور <strong>Convert</strong> دبا دیں۔
+                </p>
+              </div>
+              <div className="p-4 bg-gray-50 dark:bg-slate-800/40 rounded-xl border border-gray-200 dark:border-slate-700">
+                <h4 className="font-bold text-gray-900 dark:text-white text-sm mb-1">طریقہ ب: الگ الگ لاٹس (Split Lots)</h4>
+                <p className="text-gray-600 dark:text-gray-300">
+                  اگر آپ کو یاد ہے کہ 10 پیس پرانے ریٹ (300) کے ہیں اور 15 پیس نئے ریٹ (500) کے ہیں، تو <strong>+ Add Another Lot</strong> دبا کر دونوں ریٹ الگ الگ درج کر سکتے ہیں۔
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Step 3: Purchases */}
+          <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center shrink-0">3</span>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                نئی خریداری درج کرنا (Purchases Flow)
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-loose">
+              <strong>Purchases &gt; New Purchase</strong> میں جا کر جیسے آپ پہلے خریداری ڈالتے تھے، ویسے ہی آئٹم، تعداد اور سپلائر ریٹ لکھ کر پرچیز مکمل کریں۔
+              <br />
+              <strong>سسٹم کیا کرے گا؟</strong> سسٹم خود بخود اس پرچیز کا ایک نیا بیچ نمبر (مثلاً <code>BT-CABLE-2411081015</code>) بنا دے گا جس میں سپلائر، خریداری کی تاریخ اور اصل خرید ریٹ مستقل محفوظ ہو جائے گا۔
+            </p>
+          </div>
+
+          {/* Step 4: POS Sale */}
+          <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0">4</span>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                کاؤنٹر سیل اور منافع (POS Counter Sale & Profit)
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-loose">
+              کیشیئر عام انداز میں POS سے سیل کرے گا۔ سسٹم خودکار طور پر سب سے پرانے بیچ سے مال نکالے گا اور بل پر صحیح خرید لاگت لگائے گا۔
+              <br />
+              <strong>خاص فائدہ:</strong> اگر دو کیشیئر ایک ہی وقت میں ایک ہی پروڈکٹ بیچ رہے ہوں، تب بھی سسٹم ڈیٹا بیس لاک کی مدد سے اوور سیل نہیں ہونے دے گا۔
+            </p>
+          </div>
+
+          {/* Step 5: Customer Returns */}
+          <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center shrink-0">5</span>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                گاہک کی واپسی (Customer Return Handling)
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-loose">
+              اگر گاہک سامان واپس لائے، تو <strong>Sales</strong> پیج سے واپسی درج کریں۔ سسٹم خود اسی بیچ میں تعداد واپس جمع کر دے گا جہاں سے وہ نکلا تھا تاکہ اسٹاک اور قیمت کا توازن خراب نہ ہو۔
+            </p>
+          </div>
+
+          {/* Step 6: Damaged Items & Supplier Cost Adjustments */}
+          <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-red-600 text-white font-bold flex items-center justify-center shrink-0">6</span>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                ٹوٹ پھوٹ اور ریٹ تبدیلی (Stock & Cost Adjustments)
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-loose">
+              کسی بھی وقت <strong>Manage FIFO Batches</strong> کھول کر آپ دو کام کر سکتے ہیں:
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs leading-loose">
+              <div className="p-3.5 bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200 dark:border-red-900/40">
+                <strong className="text-red-900 dark:text-red-300 block mb-1">Adjust Stock (ٹوٹ پھوٹ یا نقصان):</strong>
+                اگر کوئی پیس ڈسپلے میں ٹوٹ گیا یا گم ہو گیا، تو وجہ لکھ کر مائنس کریں تاکہ دکان کا اسٹاک اور لاٹس ہمیشہ برابر رہیں۔
+              </div>
+              <div className="p-3.5 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-900/40">
+                <strong className="text-blue-900 dark:text-blue-300 block mb-1">Adjust Cost (سپلائر ریٹ درستگی):</strong>
+                اگر سپلائر نے بعد میں ریٹ کم یا زیادہ کیا، تو نیا ریٹ درج کریں۔ پرانے بل خراب نہیں ہوں گے، باقی بچا ہوا مال نئے ریٹ پر آ جائے گا اور بک چکے پیسز کا اثر P&L رپورٹ میں درج ہو جائے گا۔
+              </div>
+            </div>
+          </div>
+
+          {/* Step 7: Purchase Deletion Safety */}
+          <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-slate-700 text-white font-bold flex items-center justify-center shrink-0">7</span>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                پرچیز ڈیلیٹ کرنے کا سیکیورٹی اصول (Void Purchase Rule)
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-loose">
+              اگر کسی خریداری کا مال ابھی تک نہیں بیکا، تو آپ اسے ڈیلیٹ کر سکتے ہیں۔ لیکن اگر اس خریداری میں سے ایک پیس بھی فروخت ہو چکا ہو، تو سسٹم پرچیز ڈیلیٹ نہیں ہونے دے گا تاکہ آپ کا ریکارڈ اور لاگت کا حساب آؤٹ نہ ہو۔
+            </p>
+          </div>
+
+          {/* Step 8: Reports & Asset Valuation */}
+          <div className="bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center shrink-0">8</span>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                رپورٹس اور دکان کی درست مالیت (Reports & P&L)
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-loose">
+              <strong>Reports</strong> پیج پر آپ کو دکان کے کل سامان کی مالیت ہر لاٹ کے اصل ریٹ کے مطابق نظر آئے گی۔ اس کے علاوہ P&L میں ہر بیچ کی اصل لاگت کے مطابق خالص منافع درج ہوگا۔
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Tab 1: Custody & Temp Phone Return */}
       {activeTab === 'custody' && (
