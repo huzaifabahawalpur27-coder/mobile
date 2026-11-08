@@ -330,6 +330,14 @@ db.version(19).stores({
   exchange_items: 'id, exchange_id, shop_id, item_direction, phone_id, product_id'
 });
 
+// v20: stock_batches and conversion_runs for offline-first FIFO lot inventory
+db.version(20).stores({
+  stock_batches: 'id, shop_id, product_id, batch_no, status, [shop_id+product_id]',
+  sale_item_batches: 'id, shop_id, sale_item_id, batch_id',
+  batch_cost_adjustments: 'id, shop_id, batch_id, product_id',
+  conversion_runs: 'id, shop_id, product_id, status'
+});
+
 export const addToSyncQueue = async (table, action, data) => {
   let activeShopId = null;
   try { activeShopId = JSON.parse(localStorage.getItem('user') || 'null')?.shop_id || null; } catch (_) {}
