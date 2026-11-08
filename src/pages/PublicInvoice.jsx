@@ -532,6 +532,7 @@ export default function PublicInvoice() {
 
   // High-Resolution Visual PDF Download Handler
   // Renders the exact screen invoice (store header, customer grid, items + IMEI, totals, and yellow Urdu Nastaleeq warranty)
+  // Always downloads a .pdf file directly; NEVER triggers the print dialog.
   const handleDownloadPDF = async () => {
     if (!invoiceRef.current || downloadingPdf) return
     setDownloadingPdf(true)
@@ -549,46 +550,14 @@ export default function PublicInvoice() {
         }
       } catch (_) {}
 
-      // Clone element into a dedicated A4-proportioned off-screen container (794px = A4 at 96 DPI).
-      // This ensures identical desktop proportions (4-column grid, side-by-side header, authentic yellow warranty)
-      // on mobile phones and desktop displays alike, without scroll clipping or mobile layout collapse.
-      const clone = element.cloneNode(true)
-      const wrapper = document.createElement('div')
-      wrapper.style.position = 'fixed'
-      wrapper.style.left = '-9999px'
-      wrapper.style.top = '0'
-      wrapper.style.width = '794px'
-      wrapper.style.backgroundColor = '#ffffff'
-      wrapper.style.padding = '32px'
-      wrapper.style.boxSizing = 'border-box'
-      wrapper.style.zIndex = '-9999'
-
-      clone.style.width = '100%'
-      clone.style.maxWidth = '100%'
-      clone.style.boxShadow = 'none'
-      clone.style.border = 'none'
-
-      wrapper.appendChild(clone)
-      document.body.appendChild(wrapper)
-
-      // Short pause to guarantee font rendering and layout metrics in the clone
-      await new Promise(r => setTimeout(r, 150))
-
-      const canvas = await html2canvas(wrapper, {
+      // Capture the exact visual bill card displayed on the screen
+      const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         allowTaint: false,
         backgroundColor: '#ffffff',
-        width: 794,
-        windowWidth: 794,
-        scrollX: 0,
-        scrollY: 0,
         logging: false
       })
-
-      if (wrapper.parentNode) {
-        wrapper.parentNode.removeChild(wrapper)
-      }
 
       if (canvas && canvas.width > 0 && canvas.height > 0) {
         const imgData = canvas.toDataURL('image/png')
@@ -615,12 +584,28 @@ export default function PublicInvoice() {
 
         pdf.save(filename)
       } else {
-        throw new Error('Canvas render returned empty dimensions')
+        throw new Error('Canvas rendering returned empty dimensions')
       }
     } catch (err) {
       console.error('PDF download error:', err)
-      // Fallback to browser print dialog if canvas rendering fails
-      window.print()
+      // Emergency direct PDF save — NEVER open print dialog on Download button!
+      try {
+        const { jsPDF } = await loadPdfLibraries()
+        const fallbackPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+        fallbackPdf.setFontSize(16)
+        fallbackPdf.text(shop.name || 'EdgeX Mobile Store', 105, 20, { align: 'center' })
+        fallbackPdf.setFontSize(11)
+        fallbackPdf.text(`Invoice #${invoice?.invoice_no || id}`, 105, 28, { align: 'center' })
+        fallbackPdf.setFontSize(10)
+        fallbackPdf.text(`Customer: ${invoice?.customer_name || 'Valued Customer'}`, 14, 40)
+        fallbackPdf.text(`Mobile: ${invoice?.customer_phone ? '+' + invoice.customer_phone : 'Walk-in'}`, 14, 46)
+        fallbackPdf.text(`Total Amount: Rs. ${grossTotal.toLocaleString()}`, 14, 54)
+        fallbackPdf.text(`Net Total: Rs. ${netTotal.toLocaleString()}`, 14, 60)
+        fallbackPdf.text(`Paid: Rs. ${paidTotal.toLocaleString()}`, 14, 66)
+        fallbackPdf.save(filename)
+      } catch (emergErr) {
+        console.error('Emergency PDF fallback save failed:', emergErr)
+      }
     } finally {
       setDownloadingPdf(false)
     }
