@@ -600,8 +600,13 @@ export default function PublicInvoice() {
           const canvas = document.createElement('canvas')
           const width = 1100
           const lines = warrantyText.split('\n').filter(Boolean)
-          const lineHeight = 28
-          const height = 65 + (lines.length * lineHeight) + 35
+          const lineHeight = 34
+          const topHeaderHeight = 44
+          const urduPaddingTop = 26
+          const urduHeight = Math.max(lines.length, 1) * lineHeight
+          const footerPadding = 52
+          const height = topHeaderHeight + urduPaddingTop + urduHeight + footerPadding
+
           canvas.width = width
           canvas.height = height
           const ctx = canvas.getContext('2d')
@@ -613,46 +618,54 @@ export default function PublicInvoice() {
             ctx.strokeRect(3, 3, width - 6, height - 6)
 
             ctx.fillStyle = '#451a03'
-            ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif'
-            ctx.fillText('Official Warranty Terms  (دکان کی وارنٹی شرائط)', 24, 32)
+            ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.textAlign = 'left'
+            ctx.direction = 'ltr'
+            ctx.fillText('Official Warranty Terms  (دکان کی وارنٹی شرائط)', 24, 28)
 
             ctx.fillStyle = '#92400e'
-            ctx.font = 'bold 13px monospace'
-            ctx.fillText('WARRANTY', width - 110, 32)
+            ctx.font = 'bold 12px monospace'
+            ctx.textAlign = 'right'
+            ctx.fillText('WARRANTY', width - 24, 28)
 
             ctx.strokeStyle = '#fde68a'
             ctx.lineWidth = 1
             ctx.beginPath()
-            ctx.moveTo(24, 46)
-            ctx.lineTo(width - 24, 46)
+            ctx.moveTo(24, 42)
+            ctx.lineTo(width - 24, 42)
             ctx.stroke()
 
             ctx.fillStyle = '#1e293b'
-            ctx.font = '16px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Typesetting", serif'
+            ctx.font = '16px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Typesetting", "Amiri", "Tahoma", serif'
             ctx.textAlign = 'right'
             ctx.direction = 'rtl'
 
-            let textY = 78
+            let textY = 42 + urduPaddingTop
             for (const line of lines) {
-              ctx.fillText(line.trim(), width - 26, textY)
+              ctx.fillText(line.trim(), width - 24, textY)
               textY += lineHeight
             }
 
+            const bottomDividerY = textY + 6
+            ctx.strokeStyle = '#fde68a'
+            ctx.lineWidth = 1
             ctx.beginPath()
-            ctx.moveTo(24, textY + 6)
-            ctx.lineTo(width - 24, textY + 6)
+            ctx.moveTo(24, bottomDividerY)
+            ctx.lineTo(width - 24, bottomDividerY)
             ctx.stroke()
 
-            textY += 28
+            const footerTextY = bottomDividerY + 24
             ctx.fillStyle = '#78350f'
-            ctx.font = '15px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif'
-            ctx.fillText('آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝', width - 26, textY)
+            ctx.font = '14px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Typesetting", "Amiri", serif'
+            ctx.textAlign = 'right'
+            ctx.direction = 'rtl'
+            ctx.fillText('آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝', width - 24, footerTextY)
 
             ctx.textAlign = 'left'
             ctx.direction = 'ltr'
             ctx.fillStyle = '#451a03'
-            ctx.font = 'bold 15px sans-serif'
-            ctx.fillText(shop.name || 'EdgeX Mobile Store', 26, textY)
+            ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.fillText(shop.name || 'EdgeX Mobile Store', 24, footerTextY)
 
             warrantyImgData = canvas.toDataURL('image/png')
             warrantyImgRatio = height / width
@@ -695,14 +708,14 @@ export default function PublicInvoice() {
       }
 
       // Top Right: Badge & Invoice Details
-      const badgeText = isExchange ? '✓ PHONE EXCHANGE INVOICE' : '✓ SALES INVOICE'
+      const badgeText = isExchange ? 'PHONE EXCHANGE INVOICE' : 'SALES INVOICE'
       pdf.setFillColor(236, 253, 245)
       pdf.setDrawColor(167, 243, 208)
-      pdf.roundedRect(pageWidth - margin - 54, 13, 54, 7.5, 2, 2, 'FD')
+      pdf.roundedRect(pageWidth - margin - 50, 13, 50, 7.5, 2, 2, 'FD')
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(7.5)
       pdf.setTextColor(6, 95, 70)
-      pdf.text(badgeText, pageWidth - margin - 27, 18, { align: 'center' })
+      pdf.text(badgeText, pageWidth - margin - 25, 18, { align: 'center' })
 
       // Invoice Number: ACTUAL INVOICE NUMBER (e.g. #INV-156)
       pdf.setFont('helvetica', 'bold')
@@ -758,7 +771,7 @@ export default function PublicInvoice() {
       pdf.setTextColor(30, 41, 59)
       pdf.text(String(invoice.payment_type || invoice.settlement_payment_method || 'Cash').toUpperCase(), margin + (colWidth * 2) + 4, metaBoxY + 10.5)
 
-      // Col 4: Payment Status
+      // Col 4: Payment Status (Clean WinAnsi text without unicode tick)
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(6.5)
       pdf.setTextColor(100, 116, 139)
@@ -769,7 +782,7 @@ export default function PublicInvoice() {
         pdf.text(`Balance: Rs. ${balanceDue.toLocaleString()}`, margin + (colWidth * 3) + 4, metaBoxY + 10.5)
       } else {
         pdf.setTextColor(4, 120, 87)
-        pdf.text('Paid ✓', margin + (colWidth * 3) + 4, metaBoxY + 10.5)
+        pdf.text('PAID', margin + (colWidth * 3) + 4, metaBoxY + 10.5)
       }
 
       // 3. Items Table (autoTable)
@@ -779,11 +792,23 @@ export default function PublicInvoice() {
           const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
           const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
           const imei2 = item.imei_2 || snap.imei_2 || ''
-          const rawName = item.name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`.trim()
-          const imeiStr = imei1 ? (imei2 ? `\n[IMEI: ${imei1} / ${imei2}]` : `\n[IMEI: ${imei1}]`) : ''
+
+          let cleanName = (item.name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`).trim()
+          let extractedImei = imei1
+          const imeiMatch = cleanName.match(/\[(?:IMEI:?\s*)?([0-9a-zA-Z\s/-]+)\]/i) || cleanName.match(/\((?:IMEI:?\s*)?([0-9a-zA-Z\s/-]+)\)/i)
+          if (imeiMatch) {
+            extractedImei = extractedImei || imeiMatch[1].trim()
+            cleanName = cleanName.replace(imeiMatch[0], '').trim()
+          }
+
           const specs = [item.storage || snap.storage, item.color || snap.color, item.condition || snap.condition, item.pta_status || snap.pta_status].filter(Boolean).join(' • ')
-          const specsStr = specs ? ` • ${specs}` : ''
-          const fullName = rawName.includes(imei1) ? rawName : `${rawName}${imeiStr}${specsStr}`
+          const specsLine = specs ? ` (${specs})` : ''
+          let imeiLine = ''
+          if (extractedImei) {
+            imeiLine = imei2 ? `\n[IMEI: ${extractedImei} / ${imei2}]` : `\n[IMEI: ${extractedImei}]`
+          }
+
+          const fullName = `${cleanName}${specsLine}${imeiLine}`
 
           const qty = Number(item.quantity || 1)
           const price = Number(item.unit_price || 0)
@@ -890,21 +915,20 @@ export default function PublicInvoice() {
         rowY += 5.2
       })
 
-      currentY += totalsBoxHeight + 5
+      currentY += totalsBoxHeight + 8
 
-      // 5. Flattened Compact Urdu Warranty Section (Placed at bottom area keeping room for other content)
-      const warrantyHeight = Math.min(32, Math.max(20, contentWidth * warrantyImgRatio))
+      // 5. Flattened Compact Urdu Warranty Section (Naturally follows totals card)
+      const warrantyHeight = contentWidth * warrantyImgRatio
       const footerReservedSpace = 16
-      let warrantyY = Math.max(currentY + 6, pageHeight - margin - footerReservedSpace - warrantyHeight)
 
       if (currentY + warrantyHeight > pageHeight - margin - footerReservedSpace) {
         pdf.addPage()
-        currentY = margin
-        warrantyY = pageHeight - margin - footerReservedSpace - warrantyHeight
+        currentY = margin + 6
       }
 
       if (warrantyImgData) {
-        pdf.addImage(warrantyImgData, 'PNG', margin, warrantyY, contentWidth, warrantyHeight)
+        pdf.addImage(warrantyImgData, 'PNG', margin, currentY, contentWidth, warrantyHeight)
+        currentY += warrantyHeight + 6
       }
 
       // 6. Footer Disclaimer & Timestamp
