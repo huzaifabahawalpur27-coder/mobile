@@ -91,10 +91,13 @@ export default function PublicInvoice() {
             const effectiveCustName = directSale.customer_name || custInfo.name || 'Valued Customer'
             const effectiveCustPhone = directSale.customer_phone || custInfo.phone || ''
 
+            const actualInvoiceNo = directSale.id ? `INV-${directSale.id}` : (directSale.invoice_number || id)
             const formatted = {
               type: 'sale',
               id: directSale.id,
-              invoice_no: directSale.invoice_number || id,
+              actual_invoice_no: actualInvoiceNo,
+              invoice_no: actualInvoiceNo,
+              token: directSale.invoice_number || id,
               reference_id: directSale.invoice_number || id,
               created_at: directSale.created_at || new Date().toISOString(),
               subtotal: directSale.total_amount || directSale.net_amount || 0,
@@ -194,10 +197,13 @@ export default function PublicInvoice() {
             const incoming = (directExchange.exchange_items || []).filter(i => i.item_direction === 'incoming_trade_in')
             const outgoing = (directExchange.exchange_items || []).filter(i => i.item_direction === 'outgoing_sale')
 
+            const actualInvoiceNo = directExchange.id ? `EXC-${directExchange.id}` : (directExchange.exchange_number || id)
             const formatted = {
               type: 'exchange',
               id: directExchange.id,
-              invoice_no: directExchange.exchange_number || id,
+              actual_invoice_no: actualInvoiceNo,
+              invoice_no: actualInvoiceNo,
+              token: directExchange.exchange_number || id,
               reference_id: directExchange.exchange_number || id,
               created_at: directExchange.created_at || new Date().toISOString(),
               sale_amount: directExchange.sale_amount || 0,
@@ -254,6 +260,11 @@ export default function PublicInvoice() {
 
           if (!rpcErr && data) {
             const enriched = { ...data }
+            const actualInvoiceNo = enriched.id
+              ? (enriched.type === 'exchange' ? `EXC-${enriched.id}` : `INV-${enriched.id}`)
+              : (enriched.invoice_no || id)
+            enriched.actual_invoice_no = actualInvoiceNo
+            enriched.invoice_no = actualInvoiceNo
             try {
               // Check local db.customers by customer_id if phone or name is missing
               if (db?.customers && enriched.customer_id && (!enriched.customer_phone || enriched.customer_name === 'Valued Customer')) {
@@ -320,10 +331,13 @@ export default function PublicInvoice() {
               })()
 
               const formattedNo = localSale.invoice_number || (localSale.invoice_token ? `INV-${localSale.invoice_token}` : (id.startsWith('INV-') ? id : `INV-${cleanId}`))
+              const actualInvoiceNo = localSale.id ? `INV-${localSale.id}` : formattedNo
               const formatted = {
                 type: 'sale',
                 id: localSale.id,
-                invoice_no: formattedNo,
+                actual_invoice_no: actualInvoiceNo,
+                invoice_no: actualInvoiceNo,
+                token: formattedNo,
                 reference_id: formattedNo,
                 created_at: localSale.created_at || new Date().toISOString(),
                 subtotal: localSale.total_amount || localSale.subtotal || localSale.net_amount || localSale.total || 0,
@@ -533,6 +547,10 @@ export default function PublicInvoice() {
     .replace(/^⚠️?\s*\*?وارنٹی[\s\S]*?(?:\*|:|\))\s*\n+/i, '')
     .trim()
 
+  // Actual sequential invoice number (e.g. INV-156 instead of random URL token INV-JNXKG8DN)
+  const displayInvoiceNo = invoice.actual_invoice_no ||
+    (invoice.id ? (isExchange ? `EXC-${invoice.id}` : `INV-${invoice.id}`) : (invoice.invoice_no || id))
+
   // Hybrid High-Precision PDF Exporter:
   // Vectorizes all English store data, customer metadata, item details + IMEI, and financial totals;
   // Flattens the Urdu Nastaleeq warranty card into a high-DPI image to eliminate mojibake and font clipping.
@@ -541,7 +559,7 @@ export default function PublicInvoice() {
     if (!invoice || downloadingPdf) return
     setDownloadingPdf(true)
 
-    const filename = `Invoice_${invoice?.invoice_no || id || 'receipt'}.pdf`
+    const filename = `Invoice_${displayInvoiceNo}.pdf`
 
     try {
       const { jsPDF, html2canvas, autoTable } = await loadPdfLibraries()
@@ -553,11 +571,11 @@ export default function PublicInvoice() {
         }
       } catch (_) {}
 
-      // 1. FLATTEN URDU WARRANTY CARD INTO A HIGH-DPI IMAGE
+      // 1. FLATTEN URDU WARRANTY CARD INTO A COMPACT HIGH-DPI IMAGE
       let warrantyImgData = null
-      let warrantyImgRatio = 0.35
+      let warrantyImgRatio = 0.22
 
-      // Strategy A: html2canvas on warrantyRef
+      // Strategy A: html2canvas on warrantyRef (captures the exact compact styled card)
       if (warrantyRef.current) {
         try {
           const canvas = await html2canvas(warrantyRef.current, {
@@ -576,14 +594,14 @@ export default function PublicInvoice() {
         }
       }
 
-      // Strategy B: Pure HTML5 Canvas 2D fallback for Urdu Nastaleeq
+      // Strategy B: Pure HTML5 Canvas 2D fallback for Urdu Nastaleeq (Small compact typography)
       if (!warrantyImgData) {
         try {
           const canvas = document.createElement('canvas')
           const width = 1100
           const lines = warrantyText.split('\n').filter(Boolean)
-          const lineHeight = 46
-          const height = 130 + (lines.length * lineHeight) + 65
+          const lineHeight = 28
+          const height = 65 + (lines.length * lineHeight) + 35
           canvas.width = width
           canvas.height = height
           const ctx = canvas.getContext('2d')
@@ -591,50 +609,50 @@ export default function PublicInvoice() {
             ctx.fillStyle = '#fffdf5'
             ctx.fillRect(0, 0, width, height)
             ctx.strokeStyle = '#fcd34d'
-            ctx.lineWidth = 4
-            ctx.strokeRect(4, 4, width - 8, height - 8)
+            ctx.lineWidth = 3
+            ctx.strokeRect(3, 3, width - 6, height - 6)
 
             ctx.fillStyle = '#451a03'
-            ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif'
-            ctx.fillText('Official Warranty Terms  (دکان کی وارنٹی شرائط)', 30, 48)
+            ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif'
+            ctx.fillText('Official Warranty Terms  (دکان کی وارنٹی شرائط)', 24, 32)
 
             ctx.fillStyle = '#92400e'
-            ctx.font = 'bold 16px monospace'
-            ctx.fillText('WARRANTY', width - 140, 48)
+            ctx.font = 'bold 13px monospace'
+            ctx.fillText('WARRANTY', width - 110, 32)
 
             ctx.strokeStyle = '#fde68a'
-            ctx.lineWidth = 1.5
+            ctx.lineWidth = 1
             ctx.beginPath()
-            ctx.moveTo(30, 75)
-            ctx.lineTo(width - 30, 75)
+            ctx.moveTo(24, 46)
+            ctx.lineTo(width - 24, 46)
             ctx.stroke()
 
             ctx.fillStyle = '#1e293b'
-            ctx.font = '22px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Typesetting", serif'
+            ctx.font = '16px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Typesetting", serif'
             ctx.textAlign = 'right'
             ctx.direction = 'rtl'
 
-            let textY = 125
+            let textY = 78
             for (const line of lines) {
-              ctx.fillText(line.trim(), width - 35, textY)
+              ctx.fillText(line.trim(), width - 26, textY)
               textY += lineHeight
             }
 
             ctx.beginPath()
-            ctx.moveTo(30, textY + 10)
-            ctx.lineTo(width - 30, textY + 10)
+            ctx.moveTo(24, textY + 6)
+            ctx.lineTo(width - 24, textY + 6)
             ctx.stroke()
 
-            textY += 45
+            textY += 28
             ctx.fillStyle = '#78350f'
-            ctx.font = '19px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif'
-            ctx.fillText('آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝', width - 35, textY)
+            ctx.font = '15px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif'
+            ctx.fillText('آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝', width - 26, textY)
 
             ctx.textAlign = 'left'
             ctx.direction = 'ltr'
             ctx.fillStyle = '#451a03'
-            ctx.font = 'bold 18px sans-serif'
-            ctx.fillText(shop.name || 'EdgeX Mobile Store', 35, textY)
+            ctx.font = 'bold 15px sans-serif'
+            ctx.fillText(shop.name || 'EdgeX Mobile Store', 26, textY)
 
             warrantyImgData = canvas.toDataURL('image/png')
             warrantyImgRatio = height / width
@@ -644,7 +662,7 @@ export default function PublicInvoice() {
         }
       }
 
-      // 2. VECTORIZED PDF CREATION (Standard A4 Portrait)
+      // 2. VECTORIZED PDF CREATION (Standard A4 Portrait matching online bill layout)
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -677,20 +695,20 @@ export default function PublicInvoice() {
       }
 
       // Top Right: Badge & Invoice Details
-      const badgeText = isExchange ? 'PHONE EXCHANGE INVOICE' : 'SALES INVOICE'
+      const badgeText = isExchange ? '✓ PHONE EXCHANGE INVOICE' : '✓ SALES INVOICE'
       pdf.setFillColor(236, 253, 245)
       pdf.setDrawColor(167, 243, 208)
-      pdf.roundedRect(pageWidth - margin - 52, 13, 52, 7.5, 2, 2, 'FD')
+      pdf.roundedRect(pageWidth - margin - 54, 13, 54, 7.5, 2, 2, 'FD')
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(7.5)
       pdf.setTextColor(6, 95, 70)
-      pdf.text(badgeText, pageWidth - margin - 26, 18, { align: 'center' })
+      pdf.text(badgeText, pageWidth - margin - 27, 18, { align: 'center' })
 
-      // Invoice Number
+      // Invoice Number: ACTUAL INVOICE NUMBER (e.g. #INV-156)
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(13)
       pdf.setTextColor(15, 23, 42)
-      pdf.text(`#${invoice.invoice_no || id}`, pageWidth - margin, 26, { align: 'right' })
+      pdf.text(`#${displayInvoiceNo}`, pageWidth - margin, 26, { align: 'right' })
 
       // Date
       pdf.setFont('helvetica', 'normal')
@@ -836,7 +854,7 @@ export default function PublicInvoice() {
 
       let currentY = pdf.lastAutoTable.finalY + 4
 
-      // 4. Financial Totals Card (Right-aligned)
+      // 4. Financial Totals Card (Right-aligned, matching online layout)
       const totalsBoxWidth = 75
       const totalsBoxX = pageWidth - margin - totalsBoxWidth
       const totalsRows = []
@@ -874,30 +892,33 @@ export default function PublicInvoice() {
 
       currentY += totalsBoxHeight + 5
 
-      // 5. Flattened Urdu Warranty Section
-      const warrantyHeight = Math.min(50, Math.max(34, contentWidth * warrantyImgRatio))
-      if (currentY + warrantyHeight > pageHeight - 16) {
+      // 5. Flattened Compact Urdu Warranty Section (Placed at bottom area keeping room for other content)
+      const warrantyHeight = Math.min(32, Math.max(20, contentWidth * warrantyImgRatio))
+      const footerReservedSpace = 16
+      let warrantyY = Math.max(currentY + 6, pageHeight - margin - footerReservedSpace - warrantyHeight)
+
+      if (currentY + warrantyHeight > pageHeight - margin - footerReservedSpace) {
         pdf.addPage()
         currentY = margin
+        warrantyY = pageHeight - margin - footerReservedSpace - warrantyHeight
       }
 
       if (warrantyImgData) {
-        pdf.addImage(warrantyImgData, 'PNG', margin, currentY, contentWidth, warrantyHeight)
-        currentY += warrantyHeight + 5
+        pdf.addImage(warrantyImgData, 'PNG', margin, warrantyY, contentWidth, warrantyHeight)
       }
 
       // 6. Footer Disclaimer & Timestamp
-      const footerY = Math.max(currentY + 2, pageHeight - 14)
+      const footerY = pageHeight - margin - 3
       pdf.setDrawColor(226, 232, 240)
-      pdf.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5)
+      pdf.line(margin, footerY - 5, pageWidth - margin, footerY - 5)
 
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(7.5)
-      pdf.setTextColor(100, 116, 139)
-      pdf.text('This is a verified computerized digital invoice and does not require a physical signature.', pageWidth / 2, footerY + 1, { align: 'center' })
+      pdf.setTextColor(51, 65, 85)
+      pdf.text('This is a verified computerized digital invoice and does not require a physical signature.', pageWidth / 2, footerY - 1.5, { align: 'center' })
       pdf.setFontSize(6.5)
       pdf.setTextColor(148, 163, 184)
-      pdf.text(`Powered by EdgeX POS Suite • Verified Digital Invoice • ${dateFormatted}`, pageWidth / 2, footerY + 4.5, { align: 'center' })
+      pdf.text(`Powered by EdgeX POS Suite • Verified Digital Invoice • ${dateFormatted}`, pageWidth / 2, footerY + 2, { align: 'center' })
 
       pdf.save(filename)
     } catch (err) {
@@ -909,7 +930,7 @@ export default function PublicInvoice() {
         fallbackPdf.setFontSize(16)
         fallbackPdf.text(shop.name || 'EdgeX Mobile Store', 14, 20)
         fallbackPdf.setFontSize(12)
-        fallbackPdf.text(`Invoice #${invoice?.invoice_no || id}`, 14, 28)
+        fallbackPdf.text(`Invoice #${displayInvoiceNo}`, 14, 28)
         fallbackPdf.setFontSize(10)
         fallbackPdf.text(`Customer: ${invoice?.customer_name || 'Valued Customer'}`, 14, 38)
         fallbackPdf.text(`Mobile: ${invoice?.customer_phone ? '+' + invoice.customer_phone : 'Walk-in'}`, 14, 44)
@@ -1032,7 +1053,7 @@ export default function PublicInvoice() {
                 style={{ color: '#020617' }}
                 className="text-base font-black font-mono tracking-wide pt-1"
               >
-                #{invoice.invoice_no || id}
+                #{displayInvoiceNo}
               </div>
               <div style={{ color: '#64748b' }} className="text-xs flex items-center sm:justify-end gap-1">
                 <span className="text-[11px]">📅</span>
@@ -1303,31 +1324,31 @@ export default function PublicInvoice() {
             ref={warrantyRef}
             style={{
               backgroundColor: '#fffdf5',
-              border: '2px solid #fcd34d',
-              borderRadius: '1rem',
-              padding: '1.25rem'
+              border: '1.5px solid #fcd34d',
+              borderRadius: '0.75rem',
+              padding: '0.65rem 0.85rem'
             }}
-            className="space-y-2.5"
+            className="space-y-1.5"
           >
             <div
-              style={{ borderBottom: '1px solid #fde68a', paddingBottom: '0.5rem' }}
+              style={{ borderBottom: '1px solid #fde68a', paddingBottom: '0.35rem' }}
               className="flex items-center justify-between"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span
                   style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}
-                  className="w-6 h-6 rounded-lg flex items-center justify-center text-xs"
+                  className="w-5 h-5 rounded flex items-center justify-center text-[10px]"
                 >
                   🛡️
                 </span>
-                <h3 style={{ color: '#451a03' }} className="text-xs sm:text-sm font-bold tracking-wide flex items-center gap-1.5">
+                <h3 style={{ color: '#451a03' }} className="text-[11px] sm:text-xs font-bold tracking-wide flex items-center gap-1">
                   <span>Official Warranty Terms</span>
-                  <span style={{ color: '#78350f' }} className="font-nastaliq text-[11px] font-normal">(دکان کی وارنٹی شرائط)</span>
+                  <span style={{ color: '#78350f' }} className="font-nastaliq text-[10px] font-normal">(دکان کی وارنٹی شرائط)</span>
                 </h3>
               </div>
               <span
                 style={{ backgroundColor: '#fef3c7', borderColor: '#fde68a', color: '#92400e' }}
-                className="text-[10px] font-bold px-2 py-0.5 rounded-full border font-mono"
+                className="text-[8.5px] font-bold px-2 py-0.5 rounded-full border font-mono"
               >
                 WARRANTY
               </span>
@@ -1337,14 +1358,14 @@ export default function PublicInvoice() {
             <div
               dir="rtl"
               style={{ color: '#1e293b' }}
-              className="font-nastaliq text-[10px] sm:text-[11px] leading-[1.8] sm:leading-[1.85] whitespace-pre-line text-right selection:bg-amber-200 py-1"
+              className="font-nastaliq text-[8.5px] sm:text-[9.5px] leading-[1.4] sm:leading-[1.45] whitespace-pre-line text-right selection:bg-amber-200 py-0.5"
             >
               {warrantyText}
             </div>
 
             <div
-              style={{ borderTop: '1px solid #fde68a', paddingTop: '0.5rem', color: '#78350f' }}
-              className="flex flex-wrap items-center justify-between text-[10px] sm:text-[11px]"
+              style={{ borderTop: '1px solid #fde68a', paddingTop: '0.35rem', color: '#78350f' }}
+              className="flex flex-wrap items-center justify-between text-[8.5px] sm:text-[9.5px]"
             >
               <div className="font-nastaliq">
                 آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝
@@ -1373,7 +1394,7 @@ export default function PublicInvoice() {
         {shop.phone && (
           <div className="print:hidden text-center pt-2 pb-6">
             <a
-              href={`https://wa.me/${shop.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Assalam-o-Alaikum, I have a question regarding Invoice #${invoice.invoice_no}`)}`}
+              href={`https://wa.me/${shop.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Assalam-o-Alaikum, I have a question regarding Invoice #${displayInvoiceNo}`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 py-2 px-4 rounded-xl shadow-xs transition"
