@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
-import { recoverCorruptedToken, DEFAULT_WARRANTY_TERMS_URDU, buildPublicInvoiceUrl, cleanPakistanPhone } from '../services/whatsappQueueService'
+import { recoverCorruptedToken, DEFAULT_WARRANTY_TERMS_URDU, buildPublicInvoiceUrl, cleanPakistanPhone, isRealCustomerName } from '../services/whatsappQueueService'
 import InvoiceDocument from '../components/InvoiceDocument'
 import { buildInvoiceView } from '../utils/invoiceView'
 import { generateInvoicePdf } from '../utils/invoicePdf'
@@ -35,6 +35,47 @@ function recoverCorruptedInvoiceRef(ref) {
   if (!m) return raw
   const recovered = recoverCorruptedToken(m[2])
   return recovered && recovered !== m[2].toUpperCase() ? `${(m[1] || '').toUpperCase()}${recovered}` : raw
+}
+
+/**
+ * On a shop device, fills a bill's missing customer name/phone from this device's
+ * customer list or WhatsApp outbox (bills saved by some RPC versions lack them).
+ * A customer's own phone has neither, so this is a no-op there; the server-side
+ * backfill (sql/phase1b_bill_customer_backfill.sql) covers that case.
+ */
+async function fillCustomerFromDevice(record, cleanId, customerId = null) {
+  if (!record) return record
+  const needName = !isRealCustomerName(record.customer_name)
+  const needPhone = !String(record.customer_phone || '').trim()
+  if (!needName && !needPhone) return record
+  const isExchange = record.type === 'exchange'
+  try {
+    const custId = customerId ?? record.customer_id
+    if (db?.customers && custId) {
+      const cust = await db.customers.get(Number(custId))
+      if (cust) {
+        if (!isRealCustomerName(record.customer_name) && isRealCustomerName(cust.name)) record.customer_name = cust.name
+        if (!String(record.customer_phone || '').trim() && cust.phone) record.customer_phone = cust.phone
+      }
+    }
+    if (db?.whatsapp_queue && (!isRealCustomerName(record.customer_name) || !String(record.customer_phone || '').trim())) {
+      const qItems = await db.whatsapp_queue.toArray()
+      const idKey = isExchange ? 'exchange_id' : 'sale_id'
+      const match = qItems.find(q => {
+        const ref = q.reference_data || {}
+        if (record.id && ref[idKey] && String(ref[idKey]) === String(record.id)) return true
+        const tok = String(ref.invoice_token || '').toUpperCase()
+        return Boolean(cleanId && (tok === cleanId || String(q.reference_id || '').toUpperCase().endsWith(cleanId)))
+      })
+      if (match) {
+        if (!isRealCustomerName(record.customer_name) && isRealCustomerName(match.recipient_name)) record.customer_name = match.recipient_name
+        if (!String(record.customer_phone || '').trim() && match.recipient_phone) record.customer_phone = match.recipient_phone
+      }
+    }
+  } catch (err) {
+    console.debug('Customer lookup on this device failed:', err)
+  }
+  return record
 }
 
 // Shop staff have a session (tenant-scoped RLS lets their direct queries work);
@@ -114,7 +155,7 @@ export default function PublicInvoice() {
             const effectiveShopLogo = shopInfo.logo_url || localShopSettings.logo_url || localStorage.getItem(`shop_logo_${directSale.shop_id}`) || ''
             const effectiveWarranty = shopInfo.warranty_terms || localShopSettings.warranty_terms || ''
 
-            const effectiveCustName = directSale.customer_name || custInfo.name || 'Valued Customer'
+            const effectiveCustName = [directSale.customer_name, custInfo.name].find(isRealCustomerName) || 'Valued Customer'
             const effectiveCustPhone = directSale.customer_phone || custInfo.phone || ''
 
             const actualInvoiceNo = directSale.id ? `INV-${directSale.id}` : (directSale.invoice_number || id)
@@ -174,6 +215,7 @@ export default function PublicInvoice() {
               })
             }
 
+            await fillCustomerFromDevice(formatted, cleanId, directSale.customer_id)
             setInvoice(formatted)
             setLoading(false)
             return
@@ -239,7 +281,7 @@ export default function PublicInvoice() {
               settlement_payment_method: directExchange.settlement_payment_method || 'Cash',
               settlement_paid_amount: directExchange.settlement_paid_amount || 0,
               paid_amount: directExchange.settlement_paid_amount || 0,
-              customer_name: directExchange.customer_name || custInfo.name || 'Valued Customer',
+              customer_name: [directExchange.customer_name, custInfo.name].find(isRealCustomerName) || 'Valued Customer',
               customer_phone: directExchange.customer_phone || custInfo.phone || '',
               status: directExchange.status || 'completed',
               shop: {
@@ -270,6 +312,7 @@ export default function PublicInvoice() {
               }))
             }
 
+            await fillCustomerFromDevice(formatted, cleanId, directExchange.customer_id)
             setInvoice(formatted)
             setLoading(false)
             return
@@ -291,43 +334,7 @@ export default function PublicInvoice() {
               : (enriched.invoice_no || id)
             enriched.actual_invoice_no = actualInvoiceNo
             enriched.invoice_no = actualInvoiceNo
-            try {
-              // Check local db.customers by customer_id if phone or name is missing
-              if (db?.customers && enriched.customer_id && (!enriched.customer_phone || enriched.customer_name === 'Valued Customer')) {
-                const cust = await db.customers.get(Number(enriched.customer_id))
-                if (cust) {
-                  if (cust.name && (enriched.customer_name === 'Valued Customer' || !enriched.customer_name)) {
-                    enriched.customer_name = cust.name
-                  }
-                  if (cust.phone && !enriched.customer_phone) {
-                    enriched.customer_phone = cust.phone
-                  }
-                }
-              }
-
-              // Also check whatsapp_queue if customer is still Valued Customer or phone missing
-              if (db?.whatsapp_queue && (!enriched.customer_phone || enriched.customer_name === 'Valued Customer')) {
-                const qItems = await db.whatsapp_queue.toArray()
-                const match = qItems.find(q =>
-                  (q.reference_id && q.reference_id.toUpperCase().includes(cleanId)) ||
-                  (q.reference_data && (
-                    (q.reference_data.invoice_token && q.reference_data.invoice_token.toUpperCase() === cleanId) ||
-                    (q.reference_data.invoice_number && q.reference_data.invoice_number.toUpperCase().includes(cleanId)) ||
-                    (q.reference_data.sale_id && String(q.reference_data.sale_id) === String(enriched.id))
-                  ))
-                )
-                if (match) {
-                  if (match.recipient_name && (enriched.customer_name === 'Valued Customer' || !enriched.customer_name)) {
-                    enriched.customer_name = match.recipient_name
-                  }
-                  if (match.recipient_phone && !enriched.customer_phone) {
-                    enriched.customer_phone = match.recipient_phone
-                  }
-                }
-              }
-            } catch (enrichErr) {
-              console.debug('Customer enrichment error:', enrichErr)
-            }
+            await fillCustomerFromDevice(enriched, cleanId)
 
             if (isMounted) {
               setInvoice(enriched)
@@ -409,6 +416,7 @@ export default function PublicInvoice() {
                 })
               }
 
+              await fillCustomerFromDevice(formatted, cleanId, localSale.customer_id)
               setInvoice(formatted)
               setLoading(false)
               return

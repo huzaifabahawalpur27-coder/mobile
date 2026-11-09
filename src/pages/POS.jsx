@@ -19,6 +19,7 @@ import {
   isLegacyEnglishInvoiceTemplate,
   generateRandomInvoiceToken,
   persistSaleInvoiceToken,
+  persistSaleCustomerDetails,
   normalizeInvoiceToken
 } from '../services/whatsappQueueService'
 import { playError } from '../utils/soundEffects'
@@ -1295,6 +1296,9 @@ function POS() {
           // database default. Store ours on the row (or read the server's) so the
           // shared public link resolves for the customer.
           const confirmedToken = await persistSaleInvoiceToken(saleId, invoiceToken)
+          // Some RPC versions (and the fallback call above) drop the customer's name and
+          // phone; store them so the customer's bill does not say "Valued Customer".
+          persistSaleCustomerDetails(saleId, { name: effectiveCustName, phone: effectiveCustPhone })
 
           finalSale = {
             ...saleData,
@@ -1754,6 +1758,8 @@ function POS() {
       if (!input || !input.trim()) return
       customerPhone = input.trim()
     }
+    // Keep the bill in step with who it was sent to (walk-in sales have no customer row)
+    persistSaleCustomerDetails(lastReceipt.sale?.id, { name: customerName, phone: customerPhone })
 
     const sid = user?.shop_id || 1
     const shopInfo = {

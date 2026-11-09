@@ -107,6 +107,45 @@ export async function persistSaleInvoiceToken(saleId, preferredToken) {
   return fetchServerInvoiceToken('sales', saleId)
 }
 
+const PLACEHOLDER_NAMES = ['walk-in customer', 'walk-in', 'valued customer', 'customer', '']
+
+/** True for real customer names (not "Walk-in Customer", "Valued Customer", blank). */
+export function isRealCustomerName(name) {
+  return !PLACEHOLDER_NAMES.includes(String(name || '').trim().toLowerCase())
+}
+
+/**
+ * Writes the customer's name and phone onto a sale row. Some process_phone_sale versions
+ * (and POS's fallback call) never store them, so the customer's bill showed
+ * "Valued Customer / Walk-in". Placeholder names are never written. Best-effort:
+ * returns true when the row was updated.
+ */
+export async function persistSaleCustomerDetails(saleId, { name, phone } = {}) {
+  if (!saleId || !/^\d+$/.test(String(saleId))) return false
+  const patch = {}
+  if (isRealCustomerName(name)) patch.customer_name = String(name).trim()
+  const cleanPhone = String(phone || '').replace(/[^0-9+]/g, '')
+  if (cleanPhone.length >= 10) patch.customer_phone = cleanPhone
+  if (Object.keys(patch).length === 0) return false
+  try {
+    let { error } = await supabase.from('sales').update(patch).eq('id', saleId)
+    if (error && patch.customer_phone && /customer_phone/.test(error.message || '')) {
+      // Older schema without customer_phone: still save the name
+      delete patch.customer_phone
+      if (!patch.customer_name) return false
+      ;({ error } = await supabase.from('sales').update(patch).eq('id', saleId))
+    }
+    if (error) {
+      console.warn('persistSaleCustomerDetails:', error.message || error)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.warn('persistSaleCustomerDetails:', err)
+    return false
+  }
+}
+
 /**
  * Rewrites every public invoice URL and the invoice-number line in a message so they
  * point at the given (server-verified) token. Used to repair messages created with a
@@ -1421,6 +1460,64 @@ export async function registerLegacyInvoiceTokens(items = []) {
         continue
       }
       markDone()
+      updated++
+    }
+  }
+  return updated
+}
+
+const backfilledCustomerKeys = new Set()
+
+/**
+ * Fills in the customer's name/phone on bills that were saved without them, using the
+ * WhatsApp outbox (which always has the recipient). Only empty or placeholder values
+ * ("Walk-in Customer", "Valued Customer") are replaced. Covers outbox items that exist
+ * only on this device. Returns the number of bills updated.
+ */
+export async function backfillBillCustomersFromQueue(items = []) {
+  if (!navigator.onLine) return 0
+  const wanted = { sales: new Map(), exchanges: new Map() }
+  for (const item of items) {
+    const ref = item?.reference_data
+    if (!ref) continue
+    const isExchange = Boolean(ref.is_exchange) || String(item.message_type || '').includes('exchange')
+    const id = isExchange ? ref.exchange_id : ref.sale_id
+    if (!id || !/^\d+$/.test(String(id))) continue
+    const table = isExchange ? 'exchanges' : 'sales'
+    const key = `${table}:${id}`
+    if (backfilledCustomerKeys.has(key) || wanted[table].has(Number(id))) continue
+    const name = isRealCustomerName(item.recipient_name) ? String(item.recipient_name).trim() : ''
+    const phone = String(item.recipient_phone || '').replace(/[^0-9]/g, '')
+    if (name || phone.length >= 10) wanted[table].set(Number(id), { name, phone: phone.length >= 10 ? phone : '' })
+  }
+
+  let updated = 0
+  for (const table of ['sales', 'exchanges']) {
+    const ids = Array.from(wanted[table].keys())
+    if (ids.length === 0) continue
+    let hasPhoneColumn = true
+    let { data, error } = await supabase.from(table).select('id, customer_name, customer_phone').in('id', ids)
+    if (error && /customer_phone/.test(error.message || '')) {
+      hasPhoneColumn = false
+      ;({ data, error } = await supabase.from(table).select('id, customer_name').in('id', ids))
+    }
+    if (error) {
+      console.warn(`backfillBillCustomersFromQueue: could not read ${table}:`, error.message || error)
+      continue
+    }
+    for (const row of data || []) {
+      const want = wanted[table].get(Number(row.id))
+      const patch = {}
+      if (want.name && !isRealCustomerName(row.customer_name)) patch.customer_name = want.name
+      if (hasPhoneColumn && want.phone && !String(row.customer_phone || '').trim()) patch.customer_phone = want.phone
+      backfilledCustomerKeys.add(`${table}:${row.id}`)
+      if (Object.keys(patch).length === 0) continue
+      const { error: upErr } = await supabase.from(table).update(patch).eq('id', row.id)
+      if (upErr) {
+        console.warn(`backfillBillCustomersFromQueue: could not update ${table} ${row.id}:`, upErr.message || upErr)
+        backfilledCustomerKeys.delete(`${table}:${row.id}`)
+        continue
+      }
       updated++
     }
   }

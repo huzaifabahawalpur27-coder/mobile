@@ -11,7 +11,8 @@ import {
   replaceOrInjectWarrantyInTemplate,
   upgradeLegacyWhatsAppMessage,
   repairQueueInvoiceLinks,
-  registerLegacyInvoiceTokens
+  registerLegacyInvoiceTokens,
+  backfillBillCustomersFromQueue
 } from '../services/whatsappQueueService'
 
 const needsLinkUpgrade = (text) => !String(text || '').includes('/invoice/')
@@ -57,6 +58,8 @@ export default function WhatsAppQueue() {
       // in this device's outbox), then point pending links at the token the server
       // really stored (fixes links queued with a client-only or corrupted token).
       await registerLegacyInvoiceTokens(data).catch(err => console.warn('Legacy invoice token upload failed:', err))
+      // Bills saved without the customer's name/phone get them from the outbox recipient
+      await backfillBillCustomersFromQueue(data).catch(err => console.warn('Bill customer backfill failed:', err))
       await repairQueueInvoiceLinks(data).catch(err => console.warn('Invoice link repair failed:', err))
       setMessages(data)
     } catch (err) {

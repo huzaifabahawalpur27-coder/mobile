@@ -8,7 +8,7 @@ import {
   paymentMethodLabel,
   formatRs
 } from './deviceLabels'
-import { computeExchangeSettlement } from '../services/whatsappQueueService'
+import { computeExchangeSettlement, isRealCustomerName } from '../services/whatsappQueueService'
 
 /**
  * One description of a customer bill (sale or phone exchange), shared by the online bill
@@ -62,9 +62,11 @@ export function buildInvoiceView(invoice = {}, { billNo, verifyUrl, warrantyText
   const date = invoice.created_at
     ? new Date(invoice.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
     : ''
+  // A bill with no real name/number is a walk-in sale; say so plainly rather than
+  // "Valued Customer" (the old database placeholder).
   const customer = {
-    name: invoice.customer_name || 'Valued Customer',
-    phone: invoice.customer_phone ? formatPkMobile(invoice.customer_phone) : 'Walk-in'
+    name: isRealCustomerName(invoice.customer_name) ? String(invoice.customer_name).trim() : 'Walk-in customer',
+    phone: String(invoice.customer_phone || '').trim() ? formatPkMobile(invoice.customer_phone) : 'Not given'
   }
   const warrantyLines = String(warrantyText || '').split('\n').map(l => l.trim()).filter(Boolean)
   const base = { isExchange, shop, date, billNo, verifyUrl, customer, warrantyLines }
