@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { Plus, Trash2, Smartphone, DollarSign, Shield, CheckCircle, AlertCircle, Scan, Landmark, ChevronDown, Check, Send } from 'lucide-react'
 import { searchIphoneModels, getIphoneColorsForModel, ALL_IPHONE_COLORS, IPHONE_MODELS } from '../utils/iphonePresets'
 import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment, recordPurchaseToAccounts } from '../services/bankService'
+import { adjustSupplierBalance } from '../services/atomicOps'
 import BankAccountModal from './BankAccountModal'
 import PurchaseSplitPaymentModal from './PurchaseSplitPaymentModal'
 
@@ -662,8 +663,8 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
       }
 
       let rpcData = null, rpcError = null
-      if (!hasBuyBacks) {
-        // Only call RPC if there are NO customer buy-backs (new devices only)
+      {
+        // sql/fix_phone_purchase_atomic.sql: all-or-nothing, buy-backs included
         const primaryRes = await supabase.rpc('record_phone_purchase', {
           p_supplier_id: parseInt(supplierId),
           p_branch_id: user.branch_id || null,
@@ -690,15 +691,25 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           rpcData = primaryRes.data
           rpcError = primaryRes.error
         }
-      } else {
-        // Customer buy-backs present: bypass restrictive RPC to directly handle reactivations & purchase items
-        rpcData = { success: false, buyback: true }
       }
 
-      // If RPC failed due to session, cache, or schema mismatch, execute resilient direct table insert
-      if (rpcError || (rpcData && !rpcData.success)) {
+      // The step-by-step save below is used only when the database function cannot do
+      // this purchase at all: not installed, or an old version without buy-back support
+      // (duplicate IMEI). Any other refusal means nothing was saved: show it and stop,
+      // so a purchase is never saved twice.
+      const rpcErrText = `${rpcError?.code || ''} ${rpcError?.message || ''}`
+      const rpcMissing = Boolean(rpcError) && (rpcError.code === 'PGRST202' || /could not find the function|schema cache/i.test(rpcErrText))
+      const oldRpcNoBuyBack = hasBuyBacks && (
+        (rpcError && (rpcError.code === '23505' || /duplicate key|uq_shop_imei/i.test(rpcErrText))) ||
+        (rpcData && rpcData.success === false && /already|duplicate/i.test(rpcData.error || '') && !/in stock/i.test(rpcData.error || ''))
+      )
+      if ((rpcError && !rpcMissing && !oldRpcNoBuyBack) || (!rpcError && rpcData && rpcData.success === false && !oldRpcNoBuyBack)) {
+        throw new Error(rpcError?.message || rpcData?.error || 'Purchase was refused by the server')
+      }
+
+      if (rpcMissing || oldRpcNoBuyBack) {
         console.warn('PhonePurchasePanel: RPC failed (' + (rpcError?.message || rpcData?.error) + '). Falling back to direct database insert...')
-        
+
         // 1. Insert or Reuse Purchase Record
         let purchaseId = rpcData?.purchase_id || null
         if (!purchaseId) {
@@ -719,7 +730,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
             status: 'completed',
             created_at: new Date().toISOString()
           }
-          
+
           let pRes = await supabase.from('purchases').insert([purchaseRecord]).select().single()
           if (pRes.error) {
             const corePurchase = {
@@ -734,7 +745,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
             }
             pRes = await supabase.from('purchases').insert([corePurchase]).select().single()
           }
-          
+
           if (pRes.error) throw pRes.error
           purchaseId = pRes.data.id
         }
@@ -916,17 +927,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           } catch (_) {}
         }
 
-        // 5. Update supplier outstanding balance for unpaid credit portion
-        const unpaidCredit = totalCost - effectivePaid
-        if (unpaidCredit > 0 && supplierId) {
-          try {
-            const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', parseInt(supplierId)).maybeSingle()
-            const currentBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
-            const newBal = currentBal + unpaidCredit
-            await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', parseInt(supplierId))
-            if (db.suppliers) await db.suppliers.update(parseInt(supplierId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
-          } catch (_) {}
-        }
+        // (supplier balance: added once below, for both paths)
 
         rpcData = {
           success: true,
@@ -1006,16 +1007,16 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
       }
 
       // Synchronize supplier outstanding_balance and balance both online and in local Dexie
+      // Added once, as a change applied by the database (no cut-off at zero, so a
+      // supplier advance is kept)
+      let supplierBalanceWarning = ''
       if (supplierId) {
         const balanceDelta = totalCost - effectivePaid
-        try {
-          const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supplierId).maybeSingle()
-          if (curSup) {
-            const updatedBal = Math.max(0, (curSup.outstanding_balance ?? curSup.balance ?? 0) + balanceDelta)
-            await supabase.from('suppliers').update({ balance: updatedBal, outstanding_balance: updatedBal }).eq('id', supplierId)
-            await db.suppliers?.update(parseInt(supplierId), { balance: updatedBal, outstanding_balance: updatedBal }).catch(() => {})
-          }
-        } catch (_) {}
+        const balRes = await adjustSupplierBalance(parseInt(supplierId), balanceDelta)
+        if (!balRes.ok) {
+          console.error('Phone purchase: supplier balance not updated:', balRes.error)
+          supplierBalanceWarning = ` Supplier balance could not be updated (${balRes.error}); please add Rs. ${balanceDelta.toLocaleString()} manually.`
+        }
       }
 
       // Automatically deduct from chosen bank account or cash drawer
@@ -1076,7 +1077,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           ? ` Paid Rs. ${effectivePaid.toLocaleString()} in Cash.`
           : ''
 
-      setSuccessMsg(`✅ Purchase PR-${rpcData.purchase_id} recorded successfully! ${phonesCountAdded} phones added to inventory.${bankNotice}`)
+      setSuccessMsg(`✅ Purchase PR-${rpcData.purchase_id} recorded successfully! ${phonesCountAdded} phones added to inventory.${bankNotice}${supplierBalanceWarning}`)
       setPhoneCart([])
       setPaidAmount('')
       setPurchaseNotes('')
@@ -1943,7 +1944,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     ) : (
                       splitPayments.map((p, idx) => {
                         const tenderAcc = bankAccounts.find(a => String(a.id) === String(p.account_id))
-                        const pLabel = p.method === 'cash' 
+                        const pLabel = p.method === 'cash'
                           ? `💵 Cash (${tenderAcc?.account_name || 'Cash in Hand'})`
                           : (tenderAcc ? `🏦 ${tenderAcc.bank_name ? `${tenderAcc.bank_name} - ` : ''}${tenderAcc.account_name}` : `📱 ${p.method.toUpperCase()}`)
                         return (

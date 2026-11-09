@@ -8,6 +8,7 @@ import UpgradeWall from '../components/UpgradeWall'
 import { db, addToSyncQueue, moveToTrash } from '../services/db'
 import { getBankAccounts, deductBankBalance } from '../services/bankService'
 import PasswordModal from '../components/PasswordModal'
+import { adjustSupplierBalance } from '../services/atomicOps'
 
 function Suppliers() {
   const { user } = useAuth()
@@ -172,8 +173,8 @@ function Suppliers() {
       if (!isDebit && amount > 0) {
         try {
           const accounts = await getBankAccounts(user.shop_id)
-          const cashAcc = accounts.find(a => 
-            a.bank_name?.toLowerCase().includes('cash') || 
+          const cashAcc = accounts.find(a =>
+            a.bank_name?.toLowerCase().includes('cash') ||
             a.account_name?.toLowerCase().includes('cash')
           ) || accounts[0]
           if (cashAcc) {
@@ -189,11 +190,10 @@ function Suppliers() {
         }
       }
 
-      // Update supplier outstanding_balance and balance
-      const newBal = isDebit
-        ? (txSup.outstanding_balance || 0) + amount
-        : Math.max(0, (txSup.outstanding_balance || 0) - amount)
-      await supabase.from('suppliers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', txSup.id)
+      // Balance change applied by the database (no cut-off at zero, so advances are kept)
+      const balRes = await adjustSupplierBalance(txSup.id, isDebit ? amount : -amount)
+      if (!balRes.ok) alert(`Saved, but the supplier's balance could not be updated (${balRes.error}). Please check it.`)
+      const newBal = (Number(txSup.outstanding_balance) || 0) + (isDebit ? amount : -amount)
       setTxSup({ ...txSup, outstanding_balance: newBal, balance: newBal })
       setSuppliers(prev => prev.map(s => s.id === txSup.id ? { ...s, outstanding_balance: newBal, balance: newBal } : s))
 
@@ -206,10 +206,9 @@ function Suppliers() {
         const offlinePayload = { ...payload, id: crypto.randomUUID() }
         await db.supplier_payments.add(offlinePayload)
         await addToSyncQueue('supplier_payments', 'INSERT', offlinePayload)
-        const newBal = isDebit
-          ? (txSup.outstanding_balance || 0) + amount
-          : Math.max(0, (txSup.outstanding_balance || 0) - amount)
-        await db.suppliers.update(txSup.id, { outstanding_balance: newBal, balance: newBal })
+        // Queued as a change (applied once when the device is back online)
+        await adjustSupplierBalance(txSup.id, isDebit ? amount : -amount, { queueOnly: true })
+        const newBal = (Number(txSup.outstanding_balance) || 0) + (isDebit ? amount : -amount)
         setTxSup({ ...txSup, outstanding_balance: newBal, balance: newBal })
         setSuppliers(prev => prev.map(s => s.id === txSup.id ? { ...s, outstanding_balance: newBal, balance: newBal } : s))
         setTxForm({ date: new Date().toISOString().slice(0, 10), bill_number: '', type: 'debit', amount: '', note: '' })

@@ -12,7 +12,7 @@ import { buildBillHTML } from '../utils/billTemplates'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
 import { getBankAccounts, creditBankBalance } from '../services/bankService'
 import { checkPurchaseBatchesBeforeVoid, voidPurchaseBatches } from '../services/batchService'
-import { adjustProductStock, adjustSupplierBalance } from '../services/atomicOps'
+import { adjustProductStock, adjustSupplierBalance, releasePhoneFromPurchase } from '../services/atomicOps'
 
 const normalizePurchaseItem = (it, phonesPool = [], productsPool = []) => {
     const ph = it.phones || (phonesPool || []).find(p => p.id === it.phone_id || (it.purchase_id && p.purchase_id === it.purchase_id))
@@ -329,8 +329,10 @@ function PurchaseHistory() {
                 // Handle phone items vs product items
                 if (item.phone_id) {
                     // Mark phone as returned
-                    await supabase.from('phones').update({ status: 'returned' }).eq('id', item.phone_id)
-                    if (db.phones) await db.phones.update(item.phone_id, { status: 'returned' }).catch(() => {})
+                    // Only if it is still this purchase's phone and in stock (not sold, not bought again)
+                    const phoneRes = await releasePhoneFromPurchase(item.phone_id, selectedPurchase.id)
+                    if (phoneRes.skipped) console.warn('Purchase return: phone left unchanged -', phoneRes.skipped)
+            else if (!phoneRes.ok) console.error('Purchase return: phone not updated -', phoneRes.error)
                 } else if (item.product_id) {
                     // Reduce stock inside the database (no stale read-then-write)
                     const stockRes = await adjustProductStock(item.product_id, -returnQty)
@@ -634,8 +636,9 @@ function PurchaseHistory() {
                     if (pItems && pItems.length > 0) {
                         for (const pi of pItems) {
                             if (pi.phone_id) {
-                                await supabase.from('phones').update({ status: 'returned', purchase_id: null }).eq('id', pi.phone_id)
-                                if (db.phones) await db.phones.update(pi.phone_id, { status: 'returned', purchase_id: null }).catch(() => {})
+                                const phoneRes = await releasePhoneFromPurchase(pi.phone_id, id, { status: 'returned', purchase_id: null })
+                                if (phoneRes.skipped) console.warn('Delete purchase: phone left unchanged -', phoneRes.skipped)
+            else if (!phoneRes.ok) console.error('Delete purchase: phone not updated -', phoneRes.error)
                             }
                             if (pi.product_id) {
                                 // Remove what this purchase still contributes (returns already took theirs out)

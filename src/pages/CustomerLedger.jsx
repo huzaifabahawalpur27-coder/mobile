@@ -4,7 +4,8 @@ import * as XLSX from 'xlsx'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { printHTML, getShopBranding } from '../utils/printUtils'
-import { db } from '../services/db'
+import { db, addToSyncQueue } from '../services/db'
+import { adjustCustomerBalance, adjustProductStock, releasePhoneFromSale } from '../services/atomicOps'
 import { generateOutstandingPDF, shareOrDownloadPDF } from '../utils/pdfShare'
 import { getBankAccounts, creditBankBalance, deductBankBalance } from '../services/bankService'
 
@@ -371,20 +372,14 @@ function CustomerLedger() {
                     error = retryRes.error
                 }
                 if (error) throw error
-                const newBal = (customer?.outstanding_balance || 0) + balanceDelta
-                try {
-                    await supabase.from('customers').update({ outstanding_balance: newBal }).eq('id', id)
-                    setCustomer(c => c ? { ...c, outstanding_balance: newBal } : c)
-                } catch (_) {}
+                await changeBalance(balanceDelta)
             } else {
                 for (const row of insertRows) {
                     const rec = { ...row, id: crypto.randomUUID() }
                     await db.customer_payments.add(rec)
-                    await db.sync_queue.add({ table: 'customer_payments', action: 'INSERT', data: rec, timestamp: rec.created_at })
+                    await addToSyncQueue('customer_payments', 'INSERT', rec)
                 }
-                const newBal = (customer?.outstanding_balance || 0) + balanceDelta
-                await db.customers.update(parseInt(id), { outstanding_balance: newBal })
-                setCustomer(c => c ? { ...c, outstanding_balance: newBal } : c)
+                await changeBalance(balanceDelta)
             }
 
             alert(`${insertRows.length} entries import ho gayi! ✅`)
@@ -393,6 +388,57 @@ function CustomerLedger() {
             console.error('Import error:', err)
             alert('Import failed: ' + err.message)
         }
+    }
+
+    // Balance changes are sent as amounts the database adds (queued when offline), so two
+    // devices cannot overwrite each other and both balance columns stay equal.
+    const changeBalance = async (delta) => {
+        const d = Number(delta) || 0
+        if (d === 0) return true
+        const res = await adjustCustomerBalance(id, d)
+        if (!res.ok) {
+            console.error('Customer balance not updated:', res.error)
+            alert(`Saved, but the customer's balance could not be changed by Rs. ${d.toLocaleString()} (${res.error}). Please check it.`)
+            return false
+        }
+        setCustomer(c => c ? { ...c, outstanding_balance: (Number(c.outstanding_balance) || 0) + d, balance: (Number(c.outstanding_balance) || 0) + d } : c)
+        return true
+    }
+
+    // Deleting a sale puts its stock back and its phones back in stock (only phones that
+    // still belong to this sale; a bought-back phone is left alone)
+    const rollbackSaleInventory = async (item) => {
+        let saleItems = []
+        if (navigator.onLine) {
+            const { data } = await supabase.from('sale_items').select('*').eq('sale_id', item.id)
+            saleItems = data || []
+        } else {
+            const lItems = await db.sale_items.toArray()
+            saleItems = lItems.filter(i => String(i.sale_id) === String(item.id))
+        }
+        for (const si of saleItems) {
+            if (si.phone_id) {
+                if (navigator.onLine) {
+                    const phoneRes = await releasePhoneFromSale(si.phone_id, { id: item.id, created_at: item.date })
+                    if (phoneRes.skipped) console.warn('Delete sale: phone left unchanged -', phoneRes.skipped)
+                } else if (db.phones) {
+                    await db.phones.update(si.phone_id, { status: 'in_stock', sale_id: null, sold_at: null }).catch(() => {})
+                }
+            }
+            if (si.product_id) {
+                const qty = (Number(si.quantity ?? 1) || 0) - (Number(si.returned_qty) || 0)
+                const stockRes = await adjustProductStock(si.product_id, qty)
+                if (!stockRes.ok) console.warn('Delete sale: stock not restored for product', si.product_id, stockRes.error)
+            }
+        }
+    }
+
+    // Balance effect of removing a ledger entry
+    const deletionDelta = (item) => {
+        if (item.type === 'sale') return -Math.max(0, Number(item.amount || 0) - Number(item.paid_amount || 0))
+        if (item.payment_type === 'refund') return 0
+        if (item.payment_type === 'debit') return -Number(item.amount || 0)
+        return Math.abs(Number(item.amount || 0))
     }
 
     const resetTxForm = () => {
@@ -435,19 +481,15 @@ function CustomerLedger() {
                 error = retryRes.error
             }
             if (error) throw error
-            const newBalance = (customer.outstanding_balance || 0) + saleAmt - payAmt
-            try {
-                await supabase.from('customers').update({ outstanding_balance: newBalance }).eq('id', id)
-                setCustomer(c => c ? { ...c, outstanding_balance: newBalance } : c)
-            } catch (_) {}
+            await changeBalance(saleAmt - payAmt)
             if (payAmt > 0) {
                 setLastPayment({ amount: payAmt, note: txForm.note.trim() || 'Cash Received', date: now })
                 try {
                     const accounts = await getBankAccounts(user.shop_id)
                     const mode = String(txForm.payment_mode || 'cash').toLowerCase()
                     const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
-                    const targetAcc = accounts.find(a => 
-                        isBank 
+                    const targetAcc = accounts.find(a =>
+                        isBank
                             ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
                             : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
                     ) || accounts[0]
@@ -474,12 +516,9 @@ function CustomerLedger() {
                 for (const row of insertRows) {
                     const rec = { ...row, id: crypto.randomUUID() }
                     await db.customer_payments.add(rec)
-                    await db.sync_queue.add({ table: 'customer_payments', action: 'INSERT', data: rec, timestamp: ts })
+                    await addToSyncQueue('customer_payments', 'INSERT', rec)
                 }
-                const newBal = (customer.outstanding_balance || 0) + saleAmt - payAmt
-                await db.customers.update(parseInt(id), { outstanding_balance: newBal })
-                await db.sync_queue.add({ table: 'customers', action: 'UPDATE', data: { id, outstanding_balance: newBal }, timestamp: ts })
-                setCustomer(c => c ? { ...c, outstanding_balance: newBal } : c)
+                await changeBalance(saleAmt - payAmt)
                 if (payAmt > 0) setLastPayment({ amount: payAmt, note: txForm.note.trim() || 'Cash Received', date: ts })
                 resetTxForm()
                 fetchCustomerData()
@@ -498,48 +537,18 @@ function CustomerLedger() {
         if (!confirm(`Yeh transaction delete karein?\n\nType: ${label}\nAmount: Rs. ${Number(item.amount).toLocaleString()}\nNote: ${item.note}\n\nCustomer ka outstanding balance bhi adjust ho ga.`)) return
 
         try {
-            let newBalance = customer.outstanding_balance || 0
-
             if (item.type === 'sale') {
                 // 1. Rollback inventory and accounts before deleting sale
                 try {
-                    let saleItems = []
-                    if (navigator.onLine) {
-                        const { data } = await supabase.from('sale_items').select('*').eq('sale_id', item.id)
-                        saleItems = data || []
-                    } else {
-                        const lItems = await db.sale_items.toArray()
-                        saleItems = lItems.filter(i => String(i.sale_id) === String(item.id))
-                    }
-
-                    for (const si of saleItems) {
-                        // Restore phone to in_stock
-                        if (si.phone_id) {
-                            if (navigator.onLine) {
-                                await supabase.from('phones').update({ status: 'in_stock', sale_id: null, sold_at: null }).eq('id', si.phone_id)
-                            }
-                            if (db.phones) await db.phones.update(si.phone_id, { status: 'in_stock', sale_id: null, sold_at: null }).catch(() => {})
-                        }
-                        // Restore product stock quantity
-                        if (si.product_id) {
-                            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', si.product_id).maybeSingle()
-                            const curStock = prod?.stock_quantity ?? (await db.products.get(si.product_id))?.stock_quantity ?? 0
-                            const restoredQty = curStock + (si.quantity || 1)
-                            if (navigator.onLine) {
-                                await supabase.from('products').update({ stock_quantity: restoredQty }).eq('id', si.product_id)
-                            }
-                            if (db.products) await db.products.update(si.product_id, { stock_quantity: restoredQty }).catch(() => {})
-                        }
-                    }
-
+                    await rollbackSaleInventory(item)
                     // Reverse bank/cash account proceeds if sale had paid amount
                     const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? item.amount : 0)) || 0
                     if (paid > 0 && item.payment_type !== 'credit') {
                         const accounts = await getBankAccounts(user.shop_id)
                         const method = String(item.payment_type || item.payment_mode || 'cash').toLowerCase()
                         const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(method)
-                        const targetAcc = accounts.find(a => 
-                            isBank 
+                        const targetAcc = accounts.find(a =>
+                            isBank
                                 ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
                                 : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
                         ) || accounts[0]
@@ -566,11 +575,8 @@ function CustomerLedger() {
                     const toDelIds = lItems.filter(i => String(i.sale_id) === String(item.id)).map(i => i.id)
                     await db.sale_items.bulkDelete(toDelIds)
                     await db.sales.delete(item.id)
-                    await db.sync_queue.add({ table: 'sales', action: 'DELETE', data: { id: item.id }, timestamp: new Date().toISOString() })
+                    await addToSyncQueue('sales', 'DELETE', { id: item.id })
                 }
-                // Reverse: sale was adding unpaid portion to balance
-                const owed = Math.max(0, item.amount - (item.paid_amount || 0))
-                newBalance = newBalance - owed
             } else {
                 // payment or return — delete from customer_payments
                 const payAmt = Math.abs(Number(item.amount || 0))
@@ -579,8 +585,8 @@ function CustomerLedger() {
                         const accounts = await getBankAccounts(user.shop_id)
                         const mode = String(item.payment_mode || item.payment_type || 'cash').toLowerCase()
                         const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
-                        const targetAcc = accounts.find(a => 
-                            isBank 
+                        const targetAcc = accounts.find(a =>
+                            isBank
                                 ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
                                 : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
                         ) || accounts[0]
@@ -616,27 +622,12 @@ function CustomerLedger() {
                     if (error) throw error
                 } else {
                     await db.customer_payments.delete(item.id)
-                    await db.sync_queue.add({ table: 'customer_payments', action: 'DELETE', data: { id: item.id }, timestamp: new Date().toISOString() })
-                }
-                // Reverse balance effect
-                if (item.payment_type === 'refund') {
-                    // no change
-                } else if (item.payment_type === 'debit') {
-                    newBalance = newBalance - Number(item.amount)
-                } else {
-                    newBalance = newBalance + Math.abs(item.amount)
+                    await addToSyncQueue('customer_payments', 'DELETE', { id: item.id })
                 }
             }
 
-            // Update customer outstanding balance (skip gracefully if customer no longer exists)
-            try {
-                if (navigator.onLine) {
-                    await supabase.from('customers').update({ outstanding_balance: newBalance }).eq('id', id)
-                } else {
-                    await db.customers.update(parseInt(id), { outstanding_balance: newBalance })
-                }
-                setCustomer(c => c ? ({ ...c, outstanding_balance: newBalance }) : c)
-            } catch (_) { /* customer may already be deleted — ignore */ }
+            // Reverse the entry's effect on the balance (no cut-off at zero: advances are kept)
+            await changeBalance(deletionDelta(item))
             fetchCustomerData()
         } catch (err) {
             alert('Delete nahi hua: ' + err.message)
@@ -666,10 +657,12 @@ function CustomerLedger() {
         if (!toDelete.length) return
         if (!confirm(`${toDelete.length} transactions delete karein?\n\nCustomer ka outstanding balance bhi adjust ho ga.`)) return
 
-        let newBalance = customer.outstanding_balance || 0
+        let totalDelta = 0
         try {
             for (const item of toDelete) {
                 if (item.type === 'sale') {
+                    // Stock and phones back, as a single delete does (this used to be skipped)
+                    try { await rollbackSaleInventory(item) } catch (rbErr) { console.warn('Rollback warning on bulk sale deletion:', rbErr) }
                     if (navigator.onLine) {
                         await supabase.from('sale_items').delete().eq('sale_id', item.id)
                         await supabase.from('sales').delete().eq('id', item.id)
@@ -678,30 +671,20 @@ function CustomerLedger() {
                         const toDelIds = lItems.filter(i => String(i.sale_id) === String(item.id)).map(i => i.id)
                         await db.sale_items.bulkDelete(toDelIds)
                         await db.sales.delete(item.id)
-                        await db.sync_queue.add({ table: 'sales', action: 'DELETE', data: { id: item.id }, timestamp: new Date().toISOString() })
+                        await addToSyncQueue('sales', 'DELETE', { id: item.id })
                     }
-                    const owed = Math.max(0, item.amount - (item.paid_amount || 0))
-                    newBalance = Math.max(0, newBalance - owed)
+                    totalDelta += deletionDelta(item)
                 } else {
                     if (navigator.onLine) {
                         await supabase.from('customer_payments').delete().eq('id', item.id)
                     } else {
                         await db.customer_payments.delete(item.id)
-                        await db.sync_queue.add({ table: 'customer_payments', action: 'DELETE', data: { id: item.id }, timestamp: new Date().toISOString() })
+                        await addToSyncQueue('customer_payments', 'DELETE', { id: item.id })
                     }
-                    if (item.payment_type === 'refund') { /* no change */ }
-                    else if (item.payment_type === 'debit') { newBalance = newBalance - Number(item.amount) }
-                    else { newBalance = newBalance + Math.abs(item.amount) }
+                    totalDelta += deletionDelta(item)
                 }
             }
-            try {
-                if (navigator.onLine) {
-                    await supabase.from('customers').update({ outstanding_balance: newBalance }).eq('id', id)
-                } else {
-                    await db.customers.update(parseInt(id), { outstanding_balance: newBalance })
-                }
-                setCustomer(c => c ? ({ ...c, outstanding_balance: newBalance }) : c)
-            } catch (_) { /* customer may already be deleted — ignore */ }
+            await changeBalance(totalDelta)
             setSelectedIds(new Set())
         } catch (err) {
             alert('Kuch entries delete nahi huin: ' + err.message)
@@ -716,13 +699,16 @@ function CustomerLedger() {
         if (!confirmed) return
 
         try {
+            // Deliberately sets the exact ledger total (both balance columns)
+            const fixed = { outstanding_balance: computedBalance, balance: computedBalance }
             if (navigator.onLine) {
-                await supabase.from('customers').update({ outstanding_balance: computedBalance }).eq('id', id)
+                const { error: recErr } = await supabase.from('customers').update(fixed).eq('id', id)
+                if (recErr) throw recErr
             } else {
-                await db.customers.update(parseInt(id), { outstanding_balance: computedBalance })
-                await db.sync_queue.add({ table: 'customers', action: 'UPDATE', data: { id, outstanding_balance: computedBalance }, timestamp: new Date().toISOString() })
+                await addToSyncQueue('customers', 'UPDATE', { id, ...fixed })
             }
-            setCustomer(c => c ? { ...c, outstanding_balance: computedBalance } : c)
+            await db.customers.update(parseInt(id), fixed).catch(() => {})
+            setCustomer(c => c ? { ...c, ...fixed } : c)
             alert(`✅ Balance reconciled successfully to Rs. ${computedBalance}`)
         } catch (err) {
             alert('Reconcile error: ' + err.message)
@@ -835,7 +821,7 @@ function CustomerLedger() {
                                             )}
                                         </div>
                                         {item.details && <p className="mt-1 text-xs text-gray-500">{item.details}</p>}
-                                        
+
                                         <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                                             {item.payment_mode && (
                                                 <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold capitalize">{item.payment_mode}</span>
@@ -861,7 +847,7 @@ function CustomerLedger() {
                                             {item.type === 'debit' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] uppercase font-bold">Manual Sale</span>}
                                         </div>
                                     </div>
-                                    
+
                                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                                         {item.id !== 'opening' && (
                                             <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)}

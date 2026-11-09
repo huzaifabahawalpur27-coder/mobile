@@ -18,9 +18,16 @@ import {
   ChevronDown, ChevronUp, ChevronRight, Sparkles, Banknote, CreditCard, Clock
 } from 'lucide-react'
 
+// A sale counts in reports unless it is a quotation (or other non-sale type) or voided.
+// Sales saved by database functions may have no sale_type; they are sales.
+const isCountedSale = (sale) =>
+  (sale?.sale_type == null || sale.sale_type === '' || sale.sale_type === 'sale') && sale?.status !== 'voided'
+
 function Reports() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
+  // 'live' = figures from the server; 'cached' = server unavailable, figures from this device
+  const [dataSource, setDataSource] = useState(null)
   const [range, setRange] = useState('today') // today, week, month, year, custom, all
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
@@ -126,24 +133,43 @@ function Reports() {
     try {
       if (!navigator.onLine) throw new Error('Offline')
 
-      // Parallel fetching from Supabase
+      // Supabase returns at most 1000 rows per request: read every page, in a fixed order,
+      // so a busy period is not silently cut short.
+      const PAGE = 1000
+      const fetchAll = async (makeQuery, { required = false } = {}) => {
+        const rows = []
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await makeQuery().order('id', { ascending: true }).range(from, from + PAGE - 1)
+          if (error) {
+            if (required) throw error
+            return { data: rows.length ? rows : null, error }
+          }
+          rows.push(...(data || []))
+          if (!data || data.length < PAGE) return { data: rows, error: null }
+        }
+      }
+
+      // Parallel fetching from Supabase. Quotations and voided sales (e.g. a voided
+      // exchange) are left out below; a sale with no sale_type (phone sales and exchanges
+      // saved by database functions) counts as a sale.
       const fetchPromise = Promise.all([
-        supabase.from('sales').select('*').eq('shop_id', user.shop_id).eq('sale_type', 'sale').gte('created_at', startISO).lte('created_at', endISO),
-        supabase.from('sale_items').select('*, products(name, category_id, inventory_mode, categories(name)), sales!inner(created_at, sale_type, shop_id)').eq('sales.shop_id', user.shop_id).eq('sales.sale_type', 'sale').gte('sales.created_at', startISO).lte('sales.created_at', endISO),
-        supabase.from('expenses').select('*').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO),
-        supabase.from('purchases').select('*, purchase_items(*)').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO),
-        supabase.from('products').select('id, name, stock_quantity, cost_price, sale_price, category_id, inventory_mode, categories(name)').eq('shop_id', user.shop_id),
-        supabase.from('categories').select('*').eq('shop_id', user.shop_id),
-        supabase.from('phones').select('id, brand, model, storage, color, status, cost_price, sale_price, additional_costs').eq('shop_id', user.shop_id),
-        supabase.from('batch_cost_adjustments').select('*').eq('shop_id', user.shop_id).gte('adjusted_at', startISO).lte('adjusted_at', endISO),
-        supabase.from('stock_batches').select('*').eq('shop_id', user.shop_id).eq('status', 'active').gt('qty_remaining', 0)
+        fetchAll(() => supabase.from('sales').select('*').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO), { required: true }),
+        fetchAll(() => supabase.from('sale_items').select('*, products(name, category_id, inventory_mode, categories(name)), sales!inner(created_at, sale_type, shop_id, status)').eq('sales.shop_id', user.shop_id).gte('sales.created_at', startISO).lte('sales.created_at', endISO), { required: true }),
+        fetchAll(() => supabase.from('expenses').select('*').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO), { required: true }),
+        fetchAll(() => supabase.from('purchases').select('*, purchase_items(*)').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO)),
+        fetchAll(() => supabase.from('products').select('id, name, stock_quantity, cost_price, sale_price, category_id, inventory_mode, categories(name)').eq('shop_id', user.shop_id)),
+        fetchAll(() => supabase.from('categories').select('*').eq('shop_id', user.shop_id)),
+        fetchAll(() => supabase.from('phones').select('id, brand, model, storage, color, status, cost_price, sale_price, additional_costs').eq('shop_id', user.shop_id)),
+        fetchAll(() => supabase.from('batch_cost_adjustments').select('*').eq('shop_id', user.shop_id).gte('adjusted_at', startISO).lte('adjusted_at', endISO)),
+        fetchAll(() => supabase.from('stock_batches').select('*').eq('shop_id', user.shop_id).eq('status', 'active').gt('qty_remaining', 0))
       ])
 
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30000))
       const [salesRes, itemsRes, expensesRes, purchasesRes, productsRes, catsRes, phonesRes, costAdjRes, activeBatchesRes] = await Promise.race([fetchPromise, timeoutPromise])
 
-      const sales = salesRes.data || []
-      const items = itemsRes.data || []
+      const sales = (salesRes.data || []).filter(isCountedSale)
+      const countedSaleIds = new Set(sales.map(x => String(x.id)))
+      const items = (itemsRes.data || []).filter(i => countedSaleIds.has(String(i.sale_id)))
       const expenses = expensesRes.data || []
       const purchases = purchasesRes.data || []
       const liveProducts = productsRes.data || []
@@ -167,8 +193,10 @@ function Reports() {
       if (phonesRes.data && db.phones) await db.phones.bulkPut(JSON.parse(JSON.stringify(phonesRes.data))).catch(() => {})
 
       processData({ sales, items, expenses, purchases, liveProducts, catList, phones, startDate, endDate, costAdjustments, activeBatches })
+      setDataSource('live')
     } catch (e) {
       console.warn('Reports: calculating from local DB...', e)
+      setDataSource('cached')
       try {
         const [lSales, lItems, lExpenses, lPurchases, lPurchaseItems, lProducts, lCats, lPhones] = await Promise.all([
           db.sales.toArray(),
@@ -182,7 +210,7 @@ function Reports() {
         ])
 
         const sales = lSales.filter(x => {
-          if (String(x.shop_id) !== sid || x.sale_type !== 'sale') return false
+          if (String(x.shop_id) !== sid || !isCountedSale(x)) return false
           const t = new Date(x.created_at)
           return t >= startDate && t <= endDate
         })
@@ -1210,6 +1238,12 @@ function Reports() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-[-apple-system,BlinkMacSystemFont,'SF_Pro_Display','SF_Pro_Text','Plus_Jakarta_Sans',sans-serif]">
+      {dataSource === 'cached' && !loading && (
+        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 text-sm">
+          <strong>Showing figures saved on this device.</strong> The server could not be reached, so these
+          totals may be incomplete or out of date. Reload when you are online for exact figures.
+        </div>
+      )}
       {/*  Apple Native Title & Range Header */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pt-1 pb-1">
         <div>

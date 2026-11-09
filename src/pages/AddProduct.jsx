@@ -7,6 +7,7 @@ import { recordAuditLog } from '../services/auditService'
 import { getShopPreset, getPricingConfig } from '../utils/businessPresets'
 import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
+import { adjustSupplierBalance } from '../services/atomicOps'
 
 function AddProduct() {
   const { user } = useAuth()
@@ -338,9 +339,9 @@ function AddProduct() {
           account_name: selectedCash.account_name
         } : null)
 
-        const paymentNote = selectedBank 
+        const paymentNote = selectedBank
           ? `[Paid via ${selectedBank.bank_name ? `${selectedBank.bank_name} - ` : ''}${selectedBank.account_name}]`
-          : (effectivePaymentType === 'cash' 
+          : (effectivePaymentType === 'cash'
             ? (selectedCash ? `[Paid via ${selectedCash.account_name}]` : `[Paid via Cash in Hand]`)
             : `[Purchased on Credit]`)
 
@@ -424,14 +425,11 @@ function AddProduct() {
                 }).catch(err => console.warn('AddProduct cash deduction error:', err))
               }
             } else if (effectivePaymentType === 'credit' && form.supplier_id) {
-              const supplier = suppliers.find(s => String(s.id) === String(form.supplier_id))
-              const newBalance = (supplier?.outstanding_balance || 0) + initialPurchaseTotal
-              try {
-                await supabase.from('suppliers').update({ outstanding_balance: newBalance }).eq('id', form.supplier_id)
-              } catch (_) {}
-              try {
-                await db.suppliers.update(form.supplier_id, { outstanding_balance: newBalance })
-              } catch (_) {}
+              const balRes = await adjustSupplierBalance(form.supplier_id, initialPurchaseTotal)
+              if (!balRes.ok) {
+                console.error('Initial stock purchase: supplier balance not updated:', balRes.error)
+                alert(`Product saved, but the supplier's balance could not be increased by Rs. ${initialPurchaseTotal} (${balRes.error}). Please add it in the supplier ledger.`)
+              }
             }
 
             if (isImmediatePaid && form.supplier_id) {

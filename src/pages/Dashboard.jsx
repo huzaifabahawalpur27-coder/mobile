@@ -87,6 +87,10 @@ const AppleWidget = ({
   </button>
 )
 
+// Sales that count: sale_type 'sale' or not set (phone sales / exchanges saved by database
+// functions), and not voided. One PostgREST or() so NULL values are handled explicitly.
+const COUNTED_SALE_FILTER = 'and(sale_type.eq.sale,status.is.null),and(sale_type.eq.sale,status.neq.voided),and(sale_type.is.null,status.is.null),and(sale_type.is.null,status.neq.voided)'
+
 function Dashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -179,7 +183,7 @@ function Dashboard() {
           .from('sales')
           .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_id, sale_items(id, sale_id, phone_id, product_id, product_name, cost_price, price, unit_price, line_total, subtotal, quantity, returned_qty, imei_snapshot, products(id, name, cost_price, category_id, categories(name))), customers(name)')
           .eq('shop_id', user.shop_id)
-          .eq('sale_type', 'sale')
+          .or(COUNTED_SALE_FILTER)
           .gte('created_at', todayISO),
 
         // 2. Monthly sales
@@ -187,7 +191,7 @@ function Dashboard() {
           .from('sales')
           .select('id, total_amount, discount, created_at')
           .eq('shop_id', user.shop_id)
-          .eq('sale_type', 'sale')
+          .or(COUNTED_SALE_FILTER)
           .gte('created_at', monthISO),
 
         // 3. Last 30 days sales for trend
@@ -195,7 +199,7 @@ function Dashboard() {
           .from('sales')
           .select('total_amount, discount, created_at')
           .eq('shop_id', user.shop_id)
-          .eq('sale_type', 'sale')
+          .or(COUNTED_SALE_FILTER)
           .gte('created_at', thirtyDaysISO),
 
         // 4. Recent sales (latest 6)
@@ -203,7 +207,7 @@ function Dashboard() {
           .from('sales')
           .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_id, customers(name)')
           .eq('shop_id', user.shop_id)
-          .eq('sale_type', 'sale')
+          .or(COUNTED_SALE_FILTER)
           .order('created_at', { ascending: false })
           .limit(6),
 
@@ -309,7 +313,7 @@ function Dashboard() {
           db.purchase_items ? db.purchase_items.toArray().catch(() => []) : Promise.resolve([])
         ])
 
-        const mySales = lSales.filter(s => String(s.shop_id) === sidStr && s.sale_type === 'sale')
+        const mySales = lSales.filter(s => String(s.shop_id) === sidStr && (s.sale_type == null || s.sale_type === '' || s.sale_type === 'sale') && s.status !== 'voided')
         const todaySalesList = mySales.filter(s => new Date(s.created_at) >= today).map(s => ({
           ...s,
           sale_items: lItems.filter(i => i.sale_id === s.id)

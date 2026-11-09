@@ -273,3 +273,63 @@ export async function findPhonesNotInStock(phoneIds = []) {
   const inStock = new Set((data || []).filter(p => p.status === 'in_stock').map(p => String(p.id)))
   return ids.filter(id => !inStock.has(String(id)))
 }
+
+/*
+ * A phone that is bought back re-uses its old record, so an old sale or purchase must
+ * not change it any more once the phone has moved on. These helpers check that the
+ * phone still belongs to that sale / purchase before changing it, then update the
+ * server and the device copy. Result: { ok: true } changed, { ok: false, skipped: reason }
+ * left alone on purpose, { ok: false, error } failed.
+ */
+async function guardedPhoneUpdate(phoneId, patch, check) {
+  if (!phoneId) return { ok: false, skipped: 'no phone' }
+  const { data: phone, error } = await supabase.from('phones').select('*').eq('id', phoneId).maybeSingle()
+  if (error) return { ok: false, error: error.message }
+  if (!phone) return { ok: false, skipped: 'phone not found' }
+  const reason = await check(phone)
+  if (reason) return { ok: false, skipped: reason, phone }
+  const { error: upErr } = await supabase.from('phones').update(patch).eq('id', phoneId)
+  if (upErr) return { ok: false, error: upErr.message }
+  try { if (db.phones) await db.phones.update(phone.id, patch) } catch (_) { /* cache only */ }
+  return { ok: true, phone }
+}
+
+async function boughtAfter(phone, when) {
+  if (!when || !phone.purchase_id) return false
+  const { data } = await supabase.from('purchases').select('created_at').eq('id', phone.purchase_id).maybeSingle()
+  return Boolean(data?.created_at && new Date(data.created_at) > new Date(when))
+}
+
+/** Sale returned / deleted: put the phone back in stock, only if it is still this sale's. */
+export function releasePhoneFromSale(phoneId, sale) {
+  return guardedPhoneUpdate(phoneId, { status: 'in_stock', sale_id: null, sold_at: null }, async (phone) => {
+    if (phone.sale_id != null && sale?.id != null && String(phone.sale_id) !== String(sale.id)) return 'sold again in another sale'
+    if (phone.status !== 'sold') return `status is ${phone.status}`
+    if (await boughtAfter(phone, sale?.created_at)) return 'bought back after this sale'
+    return null
+  })
+}
+
+/** Purchase returned / deleted: take the phone out of stock, only if it is still from this purchase and in stock. */
+export function releasePhoneFromPurchase(phoneId, purchaseId, patch = { status: 'returned' }) {
+  return guardedPhoneUpdate(phoneId, patch, async (phone) => {
+    if (phone.purchase_id != null && String(phone.purchase_id) !== String(purchaseId)) return 'bought again in a later purchase'
+    if (phone.status !== 'in_stock') return `status is ${phone.status} (already sold or returned)`
+    return null
+  })
+}
+
+/** Trash restore of a sale: mark sold again only if the phone is still in stock. */
+export function resellPhoneForRestoredSale(phoneId, saleId) {
+  return guardedPhoneUpdate(phoneId, { status: 'sold', sale_id: saleId }, async (phone) =>
+    phone.status === 'in_stock' ? null : `status is ${phone.status}`)
+}
+
+/** Trash restore of a purchase: back in stock only if the phone was released by that purchase's deletion. */
+export function restockPhoneForRestoredPurchase(phoneId, purchaseId) {
+  return guardedPhoneUpdate(phoneId, { status: 'in_stock', purchase_id: purchaseId }, async (phone) => {
+    if (phone.status !== 'returned') return `status is ${phone.status}`
+    if (phone.purchase_id != null && String(phone.purchase_id) !== String(purchaseId)) return 'belongs to another purchase'
+    return null
+  })
+}

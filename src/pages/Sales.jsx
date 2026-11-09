@@ -10,7 +10,7 @@ import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
 import { getBankAccounts, deductBankBalance } from '../services/bankService'
 import { returnSaleItemBatches } from '../services/batchService'
-import { adjustProductStock, adjustCustomerBalance } from '../services/atomicOps'
+import { adjustProductStock, adjustCustomerBalance, releasePhoneFromSale } from '../services/atomicOps'
 
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
   let snap = null
@@ -402,10 +402,10 @@ function Sales() {
 
         // Restore stock or phone status
         if (item.phone_id) {
-          await supabase.from('phones').update({ status: 'in_stock', sale_id: null, sold_at: null }).eq('id', item.phone_id)
-          if (db.phones) {
-            await db.phones.update(item.phone_id, { status: 'in_stock', sale_id: null, sold_at: null })
-          }
+          // Only if the phone still belongs to this sale (not bought back / sold again since)
+          const phoneRes = await releasePhoneFromSale(item.phone_id, selectedSale)
+          if (phoneRes.skipped) console.warn('Return: phone left unchanged -', phoneRes.skipped)
+            else if (!phoneRes.ok) console.error('Return: phone not updated -', phoneRes.error)
         } else if (item.product_id) {
           const stockRes = await adjustProductStock(item.product_id, returnQty)
           if (!stockRes.ok) {
@@ -765,8 +765,10 @@ function Sales() {
             for (const si of saleItems) {
               // Restore phone status to in_stock
               if (si.phone_id) {
-                await supabase.from('phones').update({ status: 'in_stock', sale_id: null, sold_at: null }).eq('id', si.phone_id)
-                if (db.phones) await db.phones.update(si.phone_id, { status: 'in_stock', sale_id: null, sold_at: null }).catch(() => {})
+                // Only if the phone still belongs to this sale (not bought back / sold again since)
+                const phoneRes = await releasePhoneFromSale(si.phone_id, item)
+                if (phoneRes.skipped) console.warn('Delete sale: phone left unchanged -', phoneRes.skipped)
+            else if (!phoneRes.ok) console.error('Delete sale: phone not updated -', phoneRes.error)
               }
               // Restore product stock quantity
               if (si.product_id) {

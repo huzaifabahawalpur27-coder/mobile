@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { db, addToSyncQueue } from './db'
 import { recordAuditLog } from './auditService'
 import { deductBankBalance, creditBankBalance, getBankAccounts, findOrCreateAccountForPayment } from './bankService'
+import { adjustSupplierBalance } from './atomicOps'
 
 /**
  * Updates the payment method of an existing purchase invoice.
@@ -496,32 +497,9 @@ export async function returnPhoneToSupplier({
   if (supplierId && costPrice > 0) {
     // A. Credit adjustment: Deduct from supplier balance (credit note)
     if (settlementType === 'credit_adjustment') {
-      let curBal = 0
-      if (navigator.onLine) {
-        const { data: supData } = await supabase
-          .from('suppliers')
-          .select('balance, outstanding_balance')
-          .eq('id', supplierId)
-          .maybeSingle()
-        curBal = Number(supData?.outstanding_balance ?? supData?.balance ?? 0)
-      } else {
-        const localSup = await db.suppliers?.get(supplierId)
-        curBal = Number(localSup?.outstanding_balance ?? localSup?.balance ?? 0)
-      }
-
-      const newBal = curBal - costPrice
-
-      if (navigator.onLine) {
-        try {
-          await supabase
-            .from('suppliers')
-            .update({ outstanding_balance: newBal, balance: newBal })
-            .eq('id', supplierId)
-        } catch (_) {}
-      } else {
-        await addToSyncQueue('suppliers', 'UPDATE', { id: supplierId, outstanding_balance: newBal, balance: newBal }).catch(() => {})
-      }
-      await db.suppliers?.update(supplierId, { outstanding_balance: newBal, balance: newBal }).catch(() => {})
+      // Credit note: applied by the database as a change (queued when offline)
+      const balRes = await adjustSupplierBalance(supplierId, -costPrice)
+      if (!balRes.ok) console.error('Phone return: supplier balance not reduced:', balRes.error)
 
       // Insert Return entry in supplier_payments
       const returnEntry = {

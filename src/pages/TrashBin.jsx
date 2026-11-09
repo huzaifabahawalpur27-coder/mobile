@@ -5,6 +5,7 @@ import { db, restoreFromTrash, addToSyncQueue } from '../services/db'
 import PasswordModal from '../components/PasswordModal'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
+import { adjustProductStock, adjustCustomerBalance, adjustSupplierBalance, resellPhoneForRestoredSale, restockPhoneForRestoredPurchase } from '../services/atomicOps'
 
 // Deletion priority — lower number = delete first (no dependencies)
 const DELETION_ORDER = {
@@ -83,95 +84,53 @@ function TrashBin() {
         sale_items: '📋 Sale Item'
     }
 
+    // Re-apply what deleting the record undid, as changes applied by the database
+    // (no stale read-then-write) and without touching phones that have moved on since.
     const adjustBalanceOnRestore = async (table, data) => {
+        const problems = []
+        const note = (label, res) => {
+            if (res?.skipped) console.warn(`Restore: ${label} left unchanged -`, res.skipped)
+            else if (res && !res.ok) problems.push(`${label}: ${res.error}`)
+        }
         try {
+            const unpaidOf = (d) => {
+                const netAmount = Number(d.net_amount ?? (Number(d.total_amount || 0) - Number(d.discount || 0)))
+                return Math.max(0, netAmount - Number(d.paid_amount ?? d.amount_paid ?? 0))
+            }
+            const lineQty = (line) => (Number(line.quantity ?? 1) || 0) - (Number(line.returned_qty) || 0)
             if (table === 'purchases') {
-                if (data?.supplier_id) {
-                    const netAmount = Number(data.net_amount ?? (Number(data.total_amount || 0) - Number(data.discount || 0)))
-                    const unpaid = Math.max(0, netAmount - Number(data.paid_amount || 0))
-                    if (unpaid > 0) {
-                        const supId = data.supplier_id
-                        const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supId).maybeSingle()
-                        const baseBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
-                        const newBal = baseBal + unpaid
-                        await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', supId)
-                        await db.suppliers?.update(Number(supId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
-                    }
-                }
-                // Re-stock inventory (phones back to 'in_stock', increment product stock)
-                try {
-                    const { data: pItems } = await supabase.from('purchase_items').select('*').eq('purchase_id', data.id)
-                    const items = pItems || (await db.purchase_items?.where({ purchase_id: data.id }).toArray().catch(() => [])) || []
-                    for (const pi of items) {
-                        if (pi.phone_id) {
-                            await supabase.from('phones').update({ status: 'in_stock', purchase_id: data.id }).eq('id', pi.phone_id)
-                            if (db.phones) await db.phones.update(pi.phone_id, { status: 'in_stock', purchase_id: data.id }).catch(() => {})
-                        }
-                        if (pi.product_id) {
-                            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', pi.product_id).maybeSingle()
-                            const curStock = prod?.stock_quantity ?? (await db.products?.get(pi.product_id))?.stock_quantity ?? 0
-                            const newStock = curStock + (pi.quantity || 1)
-                            await supabase.from('products').update({ stock_quantity: newStock }).eq('id', pi.product_id)
-                            if (db.products) await db.products.update(pi.product_id, { stock_quantity: newStock }).catch(() => {})
-                        }
-                    }
-                } catch (invErr) {
-                    console.warn('Inventory re-stock on purchase restore warning:', invErr)
+                if (data?.supplier_id) note('supplier balance', await adjustSupplierBalance(data.supplier_id, unpaidOf(data)))
+                const { data: pItems } = await supabase.from('purchase_items').select('*').eq('purchase_id', data.id)
+                const items = pItems || (await db.purchase_items?.where({ purchase_id: data.id }).toArray().catch(() => [])) || []
+                for (const pi of items) {
+                    if (pi.phone_id) note(`phone ${pi.phone_id}`, await restockPhoneForRestoredPurchase(pi.phone_id, data.id))
+                    if (pi.product_id) note(`product ${pi.product_id} stock`, await adjustProductStock(pi.product_id, lineQty(pi)))
                 }
             } else if (table === 'supplier_payments' && data?.supplier_id) {
-                const supId = data.supplier_id
                 const amt = Number(data.amount || 0)
-                const isDebit = data.payment_type === 'debit'
-                const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', supId).maybeSingle()
-                const baseBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
-                const newBal = isDebit ? baseBal + amt : baseBal - amt
-                await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', supId)
-                await db.suppliers?.update(Number(supId), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
+                note('supplier balance', await adjustSupplierBalance(data.supplier_id, data.payment_type === 'debit' ? amt : -amt))
             } else if (table === 'customer_payments' && data?.customer_id) {
-                const custId = data.customer_id
                 const amt = Number(data.amount || 0)
-                const isDebit = data.payment_type === 'debit'
-                const { data: curCust } = await supabase.from('customers').select('outstanding_balance, balance').eq('id', custId).maybeSingle()
-                const baseBal = Number(curCust?.outstanding_balance ?? curCust?.balance ?? 0)
-                const newBal = isDebit ? baseBal + amt : baseBal - amt
-                await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', custId)
-                await db.customers?.update(Number(custId), { outstanding_balance: newBal, balance: newBal }).catch(() => {})
+                note('customer balance', await adjustCustomerBalance(data.customer_id, data.payment_type === 'debit' ? amt : -amt))
             } else if (table === 'sales') {
-                if (data?.customer_id) {
-                    const netAmount = Number(data.net_amount ?? (Number(data.total_amount || 0) - Number(data.discount || 0)))
-                    const unpaid = Math.max(0, netAmount - Number(data.paid_amount || 0))
-                    if (unpaid > 0) {
-                        const custId = data.customer_id
-                        const { data: curCust } = await supabase.from('customers').select('outstanding_balance, balance').eq('id', custId).maybeSingle()
-                        const baseBal = Number(curCust?.outstanding_balance ?? curCust?.balance ?? 0)
-                        const newBal = baseBal + unpaid
-                        await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', custId)
-                        await db.customers?.update(Number(custId), { outstanding_balance: newBal, balance: newBal }).catch(() => {})
+                if (data?.customer_id) note('customer balance', await adjustCustomerBalance(data.customer_id, unpaidOf(data)))
+                const { data: sItems } = await supabase.from('sale_items').select('*').eq('sale_id', data.id)
+                const items = sItems || (await db.sale_items?.where({ sale_id: data.id }).toArray().catch(() => [])) || []
+                for (const si of items) {
+                    if (si.phone_id) {
+                        const phoneRes = await resellPhoneForRestoredSale(si.phone_id, data.id)
+                        if (phoneRes.skipped) problems.push(`phone ${si.phone_id} is no longer in stock (${phoneRes.skipped}); the restored sale lists a phone the shop no longer has`)
+                        else note(`phone ${si.phone_id}`, phoneRes)
                     }
-                }
-                // Re-lock inventory (phones back to 'sold', decrement product stock)
-                try {
-                    const { data: sItems } = await supabase.from('sale_items').select('*').eq('sale_id', data.id)
-                    const items = sItems || (await db.sale_items?.where({ sale_id: data.id }).toArray().catch(() => [])) || []
-                    for (const si of items) {
-                        if (si.phone_id) {
-                            await supabase.from('phones').update({ status: 'sold', sale_id: data.id }).eq('id', si.phone_id)
-                            if (db.phones) await db.phones.update(si.phone_id, { status: 'sold', sale_id: data.id }).catch(() => {})
-                        }
-                        if (si.product_id) {
-                            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', si.product_id).maybeSingle()
-                            const curStock = prod?.stock_quantity ?? (await db.products?.get(si.product_id))?.stock_quantity ?? 0
-                            const newStock = Math.max(0, curStock - (si.quantity || 1))
-                            await supabase.from('products').update({ stock_quantity: newStock }).eq('id', si.product_id)
-                            if (db.products) await db.products.update(si.product_id, { stock_quantity: newStock }).catch(() => {})
-                        }
-                    }
-                } catch (invErr) {
-                    console.warn('Inventory re-lock on sale restore warning:', invErr)
+                    if (si.product_id) note(`product ${si.product_id} stock`, await adjustProductStock(si.product_id, -lineQty(si)))
                 }
             }
         } catch (err) {
-            console.warn('Balance adjustment on restore notice:', err)
+            problems.push(err?.message || String(err))
+        }
+        if (problems.length > 0) {
+            console.error('Restore adjustments failed:', problems)
+            alert(`Restored, but some updates need checking:\n${problems.join('\n')}`)
         }
     }
 
