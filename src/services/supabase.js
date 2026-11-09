@@ -14,14 +14,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     },
     global: {
         fetch: (url, options) => {
+            // Send only the token the server-side login (secure_login) issued. A token made
+            // up in the browser is never recognised by the server, so none is invented here.
             let token = localStorage.getItem('session_token') || ''
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-            if (!token || !uuidRegex.test(token)) {
-                try {
-                    token = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-0000-0000-000000000001'
-                    localStorage.setItem('session_token', token)
-                } catch (_) {}
-            }
+            if (!uuidRegex.test(token)) token = ''
 
             let shopId = ''
             try {
@@ -106,25 +103,9 @@ class RLSSessionManager {
                 return { success: false, reason: 'invalid_user_data' }
             }
 
-            // Ensure valid UUID session token
-            let token = localStorage.getItem('session_token')
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-            if (!token || !uuidRegex.test(token)) {
-                token = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-0000-0000-000000000001'
-                localStorage.setItem('session_token', token)
-            }
-
-            // Fire-and-forget sync session into Supabase sessions table
-            if (user.id && user.shop_id) {
-                supabase.from('sessions').upsert({
-                    token,
-                    user_id: user.id,
-                    shop_id: user.shop_id,
-                    branch_id: user.branch_id || null,
-                    expires_at: new Date(Date.now() + 30 * 86400000).toISOString()
-                }, { onConflict: 'token' }).then(() => {}).catch(() => {})
-            }
-
+            // Sessions are created server-side by secure_login; the browser may not write
+            // the sessions table (it was refused with 401 under session-scoped RLS).
+            // AuthContext checks that the server recognises the session (sessionHealth).
             this.sessionRestored = true
             return { success: true, user }
         } catch (err) {
@@ -138,21 +119,7 @@ class RLSSessionManager {
      */
     async setSession(user) {
         if (user?.id && user?.shop_id && user?.role) {
-            let token = localStorage.getItem('session_token')
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-            if (!token || !uuidRegex.test(token)) {
-                token = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-0000-0000-000000000001'
-                localStorage.setItem('session_token', token)
-            }
-            if (user.id && user.shop_id) {
-                supabase.from('sessions').upsert({
-                    token,
-                    user_id: user.id,
-                    shop_id: user.shop_id,
-                    branch_id: user.branch_id || null,
-                    expires_at: new Date(Date.now() + 30 * 86400000).toISOString()
-                }, { onConflict: 'token' }).then(() => {}).catch(() => {})
-            }
+            // Session row is created server-side by secure_login (see _doRestore)
             this.sessionRestored = true
             return { success: true }
         }

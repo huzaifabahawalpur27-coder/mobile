@@ -31,6 +31,47 @@ export function AuthProvider({ children }) {
     restoreHash()
   }, [user?.id, user?.role])
 
+  // Detect a session the server does not recognise (e.g. after an offline login when the
+  // connection dropped): every protected query then returns no rows and screens look
+  // empty. Ask the user to sign in again instead. Checked on load, when the connection
+  // returns and when the tab becomes visible (at most once a minute). Device data is kept.
+  useEffect(() => {
+    if (!user?.shop_id || user.role === 'superadmin' || user.isImpersonating) return
+    let cancelled = false
+    let lastCheck = 0
+    const runCheck = async (force = false) => {
+      const now = Date.now()
+      if (!force && now - lastCheck < 60000) return
+      lastCheck = now
+      try {
+        const { checkServerSession, RELOGIN_NOTICE_KEY, RELOGIN_MESSAGE } = await import('../services/sessionHealth')
+        const status = await checkServerSession(user)
+        if (cancelled || status !== 'unrecognised') return
+        console.warn('Server does not recognise this session; asking the user to sign in again.')
+        try { sessionStorage.setItem(RELOGIN_NOTICE_KEY, RELOGIN_MESSAGE) } catch (_) { /* notice is optional */ }
+        // Soft sign-out: clear only the login, keep the device's saved data and sync queue
+        localStorage.removeItem('user')
+        localStorage.removeItem('session_token')
+        localStorage.removeItem('originalUser')
+        setOriginalUser(null)
+        setUser(null)
+        if (!window.location.pathname.startsWith('/login')) window.location.assign('/login')
+      } catch (err) {
+        console.warn('Session check failed:', err)
+      }
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') runCheck() }
+    const onOnline = () => runCheck(true)
+    runCheck(true)
+    window.addEventListener('online', onOnline)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      window.removeEventListener('online', onOnline)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [user])
+
   const [authorizedShops, setAuthorizedShops] = useState(() => {
     const saved = localStorage.getItem('authorized_shops')
     return saved ? JSON.parse(saved) : []

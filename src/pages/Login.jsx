@@ -7,6 +7,7 @@ import { supabase, rlsSession } from '../services/supabase'
 import { supabaseAdmin } from '../services/supabaseAdmin'
 import { db as localDB } from '../services/db'
 import { hashPassword } from '../utils/authUtils'
+import { RELOGIN_NOTICE_KEY } from '../services/sessionHealth'
 import {
   Lock,
   User,
@@ -27,7 +28,13 @@ function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState('')
+  // Shows why the user was signed out (e.g. the server did not recognise the session)
+  const [error, setError] = useState(() => {
+    try { return sessionStorage.getItem(RELOGIN_NOTICE_KEY) || '' } catch (_) { return '' }
+  })
+  useEffect(() => {
+    try { sessionStorage.removeItem(RELOGIN_NOTICE_KEY) } catch (_) { /* optional */ }
+  }, [])
   const [loading, setLoading] = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
 
@@ -234,16 +241,13 @@ function Login() {
       const userData = loginData.user
       const shopConfig = loginData.shop_config || {}
 
-      const sessionToken = loginData.session_token || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-0000-0000-000000000001')
-      localStorage.setItem('session_token', sessionToken)
-      if (userData?.id && userData?.shop_id) {
-        supabase.from('sessions').upsert({
-          token: sessionToken,
-          user_id: userData.id,
-          shop_id: userData.shop_id,
-          branch_id: userData.branch_id || null,
-          expires_at: new Date(Date.now() + 30 * 86400000).toISOString()
-        }, { onConflict: 'token' }).then(() => {}).catch(() => {})
+      // Use only the token secure_login created on the server. Never invent one: the
+      // server would not recognise it and every screen would load empty.
+      if (loginData.session_token) {
+        localStorage.setItem('session_token', loginData.session_token)
+      } else {
+        localStorage.removeItem('session_token')
+        console.warn('Login reply had no session_token; the server will not recognise this session.')
       }
 
       // Superadmin Redirect Fast-Path
