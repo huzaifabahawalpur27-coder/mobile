@@ -166,7 +166,8 @@ export default function PublicInvoice() {
               invoice_no: actualInvoiceNo,
               token: directSale.invoice_number || id,
               // Token the server stored: the QR / verify link must use this, not the page URL
-              server_token: normalizeInvoiceToken(directSale.invoice_token),
+              // Older sales keep their public code only in invoice_number (the server matches both)
+              server_token: normalizeInvoiceToken(directSale.invoice_token) || normalizeInvoiceToken(directSale.invoice_number),
               reference_id: directSale.invoice_number || id,
               created_at: directSale.created_at || new Date().toISOString(),
               subtotal: directSale.total_amount || directSale.net_amount || 0,
@@ -336,7 +337,9 @@ export default function PublicInvoice() {
               ? (enriched.type === 'exchange' ? `EXC-${enriched.id}` : `INV-${enriched.id}`)
               : (enriched.invoice_no || id)
             enriched.actual_invoice_no = actualInvoiceNo
-            enriched.server_token = normalizeInvoiceToken(data.invoice_token)
+            // The RPC just resolved lookupId publicly, so it is a working link even when the row's
+            // invoice_token is empty (older sales matched by invoice_number)
+            enriched.server_token = normalizeInvoiceToken(data.invoice_token) || normalizeInvoiceToken(lookupId)
             enriched.invoice_no = actualInvoiceNo
             await fillCustomerFromDevice(enriched, cleanId)
 

@@ -70,12 +70,18 @@ export function normalizeInvoiceToken(raw) {
 export async function fetchServerInvoiceToken(table, id) {
   if (!id || (table !== 'sales' && table !== 'exchanges')) return null
   try {
-    const { data, error } = await supabase.from(table).select('invoice_token').eq('id', id).maybeSingle()
+    // Older sales keep their public code only in invoice_number; the public RPC matches
+    // both columns, so either is a working link.
+    const withNumber = table === 'sales'
+    let { data, error } = await supabase.from(table).select(withNumber ? 'invoice_token, invoice_number' : 'invoice_token').eq('id', id).maybeSingle()
+    if (error && withNumber && /invoice_number/.test(error.message || '')) {
+      ;({ data, error } = await supabase.from(table).select('invoice_token').eq('id', id).maybeSingle())
+    }
     if (error) {
       console.warn(`fetchServerInvoiceToken(${table}, ${id}):`, error.message || error)
       return null
     }
-    return normalizeInvoiceToken(data?.invoice_token)
+    return normalizeInvoiceToken(data?.invoice_token) || normalizeInvoiceToken(data?.invoice_number)
   } catch (err) {
     console.warn(`fetchServerInvoiceToken(${table}, ${id}):`, err)
     return null

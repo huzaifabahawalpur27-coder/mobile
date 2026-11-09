@@ -3,8 +3,9 @@
 -- Run AFTER sql/public_invoice_rpc.sql (and, for step 3, after
 -- sql/production_security_hardening.sql). Safe to re-run.
 --
--- 1. Guarantee every sale/exchange row has an unguessable invoice_token and that
---    sales.invoice_number mirrors it (process_phone_sale never set either).
+-- 1. Guarantee every sale/exchange row has an unguessable invoice_token (reusing a
+--    sale's existing INV-<code> where it has one) and fill sales.invoice_number where
+--    empty (process_phone_sale never set either). Existing codes are never replaced.
 -- 2. Normalize whatsapp_queue.shop_id to INTEGER (shops.id is SERIAL; a UUID column
 --    made every server insert fail, so desktop messages never reached the phone).
 -- 3. Remove the world-readable/writable USING (true) policies on whatsapp_queue and
@@ -21,6 +22,19 @@ ALTER TABLE public.exchanges ADD COLUMN IF NOT EXISTS invoice_token TEXT;
 ALTER TABLE public.sales ALTER COLUMN invoice_token SET DEFAULT upper(substr(md5(gen_random_uuid()::text), 1, 8));
 ALTER TABLE public.exchanges ALTER COLUMN invoice_token SET DEFAULT upper(substr(md5(gen_random_uuid()::text), 1, 8));
 
+-- Older sales keep their public code only in invoice_number (e.g. INV-JNXKG8DN), and
+-- customers already hold links with it. Use that code as the token where none is
+-- stored, so the link and the token agree and nothing a customer holds changes.
+UPDATE public.sales s
+SET invoice_token = upper(substr(s.invoice_number, 5))
+WHERE (s.invoice_token IS NULL OR trim(s.invoice_token) = '')
+  AND s.invoice_number ~* '^INV-[A-Z0-9]{8,64}$'
+  AND substr(s.invoice_number, 5) !~ '^[0-9]+$'
+  AND NOT EXISTS (
+      SELECT 1 FROM public.sales o
+      WHERE o.id <> s.id AND upper(o.invoice_token) = upper(substr(s.invoice_number, 5))
+  );
+
 UPDATE public.sales
 SET invoice_token = upper(substr(md5(gen_random_uuid()::text), 1, 8))
 WHERE invoice_token IS NULL OR trim(invoice_token) = '';
@@ -29,11 +43,12 @@ UPDATE public.exchanges
 SET invoice_token = upper(substr(md5(gen_random_uuid()::text), 1, 8))
 WHERE invoice_token IS NULL OR trim(invoice_token) = '';
 
--- Keep invoice_number = 'INV-' || invoice_token (staff-side lookups use it).
+-- Fill invoice_number only where it is empty. Never replace an existing code: it may be
+-- the one in a link a customer already has (get_public_invoice matches both columns).
 UPDATE public.sales
 SET invoice_number = 'INV-' || upper(invoice_token)
 WHERE invoice_token IS NOT NULL
-  AND (invoice_number IS NULL OR upper(invoice_number) <> 'INV-' || upper(invoice_token));
+  AND (invoice_number IS NULL OR trim(invoice_number) = '');
 
 CREATE OR REPLACE FUNCTION public.sync_sales_invoice_number()
 RETURNS TRIGGER
@@ -43,7 +58,12 @@ AS $$
 BEGIN
     IF NEW.invoice_token IS NOT NULL AND trim(NEW.invoice_token) <> '' THEN
         NEW.invoice_token := upper(trim(NEW.invoice_token));
-        NEW.invoice_number := 'INV-' || NEW.invoice_token;
+        -- Only fill an empty invoice_number, or keep one that merely mirrored the old token
+        IF NEW.invoice_number IS NULL OR trim(NEW.invoice_number) = ''
+           OR (TG_OP = 'UPDATE' AND OLD.invoice_token IS NOT NULL
+               AND upper(NEW.invoice_number) = 'INV-' || upper(OLD.invoice_token)) THEN
+            NEW.invoice_number := 'INV-' || NEW.invoice_token;
+        END IF;
     END IF;
     RETURN NEW;
 END;
