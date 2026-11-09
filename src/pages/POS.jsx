@@ -26,6 +26,10 @@ import { playError } from '../utils/soundEffects'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 import { recordSaleToAccounts, getBankAccounts } from '../services/bankService'
 import { reconcileOfflineProducts } from '../services/syncService'
+import {
+  adjustProductStock, adjustCustomerBalance, markPhoneSold, queuePhoneSold,
+  findPhonesNotInStock, applyLocalDelta
+} from '../services/atomicOps'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
   { id: 'easypaisa', name: 'Easypaisa', icon: '🟢' },
@@ -377,7 +381,7 @@ function POS() {
 
   useEffect(() => {
     fetchHeldCarts()
-    
+
     // Listen for cross-tab and in-tab phone/inventory updates
     const handleSync = () => {
       console.log('POS: Syncing settings and data from storage/focus change...')
@@ -423,7 +427,7 @@ function POS() {
     window.addEventListener('phones-updated', handlePhonesSync)
     window.addEventListener('inventory-updated', handleSync)
     window.addEventListener('products-updated', handleSync)
-    
+
     return () => {
       window.removeEventListener('storage', handleSync)
       window.removeEventListener('focus', handleSync)
@@ -1316,8 +1320,7 @@ function POS() {
             if (item.phone_id && db.phones) {
               await db.phones.update(item.phone_id, { status: 'sold' }).catch(() => {})
             } else if (item.id && !item.phone_id) {
-              const newStock = (item.stock_quantity || 1) - item.qty
-              await db.products.update(item.id, { stock_quantity: newStock }).catch(() => {})
+              await applyLocalDelta('products', item.id, ['stock_quantity'], -(Number(item.qty) || 0))
             }
           }
           setPhones(prev => prev.filter(p => !cart.some(c => c.phone_id === p.id)))
@@ -1333,19 +1336,21 @@ function POS() {
             const actualPaidToBill = Math.min(total, totalPaid)
             const balanceIncrease = total - actualPaidToBill
             if (balanceIncrease > 0) {
-              const customer = customers.find(c => String(c.id) === String(customerId))
-              const newBalance = (customer?.outstanding_balance || 0) + balanceIncrease
-              await db.customers.update(customerId, { outstanding_balance: newBalance }).catch(() => {})
+              await applyLocalDelta('customers', customerId, ['outstanding_balance', 'balance'], balanceIncrease)
             }
           }
         } else if (rpcRes && !rpcRes.success) {
-          const errStr = (rpcRes.error || '').toLowerCase()
-          const isInventoryConflict = errStr.includes('not found in stock') || 
-                                      errStr.includes('cannot be sold') || 
-                                      errStr.includes('already sold') || 
-                                      errStr.includes('lock conflict')
-          if (isInventoryConflict) {
-            alert(`⚠️ Sale Nahi Ho Saki: ${rpcRes.error || 'Inventory lock conflict'}`)
+          // The server checked the sale and refused it (already sold, not enough stock,
+          // ...). Saving it another way would bypass that check, so stop here.
+          alert(`⚠️ Sale Nahi Ho Saki: ${rpcRes.error || 'Inventory lock conflict'}`)
+          setSaving(false)
+          return
+        } else if (rpcErr) {
+          const errText = `${rpcErr.code || ''} ${rpcErr.message || rpcErr}`
+          const functionMissing = rpcErr.code === 'PGRST202' || /could not find the function|schema cache/i.test(errText)
+          const networkFailure = /fetch|network|load failed|timeout|connection/i.test(errText)
+          if (!functionMissing && !networkFailure) {
+            alert(`⚠️ Sale Nahi Ho Saki: ${rpcErr.message || 'Phone sale was refused by the server'}`)
             setSaving(false)
             return
           }
@@ -1353,6 +1358,21 @@ function POS() {
       }
 
       // 2. Standard flow for accessories or RPC fallback
+      if (!finalSale && hasPhoneItems && saleType === 'sale' && navigator.onLine) {
+        let notInStock = []
+        try {
+          notInStock = await findPhonesNotInStock(cart.filter(i => i.phone_id).map(i => i.phone_id))
+        } catch (checkErr) {
+          console.warn('POS: could not confirm phone stock before saving:', checkErr)
+        }
+        if (notInStock.length > 0) {
+          const names = cart.filter(i => notInStock.includes(String(i.phone_id)) || notInStock.includes(i.phone_id))
+            .map(i => i.imei_1 || i.imei || i.name).join(', ')
+          alert(`⚠️ Sale Nahi Ho Saki: phone already sold or not in stock (${names}). Refresh and try again.`)
+          setSaving(false)
+          return
+        }
+      }
       if (!finalSale) {
         let sale = null
         let saleError = null
@@ -1470,26 +1490,37 @@ function POS() {
         }
 
         if (saleType === 'sale') {
+          // Phones first: if one was sold elsewhere a moment ago, undo this sale
+          const markedPhoneIds = []
           for (const item of cart) {
-            if (item.phone_id) {
-              const phoneSoldPrice = parseFloat(item.custom_price) || 0
-              try {
-                await supabase.from('phones').update({
-                  status: 'sold',
-                  sale_price: phoneSoldPrice,
-                  sold_at: new Date().toISOString()
-                }).eq('id', item.phone_id)
-              } catch (_) {}
-              if (db.phones) await db.phones.update(item.phone_id, {
-                status: 'sold',
-                sale_price: phoneSoldPrice,
-                sold_at: new Date().toISOString()
-              }).catch(() => {})
-            } else {
-              const newStock = item.stock_quantity - item.qty
-              try { await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.id) } catch (_) {}
-              await db.products.update(item.id, { stock_quantity: newStock }).catch(() => {})
+            if (!item.phone_id) continue
+            const phoneRes = await markPhoneSold(item.phone_id, parseFloat(item.custom_price) || 0)
+            if (!phoneRes.ok) {
+              if (markedPhoneIds.length > 0) {
+                // Put back the phones this sale already marked
+                const { error: undoErr } = await supabase.from('phones')
+                  .update({ status: 'in_stock', sold_at: null }).in('id', markedPhoneIds)
+                if (undoErr) console.error('POS: could not return phones to stock:', markedPhoneIds, undoErr)
+                for (const pid of markedPhoneIds) {
+                  if (db.phones) await db.phones.update(pid, { status: 'in_stock', sold_at: null }).catch(() => {})
+                }
+              }
+              const conflict = new Error(phoneRes.error || 'Phone could not be marked sold')
+              // A network failure goes to the offline queue as usual; a refusal stops the sale
+              conflict.inventoryConflict = !/fetch|network|load failed|timeout|connection/i.test(conflict.message)
+              throw conflict
             }
+            markedPhoneIds.push(item.phone_id)
+          }
+          const stockProblems = []
+          for (const item of cart) {
+            if (item.phone_id) continue
+            const res = await adjustProductStock(item.id, -(Number(item.qty) || 0))
+            if (!res.ok) stockProblems.push(`${item.name || item.id}: ${res.error}`)
+          }
+          if (stockProblems.length > 0) {
+            console.error('POS: stock not updated for', stockProblems)
+            alert(`Sale saved, but stock could not be updated for:\n${stockProblems.join('\n')}\n\nPlease correct these in Inventory.`)
           }
           setPhones(prev => prev.filter(p => !cart.some(c => c.phone_id === p.id)))
           setProducts(prev => prev.map(p => {
@@ -1504,18 +1535,11 @@ function POS() {
             const actualPaidToBill = Math.min(total, totalPaid)
             const balanceIncrease = total - actualPaidToBill
             if (balanceIncrease !== 0) {
-              const customer = customers.find(c => String(c.id) === String(customerId))
-              const newBalance = (customer?.outstanding_balance ?? customer?.balance ?? 0) + balanceIncrease
-              try {
-                await supabase.from('customers').update({ 
-                  outstanding_balance: newBalance,
-                  balance: newBalance 
-                }).eq('id', customerId)
-              } catch (_) {}
-              await db.customers.update(customerId, { 
-                outstanding_balance: newBalance, 
-                balance: newBalance 
-              }).catch(() => {})
+              const balRes = await adjustCustomerBalance(customerId, balanceIncrease)
+              if (!balRes.ok) {
+                console.error('POS: customer balance not updated:', balRes.error)
+                alert(`Sale saved, but the customer's balance could not be updated (${balRes.error}). Please add Rs ${balanceIncrease} to their account manually.`)
+              }
             }
           }
         }
@@ -1539,6 +1563,11 @@ function POS() {
           setSaving(false)
           return
         }
+      }
+      if (error?.inventoryConflict) {
+        alert(`⚠️ Sale Nahi Ho Saki: ${error.message}. Refresh and try again.`)
+        setSaving(false)
+        return
       }
       // 3. RESILIENT OFFLINE FALLBACK (Always guarantees sale completion)
       const offlineId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
@@ -1591,19 +1620,9 @@ function POS() {
       if (saleType === 'sale') {
         for (const item of cart) {
           if (item.phone_id) {
-            const phoneSoldPrice = parseFloat(item.custom_price) || 0
-            const pUpdate = {
-              id: item.phone_id,
-              status: 'sold',
-              sale_price: phoneSoldPrice,
-              sold_at: new Date().toISOString()
-            }
-            if (db.phones) await db.phones.update(item.phone_id, pUpdate).catch(() => {})
-            await addToSyncQueue('phones', 'UPDATE', pUpdate).catch(() => {})
+            await queuePhoneSold(item.phone_id, parseFloat(item.custom_price) || 0).catch(() => {})
           } else {
-            const newStock = (item.stock_quantity || 1) - item.qty
-            await db.products.update(item.id, { stock_quantity: newStock }).catch(() => {})
-            await addToSyncQueue('products', 'UPDATE', { id: item.id, stock_quantity: newStock }).catch(() => {})
+            await adjustProductStock(item.id, -(Number(item.qty) || 0), { queueOnly: true }).catch(() => {})
           }
         }
         setPhones(prev => prev.filter(p => !cart.some(c => c.phone_id === p.id)))
@@ -1612,10 +1631,7 @@ function POS() {
           const actualPaidToBill = Math.min(total, totalPaid)
           const balanceIncrease = total - actualPaidToBill
           if (balanceIncrease !== 0) {
-            const customer = customers.find(c => String(c.id) === String(customerId))
-            const newBalance = (customer?.outstanding_balance || 0) + balanceIncrease
-            await db.customers.update(customerId, { outstanding_balance: newBalance }).catch(() => {})
-            await addToSyncQueue('customers', 'UPDATE', { id: customerId, outstanding_balance: newBalance }).catch(() => {})
+            await adjustCustomerBalance(customerId, balanceIncrease, { queueOnly: true }).catch(() => {})
           }
         }
       }
@@ -1892,8 +1908,8 @@ function POS() {
       }
     }
 
-    // Fallback: search by partial match. Since ID is integer, we need to cast (if DB allows) 
-    // or just search with exact if qId is long enough. 
+    // Fallback: search by partial match. Since ID is integer, we need to cast (if DB allows)
+    // or just search with exact if qId is long enough.
     // Most users will enter the full number if it's an integer.
     const { data: sale, error } = await query
       .filter('id', 'raw', `"id"::text ilike '%${qId}'`)

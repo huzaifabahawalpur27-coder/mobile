@@ -703,6 +703,24 @@ export const syncOfflineData = async () => {
                     await db.sync_queue.delete(item.id);
                     continue;
                 }
+            } else if (item.action === 'RPC') {
+                // Atomic stock / balance deltas (src/services/atomicOps.js). The args carry an
+                // op id, so a retry after a lost reply is not applied twice by the database.
+                const { fn, args } = processedData || {};
+                if (!fn) {
+                    await db.sync_queue.delete(item.id);
+                    continue;
+                }
+                ({ data: returnedData, error } = await supabase.rpc(fn, args || {}));
+                if (error) {
+                    const { isMissingFunction, runLegacyOp } = await import('./atomicOps');
+                    if (isMissingFunction(error)) {
+                        const legacy = await runLegacyOp(fn, args || {});
+                        if (legacy) error = legacy.ok ? null : { message: legacy.error };
+                    }
+                } else if (returnedData && returnedData.success === false) {
+                    error = { message: returnedData.error || `${fn} rejected` };
+                }
             } else if (item.action === 'DELETE') {
                 const dataObj = Array.isArray(processedData) ? processedData[0] : processedData;
                 if (dataObj.id) {
@@ -717,7 +735,10 @@ export const syncOfflineData = async () => {
                 await db.sync_queue.delete(item.id);
             } else {
                 console.error(`Sync error for ${item.table}:`, error);
-                const retries = (item.retry_count || 0) + 1;
+                // Refused business operations (product deleted, phone already sold, ...) will
+                // never succeed: move them to the dead-letter store (kept, visible) at once.
+                const refused = item.action === 'RPC' && /not found in this shop|not in stock|already sold/i.test(error?.message || '');
+                const retries = refused ? 5 : (item.retry_count || 0) + 1;
                 // If permanent missing table or exceeded max retries, remove to prevent queue stalls
                 if (retries >= 5 || ['PGRST205', '42P01'].includes(error.code) || (retries >= 3 && ['PGRST204', '42703', '22P02'].includes(error.code)) || (retries >= 3 && String(error.status) === '400') || error.message?.includes('Could not find')) {
                     console.warn(`Archiving un-syncable item ${item.id} to dead-letter after ${retries} attempts.`);

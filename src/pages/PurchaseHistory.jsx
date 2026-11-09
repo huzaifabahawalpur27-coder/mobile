@@ -12,6 +12,7 @@ import { buildBillHTML } from '../utils/billTemplates'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
 import { getBankAccounts, creditBankBalance } from '../services/bankService'
 import { checkPurchaseBatchesBeforeVoid, voidPurchaseBatches } from '../services/batchService'
+import { adjustProductStock, adjustSupplierBalance } from '../services/atomicOps'
 
 const normalizePurchaseItem = (it, phonesPool = [], productsPool = []) => {
     const ph = it.phones || (phonesPool || []).find(p => p.id === it.phone_id || (it.purchase_id && p.purchase_id === it.purchase_id))
@@ -331,15 +332,12 @@ function PurchaseHistory() {
                     await supabase.from('phones').update({ status: 'returned' }).eq('id', item.phone_id)
                     if (db.phones) await db.phones.update(item.phone_id, { status: 'returned' }).catch(() => {})
                 } else if (item.product_id) {
-                    // Reduce stock — fetch live stock first
-                    const { data: liveProduct } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).maybeSingle()
-                    const currentStock = liveProduct?.stock_quantity ?? 0
-                    const newStock = Math.max(0, currentStock - returnQty)
-                    await supabase.from('products')
-                        .update({ stock_quantity: newStock })
-                        .eq('id', item.product_id)
-                    // Keep local DB in sync
-                    await db.products.update(item.product_id, { stock_quantity: newStock })
+                    // Reduce stock inside the database (no stale read-then-write)
+                    const stockRes = await adjustProductStock(item.product_id, -returnQty)
+                    if (!stockRes.ok) {
+                        console.error('Purchase return: stock not reduced for product', item.product_id, stockRes.error)
+                        alert(`Return saved, but stock for "${item.product_name || item.product_id}" could not be reduced (${stockRes.error}). Please correct it in Inventory.`)
+                    }
                 }
             }
 
@@ -387,11 +385,11 @@ function PurchaseHistory() {
 
             // Reduce supplier liability if credit balance is affected
             if (creditRefundAmount > 0 && selectedPurchase.supplier_id) {
-                const { data: sup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', selectedPurchase.supplier_id).maybeSingle()
-                const baseBal = Number(sup?.outstanding_balance ?? sup?.balance ?? 0)
-                const newBal = baseBal - creditRefundAmount
-                await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', selectedPurchase.supplier_id)
-                if (db.suppliers) await db.suppliers.update(Number(selectedPurchase.supplier_id), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
+                const balRes = await adjustSupplierBalance(selectedPurchase.supplier_id, -creditRefundAmount)
+                if (!balRes.ok) {
+                    console.error('Purchase return: supplier balance not updated:', balRes.error)
+                    alert(`Return saved, but the supplier's balance could not be reduced by Rs ${creditRefundAmount} (${balRes.error}). Please adjust it manually.`)
+                }
 
                 // Log credit return in supplier_payments
                 const returnPaymentPayload = {
@@ -418,7 +416,7 @@ function PurchaseHistory() {
                     const accounts = await getBankAccounts(user.shop_id)
                     const method = String(selectedPurchase.payment_type || selectedPurchase.payment_method || '').toLowerCase()
                     const isBank = method === 'bank' || method === 'online'
-                    const targetAcc = accounts.find(a => 
+                    const targetAcc = accounts.find(a =>
                         isBank
                             ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
                             : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
@@ -484,26 +482,23 @@ function PurchaseHistory() {
                     // 1. Update local purchase_item
                     const newRetQty = (item.returned_qty || 0) + returnQty
                     await db.purchase_items.update(item.id, { returned_qty: newRetQty })
-                    await db.sync_queue.add({ table: 'purchase_items', action: 'UPDATE', data: { id: item.id, returned_qty: newRetQty }, timestamp: new Date().toISOString() })
+                    await addToSyncQueue('purchase_items', 'UPDATE', { id: item.id, returned_qty: newRetQty })
 
                     // 2. Handle phone vs product stock
                     if (item.phone_id) {
                         // Mark phone as returned locally
                         if (db.phones) await db.phones.update(item.phone_id, { status: 'returned' }).catch(() => {})
-                        await db.sync_queue.add({ table: 'phones', action: 'UPDATE', data: { id: item.phone_id, status: 'returned' }, timestamp: new Date().toISOString() })
+                        await addToSyncQueue('phones', 'UPDATE', { id: item.phone_id, status: 'returned' })
                     } else if (item.product_id) {
                         // Update local stock (subtract for purchase return)
-                        const localProd = await db.products.get(item.product_id)
-                        const newStock = Math.max(0, (localProd?.stock_quantity || 0) - returnQty)
-                        await db.products.update(item.product_id, { stock_quantity: newStock })
-                        await db.sync_queue.add({ table: 'products', action: 'UPDATE', data: { id: item.product_id, stock_quantity: newStock }, timestamp: new Date().toISOString() })
+                        await adjustProductStock(item.product_id, -returnQty, { queueOnly: true })
                     }
                 }
 
                 // Update local purchase total
                 const newPurchaseTotal = Math.max(0, (selectedPurchase.total_amount || 0) - totalReturnAmount)
                 await db.purchases.update(selectedPurchase.id, { total_amount: newPurchaseTotal })
-                await db.sync_queue.add({ table: 'purchases', action: 'UPDATE', data: { id: selectedPurchase.id, total_amount: newPurchaseTotal }, timestamp: new Date().toISOString() })
+                await addToSyncQueue('purchases', 'UPDATE', { id: selectedPurchase.id, total_amount: newPurchaseTotal })
 
                 alert('Offline mode: Return processed locally. Stock and Invoice updated! 🔄')
                 setReturning(false)
@@ -643,12 +638,10 @@ function PurchaseHistory() {
                                 if (db.phones) await db.phones.update(pi.phone_id, { status: 'returned', purchase_id: null }).catch(() => {})
                             }
                             if (pi.product_id) {
-                                const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', pi.product_id).maybeSingle()
-                                if (prod) {
-                                    const newStock = Math.max(0, (prod.stock_quantity || 0) - (pi.quantity || 1))
-                                    await supabase.from('products').update({ stock_quantity: newStock }).eq('id', pi.product_id)
-                                    if (db.products) await db.products.update(pi.product_id, { stock_quantity: newStock }).catch(() => {})
-                                }
+                                // Remove what this purchase still contributes (returns already took theirs out)
+                                const removeQty = (Number(pi.quantity ?? 1) || 0) - (Number(pi.returned_qty) || 0)
+                                const stockRes = await adjustProductStock(pi.product_id, -removeQty)
+                                if (!stockRes.ok) console.warn('Could not reduce stock for deleted purchase item:', pi.product_id, stockRes.error)
                             }
                         }
                     }
@@ -677,7 +670,7 @@ function PurchaseHistory() {
                             }
                         } else {
                             const isBank = method === 'bank' || method === 'online'
-                            const targetAcc = accounts.find(a => 
+                            const targetAcc = accounts.find(a =>
                                 isBank
                                     ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
                                     : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
@@ -722,15 +715,9 @@ function PurchaseHistory() {
                 if (item.supplier_id) {
                     const unpaid = Math.max(0, Number(item.total_amount || 0) - Number(item.paid_amount || 0))
                     if (unpaid > 0) {
-                        try {
-                            const { data: curSup } = await supabase.from('suppliers').select('balance, outstanding_balance').eq('id', item.supplier_id).maybeSingle()
-                            const baseBal = Number(curSup?.outstanding_balance ?? curSup?.balance ?? 0)
-                            const newBal = Math.max(0, baseBal - unpaid)
-                            if (navigator.onLine) {
-                                await supabase.from('suppliers').update({ balance: newBal, outstanding_balance: newBal }).eq('id', item.supplier_id)
-                            }
-                            await db.suppliers?.update(Number(item.supplier_id), { balance: newBal, outstanding_balance: newBal }).catch(() => {})
-                        } catch (_) {}
+                        // Applied now when online, queued (and applied once) when offline
+                        const balRes = await adjustSupplierBalance(item.supplier_id, -unpaid)
+                        if (!balRes.ok) console.warn('Could not reverse supplier balance for deleted purchase:', balRes.error)
                     }
                 }
 

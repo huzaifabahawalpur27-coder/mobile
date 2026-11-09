@@ -10,6 +10,7 @@ import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
 import { getBankAccounts, deductBankBalance } from '../services/bankService'
 import { returnSaleItemBatches } from '../services/batchService'
+import { adjustProductStock, adjustCustomerBalance } from '../services/atomicOps'
 
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
   let snap = null
@@ -406,14 +407,11 @@ function Sales() {
             await db.phones.update(item.phone_id, { status: 'in_stock', sale_id: null, sold_at: null })
           }
         } else if (item.product_id) {
-          const { data: liveProduct } = await supabase.from('products').select('stock_quantity, inventory_mode').eq('id', item.product_id).maybeSingle()
-          const currentStock = liveProduct?.stock_quantity ?? 0
-          const newStock = currentStock + returnQty
-          await supabase.from('products')
-            .update({ stock_quantity: newStock })
-            .eq('id', item.product_id)
-          // Keep local DB in sync
-          await db.products.update(item.product_id, { stock_quantity: newStock })
+          const stockRes = await adjustProductStock(item.product_id, returnQty)
+          if (!stockRes.ok) {
+            console.error('Return: stock not restored for product', item.product_id, stockRes.error)
+            alert(`Return saved, but stock for "${item.product_name || item.product_id}" could not be restored (${stockRes.error}). Please correct it in Inventory.`)
+          }
 
           // FIFO Batch Reversal for batch_tracked items
           try {
@@ -470,14 +468,11 @@ function Sales() {
 
       // Process Credit Refund component if customer exists
       if (creditRefundAmount > 0 && selectedSale.customer_id) {
-        const { data: cust } = await supabase.from('customers').select('*').eq('id', selectedSale.customer_id).maybeSingle()
-        const currentBal = Number(cust?.outstanding_balance ?? cust?.balance ?? 0)
-        const newBal = currentBal - creditRefundAmount
-        const { error: updErr } = await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', selectedSale.customer_id)
-        if (updErr && updErr.message?.includes('outstanding_balance')) {
-          await supabase.from('customers').update({ balance: newBal }).eq('id', selectedSale.customer_id)
+        const balRes = await adjustCustomerBalance(selectedSale.customer_id, -creditRefundAmount)
+        if (!balRes.ok) {
+          console.error('Return: customer balance not updated:', balRes.error)
+          alert(`Return saved, but the customer's balance could not be reduced by Rs ${creditRefundAmount} (${balRes.error}). Please adjust it manually.`)
         }
-        await db.customers.update(selectedSale.customer_id, { outstanding_balance: newBal, balance: newBal })
 
         await supabase.from('customer_payments').insert([{
           shop_id: user.shop_id,
@@ -502,8 +497,8 @@ function Sales() {
 
         try {
           const accounts = await getBankAccounts(user.shop_id)
-          const cashAcc = accounts.find(a => 
-            a.bank_name?.toLowerCase().includes('cash') || 
+          const cashAcc = accounts.find(a =>
+            a.bank_name?.toLowerCase().includes('cash') ||
             a.account_name?.toLowerCase().includes('cash')
           ) || accounts[0]
           if (cashAcc) {
@@ -561,17 +556,14 @@ function Sales() {
           await db.sale_items.update(item.id, { returned_qty: newRetQty })
 
           // 2. Queue the update
-          await db.sync_queue.add({ table: 'sale_items', action: 'UPDATE', data: { id: item.id, returned_qty: newRetQty }, timestamp: new Date().toISOString() })
+          await addToSyncQueue('sale_items', 'UPDATE', { id: item.id, returned_qty: newRetQty })
 
           // 3. Update local stock / phone
           if (item.phone_id && db.phones) {
             await db.phones.update(item.phone_id, { status: 'in_stock', sale_id: null, sold_at: null })
-            await db.sync_queue.add({ table: 'phones', action: 'UPDATE', data: { id: item.phone_id, status: 'in_stock', sale_id: null, sold_at: null }, timestamp: new Date().toISOString() })
+            await addToSyncQueue('phones', 'UPDATE', { id: item.phone_id, status: 'in_stock', sale_id: null, sold_at: null })
           } else if (item.product_id) {
-            const localProd = await db.products.get(item.product_id)
-            const newStock = (localProd?.stock_quantity || 0) + returnQty
-            await db.products.update(item.product_id, { stock_quantity: newStock })
-            await db.sync_queue.add({ table: 'products', action: 'UPDATE', data: { id: item.product_id, stock_quantity: newStock }, timestamp: new Date().toISOString() })
+            await adjustProductStock(item.product_id, returnQty, { queueOnly: true })
           }
         }
 
@@ -592,7 +584,7 @@ function Sales() {
           amount_paid: newPaidAmount
         }
         await db.sales.update(selectedSale.id, offlineSaleUpdate)
-        await db.sync_queue.add({ table: 'sales', action: 'UPDATE', data: { id: selectedSale.id, ...offlineSaleUpdate }, timestamp: new Date().toISOString() })
+        await addToSyncQueue('sales', 'UPDATE', { id: selectedSale.id, ...offlineSaleUpdate })
 
         alert('Offline mode: Return processed locally. Stock and Invoice updated! 🔄')
         setReturning(false)
@@ -778,26 +770,20 @@ function Sales() {
               }
               // Restore product stock quantity
               if (si.product_id) {
-                const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', si.product_id).maybeSingle()
-                if (prod) {
-                  const restoredQty = (prod.stock_quantity || 0) + (si.quantity || 0)
-                  await supabase.from('products').update({ stock_quantity: restoredQty }).eq('id', si.product_id)
-                  if (db.products) await db.products.update(si.product_id, { stock_quantity: restoredQty }).catch(() => {})
-                }
+                const restockQty = (Number(si.quantity) || 0) - (Number(si.returned_qty) || 0)
+                const stockRes = await adjustProductStock(si.product_id, restockQty)
+                if (!stockRes.ok) console.warn('Could not restore stock for deleted sale item:', si.product_id, stockRes.error)
               }
             }
           }
           // Reverse customer credit balance if credit sale
           if (item.payment_type === 'credit' && item.customer_id) {
-            const { data: cust } = await supabase.from('customers').select('outstanding_balance, balance').eq('id', item.customer_id).maybeSingle()
-            if (cust) {
-              const saleAmount = Number(item.total_amount || 0) - Number(item.discount || 0)
-              const newBal = Math.max(0, (cust.outstanding_balance ?? cust.balance ?? 0) - saleAmount)
-              // Supabase query builders have no .catch(); check the returned error instead.
-              const { error: balErr } = await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', item.customer_id)
-              if (balErr) console.warn('Could not reverse customer balance for deleted sale:', balErr.message || balErr)
-              if (db.customers) await db.customers.update(item.customer_id, { outstanding_balance: newBal, balance: newBal }).catch(() => {})
-            }
+            // Reverse only what this sale added to the account: the unpaid part
+            const saleAmount = Number(item.net_amount ?? (Number(item.total_amount || 0) - Number(item.discount || 0))) || 0
+            const paidOnSale = Number(item.paid_amount || item.amount_paid || 0) || 0
+            const unpaid = Math.max(0, saleAmount - Math.min(saleAmount, paidOnSale))
+            const balRes = await adjustCustomerBalance(item.customer_id, -unpaid)
+            if (!balRes.ok) console.warn('Could not reverse customer balance for deleted sale:', balRes.error)
           } else if (item.payment_type !== 'credit') {
             // Reverse bank or cash proceeds recorded in accounts for this sale
             const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? (Number(item.total_amount || 0) - Number(item.discount || 0)) : 0)) || 0
@@ -806,8 +792,8 @@ function Sales() {
                 const accounts = await getBankAccounts(user.shop_id)
                 const method = String(item.payment_type || item.payment_method || '').toLowerCase()
                 const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(method)
-                const targetAcc = accounts.find(a => 
-                  isBank 
+                const targetAcc = accounts.find(a =>
+                  isBank
                     ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
                     : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
                 ) || accounts[0]

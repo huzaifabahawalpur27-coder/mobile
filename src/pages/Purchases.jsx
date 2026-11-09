@@ -10,6 +10,7 @@ import PurchaseSplitPaymentModal from '../components/PurchaseSplitPaymentModal'
 import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment, recordPurchaseToAccounts } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
 import { deduplicateProducts } from '../utils/productUtils'
+import { adjustProductStock, adjustSupplierBalance } from '../services/atomicOps'
 
 function Purchases() {
   const { user } = useAuth()
@@ -448,16 +449,14 @@ function Purchases() {
         isBatchCostingOn = Boolean(s.batch_costing_enabled)
       } catch (_) {}
 
+      const purchaseProblems = []
       for (const item of cart) {
-        const newStock = item.stock_quantity + item.qty
-        await supabase.from('products')
-          .update({
-            stock_quantity: newStock,
-            cost_price: item.purchase_price
-          })
-          .eq('id', item.id)
-        // Mirror to local DB so Inventory shows accurate stock immediately
-        await db.products.update(item.id, { stock_quantity: newStock, cost_price: item.purchase_price })
+        const stockRes = await adjustProductStock(item.id, Number(item.qty) || 0)
+        if (!stockRes.ok) purchaseProblems.push(`${item.name || item.id}: stock not added (${stockRes.error})`)
+        const { error: costErr } = await supabase.from('products').update({ cost_price: item.purchase_price }).eq('id', item.id)
+        if (costErr) purchaseProblems.push(`${item.name || item.id}: cost price not saved (${costErr.message})`)
+        // Mirror to local DB so Inventory shows the new cost immediately (stock done above)
+        await db.products.update(item.id, { cost_price: item.purchase_price }).catch(() => {})
 
         // If batch costing is enabled and item is batch_tracked, create lot batch
         if (isBatchCostingOn && item.inventory_mode === 'batch_tracked') {
@@ -496,11 +495,12 @@ function Purchases() {
 
       // 4. Update Supplier Balance if credit component exists
       if (totalCreditAmount > 0) {
-        const supplier = suppliers.find(s => String(s.id) === String(supplierId))
-        const newBalance = (supplier?.outstanding_balance || 0) + totalCreditAmount
-        await supabase.from('suppliers').update({ outstanding_balance: newBalance }).eq('id', supplierId)
-        // Mirror to local DB
-        await db.suppliers.update(supplierId, { outstanding_balance: newBalance })
+        const balRes = await adjustSupplierBalance(supplierId, totalCreditAmount)
+        if (!balRes.ok) purchaseProblems.push(`Supplier balance not increased by Rs ${totalCreditAmount} (${balRes.error})`)
+      }
+      if (purchaseProblems.length > 0) {
+        console.error('Purchase saved with problems:', purchaseProblems)
+        alert(`Purchase saved, but some updates failed:\n${purchaseProblems.join('\n')}\n\nPlease correct these manually.`)
       }
 
       // 5. Record Payment & Account Deductions if paid amount exists
@@ -596,16 +596,13 @@ function Purchases() {
         await addToSyncQueue('purchase_items', 'INSERT', items)
 
         for (const item of cart) {
-          const newStock = item.stock_quantity + item.qty
-          await db.products.update(item.id, { stock_quantity: newStock, cost_price: item.purchase_price })
-          await addToSyncQueue('products', 'UPDATE', { id: item.id, stock_quantity: newStock, cost_price: item.purchase_price })
+          await adjustProductStock(item.id, Number(item.qty) || 0, { queueOnly: true })
+          await db.products.update(item.id, { cost_price: item.purchase_price }).catch(() => {})
+          await addToSyncQueue('products', 'UPDATE', { id: item.id, cost_price: item.purchase_price })
         }
 
         if (totalCreditAmount > 0) {
-          const supplier = suppliers.find(s => String(s.id) === String(supplierId))
-          const newBalance = (supplier?.outstanding_balance || 0) + totalCreditAmount
-          await db.suppliers.update(supplierId, { outstanding_balance: newBalance })
-          await addToSyncQueue('suppliers', 'UPDATE', { id: supplierId, outstanding_balance: newBalance })
+          await adjustSupplierBalance(supplierId, totalCreditAmount, { queueOnly: true })
         }
 
         if (totalPaidAmount > 0) {
@@ -944,7 +941,7 @@ function Purchases() {
               ) : (
                 splitPayments.map((p, idx) => {
                   const tenderAcc = bankAccounts.find(a => String(a.id) === String(p.account_id))
-                  const pLabel = p.method === 'cash' 
+                  const pLabel = p.method === 'cash'
                     ? `💵 Cash (${tenderAcc?.account_name || 'Cash in Hand'})`
                     : (tenderAcc ? `🏦 ${tenderAcc.bank_name ? `${tenderAcc.bank_name} - ` : ''}${tenderAcc.account_name}` : `📱 ${p.method.toUpperCase()}`)
                   return (
