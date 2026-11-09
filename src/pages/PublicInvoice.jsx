@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
-import { recoverCorruptedToken, DEFAULT_WARRANTY_TERMS_URDU, buildPublicInvoiceUrl, cleanPakistanPhone, isRealCustomerName, normalizeInvoiceToken, fetchServerInvoiceToken } from '../services/whatsappQueueService'
+import { recoverCorruptedToken, DEFAULT_WARRANTY_TERMS_URDU, buildPublicInvoiceUrl, cleanPakistanPhone, isRealCustomerName, normalizeInvoiceToken, fetchServerInvoiceToken, syncLocalSaleTokens } from '../services/whatsappQueueService'
 import InvoiceDocument from '../components/InvoiceDocument'
 import { buildInvoiceView } from '../utils/invoiceView'
 import { generateInvoicePdf } from '../utils/invoicePdf'
@@ -425,7 +425,11 @@ export default function PublicInvoice() {
 
               await fillCustomerFromDevice(formatted, cleanId, localSale.customer_id)
               // Found on this device only: use the server's token for the QR, if the sale has synced
-              formatted.server_token = /^\d+$/.test(String(localSale.id || '')) ? await fetchServerInvoiceToken('sales', localSale.id) : null
+              // and push this device's code up if the server never got it (older sales), so
+              // the customer's link and the QR work everywhere
+              formatted.server_token = /^\d+$/.test(String(localSale.id || ''))
+                ? ((await syncLocalSaleTokens([localSale]).catch(() => ({})))[localSale.id] || await fetchServerInvoiceToken('sales', localSale.id))
+                : null
               setInvoice(formatted)
               setLoading(false)
               return

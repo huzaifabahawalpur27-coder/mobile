@@ -1472,6 +1472,60 @@ export async function registerLegacyInvoiceTokens(items = []) {
   return updated
 }
 
+/**
+ * Pushes bill codes that exist only in this device's saved sales up to the server.
+ * Sales made before links used the server token (e.g. INV-JNXKG8DN) kept their code only
+ * locally, so the customer's link and the QR showed "Invoice not found".
+ *   - server sale has no token        -> store the local code as its token
+ *   - server sale has another token   -> add the local code to legacy_invoice_tokens
+ * Never replaces an existing server token or invoice_number. Returns a map
+ * { [saleId]: tokenThatResolvesOnTheServer } for the sales it could check.
+ */
+export async function syncLocalSaleTokens(localSales = []) {
+  const wanted = new Map()
+  for (const s of localSales) {
+    if (!s || !/^\d+$/.test(String(s.id ?? ''))) continue
+    const tok = normalizeInvoiceToken(s.invoice_token) || normalizeInvoiceToken(s.invoice_number)
+    if (tok) wanted.set(Number(s.id), tok)
+  }
+  const result = {}
+  if (wanted.size === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)) return result
+
+  const ids = Array.from(wanted.keys())
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200)
+    let hasLegacy = true
+    let { data, error } = await supabase.from('sales').select('id, invoice_token, invoice_number, legacy_invoice_tokens').in('id', chunk)
+    if (error && /legacy_invoice_tokens/.test(error.message || '')) {
+      hasLegacy = false
+      ;({ data, error } = await supabase.from('sales').select('id, invoice_token, invoice_number').in('id', chunk))
+    }
+    if (error) {
+      console.warn('syncLocalSaleTokens: could not read sales:', error.message || error)
+      continue
+    }
+    for (const row of data || []) {
+      const local = wanted.get(Number(row.id))
+      const serverTok = normalizeInvoiceToken(row.invoice_token) || normalizeInvoiceToken(row.invoice_number)
+      const legacy = Array.isArray(row.legacy_invoice_tokens) ? row.legacy_invoice_tokens : []
+      if (!serverTok) {
+        const patch = { invoice_token: local }
+        if (!String(row.invoice_number || '').trim()) patch.invoice_number = `INV-${local}`
+        const { error: upErr } = await supabase.from('sales').update(patch).eq('id', row.id)
+        if (upErr) console.warn(`syncLocalSaleTokens: could not store token on sale ${row.id}:`, upErr.message || upErr)
+        else result[row.id] = local
+        continue
+      }
+      result[row.id] = serverTok
+      if (serverTok !== local && hasLegacy && !legacy.includes(local)) {
+        const { error: upErr } = await supabase.from('sales').update({ legacy_invoice_tokens: [...legacy, local].sort() }).eq('id', row.id)
+        if (upErr) console.warn(`syncLocalSaleTokens: could not add old code to sale ${row.id}:`, upErr.message || upErr)
+      }
+    }
+  }
+  return result
+}
+
 const backfilledCustomerKeys = new Set()
 
 /**
