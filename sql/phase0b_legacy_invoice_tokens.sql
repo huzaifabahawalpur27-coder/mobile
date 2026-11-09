@@ -39,7 +39,8 @@ BEGIN
                 CASE WHEN jsonb_typeof(w.reference_data->'legacy_invoice_tokens') = 'array'
                      THEN w.reference_data->'legacy_invoice_tokens' ELSE '[]'::jsonb END)
         ) t
-        WHERE (w.reference_data->>'sale_id') ~ '^[0-9]+
+        WHERE (w.reference_data->>'sale_id') ~ '^[0-9]+$'
+          AND t.tok IS NOT NULL
           AND NOT COALESCE((w.reference_data->>'is_exchange')::BOOLEAN, FALSE)
         GROUP BY 1
     )
@@ -64,7 +65,8 @@ BEGIN
                 CASE WHEN jsonb_typeof(w.reference_data->'legacy_invoice_tokens') = 'array'
                      THEN w.reference_data->'legacy_invoice_tokens' ELSE '[]'::jsonb END)
         ) t
-        WHERE (w.reference_data->>'exchange_id') ~ '^[0-9]+
+        WHERE (w.reference_data->>'exchange_id') ~ '^[0-9]+$'
+          AND t.tok IS NOT NULL
         GROUP BY 1
     )
     UPDATE public.exchanges t

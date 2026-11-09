@@ -42,8 +42,15 @@ import {
   DEFAULT_WARRANTY_TERMS_URDU,
   updateExistingQueueMessagesWithWarranty,
   replaceOrInjectWarrantyInTemplate,
-  isLegacyEnglishInvoiceTemplate
+  isLegacyEnglishInvoiceTemplate,
+  withWarrantyPlaceholder,
+  upgradeDefaultTemplate
 } from '../services/whatsappQueueService'
+
+// A template using the [Warranty Terms] placeholder already follows the saved terms;
+// pasting a fixed copy into it would freeze today's wording in the template.
+const syncWarrantyIntoTemplate = (template, terms) =>
+  /[Warranty(?: Terms)?]/.test(template || '') ? template : replaceOrInjectWarrantyInTemplate(template, terms)
 
 function Settings() {
   const { user } = useAuth()
@@ -78,10 +85,11 @@ function Settings() {
       print_size: 'thermal',
       print_mode: 'manual',
       wa_reminder_template: parsedSaved?.wa_reminder_template || 'Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!',
+      // Unedited earlier built-in defaults are upgraded to the current format
       wa_bill_template: (parsedSaved?.wa_bill_template && !isLegacyEnglishInvoiceTemplate(parsedSaved.wa_bill_template))
-        ? parsedSaved.wa_bill_template
+        ? withWarrantyPlaceholder(upgradeDefaultTemplate(parsedSaved.wa_bill_template))
         : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
-      wa_exchange_template: (sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || parsedSaved?.wa_exchange_template || DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE,
+      wa_exchange_template: upgradeDefaultTemplate((sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || parsedSaved?.wa_exchange_template || DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE, 'exchange'),
       wa_reorder_template: '',
       invoice_prefix: '',
       warranty_terms: savedWarranty || parsedSaved?.warranty_terms || DEFAULT_WARRANTY_TERMS_URDU,
@@ -281,12 +289,15 @@ function Settings() {
         wa_reminder_template: data.wa_reminder_template || saved.wa_reminder_template || prev.wa_reminder_template || '',
         wa_bill_template:     (() => {
           const raw = data.wa_bill_template || saved.wa_bill_template || prev.wa_bill_template
-          return (raw && !isLegacyEnglishInvoiceTemplate(raw)) ? raw : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
+          return (raw && !isLegacyEnglishInvoiceTemplate(raw)) ? withWarrantyPlaceholder(upgradeDefaultTemplate(raw)) : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE
         })(),
-        wa_exchange_template: (sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || data.wa_exchange_template || saved.wa_exchange_template || prev.wa_exchange_template || DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE,
+        wa_exchange_template: upgradeDefaultTemplate((sid ? localStorage.getItem(`shop_wa_exchange_${sid}`) : null) || data.wa_exchange_template || saved.wa_exchange_template || prev.wa_exchange_template || DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE, 'exchange'),
         wa_reorder_template:  '',
         invoice_prefix:       data.invoice_prefix       || saved.invoice_prefix       || prev.invoice_prefix       || '',
-        warranty_terms:       (sid ? localStorage.getItem(`shop_warranty_${sid}`) : null) || data.warranty_terms || saved.warranty_terms || prev.warranty_terms || DEFAULT_WARRANTY_TERMS_URDU,
+        // The server copy (shops.warranty_terms) is the source of truth so every device,
+        // receipt and customer bill shows the same terms; fall back to this device's copy
+        // only when the server has none (not saved yet, or column not migrated).
+        warranty_terms:       (typeof data.warranty_terms === 'string' && data.warranty_terms.trim() ? data.warranty_terms : null) || (sid ? localStorage.getItem(`shop_warranty_${sid}`) : null) || saved.warranty_terms || prev.warranty_terms || DEFAULT_WARRANTY_TERMS_URDU,
         business_preset:      data.business_preset      || saved.business_preset      || prev.business_preset      || 'general',
         pricing_mode:         data.pricing_mode         || saved.pricing_mode         || prev.pricing_mode         || 'hidden',
         custom_price_label:   data.custom_price_label   || saved.custom_price_label   || prev.custom_price_label   || '',
@@ -300,6 +311,8 @@ function Settings() {
         const fullSettings = { ...updated, print_template: data.print_template || saved.print_template || localStorage.getItem(`print_template_${sid}`) || '2' }
         localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(fullSettings))
         localStorage.setItem(`shop_name_${sid}`, updated.name)
+        // POS, Exchange and the outbox read shop_warranty_${sid}; keep it in step
+        if (updated.warranty_terms) localStorage.setItem(`shop_warranty_${sid}`, updated.warranty_terms)
         if (updated.logo_url) {
           localStorage.setItem(`shop_logo_${sid}`, updated.logo_url)
         }
@@ -350,6 +363,8 @@ function Settings() {
 
     const sid = Number(user.shop_id)
     const fullSettings = { ...form, logo_url: logoUrl, print_template: printTemplate }
+    const previousWarranty = (localStorage.getItem(`shop_warranty_${sid}`) || '').trim()
+    const warrantyChanged = Boolean(form.warranty_terms && form.warranty_terms.trim() !== previousWarranty)
 
     localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(fullSettings))
     localStorage.setItem(`shop_name_${sid}`, form.name || 'EdgeX POS')
@@ -376,7 +391,7 @@ function Settings() {
     }
 
     try {
-      const { data: rpcResult, error } = await supabase.rpc('update_shop_settings', {
+      const baseParams = {
         p_shop_id: sid,
         p_name: form.name,
         p_phone: form.phone,
@@ -390,7 +405,21 @@ function Settings() {
         p_wa_bill_template: form.wa_bill_template,
         p_wa_reorder_template: '',
         p_invoice_prefix: form.invoice_prefix,
+      }
+      // Warranty terms and the exchange template are stored on the server so they do not
+      // revert on other devices, after re-login, or on the customer's online bill.
+      // Needs sql/phase1_warranty_settings.sql; older databases fall back to the base call.
+      let warrantyOnServer = true
+      let { data: rpcResult, error } = await supabase.rpc('update_shop_settings', {
+        ...baseParams,
+        p_warranty_terms: form.warranty_terms || null,
+        p_wa_exchange_template: form.wa_exchange_template || null,
       })
+      if (error && (error.code === 'PGRST202' || /p_warranty_terms|could not find the function/i.test(error.message || ''))) {
+        warrantyOnServer = false
+        console.warn('update_shop_settings has no p_warranty_terms yet; run sql/phase1_warranty_settings.sql. Warranty saved on this device only.')
+        ;({ data: rpcResult, error } = await supabase.rpc('update_shop_settings', baseParams))
+      }
       if (error) throw error
       if (rpcResult && !rpcResult.success) throw new Error(rpcResult.error || 'Update failed')
 
@@ -404,18 +433,34 @@ function Settings() {
         } catch (_) {}
       }
 
-      // Sync exchange template if column exists
-      if (form.wa_exchange_template) {
+      // Older databases: the RPC cannot store these, try a direct update (works only
+      // where RLS still allows shop updates).
+      if (!warrantyOnServer) {
+        const { error: directErr } = await supabase.from('shops').update({
+          warranty_terms: form.warranty_terms || null,
+          wa_exchange_template: form.wa_exchange_template || null
+        }).eq('id', sid)
+        if (!directErr) warrantyOnServer = true
+        else console.warn('Could not store warranty terms on server:', directErr.message || directErr)
+      }
+
+      // Apply edited terms to messages already waiting in the WhatsApp outbox
+      let outboxUpdated = 0
+      if (warrantyChanged) {
         try {
-          await supabase.from('shops').update({
-            wa_exchange_template: form.wa_exchange_template
-          }).eq('id', sid)
-        } catch (_) {}
+          outboxUpdated = await updateExistingQueueMessagesWithWarranty(sid, form.warranty_terms)
+        } catch (outboxErr) {
+          console.warn('Could not apply warranty terms to outbox:', outboxErr)
+        }
       }
 
       await db.shops.put({ ...fullSettings, id: sid })
       window.dispatchEvent(new Event('storage'))
-      alert('Settings saved successfully! ✅')
+      alert(
+        'Settings saved successfully! ✅' +
+        (outboxUpdated > 0 ? `\n\nوارنٹی شرائط ${outboxUpdated} پینڈنگ آؤٹ باکس میسجز میں بھی لاگو کر دی گئیں۔ (${outboxUpdated} pending outbox messages updated)` : '') +
+        (!warrantyOnServer ? '\n\n⚠️ Warranty terms were saved on this device only (server database needs sql/phase1_warranty_settings.sql). Other devices and online bills will still show the old terms.' : '')
+      )
     } catch (err) {
       const errMsg = err?.message || String(err)
       if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
@@ -511,8 +556,8 @@ function Settings() {
   }
 
   const handleApplyWarrantyToTemplate = () => {
-    const updatedBill = replaceOrInjectWarrantyInTemplate(form.wa_bill_template, form.warranty_terms)
-    const updatedExchange = replaceOrInjectWarrantyInTemplate(form.wa_exchange_template, form.warranty_terms)
+    const updatedBill = syncWarrantyIntoTemplate(form.wa_bill_template, form.warranty_terms)
+    const updatedExchange = syncWarrantyIntoTemplate(form.wa_exchange_template, form.warranty_terms)
     setForm(prev => ({
       ...prev,
       wa_bill_template: updatedBill,
@@ -978,7 +1023,7 @@ function Settings() {
                         onClick={() => {
                           setForm(prev => ({
                             ...prev,
-                            wa_bill_template: replaceOrInjectWarrantyInTemplate(prev.wa_bill_template, prev.warranty_terms)
+                            wa_bill_template: syncWarrantyIntoTemplate(prev.wa_bill_template, prev.warranty_terms)
                           }))
                         }}
                         className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 transition flex items-center gap-1 cursor-pointer"
@@ -1014,13 +1059,16 @@ function Settings() {
                     {[
                       { tag: '[Name]', desc: 'Customer Name' },
                       { tag: '[Shop Name]', desc: 'Shop Name' },
-                      { tag: '[ID]', desc: 'Invoice #' },
+                      { tag: '[Invoice ID]', desc: 'Bill number (e.g. INV-156)' },
                       { tag: '[Date]', desc: 'Date & Time' },
-                      { tag: '[Items]', desc: 'Items & IMEI' },
-                      { tag: '[Total]', desc: 'Total Amount' },
+                      { tag: '[Items]', desc: 'Phones with IMEI, condition, PTA & price' },
+                      { tag: '[Payment Summary]', desc: 'Total, discount, received & balance lines' },
+                      { tag: '[Total]', desc: 'Payable Amount' },
                       { tag: '[Paid]', desc: 'Paid Amount' },
-                      { tag: '[Balance]', desc: 'Customer Balance' },
+                      { tag: '[Balance]', desc: 'Customer Account Balance' },
                       { tag: '[Invoice Link]', desc: 'Online Invoice & PDF Link' },
+                      { tag: '[Warranty Terms]', desc: 'Warranty Terms' },
+                      { tag: '[Shop Address]', desc: 'Shop Address' },
                       { tag: '[Phone]', desc: 'Shop Phone' }
                     ].map(({ tag, desc }) => (
                       <button
@@ -1122,7 +1170,7 @@ function Settings() {
                         onClick={() => {
                           setForm(prev => ({
                             ...prev,
-                            wa_exchange_template: replaceOrInjectWarrantyInTemplate(prev.wa_exchange_template, prev.warranty_terms)
+                            wa_exchange_template: syncWarrantyIntoTemplate(prev.wa_exchange_template, prev.warranty_terms)
                           }))
                         }}
                         className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 transition flex items-center gap-1 cursor-pointer"
@@ -1150,7 +1198,8 @@ function Settings() {
                     {[
                       { tag: '[Name]', desc: 'Customer Name' },
                       { tag: '[Shop Name]', desc: 'Shop Name' },
-                      { tag: '[Exchange ID]', desc: 'Exchange Number' },
+                      { tag: '[Exchange ID]', desc: 'Exchange bill number (e.g. EXC-12)' },
+                      { tag: '[Settlement Details]', desc: 'New phone, trade-in credit & who paid whom' },
                       { tag: '[Date]', desc: 'Date & Time' },
                       { tag: '[Outgoing Items]', desc: 'Purchased Phone(s) with IMEI & Price' },
                       { tag: '[Incoming Phones]', desc: 'Traded-in Phone(s) with IMEI & Credit' },
@@ -1158,9 +1207,10 @@ function Settings() {
                       { tag: '[Trade-in Total]', desc: 'Total Value of Old Phones' },
                       { tag: '[Net Difference]', desc: 'Difference Payable/Receivable' },
                       { tag: '[Paid]', desc: 'Settlement Amount Paid' },
-                      { tag: '[Balance]', desc: 'Remaining / Ledger Balance' },
+                      { tag: '[Balance]', desc: 'Amount still due on this exchange' },
                       { tag: '[Invoice Link]', desc: 'Online Invoice & PDF Link' },
                       { tag: '[Warranty Terms]', desc: 'Warranty Terms' },
+                      { tag: '[Shop Address]', desc: 'Shop Address' },
                       { tag: '[Shop Phone]', desc: 'Shop Contact Phone' }
                     ].map(({ tag, desc }) => (
                       <button

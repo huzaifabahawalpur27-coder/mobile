@@ -137,6 +137,21 @@ export function formatInvoiceWhatsAppMessage({ receipt, shopInfo, language = 'en
   const prevCustomerBalance = Number(receipt?.customer?.outstanding_balance || 0)
   const totalCustomerDue = remainingBalance > 0 ? (prevCustomerBalance + remainingBalance) : 0
 
+  // The shop's own warranty terms (Settings → WhatsApp & Warranty) replace the built-in ones.
+  const customWarranty = (() => {
+    if (shopInfo?.warranty_terms && String(shopInfo.warranty_terms).trim()) return String(shopInfo.warranty_terms).trim()
+    const sid = shopInfo?.id || shopInfo?.shop_id
+    if (!sid) return ''
+    try {
+      const direct = localStorage.getItem(`shop_warranty_${sid}`)
+      if (direct && direct.trim()) return direct.trim()
+      const saved = JSON.parse(localStorage.getItem(`shop_settings_${sid}`) || '{}')
+      return saved.warranty_terms && String(saved.warranty_terms).trim() ? String(saved.warranty_terms).trim() : ''
+    } catch (_) {
+      return ''
+    }
+  })()
+
   if (language === 'urdu') {
     const itemsList = items.map((i, idx) => {
       const q = Number(i.quantity || 1)
@@ -156,10 +171,10 @@ ${itemsList ? `\n📦 *Khareedari Items:*\n${itemsList}\n` : ''}
 💰 *Kul Bill (Total):* Rs. ${total.toLocaleString()}
 💵 *Ada Shuda (Paid):* Rs. ${paid.toLocaleString()}
 ${remainingBalance > 0 ? `⚠️ *Baqaya Is Bill Ka:* Rs. ${remainingBalance.toLocaleString()}\n` : ''}${totalCustomerDue > 0 ? `📒 *Kul Baqaya Balance:* Rs. ${totalCustomerDue.toLocaleString()}\n` : ''}
-⚠️ *وارنٹی شرائط (Warranty Terms):*
+${customWarranty || `⚠️ *وارنٹی شرائط (Warranty Terms):*
 ۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔
 ۲۔ موبائل ڈیڈ ہونے کی صورت میں کوئی وارنٹی یا واپسی قبول نہیں کی جائے گی۔
-۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔
+۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔`}
 
 Aapke aitmaad aur taawun ka dil se shukriya. Dobara tashreef laane ka intezar rahega! 🤝
 
@@ -185,10 +200,10 @@ ${itemsList ? `\n📦 *Items Purchased:*\n${itemsList}\n` : ''}
 💰 *Total Bill:* Rs. ${total.toLocaleString()}
 💵 *Amount Paid:* Rs. ${paid.toLocaleString()}
 ${remainingBalance > 0 ? `⚠️ *This Bill Balance:* Rs. ${remainingBalance.toLocaleString()}\n` : ''}${totalCustomerDue > 0 ? `📒 *Total Outstanding Balance:* Rs. ${totalCustomerDue.toLocaleString()}\n` : ''}
-⚠️ *Warranty & Terms:*
+${customWarranty || `⚠️ *Warranty & Terms:*
 1. No warranty for LCD, Face Lock, and Cameras.
 2. No warranty or return accepted if the phone becomes dead.
-3. No warranty on second-hand mobile devices.
+3. No warranty on second-hand mobile devices.`}
 
 Thank you for your business and trust! We look forward to serving you again. 🤝
 

@@ -10,7 +10,6 @@ import {
   getShopWarrantyTerms,
   replaceOrInjectWarrantyInTemplate,
   upgradeLegacyWhatsAppMessage,
-  hasWarrantyTerms,
   repairQueueInvoiceLinks,
   registerLegacyInvoiceTokens
 } from '../services/whatsappQueueService'
@@ -230,8 +229,8 @@ export default function WhatsAppQueue() {
     e?.stopPropagation()
     const shopWarranty = getShopWarrantyTerms(item.shop_id || user?.shop_id)
     const upgraded = upgradeLegacyWhatsAppMessage(item.message_text, item.shop_id || user?.shop_id, item.reference_data)
-    const finalText = hasWarrantyTerms(upgraded) ? upgraded : replaceOrInjectWarrantyInTemplate(upgraded, shopWarranty)
-    setEditingText(finalText)
+    // Replace (not just add) so the shop's current terms from Settings win
+    setEditingText(replaceOrInjectWarrantyInTemplate(upgraded, shopWarranty))
   }
 
   // 1-Click direct add / refresh warranty for an individual card without opening editor
@@ -240,7 +239,8 @@ export default function WhatsAppQueue() {
     try {
       const shopWarranty = getShopWarrantyTerms(item.shop_id || user?.shop_id)
       const upgraded = upgradeLegacyWhatsAppMessage(item.message_text, item.shop_id || user?.shop_id, item.reference_data)
-      const newText = hasWarrantyTerms(upgraded) ? upgraded : replaceOrInjectWarrantyInTemplate(upgraded, shopWarranty)
+      // Replace (not just add) so the shop's current terms from Settings win
+      const newText = replaceOrInjectWarrantyInTemplate(upgraded, shopWarranty)
       await updateWhatsAppMessageText(item.id, newText)
       setMessages(prev => prev.map(m => m.id === item.id ? { ...m, message_text: newText } : m))
       setWarrantyStatusMsg(`✅ وارنٹی شرائط شامل کر دی گئیں! (Warranty terms added for ${item.recipient_name})`)

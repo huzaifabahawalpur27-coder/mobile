@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
-import { recoverCorruptedToken } from '../services/whatsappQueueService'
+import { recoverCorruptedToken, DEFAULT_WARRANTY_TERMS_URDU, buildPublicInvoiceUrl, cleanPakistanPhone } from '../services/whatsappQueueService'
+import InvoiceDocument from '../components/InvoiceDocument'
+import { buildInvoiceView } from '../utils/invoiceView'
+import { generateInvoicePdf } from '../utils/invoicePdf'
 import {
   Download,
   Printer,
@@ -12,15 +15,13 @@ import {
 
 // Action-time dynamic loading for PDF libraries
 async function loadPdfLibraries() {
-  const [jspdfMod, html2canvasMod, autotableMod] = await Promise.all([
+  const [jspdfMod, html2canvasMod] = await Promise.all([
     import('jspdf'),
-    import('html2canvas'),
-    import('jspdf-autotable')
+    import('html2canvas')
   ])
   const jsPDF = jspdfMod.jsPDF || jspdfMod.default?.jsPDF || jspdfMod.default
   const html2canvas = html2canvasMod.default || html2canvasMod
-  const autoTable = autotableMod.default || autotableMod.autoTable || autotableMod
-  return { jsPDF, html2canvas, autoTable }
+  return { jsPDF, html2canvas }
 }
 
 /**
@@ -52,7 +53,6 @@ export default function PublicInvoice() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
-  const invoiceRef = useRef(null)
   const warrantyRef = useRef(null)
 
   useEffect(() => {
@@ -506,549 +506,41 @@ export default function PublicInvoice() {
 
   const isExchange = invoice.type === 'exchange'
   const shop = invoice.shop || {}
-  const dateFormatted = invoice.created_at
-    ? new Date(invoice.created_at).toLocaleString('en-PK', {
-        dateStyle: 'medium',
-        timeStyle: 'short'
-      })
-    : ''
 
-  // 1. Calculate sum from item lines as bulletproof fallback
-  const itemsSum = (invoice.items || []).reduce((sum, item) => {
-    const itemTotal = Number(
-      item.total != null
-        ? item.total
-        : ((Number(item.quantity || 1) * Number(item.unit_price || 0)) || 0)
-    ) || 0
-    return sum + itemTotal
-  }, 0)
-
-  // 2. Financial components
-  const discount = Number(invoice.discount || 0)
-  const tradeCredit = Number(invoice.trade_in_credit || 0)
-
-  // 3. Gross Total (Total Amount before discount & trade credit)
-  const grossTotal = isExchange
-    ? Number(invoice.sale_amount || itemsSum || 0)
-    : Number(
-        invoice.total_amount ||
-        invoice.subtotal ||
-        (itemsSum > 0 ? itemsSum : 0) ||
-        invoice.net_amount ||
-        invoice.total ||
-        0
-      )
-
-  // 4. Net Total (Payable amount after discount / trade credit)
-  let netTotal = 0
-  if (isExchange) {
-    netTotal = Math.max(0, grossTotal - tradeCredit)
-  } else {
-    const candidateNet = Number(invoice.net_amount || invoice.total || 0)
-    if (candidateNet > 0) {
-      netTotal = candidateNet
-    } else if (grossTotal > 0) {
-      netTotal = Math.max(0, grossTotal - discount)
-    } else if (itemsSum > 0) {
-      netTotal = Math.max(0, itemsSum - discount)
-    }
-  }
-
-  // 5. Amount Paid & Balance Due
-  const paidTotal = Number(
-    invoice.paid_amount ??
-    invoice.amount_paid ??
-    invoice.settlement_paid_amount ??
-    netTotal
-  )
-  const balanceDue = Math.max(0, netTotal - paidTotal)
-
-  // Extract warranty terms and clean redundant subheader lines
-  const rawWarranty = shop.warranty_terms || `⚠️ *وارنٹی شرائط (Warranty Terms):*
-۱۔ LCD، فیس لاک اور کیمرے کی کوئی وارنٹی نہیں ہوگی۔
-۲۔ موبائل ڈیڈ ہونے کی صورت میں کوئی وارنٹی یا واپسی قبول نہیں کی جائے گی۔
-۳۔ سیکنڈ ہینڈ موبائل کی کوئی وارنٹی نہیں ہوگی۔`
-
+  // shop.warranty_terms is the shop's saved terms (Settings → WhatsApp & Warranty, stored
+  // on shops.warranty_terms). The built-in default is only for shops that never saved any.
+  const rawWarranty = shop.warranty_terms || DEFAULT_WARRANTY_TERMS_URDU
   const warrantyText = rawWarranty
     .replace(/^⚠️?\s*\*?وارنٹی[\s\S]*?(?:\*|:|\))\s*\n+/i, '')
     .trim()
 
-  // Actual sequential invoice number (e.g. INV-156 instead of random URL token INV-JNXKG8DN)
+  // The shop's own bill number (INV-156); the URL keeps the private token.
   const displayInvoiceNo = invoice.actual_invoice_no ||
     (invoice.id ? (isExchange ? `EXC-${invoice.id}` : `INV-${invoice.id}`) : (invoice.invoice_no || id))
+  const verifyUrl = buildPublicInvoiceUrl(recoverCorruptedInvoiceRef(id))
+  const view = buildInvoiceView(invoice, { billNo: displayInvoiceNo, verifyUrl, warrantyText })
 
-  // Hybrid High-Precision PDF Exporter:
-  // Vectorizes all English store data, customer metadata, item details + IMEI, and financial totals;
-  // Flattens the Urdu Nastaleeq warranty card into a high-DPI image to eliminate mojibake and font clipping.
-  // Directly saves the .pdf file without opening the browser print dialogue.
+  // Saves the PDF directly (never opens the print dialog).
   const handleDownloadPDF = async () => {
-    if (!invoice || downloadingPdf) return
+    if (downloadingPdf) return
     setDownloadingPdf(true)
-
     const filename = `Invoice_${displayInvoiceNo}.pdf`
-
     try {
-      const { jsPDF, html2canvas, autoTable } = await loadPdfLibraries()
-
-      // Ensure fonts are loaded before flattening warranty canvas
-      try {
-        if (document.fonts?.ready) {
-          await document.fonts.ready
-        }
-      } catch (_) {}
-
-      // 1. FLATTEN URDU WARRANTY CARD INTO A COMPACT HIGH-DPI IMAGE
-      let warrantyImgData = null
-      let warrantyImgRatio = 0.22
-
-      // Strategy A: html2canvas on warrantyRef (captures the exact compact styled card)
-      if (warrantyRef.current) {
-        try {
-          const canvas = await html2canvas(warrantyRef.current, {
-            scale: 2,
-            useCORS: true,
-            allowTaint: false,
-            backgroundColor: '#fffdf5',
-            logging: false
-          })
-          if (canvas && canvas.width > 0 && canvas.height > 0) {
-            warrantyImgData = canvas.toDataURL('image/png')
-            warrantyImgRatio = canvas.height / canvas.width
-          }
-        } catch (canvasErr) {
-          console.debug('html2canvas on warrantyRef failed, using direct canvas fallback:', canvasErr)
-        }
-      }
-
-      // Strategy B: Pure HTML5 Canvas 2D fallback for Urdu Nastaleeq (Small compact typography)
-      if (!warrantyImgData) {
-        try {
-          const canvas = document.createElement('canvas')
-          const width = 1100
-          const lines = warrantyText.split('\n').filter(Boolean)
-          const lineHeight = 34
-          const topHeaderHeight = 44
-          const urduPaddingTop = 26
-          const urduHeight = Math.max(lines.length, 1) * lineHeight
-          const footerPadding = 52
-          const height = topHeaderHeight + urduPaddingTop + urduHeight + footerPadding
-
-          canvas.width = width
-          canvas.height = height
-          const ctx = canvas.getContext('2d')
-          if (ctx) {
-            ctx.fillStyle = '#fffdf5'
-            ctx.fillRect(0, 0, width, height)
-            ctx.strokeStyle = '#fcd34d'
-            ctx.lineWidth = 3
-            ctx.strokeRect(3, 3, width - 6, height - 6)
-
-            ctx.fillStyle = '#451a03'
-            ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.textAlign = 'left'
-            ctx.direction = 'ltr'
-            ctx.fillText('Official Warranty Terms  (دکان کی وارنٹی شرائط)', 24, 28)
-
-            ctx.fillStyle = '#92400e'
-            ctx.font = 'bold 12px monospace'
-            ctx.textAlign = 'right'
-            ctx.fillText('WARRANTY', width - 24, 28)
-
-            ctx.strokeStyle = '#fde68a'
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.moveTo(24, 42)
-            ctx.lineTo(width - 24, 42)
-            ctx.stroke()
-
-            ctx.fillStyle = '#1e293b'
-            ctx.font = '16px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Typesetting", "Amiri", "Tahoma", serif'
-            ctx.textAlign = 'right'
-            ctx.direction = 'rtl'
-
-            let textY = 42 + urduPaddingTop
-            for (const line of lines) {
-              ctx.fillText(line.trim(), width - 24, textY)
-              textY += lineHeight
-            }
-
-            const bottomDividerY = textY + 6
-            ctx.strokeStyle = '#fde68a'
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.moveTo(24, bottomDividerY)
-            ctx.lineTo(width - 24, bottomDividerY)
-            ctx.stroke()
-
-            const footerTextY = bottomDividerY + 24
-            ctx.fillStyle = '#78350f'
-            ctx.font = '14px "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Typesetting", "Amiri", serif'
-            ctx.textAlign = 'right'
-            ctx.direction = 'rtl'
-            ctx.fillText('آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝', width - 24, footerTextY)
-
-            ctx.textAlign = 'left'
-            ctx.direction = 'ltr'
-            ctx.fillStyle = '#451a03'
-            ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-            ctx.fillText(shop.name || 'EdgeX Mobile Store', 24, footerTextY)
-
-            warrantyImgData = canvas.toDataURL('image/png')
-            warrantyImgRatio = height / width
-          }
-        } catch (canvasErr2) {
-          console.debug('Pure canvas fallback error:', canvasErr2)
-        }
-      }
-
-      // 2. VECTORIZED PDF CREATION (Standard A4 Portrait matching online bill layout)
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      })
-
-      const pageWidth = 210
-      const pageHeight = 297
-      const margin = 14
-      const contentWidth = pageWidth - (margin * 2) // 182mm
-
-      // Header: Store Name
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(18)
-      pdf.setTextColor(15, 23, 42)
-      pdf.text(shop.name || 'EdgeX Mobile Store', margin, 20)
-
-      // Address & Phone
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(8)
-      pdf.setTextColor(71, 85, 105)
-      let subY = 25
-      if (shop.address) {
-        pdf.text(shop.address, margin, subY)
-        subY += 4
-      }
-      if (shop.phone) {
-        pdf.text(`Phone: ${shop.phone}`, margin, subY)
-        subY += 4
-      }
-
-      // Top Right: Badge & Invoice Details
-      const badgeText = isExchange ? 'PHONE EXCHANGE INVOICE' : 'SALES INVOICE'
-      pdf.setFillColor(236, 253, 245)
-      pdf.setDrawColor(167, 243, 208)
-      pdf.roundedRect(pageWidth - margin - 50, 13, 50, 7.5, 2, 2, 'FD')
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(7.5)
-      pdf.setTextColor(6, 95, 70)
-      pdf.text(badgeText, pageWidth - margin - 25, 18, { align: 'center' })
-
-      // Invoice Number: ACTUAL INVOICE NUMBER (e.g. #INV-156)
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(13)
-      pdf.setTextColor(15, 23, 42)
-      pdf.text(`#${displayInvoiceNo}`, pageWidth - margin, 26, { align: 'right' })
-
-      // Date
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(8)
-      pdf.setTextColor(100, 116, 139)
-      pdf.text(dateFormatted, pageWidth - margin, 31, { align: 'right' })
-
-      // Header Divider Line
-      const headerBottom = Math.max(subY + 2, 35)
-      pdf.setDrawColor(226, 232, 240)
-      pdf.setLineWidth(0.3)
-      pdf.line(margin, headerBottom, pageWidth - margin, headerBottom)
-
-      // Customer & Transaction Meta Box
-      const metaBoxY = headerBottom + 4
-      const metaBoxHeight = 15
-      pdf.setFillColor(248, 250, 252)
-      pdf.setDrawColor(226, 232, 240)
-      pdf.roundedRect(margin, metaBoxY, contentWidth, metaBoxHeight, 2, 2, 'FD')
-
-      const colWidth = contentWidth / 4
-
-      // Col 1: Customer Name
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(6.5)
-      pdf.setTextColor(100, 116, 139)
-      pdf.text('CUSTOMER NAME', margin + 4, metaBoxY + 5)
-      pdf.setFontSize(8.5)
-      pdf.setTextColor(15, 23, 42)
-      pdf.text(String(invoice.customer_name || 'Valued Customer').substring(0, 24), margin + 4, metaBoxY + 10.5)
-
-      // Col 2: Mobile Number
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(6.5)
-      pdf.setTextColor(100, 116, 139)
-      pdf.text('MOBILE NUMBER', margin + colWidth + 4, metaBoxY + 5)
-      pdf.setFontSize(8.5)
-      pdf.setTextColor(30, 41, 59)
-      pdf.text(invoice.customer_phone ? `+${invoice.customer_phone}` : 'Walk-in', margin + colWidth + 4, metaBoxY + 10.5)
-
-      // Col 3: Payment Method
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(6.5)
-      pdf.setTextColor(100, 116, 139)
-      pdf.text('PAYMENT METHOD', margin + (colWidth * 2) + 4, metaBoxY + 5)
-      pdf.setFontSize(8.5)
-      pdf.setTextColor(30, 41, 59)
-      pdf.text(String(invoice.payment_type || invoice.settlement_payment_method || 'Cash').toUpperCase(), margin + (colWidth * 2) + 4, metaBoxY + 10.5)
-
-      // Col 4: Payment Status (Clean WinAnsi text without unicode tick)
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(6.5)
-      pdf.setTextColor(100, 116, 139)
-      pdf.text('PAYMENT STATUS', margin + (colWidth * 3) + 4, metaBoxY + 5)
-      pdf.setFontSize(8.5)
-      if (balanceDue > 0) {
-        pdf.setTextColor(217, 119, 6)
-        pdf.text(`Balance: Rs. ${balanceDue.toLocaleString()}`, margin + (colWidth * 3) + 4, metaBoxY + 10.5)
-      } else {
-        pdf.setTextColor(4, 120, 87)
-        pdf.text('PAID', margin + (colWidth * 3) + 4, metaBoxY + 10.5)
-      }
-
-      // 3. Items Table (autoTable)
-      const tableRows = []
-      if (!isExchange) {
-        ;(invoice.items || []).forEach((item, idx) => {
-          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null
-            ? item.imei_snapshot
-            : (() => {
-                try { return JSON.parse(item.imei_snapshot || '{}') } catch (_) { return {} }
-              })()
-
-          const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
-          const imei2 = item.imei_2 || snap.imei_2 || ''
-
-          let cleanName = (item.name || item.product_name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`).trim()
-          cleanName = cleanName
-            .replace(/\[(?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\]/gi, '')
-            .replace(/\((?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\)/gi, '')
-            .trim()
-
-          // Normalize Condition & Phone Status
-          const rawCond = (item.condition || snap.condition || '').toLowerCase()
-          const condText = rawCond.includes('brand') || rawCond === 'new'
-            ? 'Brand New'
-            : (rawCond.includes('used') ? 'Used / Pre-Owned' : (item.condition || snap.condition || ''))
-
-          const rawPta = (item.pta_status || snap.pta_status || '').toLowerCase()
-          const ptaText = rawPta === 'approved' || rawPta.includes('official')
-            ? 'Official PTA Approved'
-            : (rawPta === 'non_pta' || rawPta.includes('non') ? 'Non-PTA' : (item.pta_status || snap.pta_status || ''))
-
-          const statusParts = [condText, ptaText].filter(Boolean).join(' • ')
-          const specsParts = [item.storage || snap.storage, item.color || snap.color].filter(Boolean).join(', ')
-
-          const cellLines = [cleanName]
-          if (imei1) {
-            cellLines.push(imei2 ? `IMEI: ${imei1} / ${imei2}` : `IMEI: ${imei1}`)
-          }
-          if (specsParts && !cleanName.includes(specsParts)) {
-            cellLines.push(`Specs: ${specsParts}`)
-          }
-          if (statusParts) {
-            cellLines.push(`Status: ${statusParts}`)
-          }
-
-          const fullName = cellLines.join('\n')
-
-          const qty = Number(item.quantity || 1)
-          const price = Number(item.unit_price || 0)
-          const total = Number(item.total || (qty * price))
-
-          tableRows.push([
-            String(idx + 1),
-            fullName,
-            String(qty),
-            `Rs. ${price.toLocaleString()}`,
-            `Rs. ${total.toLocaleString()}`
-          ])
-        })
-      } else {
-        ;(invoice.outgoing_items || []).forEach((item, idx) => {
-          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null
-            ? item.imei_snapshot
-            : (() => { try { return JSON.parse(item.imei_snapshot || '{}') } catch (_) { return {} } })()
-          const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
-          const imei2 = item.imei_2 || snap.imei_2 || ''
-
-          let cleanName = (item.product_name || `${snap.brand || ''} ${snap.model || 'Device'}`).trim()
-          cleanName = cleanName.replace(/\[(?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\]/gi, '').trim()
-
-          const rawCond = (item.condition || snap.condition || '').toLowerCase()
-          const condText = rawCond.includes('brand') || rawCond === 'new' ? 'Brand New' : (rawCond.includes('used') ? 'Used / Pre-Owned' : (item.condition || snap.condition || ''))
-          const rawPta = (item.pta_status || snap.pta_status || '').toLowerCase()
-          const ptaText = rawPta === 'approved' || rawPta.includes('official') ? 'Official PTA Approved' : (rawPta === 'non_pta' || rawPta.includes('non') ? 'Non-PTA' : (item.pta_status || snap.pta_status || ''))
-          const statusParts = [condText, ptaText].filter(Boolean).join(' • ')
-          const specsParts = [item.storage || snap.storage, item.color || snap.color].filter(Boolean).join(', ')
-
-          const cellLines = [`Purchased: ${cleanName}`]
-          if (imei1) cellLines.push(imei2 ? `IMEI: ${imei1} / ${imei2}` : `IMEI: ${imei1}`)
-          if (specsParts && !cleanName.includes(specsParts)) cellLines.push(`Specs: ${specsParts}`)
-          if (statusParts) cellLines.push(`Status: ${statusParts}`)
-
-          tableRows.push([
-            String(idx + 1),
-            cellLines.join('\n'),
-            '1',
-            `Rs. ${Number(item.subtotal || item.price || 0).toLocaleString()}`,
-            `Rs. ${Number(item.subtotal || item.price || 0).toLocaleString()}`
-          ])
-        })
-        ;(invoice.incoming_items || []).forEach((item) => {
-          const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null
-            ? item.imei_snapshot
-            : (() => { try { return JSON.parse(item.imei_snapshot || '{}') } catch (_) { return {} } })()
-          const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
-          const imei2 = item.imei_2 || snap.imei_2 || ''
-
-          let cleanName = (item.product_name || `${snap.brand || ''} ${snap.model || 'Device'}`).trim()
-          cleanName = cleanName.replace(/\[(?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\]/gi, '').trim()
-
-          const rawCond = (item.condition || snap.condition || '').toLowerCase()
-          const condText = rawCond.includes('brand') || rawCond === 'new' ? 'Brand New' : (rawCond.includes('used') ? 'Used / Pre-Owned' : (item.condition || snap.condition || ''))
-          const rawPta = (item.pta_status || snap.pta_status || '').toLowerCase()
-          const ptaText = rawPta === 'approved' || rawPta.includes('official') ? 'Official PTA Approved' : (rawPta === 'non_pta' || rawPta.includes('non') ? 'Non-PTA' : (item.pta_status || snap.pta_status || ''))
-          const statusParts = [condText, ptaText].filter(Boolean).join(' • ')
-          const specsParts = [item.storage || snap.storage, item.color || snap.color].filter(Boolean).join(', ')
-
-          const cellLines = [`Trade-in: ${cleanName}`]
-          if (imei1) cellLines.push(imei2 ? `IMEI: ${imei1} / ${imei2}` : `IMEI: ${imei1}`)
-          if (specsParts && !cleanName.includes(specsParts)) cellLines.push(`Specs: ${specsParts}`)
-          if (statusParts) cellLines.push(`Status: ${statusParts}`)
-
-          tableRows.push([
-            'Trade-in',
-            cellLines.join('\n'),
-            '1',
-            `- Rs. ${Number(item.assessed_value || item.subtotal || 0).toLocaleString()}`,
-            `- Rs. ${Number(item.assessed_value || item.subtotal || 0).toLocaleString()}`
-          ])
-        })
-      }
-
-      autoTable(pdf, {
-        startY: metaBoxY + metaBoxHeight + 5,
-        head: [['#', 'ITEMS & PURCHASED DEVICES', 'QTY', 'UNIT PRICE', 'TOTAL AMOUNT']],
-        body: tableRows,
-        styles: {
-          fontSize: 8.5,
-          cellPadding: 3,
-          textColor: [15, 23, 42],
-          lineColor: [226, 232, 240],
-          lineWidth: 0.1
-        },
-        headStyles: {
-          fillColor: [248, 250, 252],
-          textColor: [71, 85, 105],
-          fontStyle: 'bold',
-          fontSize: 8,
-          lineColor: [226, 232, 240],
-          lineWidth: 0.2
-        },
-        columnStyles: {
-          0: { cellWidth: 10, halign: 'center', textColor: [148, 163, 184] },
-          1: { cellWidth: 100 },
-          2: { cellWidth: 14, halign: 'center' },
-          3: { cellWidth: 28, halign: 'right' },
-          4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
-        },
-        alternateRowStyles: { fillColor: [255, 255, 255] },
-        margin: { left: margin, right: margin }
-      })
-
-      let currentY = pdf.lastAutoTable.finalY + 4
-
-      // 4. Financial Totals Card (Right-aligned, matching online layout)
-      const totalsBoxWidth = 75
-      const totalsBoxX = pageWidth - margin - totalsBoxWidth
-      const totalsRows = []
-      totalsRows.push({ label: 'Total Amount:', val: `Rs. ${grossTotal.toLocaleString()}`, color: [71, 85, 105], bold: false })
-      if (discount > 0) {
-        totalsRows.push({ label: 'Discount:', val: `- Rs. ${discount.toLocaleString()}`, color: [4, 120, 87], bold: false })
-      }
-      if (isExchange && tradeCredit > 0) {
-        totalsRows.push({ label: 'Trade-in Credit:', val: `- Rs. ${tradeCredit.toLocaleString()}`, color: [107, 33, 168], bold: false })
-      }
-      totalsRows.push({ label: 'Net Total:', val: `Rs. ${netTotal.toLocaleString()}`, color: [4, 120, 87], bold: true, isNet: true })
-      totalsRows.push({ label: 'Amount Paid:', val: `Rs. ${paidTotal.toLocaleString()}`, color: [15, 23, 42], bold: false })
-      if (balanceDue > 0) {
-        totalsRows.push({ label: 'Remaining Balance:', val: `Rs. ${balanceDue.toLocaleString()}`, color: [220, 38, 38], bold: true })
-      }
-
-      const totalsBoxHeight = (totalsRows.length * 5.6) + 8
-      pdf.setFillColor(248, 250, 252)
-      pdf.setDrawColor(226, 232, 240)
-      pdf.roundedRect(totalsBoxX, currentY, totalsBoxWidth, totalsBoxHeight, 2, 2, 'FD')
-
-      let rowY = currentY + 5.5
-      totalsRows.forEach((r) => {
-        if (r.isNet) {
-          // Draw subtle divider line ABOVE Net Total with clear spacing
-          const lineY = rowY - 1.8
-          pdf.setDrawColor(226, 232, 240)
-          pdf.setLineWidth(0.3)
-          pdf.line(totalsBoxX + 4, lineY, totalsBoxX + totalsBoxWidth - 4, lineY)
-          rowY += 4.5 // Move Net Total comfortably down below the divider line
-        }
-        pdf.setFont('helvetica', r.bold ? 'bold' : 'normal')
-        pdf.setFontSize(r.isNet ? 9.5 : 8)
-        pdf.setTextColor(...r.color)
-        pdf.text(r.label, totalsBoxX + 4, rowY)
-        pdf.text(r.val, totalsBoxX + totalsBoxWidth - 4, rowY, { align: 'right' })
-        rowY += 5.4
-      })
-
-      currentY += totalsBoxHeight + 8
-
-      // 5. Flattened Compact Urdu Warranty Section (Naturally follows totals card)
-      const warrantyHeight = contentWidth * warrantyImgRatio
-      const footerReservedSpace = 16
-
-      if (currentY + warrantyHeight > pageHeight - margin - footerReservedSpace) {
-        pdf.addPage()
-        currentY = margin + 6
-      }
-
-      if (warrantyImgData) {
-        pdf.addImage(warrantyImgData, 'PNG', margin, currentY, contentWidth, warrantyHeight)
-        currentY += warrantyHeight + 6
-      }
-
-      // 6. Footer Disclaimer & Timestamp
-      const footerY = pageHeight - margin - 3
-      pdf.setDrawColor(226, 232, 240)
-      pdf.line(margin, footerY - 5, pageWidth - margin, footerY - 5)
-
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(7.5)
-      pdf.setTextColor(51, 65, 85)
-      pdf.text('This is a verified computerized digital invoice and does not require a physical signature.', pageWidth / 2, footerY - 1.5, { align: 'center' })
-      pdf.setFontSize(6.5)
-      pdf.setTextColor(148, 163, 184)
-      pdf.text(`Powered by EdgeX POS Suite • Verified Digital Invoice • ${dateFormatted}`, pageWidth / 2, footerY + 2, { align: 'center' })
-
-      pdf.save(filename)
+      const { jsPDF, html2canvas } = await loadPdfLibraries()
+      await generateInvoicePdf({ jsPDF, html2canvas, view, warrantyEl: warrantyRef.current, filename })
     } catch (err) {
       console.error('PDF download error:', err)
-      // Emergency PDF generation - ALWAYS downloads a file; NEVER calls window.print()!
+      // Minimal fallback so the customer still gets a file
       try {
         const { jsPDF } = await loadPdfLibraries()
         const fallbackPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
         fallbackPdf.setFontSize(16)
-        fallbackPdf.text(shop.name || 'EdgeX Mobile Store', 14, 20)
+        fallbackPdf.text(String(view.shop.name).replace(/[^\x20-\x7E]/g, '') || 'Bill', 14, 20)
         fallbackPdf.setFontSize(12)
-        fallbackPdf.text(`Invoice #${displayInvoiceNo}`, 14, 28)
+        fallbackPdf.text(`Bill ${displayInvoiceNo}`, 14, 28)
         fallbackPdf.setFontSize(10)
-        fallbackPdf.text(`Customer: ${invoice?.customer_name || 'Valued Customer'}`, 14, 38)
-        fallbackPdf.text(`Mobile: ${invoice?.customer_phone ? '+' + invoice.customer_phone : 'Walk-in'}`, 14, 44)
-        fallbackPdf.text(`Net Total: Rs. ${netTotal.toLocaleString()}`, 14, 52)
-        fallbackPdf.text(`Amount Paid: Rs. ${paidTotal.toLocaleString()}`, 14, 58)
+        fallbackPdf.text(`${view.status.title}`.replace(/[^\x20-\x7E]/g, ''), 14, 38)
+        fallbackPdf.text(`Verify: ${verifyUrl}`, 14, 46)
         fallbackPdf.save(filename)
       } catch (emergErr) {
         console.error('Emergency PDF fallback save failed:', emergErr)
@@ -1058,481 +550,54 @@ export default function PublicInvoice() {
     }
   }
 
-  // Print Handler
   const handlePrint = () => {
     window.print()
   }
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 py-6 px-3 sm:px-6 font-sans">
-      <div className="max-w-2xl mx-auto space-y-4">
+      <div className="max-w-3xl mx-auto space-y-4">
 
-        {/* Top Customer Actions Bar (Non-printed) */}
-        <div className="print:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span
-              style={{ backgroundColor: '#ecfdf5', color: '#059669' }}
-              className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-base"
-            >
-              ✓
-            </span>
-            <div>
-              <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                <span>Verified Digital Invoice</span>
-                <span
-                  style={{ backgroundColor: '#ecfdf5', color: '#065f46' }}
-                  className="px-1.5 py-0.2 rounded text-[10px] font-black"
-                >
-                  VERIFIED
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">Official EdgeX Certified Receipt</p>
-            </div>
+        {/* Customer actions (not printed) */}
+        <div className="print:hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-slate-900 dark:text-white">Verified digital bill</div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Issued by {view.shop.name} · {displayInvoiceNo}</p>
           </div>
-
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={handleDownloadPDF}
               disabled={downloadingPdf}
-              className="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-              title="Download high-resolution official PDF with Nastaleeq Urdu warranty"
+              className="min-h-[40px] py-2 px-4 bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-sm disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
             >
-              <Download size={14} className={downloadingPdf ? 'animate-bounce' : ''} />
-              <span>{downloadingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
+              <Download size={16} className={downloadingPdf ? 'animate-bounce' : ''} />
+              <span>{downloadingPdf ? 'Preparing PDF…' : 'Download PDF'}</span>
             </button>
-
             <button
+              type="button"
               onClick={handlePrint}
-              className="py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-              title="Print bill"
+              className="min-h-[40px] py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-bold transition flex items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
             >
-              <Printer size={14} />
+              <Printer size={16} />
               <span className="hidden sm:inline">Print</span>
             </button>
           </div>
         </div>
 
-        {/* ============================================================== */}
-        {/* Printable & Canvas-Capturable Digital Invoice Card             */}
-        {/* ============================================================== */}
-        <div
-          ref={invoiceRef}
-          style={{ backgroundColor: '#ffffff', color: '#0f172a', borderColor: '#e2e8f0' }}
-          className="bg-white text-slate-900 rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-8 space-y-6 print:border-none print:shadow-none print:p-0 print:rounded-none"
-        >
-          {/* 1. Header & Store Branding */}
-          <div
-            style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '1.25rem' }}
-            className="flex flex-col sm:flex-row sm:items-start justify-between gap-4"
-          >
-            <div className="space-y-1">
-              {shop.logo_url && (
-                <img
-                  src={shop.logo_url}
-                  alt={shop.name || 'Store Logo'}
-                  className="h-12 max-w-[160px] object-contain mb-2"
-                  crossOrigin="anonymous"
-                />
-              )}
-              <h1
-                style={{ color: '#020617' }}
-                className="text-xl sm:text-2xl font-black tracking-tight"
-              >
-                {shop.name || 'EdgeX Mobile Store'}
-              </h1>
-              {shop.address && (
-                <p style={{ color: '#475569' }} className="text-xs flex items-center gap-1">
-                  <span className="text-[11px]">📍</span>
-                  <span>{shop.address}</span>
-                </p>
-              )}
-              {shop.phone && (
-                <p style={{ color: '#475569' }} className="text-xs flex items-center gap-1 font-mono">
-                  <span className="text-[11px]">📞</span>
-                  <span>{shop.phone}</span>
-                </p>
-              )}
-            </div>
+        <InvoiceDocument ref={warrantyRef} view={view} />
 
-            <div className="sm:text-right space-y-1">
-              <span
-                style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }}
-                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black"
-              >
-                <span>✓</span>
-                <span>{isExchange ? 'Phone Exchange Invoice' : 'Sales Invoice'}</span>
-              </span>
-              <div
-                style={{ color: '#020617' }}
-                className="text-base font-black font-mono tracking-wide pt-1"
-              >
-                #{displayInvoiceNo}
-              </div>
-              <div style={{ color: '#64748b' }} className="text-xs flex items-center sm:justify-end gap-1">
-                <span className="text-[11px]">📅</span>
-                <span>{dateFormatted}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* 2. Customer & Transaction Meta Grid */}
-          <div
-            style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}
-            className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl text-xs"
-          >
-            <div>
-              <span style={{ color: '#64748b' }} className="text-[10px] uppercase font-bold block tracking-wider">
-                Customer Name
-              </span>
-              <span style={{ color: '#0f172a' }} className="font-bold truncate block mt-0.5">
-                {invoice.customer_name || 'Valued Customer'}
-              </span>
-            </div>
-            <div>
-              <span style={{ color: '#64748b' }} className="text-[10px] uppercase font-bold block tracking-wider">
-                Mobile Number
-              </span>
-              <span style={{ color: '#1e293b' }} className="font-mono font-semibold block mt-0.5">
-                {invoice.customer_phone ? `+${invoice.customer_phone}` : 'Walk-in'}
-              </span>
-            </div>
-            <div>
-              <span style={{ color: '#64748b' }} className="text-[10px] uppercase font-bold block tracking-wider">
-                Payment Method
-              </span>
-              <span style={{ color: '#1e293b' }} className="font-bold uppercase block mt-0.5">
-                {invoice.payment_type || invoice.settlement_payment_method || 'Cash'}
-              </span>
-            </div>
-            <div>
-              <span style={{ color: '#64748b' }} className="text-[10px] uppercase font-bold block tracking-wider">
-                Payment Status
-              </span>
-              <span
-                style={{ color: balanceDue > 0 ? '#d97706' : '#047857' }}
-                className="font-black block mt-0.5"
-              >
-                {balanceDue > 0 ? `Balance: Rs. ${balanceDue.toLocaleString()}` : 'Paid ✓'}
-              </span>
-            </div>
-          </div>
-
-          {/* 3. Products / Devices Table (For Standard Sales) */}
-          {!isExchange && (
-            <div className="space-y-2">
-              <h2 style={{ color: '#64748b' }} className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <span className="text-xs">📱</span>
-                <span>Items & Purchased Devices</span>
-              </h2>
-
-              <div style={{ border: '1px solid #e2e8f0' }} className="rounded-xl overflow-hidden">
-                <table className="w-full text-xs text-left">
-                  <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }} className="font-bold uppercase text-[10px] tracking-wider">
-                    <tr>
-                      <th className="py-2.5 px-3">#</th>
-                      <th className="py-2.5 px-3">Description / Item Details</th>
-                      <th className="py-2.5 px-2 text-center">Qty</th>
-                      <th className="py-2.5 px-3 text-right">Unit Price</th>
-                      <th className="py-2.5 px-3 text-right">Total Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {(invoice.items || []).map((item, idx) => {
-                      const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null
-                        ? item.imei_snapshot
-                        : (() => {
-                            try { return JSON.parse(item.imei_snapshot || '{}') } catch (_) { return {} }
-                          })()
-                      const rawSnapStr = typeof item.imei_snapshot === 'string' && !item.imei_snapshot.startsWith('{') ? item.imei_snapshot : ''
-
-                      const imei1 = item.imei_1 || snap.imei_1 || item.imei || rawSnapStr || ''
-                      const imei2 = item.imei_2 || snap.imei_2 || ''
-
-                      let cleanName = (item.name || item.product_name || `${item.brand || snap.brand || ''} ${item.model || snap.model || 'Phone'}`).trim()
-                      cleanName = cleanName
-                        .replace(/\[(?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\]/gi, '')
-                        .replace(/\((?:IMEI:?\s*)?[0-9a-zA-Z\s/-]+\)/gi, '')
-                        .trim()
-
-                      const rawCond = (item.condition || snap.condition || '').toLowerCase()
-                      const condText = rawCond.includes('brand') || rawCond === 'new'
-                        ? 'Brand New'
-                        : (rawCond.includes('used') ? 'Used / Pre-Owned' : (item.condition || snap.condition || ''))
-
-                      const rawPta = (item.pta_status || snap.pta_status || '').toLowerCase()
-                      const ptaText = rawPta === 'approved' || rawPta.includes('official')
-                        ? 'Official PTA Approved'
-                        : (rawPta === 'non_pta' || rawPta.includes('non') ? 'Non-PTA' : (item.pta_status || snap.pta_status || ''))
-
-                      const statusParts = [condText, ptaText].filter(Boolean).join(' • ')
-                      const specs = [item.storage || snap.storage, item.color || snap.color].filter(Boolean).join(', ')
-
-                      return (
-                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }} className="hover:bg-slate-50">
-                          <td style={{ color: '#94a3b8' }} className="py-3 px-3 font-mono text-[11px] align-top">{idx + 1}</td>
-                          <td className="py-3 px-3 space-y-1">
-                            <div style={{ color: '#0f172a' }} className="font-bold text-xs sm:text-sm">
-                              {cleanName}
-                            </div>
-                            {imei1 && (
-                              <div className="pt-0.5">
-                                <span
-                                  style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }}
-                                  className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1.5"
-                                >
-                                  <span>📱</span>
-                                  <span>IMEI: {imei2 ? `${imei1} / ${imei2}` : imei1}</span>
-                                </span>
-                              </div>
-                            )}
-                            {specs && !cleanName.includes(specs) && (
-                              <div style={{ color: '#64748b' }} className="text-[11px]">
-                                <span className="font-medium text-slate-400">Specs: </span>
-                                <span>{specs}</span>
-                              </div>
-                            )}
-                            {statusParts && (
-                              <div style={{ color: '#047857' }} className="text-[10.5px] font-bold flex items-center gap-1.5 pt-0.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
-                                <span>Status: {statusParts}</span>
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ color: '#334155' }} className="py-3 px-2 text-center font-bold align-top">
-                            {item.quantity || 1}
-                          </td>
-                          <td style={{ color: '#334155' }} className="py-3 px-3 text-right font-mono font-medium align-top">
-                            Rs. {Number(item.unit_price || 0).toLocaleString()}
-                          </td>
-                          <td style={{ color: '#0f172a' }} className="py-3 px-3 text-right font-mono font-bold align-top">
-                            Rs. {Number(item.total || ((item.quantity || 1) * (item.unit_price || 0))).toLocaleString()}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* 3B. Exchange Sections (For Phone Exchanges) */}
-          {isExchange && (
-            <div className="space-y-4">
-              {/* Outgoing Purchased Phone */}
-              <div className="space-y-1.5">
-                <span style={{ color: '#065f46' }} className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
-                  <span>📤</span>
-                  <span>Purchased Replacement Devices:</span>
-                </span>
-                <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0' }} className="rounded-xl p-3 space-y-2 text-xs">
-                  {(invoice.outgoing_items || []).map((item, idx) => {
-                    const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
-                    const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
-                    const hasImeiInName = Boolean(imei1 && item.product_name && item.product_name.includes(imei1))
-                    const imeiTag = !hasImeiInName && imei1 ? `[IMEI: ${imei1}]` : ''
-
-                    return (
-                      <div key={idx} style={{ borderBottom: '1px solid #a7f3d0' }} className="flex justify-between items-start pb-2 last:border-b-0 last:pb-0">
-                        <div>
-                          <div style={{ color: '#0f172a' }} className="font-bold flex flex-wrap items-baseline gap-1.5">
-                            <span>{item.product_name}</span>
-                            {imeiTag && (
-                              <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }} className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded">
-                                {imeiTag}
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ color: '#64748b' }} className="text-[11px] mt-0.5">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
-                        </div>
-                        <div style={{ color: '#0f172a' }} className="font-mono font-bold text-right">
-                          Rs. {Number(item.subtotal || item.price || 0).toLocaleString()}
-                        </div>
-                      </div>
-                    )
-                  })}
-                  <div style={{ color: '#1e293b' }} className="flex justify-between items-center pt-1 font-bold text-xs">
-                    <span>Total Purchase Amount:</span>
-                    <span className="font-mono">Rs. {Number(invoice.sale_amount || 0).toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Incoming Traded-in Phones */}
-              <div className="space-y-1.5">
-                <span style={{ color: '#6b21a8' }} className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
-                  <span>📥</span>
-                  <span>Traded-in / Exchanged Phones:</span>
-                </span>
-                <div style={{ backgroundColor: '#faf5ff', border: '1px solid #e9d5ff' }} className="rounded-xl p-3 space-y-2 text-xs">
-                  {(invoice.incoming_items || []).map((item, idx) => {
-                    const snap = typeof item.imei_snapshot === 'object' && item.imei_snapshot !== null ? item.imei_snapshot : {}
-                    const imei1 = item.imei_1 || snap.imei_1 || item.imei || ''
-                    const hasImeiInName = Boolean(imei1 && item.product_name && item.product_name.includes(imei1))
-                    const imeiTag = !hasImeiInName && imei1 ? `[IMEI: ${imei1}]` : ''
-
-                    return (
-                      <div key={idx} style={{ borderBottom: '1px solid #f3e8ff' }} className="flex justify-between items-start pb-2 last:border-b-0 last:pb-0">
-                        <div>
-                          <div style={{ color: '#0f172a' }} className="font-bold flex flex-wrap items-baseline gap-1.5">
-                            <span>{item.product_name}</span>
-                            {imeiTag && (
-                              <span style={{ backgroundColor: '#f3e8ff', color: '#6b21a8', border: '1px solid #e9d5ff' }} className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded">
-                                {imeiTag}
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ color: '#64748b' }} className="text-[11px] mt-0.5">{[item.storage, item.color, item.condition, item.pta_status].filter(Boolean).join(' • ')}</div>
-                          {item.battery_health && <div style={{ color: '#047857' }} className="text-[10px] mt-0.5">Battery Health: {item.battery_health}%</div>}
-                        </div>
-                        <div style={{ color: '#581c87' }} className="font-mono font-bold text-right">
-                          Rs. {Number(item.assessed_value || item.subtotal || 0).toLocaleString()}
-                        </div>
-                      </div>
-                    )
-                  })}
-                  <div style={{ color: '#1e293b' }} className="flex justify-between items-center pt-1 font-bold text-xs">
-                    <span>Total Trade-in Credit:</span>
-                    <span style={{ color: '#6b21a8' }} className="font-mono">- Rs. {Number(invoice.trade_in_credit || 0).toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 4. Financial Summary Card */}
-          <div className="flex justify-end pt-2">
-            <div
-              style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}
-              className="w-full sm:w-72 rounded-xl p-3.5 space-y-2 text-xs"
-            >
-              <div style={{ color: '#475569' }} className="flex justify-between">
-                <span>Total Amount:</span>
-                <span style={{ color: '#0f172a' }} className="font-mono font-bold">
-                  Rs. {grossTotal.toLocaleString()}
-                </span>
-              </div>
-              {discount > 0 && (
-                <div style={{ color: '#047857' }} className="flex justify-between">
-                  <span>Discount:</span>
-                  <span className="font-mono font-bold">- Rs. {discount.toLocaleString()}</span>
-                </div>
-              )}
-              {isExchange && (
-                <div style={{ color: '#6b21a8' }} className="flex justify-between">
-                  <span>Trade-in Credit:</span>
-                  <span className="font-mono font-bold">- Rs. {tradeCredit.toLocaleString()}</span>
-                </div>
-              )}
-              <div
-                style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.5rem', color: '#0f172a' }}
-                className="flex justify-between font-black text-sm"
-              >
-                <span>Net Total:</span>
-                <span style={{ color: '#047857' }} className="font-mono">
-                  Rs. {netTotal.toLocaleString()}
-                </span>
-              </div>
-              <div style={{ color: '#334155' }} className="flex justify-between pt-0.5">
-                <span>Amount Paid:</span>
-                <span style={{ color: '#0f172a' }} className="font-mono font-bold">Rs. {paidTotal.toLocaleString()}</span>
-              </div>
-              {balanceDue > 0 && (
-                <div
-                  style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.375rem', color: '#dc2626' }}
-                  className="flex justify-between font-bold"
-                >
-                  <span>Remaining Balance:</span>
-                  <span className="font-mono">Rs. {balanceDue.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ============================================================== */}
-          {/* 5. AUTHENTIC NASTALEEQ URDU WARRANTY CERTIFICATE SECTION       */}
-          {/* ============================================================== */}
-          <div
-            ref={warrantyRef}
-            style={{
-              backgroundColor: '#fffdf5',
-              border: '1.5px solid #fcd34d',
-              borderRadius: '0.75rem',
-              padding: '0.65rem 0.85rem'
-            }}
-            className="space-y-1.5"
-          >
-            <div
-              style={{ borderBottom: '1px solid #fde68a', paddingBottom: '0.35rem' }}
-              className="flex items-center justify-between"
-            >
-              <div className="flex items-center gap-1.5">
-                <span
-                  style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}
-                  className="w-5 h-5 rounded flex items-center justify-center text-[10px]"
-                >
-                  🛡️
-                </span>
-                <h3 style={{ color: '#451a03' }} className="text-[11px] sm:text-xs font-bold tracking-wide flex items-center gap-1">
-                  <span>Official Warranty Terms</span>
-                  <span style={{ color: '#78350f' }} className="font-nastaliq text-[10px] font-normal">(دکان کی وارنٹی شرائط)</span>
-                </h3>
-              </div>
-              <span
-                style={{ backgroundColor: '#fef3c7', borderColor: '#fde68a', color: '#92400e' }}
-                className="text-[8.5px] font-bold px-2 py-0.5 rounded-full border font-mono"
-              >
-                WARRANTY
-              </span>
-            </div>
-
-            {/* Authentic Small Nastaleeq Typography */}
-            <div
-              dir="rtl"
-              style={{ color: '#1e293b' }}
-              className="font-nastaliq text-[8.5px] sm:text-[9.5px] leading-[1.4] sm:leading-[1.45] whitespace-pre-line text-right selection:bg-amber-200 py-0.5"
-            >
-              {warrantyText}
-            </div>
-
-            <div
-              style={{ borderTop: '1px solid #fde68a', paddingTop: '0.35rem', color: '#78350f' }}
-              className="flex flex-wrap items-center justify-between text-[8.5px] sm:text-[9.5px]"
-            >
-              <div className="font-nastaliq">
-                آپ کے اعتماد اور تعاون کا بہت بہت شکریہ! 🤝
-              </div>
-              <div style={{ color: '#451a03' }} className="font-bold">
-                {shop.name || 'EdgeX Mobile Store'}
-              </div>
-            </div>
-          </div>
-
-          {/* 6. Footer Disclaimer & Verification Stamp */}
-          <div
-            style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', color: '#64748b' }}
-            className="text-center text-[11px] space-y-1"
-          >
-            <div style={{ color: '#334155' }} className="font-medium">
-              This is a verified computerized digital invoice and does not require a physical signature.
-            </div>
-            <div style={{ color: '#94a3b8' }} className="text-[10px]">
-              Powered by EdgeX POS Suite • Verified Digital Invoice • {dateFormatted}
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Contact Affordance */}
+        {/* Contact the shop (not printed) */}
         {shop.phone && (
           <div className="print:hidden text-center pt-2 pb-6">
             <a
-              href={`https://wa.me/${shop.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Assalam-o-Alaikum, I have a question regarding Invoice #${displayInvoiceNo}`)}`}
+              href={`https://wa.me/${cleanPakistanPhone(shop.phone)}?text=${encodeURIComponent(`Assalam-o-Alaikum, I have a question about bill ${displayInvoiceNo}`)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 py-2 px-4 rounded-xl shadow-xs transition"
+              className="inline-flex items-center gap-2 text-sm font-bold text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 py-2.5 px-4 rounded-xl shadow-sm transition hover:border-emerald-600"
             >
-              <span>💬 Contact Store on WhatsApp</span>
-              <ExternalLink size={12} />
+              <span>Message {view.shop.name} on WhatsApp</span>
+              <ExternalLink size={14} />
             </a>
           </div>
         )}

@@ -1664,6 +1664,7 @@ function POS() {
           shop_id: sid,
           name: form.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX POS Store',
           phone: form.phone || user?.phone || '',
+          address: form.address || '',
           wa_bill_template: (form.wa_bill_template && !isLegacyEnglishInvoiceTemplate(form.wa_bill_template))
             ? form.wa_bill_template
             : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
@@ -1760,6 +1761,7 @@ function POS() {
       shop_id: sid,
       name: form.name || (sid ? localStorage.getItem(`shop_name_${sid}`) : null) || 'EdgeX POS Store',
       phone: form.phone || user?.phone || '',
+      address: form.address || '',
       wa_bill_template: (form.wa_bill_template && !isLegacyEnglishInvoiceTemplate(form.wa_bill_template))
         ? form.wa_bill_template
         : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,

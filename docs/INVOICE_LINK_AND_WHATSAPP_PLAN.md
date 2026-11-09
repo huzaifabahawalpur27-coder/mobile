@@ -117,7 +117,18 @@ Three things rewrite message text on their own: `fetchWhatsAppQueue` "heals" pen
 - **Old customer links:** `sql/phase0b_legacy_invoice_tokens.sql` adds `legacy_invoice_tokens` to `sales` and `exchanges`, backfills it from outbox rows, and lets `get_public_invoice` match it. When the outbox loads, the app also uploads old tokens that exist only on shop devices (`registerLegacyInvoiceTokens`), and the repair step now keeps the token a message had before. `PublicInvoice` undoes the old sanitizer's corruption (`INV-8K3P9X2MK3P9X2M` → `INV-8K3P9X2M`) and skips the direct-table lookups when no staff session exists.
 - **Supabase builder `.catch()` bugs:** query builders have no `.catch`, so these writes were never sent. Fixed in `Sales.jsx` (balance reversal when a credit sale is deleted), `PurchaseHistory.jsx` (supplier refund on a purchase return) and `Settings.jsx` (removing the logo, choosing a print template).
 - **`syncService`:** after a failed sales insert, it now checks the idempotency key before retrying, and it keeps `idempotency_key` in the retry payload, which audit item A5 flagged as being stripped.
-- **Deploy order:** `public_invoice_rpc.sql` → `production_security_hardening.sql` → `phase0_invoice_link_and_outbox_fix.sql` → `phase0b_legacy_invoice_tokens.sql`.
+- **Warranty terms kept reverting:**
+  - Settings saved them only to this browser's localStorage. The server had no `shops.warranty_terms` column and `update_shop_settings` had no parameter for it, so other devices, re-logins and the customer's online bill fell back to the built-in 3 points.
+  - The bill template also carried a hard-coded 3-point copy that the message builder never replaced.
+  - "Apply warranty to outbox" skipped messages that already had warranty text.
+
+  Fixes:
+  - `sql/phase1_warranty_settings.sql` adds the columns and the RPC parameters.
+  - Settings saves the terms to the server and prefers the server copy on load.
+  - The default template uses a `[Warranty Terms]` placeholder, and old saved templates are converted to it.
+  - Messages replace the standard warranty section with the saved terms.
+  - Saving changed terms updates pending outbox messages.
+- **Deploy order:** `public_invoice_rpc.sql` → `production_security_hardening.sql` → `phase1_warranty_settings.sql` → `phase0_invoice_link_and_outbox_fix.sql` → `phase0b_legacy_invoice_tokens.sql`. The `phase1` file can also run after the other two; `get_public_invoice` just needs its `shops.warranty_terms` column to exist before it's called.
 
 ### Phase 1: Simplify and make it observable (≈1 week)
 

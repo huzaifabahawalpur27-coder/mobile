@@ -837,7 +837,9 @@ function WhatsAppMessaging() {
             {(() => {
               const previewShopInfo = {
                 name: shop?.name || localStorage.getItem(`shop_name_${user?.shop_id}`) || 'EdgeX POS Store',
-                phone: shop?.phone || user?.phone || '0301-2616367'
+                phone: shop?.phone || user?.phone || '0301-2616367',
+                id: user?.shop_id,
+                warranty_terms: shop?.warranty_terms
               }
               const mockReceipt = {
                 customer: { name: 'Muhammad Ali', phone: '03011234567', outstanding_balance: 0 },
