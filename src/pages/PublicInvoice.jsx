@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
-import { recoverCorruptedToken, DEFAULT_WARRANTY_TERMS_URDU, buildPublicInvoiceUrl, cleanPakistanPhone, isRealCustomerName } from '../services/whatsappQueueService'
+import { recoverCorruptedToken, DEFAULT_WARRANTY_TERMS_URDU, buildPublicInvoiceUrl, cleanPakistanPhone, isRealCustomerName, normalizeInvoiceToken, fetchServerInvoiceToken } from '../services/whatsappQueueService'
 import InvoiceDocument from '../components/InvoiceDocument'
 import { buildInvoiceView } from '../utils/invoiceView'
 import { generateInvoicePdf } from '../utils/invoicePdf'
@@ -165,6 +165,8 @@ export default function PublicInvoice() {
               actual_invoice_no: actualInvoiceNo,
               invoice_no: actualInvoiceNo,
               token: directSale.invoice_number || id,
+              // Token the server stored: the QR / verify link must use this, not the page URL
+              server_token: normalizeInvoiceToken(directSale.invoice_token),
               reference_id: directSale.invoice_number || id,
               created_at: directSale.created_at || new Date().toISOString(),
               subtotal: directSale.total_amount || directSale.net_amount || 0,
@@ -272,6 +274,7 @@ export default function PublicInvoice() {
               actual_invoice_no: actualInvoiceNo,
               invoice_no: actualInvoiceNo,
               token: directExchange.exchange_number || id,
+              server_token: normalizeInvoiceToken(directExchange.invoice_token),
               reference_id: directExchange.exchange_number || id,
               created_at: directExchange.created_at || new Date().toISOString(),
               sale_amount: directExchange.sale_amount || 0,
@@ -333,6 +336,7 @@ export default function PublicInvoice() {
               ? (enriched.type === 'exchange' ? `EXC-${enriched.id}` : `INV-${enriched.id}`)
               : (enriched.invoice_no || id)
             enriched.actual_invoice_no = actualInvoiceNo
+            enriched.server_token = normalizeInvoiceToken(data.invoice_token)
             enriched.invoice_no = actualInvoiceNo
             await fillCustomerFromDevice(enriched, cleanId)
 
@@ -417,6 +421,8 @@ export default function PublicInvoice() {
               }
 
               await fillCustomerFromDevice(formatted, cleanId, localSale.customer_id)
+              // Found on this device only: use the server's token for the QR, if the sale has synced
+              formatted.server_token = /^\d+$/.test(String(localSale.id || '')) ? await fetchServerInvoiceToken('sales', localSale.id) : null
               setInvoice(formatted)
               setLoading(false)
               return
@@ -525,7 +531,11 @@ export default function PublicInvoice() {
   // The shop's own bill number (INV-156); the URL keeps the private token.
   const displayInvoiceNo = invoice.actual_invoice_no ||
     (invoice.id ? (isExchange ? `EXC-${invoice.id}` : `INV-${invoice.id}`) : (invoice.invoice_no || id))
-  const verifyUrl = buildPublicInvoiceUrl(recoverCorruptedInvoiceRef(id))
+  // QR / verify link: always the token the server holds for this bill. The page URL may be
+  // a reference only this shop device can resolve (its saved sales or outbox, an older
+  // client-only token), which a customer's phone would show as "Invoice not found".
+  const serverToken = normalizeInvoiceToken(invoice.server_token)
+  const verifyUrl = serverToken ? buildPublicInvoiceUrl(`${isExchange ? 'EXC' : 'INV'}-${serverToken}`) : ''
   const view = buildInvoiceView(invoice, { billNo: displayInvoiceNo, verifyUrl, warrantyText })
 
   // Saves the PDF directly (never opens the print dialog).
@@ -548,7 +558,7 @@ export default function PublicInvoice() {
         fallbackPdf.text(`Bill ${displayInvoiceNo}`, 14, 28)
         fallbackPdf.setFontSize(10)
         fallbackPdf.text(`${view.status.title}`.replace(/[^\x20-\x7E]/g, ''), 14, 38)
-        fallbackPdf.text(`Verify: ${verifyUrl}`, 14, 46)
+        if (verifyUrl) fallbackPdf.text(`Verify: ${verifyUrl}`, 14, 46)
         fallbackPdf.save(filename)
       } catch (emergErr) {
         console.error('Emergency PDF fallback save failed:', emergErr)

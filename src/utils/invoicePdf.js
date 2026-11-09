@@ -298,7 +298,7 @@ export async function generateInvoicePdf({ jsPDF, html2canvas, view, warrantyEl,
   const rightX = PAGE_W - M - rightW
   let rightH
   if (!view.isExchange) {
-    rightH = view.totals.length * 5.6 + 4 + (view.totals.some(r => r.kind === 'net') ? 3 : 0)
+    rightH = view.totals.length * 5.6 + 4 + (view.totals.findIndex(r => r.kind === 'net') > 0 ? 3 : 0)
   } else {
     rightH = 6 + 6 + wrap(pdf, view.settlement.who, rightW - 8, 8.5, true).length * 4 + 6
   }
@@ -310,20 +310,27 @@ export async function generateInvoicePdf({ jsPDF, html2canvas, view, warrantyEl,
   pdf.setLineDashPattern([1.2, 1], 0)
   pdf.roundedRect(M, y, leftW, 30, 2, 2, 'S')
   pdf.setLineDashPattern([], 0)
-  const hasQr = drawQr(pdf, view.verifyUrl, M + 3, y + 3, 24)
+  const hasQr = view.verifyUrl ? drawQr(pdf, view.verifyUrl, M + 3, y + 3, 24) : false
   const tx = M + (hasQr ? 30 : 4)
-  text(pdf, 'Verify this bill', tx, y + 9, { size: 9, bold: true })
-  text(pdf, hasQr ? 'Scan the code or open' : 'Open', tx, y + 13.5, { size: 7.5, color: C.muted })
-  pdf.setFont('courier', 'normal')
-  pdf.setFontSize(7)
-  pdf.splitTextToSize(latin(String(view.verifyUrl || '').replace(/^https?:\/\//, '')), leftW - (tx - M) - 3)
-    .slice(0, 3)
-    .forEach((line, i) => text(pdf, line, tx, y + 18 + i * 3.3, { size: 7, mono: true }))
+  if (view.verifyUrl) {
+    text(pdf, 'Verify this bill', tx, y + 9, { size: 9, bold: true })
+    text(pdf, hasQr ? 'Scan the code or open' : 'Open', tx, y + 13.5, { size: 7.5, color: C.muted })
+    pdf.setFont('courier', 'normal')
+    pdf.setFontSize(7)
+    pdf.splitTextToSize(latin(String(view.verifyUrl).replace(/^https?:\/\//, '')), leftW - (tx - M) - 3)
+      .slice(0, 3)
+      .forEach((line, i) => text(pdf, line, tx, y + 18 + i * 3.3, { size: 7, mono: true }))
+  } else {
+    // No server-confirmed link: never print a QR that opens "Invoice not found"
+    text(pdf, 'Online copy not available yet', tx, y + 9, { size: 9, bold: true })
+    wrap(pdf, 'This bill has not reached the server yet, so it has no verification link or QR code.', leftW - 8, 7.5)
+      .forEach((line, i) => text(pdf, line, tx, y + 14 + i * 3.6, { size: 7.5, color: C.muted }))
+  }
 
   if (!view.isExchange) {
     let ty = y + 4
-    view.totals.forEach(row => {
-      if (row.kind === 'net') {
+    view.totals.forEach((row, rowIndex) => {
+      if (row.kind === 'net' && rowIndex > 0) {
         pdf.setDrawColor(...C.ink)
         pdf.setLineWidth(0.35)
         pdf.line(rightX, ty - 1, rightX + rightW, ty - 1)

@@ -63,7 +63,8 @@ const CSS = `
 .ivx-totals td { padding:5px 0; vertical-align:baseline; }
 .ivx-totals td:last-child { text-align:right; white-space:nowrap; }
 .ivx-totals tr.muted td { color:var(--muted); }
-.ivx-totals tr.net td { border-top:1px solid var(--ink); padding-top:9px; font-weight:800; font-size:15.5px; }
+.ivx-totals tr.net td { font-weight:800; font-size:15.5px; }
+.ivx-totals tr.net:not(:first-child) td { border-top:1px solid var(--ink); padding-top:9px; }
 .ivx-totals tr.bal td { color:var(--due); font-weight:700; }
 .ivx-settle { border-radius:10px; background:var(--tint); padding:12px 14px; display:grid; gap:6px; }
 .ivx-eq { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:baseline; font-size:14px; }
@@ -116,6 +117,18 @@ function DeviceCard({ device }) {
 function VerifyBox({ url }) {
   const matrix = useMemo(() => qrMatrix(url), [url])
   const path = useMemo(() => qrSvgPath(matrix), [matrix])
+  if (!url) {
+    // No server-confirmed link (e.g. a sale still waiting to sync): never print a QR that
+    // would open "Invoice not found" on the customer's phone.
+    return (
+      <div className="ivx-verify">
+        <p>
+          <b>Online copy not available yet</b>
+          This bill has not reached the server yet, so it has no verification link or QR code. Open it again once the shop is back online.
+        </p>
+      </div>
+    )
+  }
   return (
     <div className="ivx-verify">
       {matrix && (
