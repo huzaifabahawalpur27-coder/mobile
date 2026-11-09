@@ -641,14 +641,19 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
       }
 
       // Pre-check for customer buy-backs (phones previously sold or in database)
-      const imeiList = phoneCart.map(p => p.imei_1?.trim()).filter(Boolean)
+      // Both IMEIs of every phone, matched against both IMEI columns (a phone recorded
+      // with its IMEIs the other way round is still recognised). Only letters and digits,
+      // so the values are safe inside the filter.
+      const cleanImei = (v) => String(v || '').replace(/[^0-9A-Za-z]/g, '')
+      const imeiList = [...new Set(phoneCart.flatMap(p => [cleanImei(p.imei_1), cleanImei(p.imei_2)]).filter(Boolean))]
       let hasBuyBacks = false
       try {
+        const imeiCsv = imeiList.join(',')
         const { data: exPhones } = await supabase
           .from('phones')
-          .select('id, imei_1, status, brand, model')
+          .select('id, imei_1, imei_2, status, brand, model')
           .eq('shop_id', user.shop_id)
-          .in('imei_1', imeiList)
+          .or(`imei_1.in.(${imeiCsv}),imei_2.in.(${imeiCsv})`)
 
         if (exPhones && exPhones.length > 0) {
           const inStock = exPhones.find(p => p.status === 'in_stock')
@@ -762,12 +767,15 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
           // Check if phone already exists in this shop (e.g. previously sold device being bought back)
           let existingPhone = null
           try {
-            const { data: exData } = await supabase
+            const keys = [cleanImei(imei1Val), cleanImei(imei2Val)].filter(Boolean).join(',')
+            const { data: exRows } = await supabase
               .from('phones')
               .select('*')
               .eq('shop_id', user.shop_id)
-              .eq('imei_1', imei1Val)
-              .maybeSingle()
+              .or(`imei_1.in.(${keys}),imei_2.in.(${keys})`)
+              .order('id', { ascending: false })
+            // Prefer the record whose first IMEI matches
+            const exData = (exRows || []).find(r => r.imei_1 === imei1Val) || (exRows || [])[0]
             if (exData) existingPhone = exData
           } catch (_) {}
 

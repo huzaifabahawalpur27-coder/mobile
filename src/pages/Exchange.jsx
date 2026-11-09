@@ -110,6 +110,7 @@ export default function Exchange() {
       imei_1: '',
       imei_2: '',
       assessed_value: '',
+      sale_price: '',
       notes: '',
       battery_health: '',
       screen_condition: 'Flawless (No Scratches)',
@@ -291,6 +292,7 @@ export default function Exchange() {
         imei_1: '',
         imei_2: '',
         assessed_value: '',
+        sale_price: '',
         notes: '',
         battery_health: '',
         screen_condition: 'Flawless (No Scratches)',
@@ -670,6 +672,7 @@ export default function Exchange() {
           imei_1: p.imei_1,
           imei_2: p.imei_2,
           assessed_value: parseFloat(p.assessed_value) || 0,
+          sale_price: parseFloat(p.sale_price) || null,
           notes: p.notes,
           inspection_details: {
             battery_health: p.battery_health,
@@ -837,6 +840,7 @@ export default function Exchange() {
         imei_1: '',
         imei_2: '',
         assessed_value: '',
+        sale_price: '',
         notes: '',
         battery_health: '',
         screen_condition: 'Flawless (No Scratches)',
@@ -1376,6 +1380,25 @@ export default function Exchange() {
                             value={phone.assessed_value}
                             onChange={e => updateIncomingPhone(phone.id, 'assessed_value', e.target.value)}
                             className="w-full text-xs font-black p-1.5 rounded-lg border-2 border-red-300 dark:border-red-900 bg-white dark:bg-slate-800 text-red-700 dark:text-red-400"
+                          />
+                        </div>
+
+                        <div className="col-span-12">
+                          <label htmlFor={`resale-${phone.id}`} className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase flex justify-between items-center mb-0.5">
+                            <span>Resale Price (PKR)</span>
+                            <span className="normal-case font-semibold text-gray-500 dark:text-gray-400">
+                              {phone.sale_price ? `Rs. ${parseFloat(phone.sale_price || 0).toLocaleString('en-PK')}` : 'Price POS will offer; empty = trade-in value'}
+                            </span>
+                          </label>
+                          <input
+                            id={`resale-${phone.id}`}
+                            type="number"
+                            min="0"
+                            inputMode="decimal"
+                            placeholder={phone.assessed_value ? `e.g. more than ${phone.assessed_value}` : '0.00'}
+                            value={phone.sale_price ?? ''}
+                            onChange={e => updateIncomingPhone(phone.id, 'sale_price', e.target.value)}
+                            className="w-full text-xs font-black p-1.5 rounded-lg border-2 border-emerald-300 dark:border-emerald-900 bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400"
                           />
                         </div>
                       </div>

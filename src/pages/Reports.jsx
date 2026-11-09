@@ -20,6 +20,25 @@ import {
 
 // A sale counts in reports unless it is a quotation (or other non-sale type) or voided.
 // Sales saved by database functions may have no sale_type; they are sales.
+// Unit cost of a sold line, from what was saved WITH the sale, so later changes to the
+// phone or product (a buy-back resets a phone's cost, a new purchase changes a product's
+// cost) do not change old profit. The current record is used only when the sale saved none.
+//  - POS saves the base cost on the line and the extra costs in imei_snapshot;
+//  - the phone-sale and exchange database functions save cost + extra costs on the line
+//    (their snapshot has no additional_costs), so nothing is added twice.
+const lineCostParts = (line, snap, current = null, productCost = 0) => {
+  const lineCost = Number(line?.cost_price) > 0 ? Number(line.cost_price) : null
+  const snapCost = snap && Number(snap.cost_price) > 0 ? Number(snap.cost_price) : null
+  if (lineCost !== null || snapCost !== null) {
+    const lineExtras = Number(line?.additional_costs) > 0 ? Number(line.additional_costs) : null
+    const snapExtras = snap && snap.additional_costs != null ? (Number(snap.additional_costs) || 0) : 0
+    return { base: lineCost ?? snapCost, extras: lineExtras ?? snapExtras }
+  }
+  if (current) return { base: Number(current.baseCost) || 0, extras: Number(current.directCost) || 0 }
+  return { base: Number(productCost) || 0, extras: 0 }
+}
+const lineUnitCost = (...args) => { const c = lineCostParts(...args); return c.base + c.extras }
+
 const isCountedSale = (sale) =>
   (sale?.sale_type == null || sale.sale_type === '' || sale.sale_type === 'sale') && sale?.status !== 'voided'
 
@@ -474,13 +493,8 @@ function Reports() {
 
       const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
       const phoneInfo = i.phone_id ? phoneMap[i.phone_id] : null
-      const directCost = Number((Number(i.additional_costs) > 0 ? i.additional_costs : null) ?? (phoneInfo ? phoneInfo.directCost : (snap?.additional_costs || 0)) ?? 0)
-      const baseCost = Number(
-        (Number(i.cost_price) > 0 ? i.cost_price : null) ??
-        (phoneInfo ? phoneInfo.baseCost : null) ??
-        (i.product_id ? productCostMap[i.product_id] : null) ??
-        (productCostMap[name] || 0)
-      )
+      const { base: baseCost, extras: directCost } = lineCostParts(i, snap, phoneInfo,
+        (i.product_id ? productCostMap[i.product_id] : null) ?? (productCostMap[name] || 0))
       const totalUnitCost = baseCost + directCost
       const costPrice = totalUnitCost
       const unitPrice = Number(
@@ -877,12 +891,8 @@ function Reports() {
         (Number(i.price) > 0 ? i.price : null) ??
         (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0
       )
-      const costPrice = Number(
-        (Number(i.cost_price) > 0 ? i.cost_price : null) ??
-        (i.phone_id ? phoneMap[i.phone_id]?.cost : null) ??
-        (i.product_id ? productCostMap[i.product_id] : null) ??
-        (productCostMap[name] || 0)
-      )
+      const costPrice = lineUnitCost(i, snap, i.phone_id ? phoneMap[i.phone_id] : null,
+        (i.product_id ? productCostMap[i.product_id] : null) ?? (productCostMap[name] || 0))
 
       let lineRev = Number(
         (Number(i.line_total) > 0 ? i.line_total : null) ??

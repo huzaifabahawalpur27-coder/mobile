@@ -39,6 +39,9 @@ export async function processPhoneExchange({
       condition: p.condition || 'Used',
       pta_status: p.pta_status || 'PTA Approved',
       assessed_value: Number(p.assessed_value || p.trade_in_value || 0),
+      // Price the phone is offered at in POS (empty: the database keeps a bought-back
+      // phone's previous price, else uses the trade-in value)
+      sale_price: Number(p.sale_price) > 0 ? Number(p.sale_price) : null,
       notes: p.notes?.trim() || null,
       inspection_details: p.inspection_details || null
     })),
