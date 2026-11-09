@@ -112,6 +112,13 @@ Three things rewrite message text on their own: `fetchWhatsAppQueue` "heals" pen
 - Step 6 is written as `sql/phase0_invoice_link_and_outbox_fix.sql` but **not yet applied**. Run it in Supabase after `public_invoice_rpc.sql` and `production_security_hardening.sql`. Its outbox lockdown is skipped, with a warning, if the hardening isn't in place.
 - The step 1 SQL variant (a `p_invoice_token` parameter on `process_phone_sale`) was replaced by the client-side write-back plus a `sales` trigger that keeps `invoice_number` equal to `'INV-' || invoice_token`.
 
+**Follow-up batch (branch `fix/audit-batch-2`):**
+
+- **Old customer links:** `sql/phase0b_legacy_invoice_tokens.sql` adds `legacy_invoice_tokens` to `sales` and `exchanges`, backfills it from outbox rows, and lets `get_public_invoice` match it. When the outbox loads, the app also uploads old tokens that exist only on shop devices (`registerLegacyInvoiceTokens`), and the repair step now keeps the token a message had before. `PublicInvoice` undoes the old sanitizer's corruption (`INV-8K3P9X2MK3P9X2M` → `INV-8K3P9X2M`) and skips the direct-table lookups when no staff session exists.
+- **Supabase builder `.catch()` bugs:** query builders have no `.catch`, so these writes were never sent. Fixed in `Sales.jsx` (balance reversal when a credit sale is deleted), `PurchaseHistory.jsx` (supplier refund on a purchase return) and `Settings.jsx` (removing the logo, choosing a print template).
+- **`syncService`:** after a failed sales insert, it now checks the idempotency key before retrying, and it keeps `idempotency_key` in the retry payload, which audit item A5 flagged as being stripped.
+- **Deploy order:** `public_invoice_rpc.sql` → `production_security_hardening.sql` → `phase0_invoice_link_and_outbox_fix.sql` → `phase0b_legacy_invoice_tokens.sql`.
+
 ### Phase 1: Simplify and make it observable (≈1 week)
 
 7. Add one `getInvoiceLink(record)` helper (token in, URL out, `null` if there's no token), with a single sale/exchange template renderer behind it. Remove the legacy-English detection, the auto-heal, and the warranty "inject" heuristics. Warranty text becomes a normal `[Warranty Terms]` placeholder.

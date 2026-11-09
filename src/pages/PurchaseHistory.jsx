@@ -438,13 +438,15 @@ function PurchaseHistory() {
                 }
 
                 if (selectedPurchase.supplier_id) {
-                    await supabase.from('supplier_payments').insert([{
+                    // Supabase query builders have no .catch(); check the returned error instead.
+                    const { error: refundErr } = await supabase.from('supplier_payments').insert([{
                         shop_id: user.shop_id,
                         supplier_id: selectedPurchase.supplier_id,
                         amount: -cashRefundAmount,
                         payment_type: 'refund',
                         description: `Cash Refund from Purchase Return PR-${String(selectedPurchase.id).slice(-6)} (Net: Rs. ${cashRefundAmount.toLocaleString()})`
-                    }]).catch(() => {})
+                    }])
+                    if (refundErr) console.warn('Could not record supplier refund for purchase return:', refundErr.message || refundErr)
                 }
             }
 

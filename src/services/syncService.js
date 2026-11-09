@@ -380,9 +380,28 @@ export const syncOfflineData = async () => {
                 }
 
                 // If sales table doesn't have newer columns yet in Supabase or fails on customer_id foreign key, retry cleanly
+                // A failed response can hide a successful insert (e.g. a dropped connection).
+                // Resolve by idempotency key before retrying so the retry cannot duplicate it.
+                if (err && item.table === 'sales' && !isArray && payload.idempotency_key) {
+                    const { data: landedSale } = await supabase
+                        .from('sales')
+                        .select('*')
+                        .eq('idempotency_key', payload.idempotency_key)
+                        .maybeSingle();
+                    if (landedSale) {
+                        console.log(`SyncService: Sale with idempotency_key ${payload.idempotency_key} was already inserted (ID ${landedSale.id}). Not retrying.`);
+                        resData = [landedSale];
+                        err = null;
+                    }
+                }
+
                 if (err && item.table === 'sales') {
                     console.warn('SyncService: Retrying sales insert with core columns and sanitized customer_id');
-                    const stripCols = ['online_provider', 'transaction_ref', 'created_by', 'customer_name', 'branch_id', 'idempotency_key', 'payment_details'];
+                    // Keep idempotency_key unless the database says the column is missing:
+                    // stripping it lets a replay create an undetectable duplicate sale.
+                    const missingIdempotencyCol = String(err.message || '').includes('idempotency_key');
+                    const stripCols = ['online_provider', 'transaction_ref', 'created_by', 'customer_name', 'branch_id', 'payment_details'];
+                    if (missingIdempotencyCol) stripCols.push('idempotency_key');
                     const makeStripped = (dropCustomer = false) => {
                         const cleanItem = (d) => {
                             const copy = { ...d };

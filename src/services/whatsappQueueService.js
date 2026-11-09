@@ -1275,6 +1275,92 @@ export async function updateWhatsAppMessageText(id, newText) {
 }
 
 /**
+ * Undoes the corruption of the removed sanitizer, which turned INV-8K3P9X2M into
+ * INV-8K3P9X2MK3P9X2M (growing on every re-run). Returns the original token or the input.
+ */
+export function recoverCorruptedToken(raw) {
+  const body = normalizeInvoiceToken(raw)
+  if (!body || body.length <= 8 || !/^[0-9]/.test(body)) return body
+  const token = body.slice(0, 8)
+  const unit = token.slice(1)
+  const tail = body.slice(8)
+  return tail.length % unit.length === 0 && tail === unit.repeat(tail.length / unit.length) ? token : body
+}
+
+/**
+ * Every token a queue message has carried: its reference data, preserved legacy tokens,
+ * and the token inside any invoice link in its text (with sanitizer corruption undone).
+ */
+function collectMessageTokens(item) {
+  const ref = item?.reference_data || {}
+  const found = [ref.invoice_token, ...(Array.isArray(ref.legacy_invoice_tokens) ? ref.legacy_invoice_tokens : [])]
+  for (const m of String(item?.message_text || '').matchAll(/\/(?:view-)?invoice\/([^\s?#]+)/gi)) {
+    try { found.push(decodeURIComponent(m[1])) } catch (_) { found.push(m[1]) }
+  }
+  return Array.from(new Set(found.map(recoverCorruptedToken).filter(Boolean)))
+}
+
+const registeredLegacyKeys = new Set()
+let legacyColumnMissing = false
+
+/**
+ * Uploads invoice tokens that customers may already hold (from messages created before
+ * links used the server token) into sales/exchanges.legacy_invoice_tokens, so those old
+ * WhatsApp links resolve via get_public_invoice. Covers queue items that exist only on
+ * this device (localStorage/Dexie). Needs sql/phase0b_legacy_invoice_tokens.sql; does
+ * nothing if that column is not deployed yet. Returns the number of rows updated.
+ */
+export async function registerLegacyInvoiceTokens(items = []) {
+  if (!navigator.onLine || legacyColumnMissing) return 0
+  const wanted = { sales: new Map(), exchanges: new Map() }
+  for (const item of items) {
+    const ref = item?.reference_data
+    if (!ref) continue
+    const isExchange = Boolean(ref.is_exchange) || String(item.message_type || '').includes('exchange')
+    const id = isExchange ? ref.exchange_id : ref.sale_id
+    if (!id || !/^\d+$/.test(String(id))) continue
+    const table = isExchange ? 'exchanges' : 'sales'
+    for (const tok of collectMessageTokens(item)) {
+      const key = `${table}:${id}:${tok}`
+      if (registeredLegacyKeys.has(key)) continue
+      if (!wanted[table].has(Number(id))) wanted[table].set(Number(id), new Set())
+      wanted[table].get(Number(id)).add(tok)
+    }
+  }
+
+  let updated = 0
+  for (const table of ['sales', 'exchanges']) {
+    const ids = Array.from(wanted[table].keys())
+    if (ids.length === 0) continue
+    const { data, error } = await supabase.from(table).select('id, invoice_token, legacy_invoice_tokens').in('id', ids)
+    if (error) {
+      if (error.code === '42703' || String(error.message || '').includes('legacy_invoice_tokens')) {
+        legacyColumnMissing = true
+        console.info('registerLegacyInvoiceTokens: legacy_invoice_tokens not deployed yet (run sql/phase0b_legacy_invoice_tokens.sql)')
+        return updated
+      }
+      console.warn(`registerLegacyInvoiceTokens: could not read ${table}:`, error.message || error)
+      continue
+    }
+    for (const row of data || []) {
+      const current = normalizeInvoiceToken(row.invoice_token)
+      const existing = Array.isArray(row.legacy_invoice_tokens) ? row.legacy_invoice_tokens : []
+      const toAdd = Array.from(wanted[table].get(Number(row.id)) || []).filter(t => t !== current && !existing.includes(t))
+      const markDone = () => (wanted[table].get(Number(row.id)) || []).forEach(t => registeredLegacyKeys.add(`${table}:${row.id}:${t}`))
+      if (toAdd.length === 0) { markDone(); continue }
+      const { error: upErr } = await supabase.from(table).update({ legacy_invoice_tokens: [...existing, ...toAdd].sort() }).eq('id', row.id)
+      if (upErr) {
+        console.warn(`registerLegacyInvoiceTokens: could not update ${table} ${row.id}:`, upErr.message || upErr)
+        continue
+      }
+      markDone()
+      updated++
+    }
+  }
+  return updated
+}
+
+/**
  * Repairs pending outbox messages whose invoice link does not match the token stored on
  * the server (client-only tokens from older builds, or links corrupted by the removed
  * INV-<digits> sanitizer). Only rows that reference a synced sale/exchange id are touched.
@@ -1323,7 +1409,17 @@ export async function repairQueueInvoiceLinks(items = []) {
     const fixedText = repairInvoiceLinkInText(text, token, isExchange ? 'exchange' : 'sale')
     if (fixedText === text && normalizeInvoiceToken(ref.invoice_token) === token && item.reference_id === publicNo) continue
 
-    const newRef = { ...ref, invoice_token: token, ...(isExchange ? { exchange_number: publicNo } : { invoice_number: publicNo }) }
+    // Keep the tokens this message carried before: a "pending" message may already have
+    // reached the customer (e.g. POS opened WhatsApp directly), and those old links are
+    // kept resolvable via sales/exchanges.legacy_invoice_tokens.
+    const previousTokens = collectMessageTokens(item).filter(t => t !== token)
+    const legacy = Array.from(new Set([...(Array.isArray(ref.legacy_invoice_tokens) ? ref.legacy_invoice_tokens : []), ...previousTokens]))
+    const newRef = {
+      ...ref,
+      invoice_token: token,
+      ...(legacy.length ? { legacy_invoice_tokens: legacy } : {}),
+      ...(isExchange ? { exchange_number: publicNo } : { invoice_number: publicNo })
+    }
     const patch = { message_text: fixedText, reference_id: publicNo, reference_data: newRef }
     Object.assign(item, patch)
     repaired++

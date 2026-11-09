@@ -739,7 +739,8 @@ function Settings() {
                             setForm(prev => ({ ...prev, logo_url: '' }))
                             try { await db.shops.update(sid, { logo_url: '' }) } catch (_) {}
                             if (navigator.onLine) {
-                              supabase.rpc('update_shop_settings', { p_shop_id: sid, p_logo_url: '' }).catch(() => {})
+                              supabase.rpc('update_shop_settings', { p_shop_id: sid, p_logo_url: '' })
+                              .then(({ error }) => { if (error) console.warn('Could not clear logo on server:', error.message || error) })
                             }
                           }}
                           className="px-3 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-xs font-bold transition"
@@ -1308,7 +1309,8 @@ function Settings() {
                                 saved.print_template = t.id
                                 localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(saved))
                                 if (navigator.onLine) {
-                                  supabase.rpc('update_shop_settings', { p_shop_id: Number(sid), p_print_template: t.id }).catch(() => {})
+                                  supabase.rpc('update_shop_settings', { p_shop_id: Number(sid), p_print_template: t.id })
+                              .then(({ error }) => { if (error) console.warn('Could not save print template on server:', error.message || error) })
                                 }
                               }
                             }}
@@ -2142,7 +2144,8 @@ function Settings() {
                         saved.print_template = previewTemplateId
                         localStorage.setItem(`shop_settings_${sid}`, JSON.stringify(saved))
                         if (navigator.onLine) {
-                          supabase.rpc('update_shop_settings', { p_shop_id: Number(sid), p_print_template: previewTemplateId }).catch(() => {})
+                          supabase.rpc('update_shop_settings', { p_shop_id: Number(sid), p_print_template: previewTemplateId })
+                  .then(({ error }) => { if (error) console.warn('Could not save print template on server:', error.message || error) })
                         }
                       }
                       setPreviewTemplateId(null)

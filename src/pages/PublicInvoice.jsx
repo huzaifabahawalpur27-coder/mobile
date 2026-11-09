@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
+import { recoverCorruptedToken } from '../services/whatsappQueueService'
 import {
   Download,
   Printer,
@@ -20,6 +21,29 @@ async function loadPdfLibraries() {
   const html2canvas = html2canvasMod.default || html2canvasMod
   const autoTable = autotableMod.default || autotableMod.autoTable || autotableMod
   return { jsPDF, html2canvas, autoTable }
+}
+
+/**
+ * Links shared before the Phase 0 fix could be corrupted by a regex that duplicated
+ * tokens starting with a digit: INV-8K3P9X2M became INV-8K3P9X2MK3P9X2M (and grew on
+ * each re-run). Recover the original 8-character token from that exact pattern.
+ */
+function recoverCorruptedInvoiceRef(ref) {
+  const raw = String(ref || '').trim()
+  const m = raw.match(/^(INV-|EXC-)?([A-Z0-9]+)$/i)
+  if (!m) return raw
+  const recovered = recoverCorruptedToken(m[2])
+  return recovered && recovered !== m[2].toUpperCase() ? `${(m[1] || '').toUpperCase()}${recovered}` : raw
+}
+
+// Shop staff have a session (tenant-scoped RLS lets their direct queries work);
+// customers opening a shared link do not, so they go straight to the public RPC.
+function hasStaffSession() {
+  try {
+    return Boolean(JSON.parse(localStorage.getItem('user') || '{}')?.shop_id)
+  } catch (_) {
+    return false
+  }
 }
 
 export default function PublicInvoice() {
@@ -45,12 +69,14 @@ export default function PublicInvoice() {
       setError(null)
 
       try {
-        const cleanId = id.replace(/^(INV-|EXC-)/i, '').trim().toUpperCase()
-        const candidateNumbers = [id, cleanId, `INV-${cleanId}`, `EXC-${cleanId}`]
+        const lookupId = recoverCorruptedInvoiceRef(id)
+        const cleanId = lookupId.replace(/^(INV-|EXC-)/i, '').trim().toUpperCase()
+        const candidateNumbers = [lookupId, cleanId, `INV-${cleanId}`, `EXC-${cleanId}`]
+        const staff = hasStaffSession()
 
-        // 1. Direct Supabase REST lookup for sales by invoice_number
-        // (Bypasses any potential RPC cache/subtotal column discrepancies)
-        try {
+        // 1. Direct Supabase REST lookup for sales by invoice_number (staff only:
+        // without a session, RLS returns nothing and this is a wasted round trip)
+        if (staff) try {
           const { data: directSale } = await supabase
             .from('sales')
             .select('*, sale_items(*)')
@@ -156,8 +182,8 @@ export default function PublicInvoice() {
           console.debug('Direct sale lookup error:', saleLookupErr)
         }
 
-        // 2. Direct Supabase REST lookup for phone exchanges
-        try {
+        // 2. Direct Supabase REST lookup for phone exchanges (staff only, see above)
+        if (staff) try {
           const { data: directExchange } = await supabase
             .from('exchanges')
             .select('*, exchange_items(*)')
@@ -255,7 +281,7 @@ export default function PublicInvoice() {
         // 3. Try public RPC function (SECURITY DEFINER)
         try {
           const { data, error: rpcErr } = await supabase.rpc('get_public_invoice', {
-            p_reference: id
+            p_reference: lookupId
           })
 
           if (!rpcErr && data) {

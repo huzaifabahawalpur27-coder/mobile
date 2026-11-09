@@ -793,7 +793,9 @@ function Sales() {
             if (cust) {
               const saleAmount = Number(item.total_amount || 0) - Number(item.discount || 0)
               const newBal = Math.max(0, (cust.outstanding_balance ?? cust.balance ?? 0) - saleAmount)
-              await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', item.customer_id).catch(() => {})
+              // Supabase query builders have no .catch(); check the returned error instead.
+              const { error: balErr } = await supabase.from('customers').update({ outstanding_balance: newBal, balance: newBal }).eq('id', item.customer_id)
+              if (balErr) console.warn('Could not reverse customer balance for deleted sale:', balErr.message || balErr)
               if (db.customers) await db.customers.update(item.customer_id, { outstanding_balance: newBal, balance: newBal }).catch(() => {})
             }
           } else if (item.payment_type !== 'credit') {
