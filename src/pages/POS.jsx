@@ -17,7 +17,9 @@ import {
   DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
   getShopWarrantyTerms,
   isLegacyEnglishInvoiceTemplate,
-  generateRandomInvoiceToken
+  generateRandomInvoiceToken,
+  persistSaleInvoiceToken,
+  normalizeInvoiceToken
 } from '../services/whatsappQueueService'
 import { playError } from '../utils/soundEffects'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
@@ -1289,9 +1291,16 @@ function POS() {
             } : null
           }))
 
+          // process_phone_sale does not accept the client token, so the row gets a
+          // database default. Store ours on the row (or read the server's) so the
+          // shared public link resolves for the customer.
+          const confirmedToken = await persistSaleInvoiceToken(saleId, invoiceToken)
+
           finalSale = {
             ...saleData,
             id: saleId,
+            invoice_token: confirmedToken,
+            invoice_number: confirmedToken ? `INV-${confirmedToken}` : null,
             sale_items: localSaleItems
           }
 
@@ -1660,9 +1669,10 @@ function POS() {
             : DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE,
           warranty_terms: (sid ? localStorage.getItem(`shop_warranty_${sid}`) : null) || form.warranty_terms || getShopWarrantyTerms(sid)
         }
-        const token = finalSale?.invoice_token || invoiceToken || generateRandomInvoiceToken()
-        const publicInvoiceNo = `INV-${token}`
-        const saleWithToken = { ...finalSale, invoice_token: token, invoice_number: publicInvoiceNo }
+        // Only a server-confirmed (or about-to-sync offline) token may become a link.
+        const token = normalizeInvoiceToken(finalSale?.invoice_token)
+        const publicInvoiceNo = token ? `INV-${token}` : (finalSale?.id ? `INV-${finalSale.id}` : null)
+        const saleWithToken = { ...finalSale, invoice_token: token, invoice_number: token ? publicInvoiceNo : null }
         const msgText = buildPhoneSaleReceiptText({
           sale: saleWithToken,
           customer,
@@ -1757,12 +1767,12 @@ function POS() {
     }
 
     // Generate invoice text using custom template or professional defaults with warranty
-    const token = lastReceipt.sale?.invoice_token || generateRandomInvoiceToken()
-    const publicInvoiceNo = `INV-${token}`
+    const token = normalizeInvoiceToken(lastReceipt.sale?.invoice_token)
+    const publicInvoiceNo = token ? `INV-${token}` : (lastReceipt.sale?.id ? `INV-${lastReceipt.sale.id}` : null)
     const saleWithToken = {
       ...(lastReceipt.sale || lastReceipt),
       invoice_token: token,
-      invoice_number: publicInvoiceNo
+      invoice_number: token ? publicInvoiceNo : null
     }
     const msg = buildPhoneSaleReceiptText({
       sale: saleWithToken,

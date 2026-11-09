@@ -48,23 +48,94 @@ export function generateRandomInvoiceToken() {
 }
 
 /**
- * Replaces any incremental numeric invoice ID (like INV-155 or #155) in message text
- * with an unguessable random token, guaranteeing customer privacy.
+ * Normalizes a stored invoice token ("INV-8K3P9X2M", "exc-3a9f0c1b", "8K3P9X2M")
+ * to its bare uppercase form. Returns null for anything that is not a real
+ * unguessable token (empty, purely numeric/sequential like "156" or "EXC-00012").
+ *
+ * Links must only ever be built from a token the server has stored; a token
+ * invented on the client resolves to "Invoice not found" for the customer.
  */
-export function sanitizeIncrementalInvoiceInText(text, randomToken = null) {
-  if (!text) return { text: '', token: '' }
-  const token = randomToken || generateRandomInvoiceToken()
-  const publicNo = token.startsWith('INV-') || token.startsWith('EXC-') ? token : `INV-${token}`
+export function normalizeInvoiceToken(raw) {
+  if (raw === null || raw === undefined) return null
+  const bare = String(raw).trim().replace(/^#/, '').replace(/^(INV|EXC)-/i, '').toUpperCase()
+  if (!/^[A-Z0-9]{8,64}$/.test(bare)) return null
+  if (/^\d+$/.test(bare)) return null
+  return bare
+}
 
-  let updated = text
-  // Replace "INV-155", "INV - 155", "INV #155"
-  updated = updated.replace(/INV\s*[-#]?\s*\d+/gi, publicNo)
-  // Replace Urdu "انوائس نمبر: 155" or "انوائس نمبر: INV-155"
-  updated = updated.replace(/(انوائس\s*نمبر\s*:\s*)(?:INV-)?\d+/gi, `$1${publicNo}`)
-  // Replace English "Invoice #: 155" or "Invoice #155"
-  updated = updated.replace(/(Invoice\s*#?\s*:\s*)(?:INV-)?\d+/gi, `$1${publicNo}`)
+/**
+ * Reads the invoice token the server actually stored for a sale or exchange.
+ */
+export async function fetchServerInvoiceToken(table, id) {
+  if (!id || (table !== 'sales' && table !== 'exchanges')) return null
+  try {
+    const { data, error } = await supabase.from(table).select('invoice_token').eq('id', id).maybeSingle()
+    if (error) {
+      console.warn(`fetchServerInvoiceToken(${table}, ${id}):`, error.message || error)
+      return null
+    }
+    return normalizeInvoiceToken(data?.invoice_token)
+  } catch (err) {
+    console.warn(`fetchServerInvoiceToken(${table}, ${id}):`, err)
+    return null
+  }
+}
 
-  return { text: updated, token: publicNo }
+/**
+ * Ensures a sale created by a server RPC carries the given token (the RPC does not
+ * accept one, so the row gets a database default). Returns the token that is really
+ * stored on the server, or null when it cannot be confirmed.
+ */
+export async function persistSaleInvoiceToken(saleId, preferredToken) {
+  if (!saleId) return null
+  const token = normalizeInvoiceToken(preferredToken)
+  if (token) {
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .update({ invoice_token: token, invoice_number: `INV-${token}` })
+        .eq('id', saleId)
+        .select('invoice_token')
+        .maybeSingle()
+      if (!error && normalizeInvoiceToken(data?.invoice_token) === token) return token
+      if (error) console.warn('persistSaleInvoiceToken update failed, reading server token:', error.message || error)
+    } catch (err) {
+      console.warn('persistSaleInvoiceToken update failed, reading server token:', err)
+    }
+  }
+  return fetchServerInvoiceToken('sales', saleId)
+}
+
+/**
+ * Rewrites every public invoice URL and the invoice-number line in a message so they
+ * point at the given (server-verified) token. Used to repair messages created with a
+ * client-only or corrupted token.
+ */
+export function repairInvoiceLinkInText(text, token, kind = 'sale') {
+  const clean = normalizeInvoiceToken(token)
+  if (!text || !clean) return text || ''
+  const prefix = kind === 'exchange' ? 'EXC' : 'INV'
+  const publicNo = `${prefix}-${clean}`
+  const url = buildPublicInvoiceUrl(publicNo)
+  let updated = text.replace(/https?:\/\/[^\s]*\/(?:view-)?invoice\/[^\s]+/gi, url)
+  updated = updated.replace(/(انوائس\s*نمبر\s*:\s*)(?:INV|EXC)-[A-Z0-9]+/gi, `$1${publicNo}`)
+  updated = updated.replace(/(Invoice\s*#\s*:\s*)(?:INV|EXC)-[A-Z0-9]+/gi, `$1${publicNo}`)
+  if (!updated.includes(url)) {
+    updated = replaceOrInjectInvoiceLinkInTemplate(updated, url)
+  }
+  return updated
+}
+
+/**
+ * Removes the online-invoice link block (header line + placeholder/URL) when no
+ * verified token exists yet, so customers never receive a dead link.
+ */
+function stripInvoiceLinkBlock(text) {
+  if (!text) return ''
+  return text
+    .replace(/\n*🔗[^\n]*\n\s*\[(?:Invoice Link|Invoice URL|Link|URL)\][^\n]*/g, '')
+    .replace(/\[(?:Invoice Link|Invoice URL|Link|URL)\]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
 }
 
 /**
@@ -183,15 +254,14 @@ export function upgradeLegacyWhatsAppMessage(text, shopId, referenceData = null)
   if (!text) return text
   const warranty = getShopWarrantyTerms(shopId)
 
-  // Determine unguessable random token
-  let token = referenceData?.invoice_token
-  if (!token && referenceData?.reference_id && !/^\d+$/.test(String(referenceData.reference_id))) {
-    token = String(referenceData.reference_id).replace(/^INV-/, '')
-  }
-  if (!token) {
-    token = generateRandomInvoiceToken()
-  }
-  const publicInvoiceNo = `INV-${token}`
+  // Only a token the server stored may be used for the link; never invent one.
+  const isExchange = Boolean(referenceData?.is_exchange)
+  const token = normalizeInvoiceToken(referenceData?.invoice_token) ||
+    normalizeInvoiceToken(referenceData?.invoice_number) ||
+    normalizeInvoiceToken(referenceData?.reference_id)
+  const publicInvoiceNo = token
+    ? `${isExchange ? 'EXC' : 'INV'}-${token}`
+    : (referenceData?.sale_id ? `INV-${referenceData.sale_id}` : '')
 
   // If text is the legacy English stub, rebuild it into the Urdu professional receipt
   if (isLegacyEnglishInvoiceTemplate(text)) {
@@ -211,13 +281,16 @@ export function upgradeLegacyWhatsAppMessage(text, shopId, referenceData = null)
     const dateStr = dateMatch ? dateMatch[1].trim() : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
 
     const paidStr = referenceData?.paid ? Number(referenceData.paid).toLocaleString('en-PK') : amountStr
-    const invoiceUrl = buildPublicInvoiceUrl(publicInvoiceNo)
+    const invoiceUrl = token ? buildPublicInvoiceUrl(publicInvoiceNo) : ''
+    const linkBlock = invoiceUrl
+      ? `\n🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*\n${invoiceUrl}\n`
+      : ''
+    const invoiceLine = publicInvoiceNo ? `\n📄 انوائس نمبر: ${publicInvoiceNo}` : ''
 
     return `السلام علیکم ${customerName}! 🤝
 *${shopName}* سے خریداری کرنے کا بہت بہت شکریہ!
 
-🧾 *بل کی تفصیلات (Invoice Details)*
-📄 انوائس نمبر: ${publicInvoiceNo}
+🧾 *بل کی تفصیلات (Invoice Details)*${invoiceLine}
 📅 تاریخ: ${dateStr}
 
 📱 *خریدی گئی اشیاء:*
@@ -227,10 +300,7 @@ export function upgradeLegacyWhatsAppMessage(text, shopId, referenceData = null)
 • کل رقم (Total): Rs. ${amountStr}
 • وصول رقم (Paid): Rs. ${paidStr}
 • بقایا کھاتہ (Balance): Rs. 0 (مکمل کلیئر ✅)
-
-🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*
-${invoiceUrl}
-
+${linkBlock}
 ${warranty}
 
 آپ کے اعتماد اور تعاون کا شکریہ! 🤝
@@ -239,15 +309,9 @@ ${warranty}
 
   let result = text
 
-  // 1. Sanitize any incremental number (e.g. INV-155 -> INV-8K3P9X2M) to protect privacy
-  const sanitized = sanitizeIncrementalInvoiceInText(result, token)
-  result = sanitized.text
-  const effectiveNo = sanitized.token || publicInvoiceNo
-
-  // 2. Ensure online digital invoice link is present
-  if (!result.includes('/invoice/')) {
-    const url = buildPublicInvoiceUrl(effectiveNo)
-    result = replaceOrInjectInvoiceLinkInTemplate(result, url)
+  // 1. Ensure the online invoice link is present, but only for a server-stored token
+  if (token && !result.includes('/invoice/')) {
+    result = replaceOrInjectInvoiceLinkInTemplate(result, buildPublicInvoiceUrl(publicInvoiceNo))
   }
 
   // 3. Ensure shop warranty terms are present
@@ -276,8 +340,9 @@ export function renderCustomWhatsAppTemplate(template, { sale, customer, items =
   const customerName = customer?.name || sale?.walkInName || 'Valued Customer'
   const shopName = shopInfo.name || (shopId ? localStorage.getItem(`shop_name_${shopId}`) : null) || 'EdgeX Mobile Store'
   const shopPhone = shopInfo.phone || shopInfo.mobile || ''
-  const invoiceToken = sale?.invoice_token || (sale?.invoice_number ? String(sale.invoice_number).replace(/^INV-/, '') : null) || generateRandomInvoiceToken()
-  const publicInvoiceNo = `INV-${invoiceToken}`
+  const invoiceToken = normalizeInvoiceToken(sale?.invoice_token) || normalizeInvoiceToken(sale?.invoice_number)
+  const invoiceDisplayId = invoiceToken || (sale?.id ? String(sale.id) : '')
+  const publicInvoiceNo = invoiceDisplayId ? `INV-${invoiceDisplayId}` : ''
   const dateStr = sale?.created_at
     ? new Date(sale.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
     : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
@@ -304,7 +369,7 @@ export function renderCustomWhatsAppTemplate(template, { sale, customer, items =
     .replace(/\[Name\]/g, customerName)
     .replace(/\[Customer Name\]/g, customerName)
     .replace(/\[Shop Name\]/g, shopName)
-    .replace(/\[ID\]/g, invoiceToken)
+    .replace(/\[ID\]/g, invoiceDisplayId)
     .replace(/\[Invoice ID\]/g, publicInvoiceNo)
     .replace(/\[Date\]/g, dateStr)
     .replace(/\[Items\]/g, itemsText || '1x Device')
@@ -318,19 +383,20 @@ export function renderCustomWhatsAppTemplate(template, { sale, customer, items =
     .replace(/\[Phone\]/g, shopPhone)
     .replace(/\[Shop Phone\]/g, shopPhone)
 
-  // Protect privacy: sanitize any incremental number that may have been in the custom template
-  rendered = sanitizeIncrementalInvoiceInText(rendered, invoiceToken).text
+  // Inject or substitute the online invoice & PDF link, only for a server-stored token
+  if (invoiceToken) {
+    const invoiceUrl = buildPublicInvoiceUrl(`INV-${invoiceToken}`)
+    rendered = rendered
+      .replace(/\[Invoice Link\]/g, invoiceUrl)
+      .replace(/\[Invoice URL\]/g, invoiceUrl)
+      .replace(/\[Link\]/g, invoiceUrl)
+      .replace(/\[URL\]/g, invoiceUrl)
 
-  // Inject or substitute online digital invoice & PDF download link
-  const invoiceUrl = buildPublicInvoiceUrl(publicInvoiceNo)
-  rendered = rendered
-    .replace(/\[Invoice Link\]/g, invoiceUrl)
-    .replace(/\[Invoice URL\]/g, invoiceUrl)
-    .replace(/\[Link\]/g, invoiceUrl)
-    .replace(/\[URL\]/g, invoiceUrl)
-
-  if (!rendered.includes(invoiceUrl)) {
-    rendered = replaceOrInjectInvoiceLinkInTemplate(rendered, invoiceUrl)
+    if (!rendered.includes(invoiceUrl)) {
+      rendered = replaceOrInjectInvoiceLinkInTemplate(rendered, invoiceUrl)
+    }
+  } else {
+    rendered = stripInvoiceLinkBlock(rendered)
   }
 
   // Permanently enforce warranty terms in rendered result
@@ -424,8 +490,8 @@ export function buildPhoneSaleReceiptText({ sale, customer, items = [], shopInfo
   const customerName = customer?.name || sale?.walkInName || 'Valued Customer'
   const shopName = shopInfo.name || (shopId ? localStorage.getItem(`shop_name_${shopId}`) : null) || 'EdgeX Mobile Store'
   const shopPhone = shopInfo.phone || ''
-  const invoiceToken = sale?.invoice_token || (sale?.invoice_number ? String(sale.invoice_number).replace(/^INV-/, '') : null) || generateRandomInvoiceToken()
-  const publicInvoiceNo = `INV-${invoiceToken}`
+  const invoiceToken = normalizeInvoiceToken(sale?.invoice_token) || normalizeInvoiceToken(sale?.invoice_number)
+  const publicInvoiceNo = invoiceToken ? `INV-${invoiceToken}` : (sale?.id ? `INV-${sale.id}` : '-')
   const dateStr = sale?.created_at
     ? new Date(sale.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
     : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
@@ -437,7 +503,9 @@ export function buildPhoneSaleReceiptText({ sale, customer, items = [], shopInfo
   const change = Number(sale?.changeDue || 0)
   const balance = Number(customer?.outstanding_balance || 0)
 
-  const invoiceUrl = buildPublicInvoiceUrl(publicInvoiceNo)
+  const invoiceUrl = invoiceToken ? buildPublicInvoiceUrl(`INV-${invoiceToken}`) : ''
+  const englishLinkBlock = invoiceUrl ? `\n🔗 *Online Invoice & Download PDF:*\n${invoiceUrl}\n` : ''
+  const urduLinkBlock = invoiceUrl ? `\n🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*\n${invoiceUrl}\n` : ''
 
   if (language === 'english') {
     const itemsText = items.map((i, idx) => {
@@ -474,10 +542,7 @@ ${itemsText}
 
 💰 *Payment Summary:*
 ${paymentSummary}
-
-🔗 *Online Invoice & Download PDF:*
-${invoiceUrl}
-
+${englishLinkBlock}
 ${effectiveWarranty}
 
 Thank you for your business and trust! 🤝${shopPhone ? `\n📞 Contact: ${shopPhone}` : ''}`
@@ -514,10 +579,7 @@ ${itemsText}
 
 💰 *ادائیگی کا خلاصہ:*
 ${paymentInfoUrdu}
-
-🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*
-${invoiceUrl}
-
+${urduLinkBlock}
 ${effectiveWarranty}
 
 آپ کے اعتماد اور تعاون کا شکریہ! 🤝${shopPhone ? `\n📞 رابطہ: ${shopPhone}` : ''}`
@@ -602,8 +664,8 @@ export function renderCustomExchangeTemplate(template, { exchange, customer = nu
   const customerName = exchange.customer_name || exchange.customer?.name || exchange.customers?.name || customer?.name || 'Valued Customer'
   const shopName = shopInfo.name || 'EdgeX Mobile Store'
   const shopPhone = shopInfo.phone || shopInfo.mobile || ''
-  const exchangeToken = exchange.invoice_token || (exchange.exchange_number && !/^\d+$/.test(exchange.exchange_number) ? exchange.exchange_number : generateRandomInvoiceToken())
-  const exchangeNo = exchangeToken.startsWith('EXC-') ? exchangeToken : `EXC-${exchangeToken}`
+  const exchangeToken = normalizeInvoiceToken(exchange.invoice_token)
+  const exchangeNo = exchangeToken ? `EXC-${exchangeToken}` : (exchange.exchange_number || '-')
   const dateStr = exchange.created_at
     ? new Date(exchange.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
     : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
@@ -701,16 +763,20 @@ export function renderCustomExchangeTemplate(template, { exchange, customer = nu
     .replace(/\[Shop Phone\]/g, shopPhone)
     .replace(/\[Phone\]/g, shopPhone)
 
-  // Inject or substitute online digital invoice & PDF download link
-  const exchangeUrl = buildPublicInvoiceUrl(exchangeNo)
-  result = result
-    .replace(/\[Invoice Link\]/g, exchangeUrl)
-    .replace(/\[Invoice URL\]/g, exchangeUrl)
-    .replace(/\[Link\]/g, exchangeUrl)
-    .replace(/\[URL\]/g, exchangeUrl)
+  // Inject or substitute the online invoice & PDF link, only for a server-stored token
+  if (exchangeToken) {
+    const exchangeUrl = buildPublicInvoiceUrl(`EXC-${exchangeToken}`)
+    result = result
+      .replace(/\[Invoice Link\]/g, exchangeUrl)
+      .replace(/\[Invoice URL\]/g, exchangeUrl)
+      .replace(/\[Link\]/g, exchangeUrl)
+      .replace(/\[URL\]/g, exchangeUrl)
 
-  if (!result.includes(exchangeUrl)) {
-    result = replaceOrInjectInvoiceLinkInTemplate(result, exchangeUrl)
+    if (!result.includes(exchangeUrl)) {
+      result = replaceOrInjectInvoiceLinkInTemplate(result, exchangeUrl)
+    }
+  } else {
+    result = stripInvoiceLinkBlock(result)
   }
 
   if (!template.includes('[Warranty Terms]') && !template.includes('[Warranty]') && !result.includes(effectiveWarranty)) {
@@ -733,8 +799,8 @@ export function buildExchangeWhatsAppText({ exchange, customer = null, shopInfo 
   const customerName = exchange.customer_name || exchange.customer?.name || exchange.customers?.name || customer?.name || 'Valued Customer'
   const shopName = shopInfo.name || 'EdgeX Mobile Store'
   const shopPhone = shopInfo.phone || shopInfo.mobile || ''
-  const exchangeToken = exchange.invoice_token || (exchange.exchange_number && !/^\d+$/.test(exchange.exchange_number) ? exchange.exchange_number : generateRandomInvoiceToken())
-  const exchangeNo = exchangeToken.startsWith('EXC-') ? exchangeToken : `EXC-${exchangeToken}`
+  const exchangeToken = normalizeInvoiceToken(exchange.invoice_token)
+  const exchangeNo = exchangeToken ? `EXC-${exchangeToken}` : (exchange.exchange_number || '-')
   const dateStr = exchange.created_at
     ? new Date(exchange.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
     : new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })
@@ -815,7 +881,10 @@ export function buildExchangeWhatsAppText({ exchange, customer = null, shopInfo 
   // Fetch shop warranty details from settings/localStorage
   const shopId = shopInfo.id || shopInfo.shop_id || exchange.shop_id
   const effectiveWarranty = shopInfo.warranty_terms || (shopId ? getShopWarrantyTerms(shopId) : DEFAULT_WARRANTY_TERMS_URDU)
-  const exchangeUrl = buildPublicInvoiceUrl(exchangeNo)
+  const exchangeUrl = exchangeToken ? buildPublicInvoiceUrl(`EXC-${exchangeToken}`) : ''
+  const exchangeLinkBlock = exchangeUrl
+    ? `\n🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*\n${exchangeUrl}\n`
+    : ''
 
   return `السلام علیکم ${customerName}! 🤝
 *${shopName}* میں تشریف لانے اور فون ایکسچینج کرنے کا بہت بہت شکریہ!
@@ -834,10 +903,7 @@ ${incomingText}
 
 ⚖️ *حتمی حساب و بقایا ایڈجسٹمنٹ (Balance Adjustment & Settlement):*
 ${balanceLines.join('\n')}
-
-🔗 *آن لائن بل و پی ڈی ایف رسید (View & Download PDF):*
-${exchangeUrl}
-
+${exchangeLinkBlock}
 ${effectiveWarranty}
 
 آپ کے اعتماد اور تعاون کا بے حد شکریہ! 🤝
@@ -981,6 +1047,10 @@ export async function enqueueWhatsAppMessage({
         if (error.code === '42P01' || error.code === 'PGRST204' || String(error.status) === '404' || error.message?.includes('does not exist')) {
           isSupabaseTableMissing = true
           lastTableCheckTime = Date.now()
+        } else {
+          // e.g. 22P02 when whatsapp_queue.shop_id is UUID but shops use integer ids:
+          // the message then exists only on this device and never reaches the phone.
+          console.warn('enqueueWhatsAppMessage: server insert failed, message kept on this device only:', error.code, error.message)
         }
       }
     } catch (_err) {
@@ -1205,6 +1275,80 @@ export async function updateWhatsAppMessageText(id, newText) {
 }
 
 /**
+ * Repairs pending outbox messages whose invoice link does not match the token stored on
+ * the server (client-only tokens from older builds, or links corrupted by the removed
+ * INV-<digits> sanitizer). Only rows that reference a synced sale/exchange id are touched.
+ * Returns the number of messages rewritten.
+ */
+export async function repairQueueInvoiceLinks(items = []) {
+  if (!navigator.onLine) return 0
+  const pending = items.filter(i => (i.status === 'pending' || !i.status) && i.reference_data)
+  const saleIds = new Set()
+  const exchangeIds = new Set()
+  for (const item of pending) {
+    const ref = item.reference_data
+    const isExchange = Boolean(ref.is_exchange) || String(item.message_type || '').includes('exchange')
+    const id = isExchange ? ref.exchange_id : ref.sale_id
+    if (id && /^\d+$/.test(String(id))) (isExchange ? exchangeIds : saleIds).add(Number(id))
+  }
+  if (saleIds.size === 0 && exchangeIds.size === 0) return 0
+
+  const tokenMap = { sales: new Map(), exchanges: new Map() }
+  for (const [table, ids] of [['sales', saleIds], ['exchanges', exchangeIds]]) {
+    if (ids.size === 0) continue
+    try {
+      const { data, error } = await supabase.from(table).select('id, invoice_token').in('id', Array.from(ids))
+      if (error) {
+        console.warn(`repairQueueInvoiceLinks: could not read ${table} tokens:`, error.message || error)
+        continue
+      }
+      for (const row of data || []) {
+        const t = normalizeInvoiceToken(row.invoice_token)
+        if (t) tokenMap[table].set(Number(row.id), t)
+      }
+    } catch (err) {
+      console.warn(`repairQueueInvoiceLinks: could not read ${table} tokens:`, err)
+    }
+  }
+
+  let repaired = 0
+  for (const item of pending) {
+    const ref = item.reference_data
+    const isExchange = Boolean(ref.is_exchange) || String(item.message_type || '').includes('exchange')
+    const token = isExchange ? tokenMap.exchanges.get(Number(ref.exchange_id)) : tokenMap.sales.get(Number(ref.sale_id))
+    if (!token) continue
+
+    const publicNo = `${isExchange ? 'EXC' : 'INV'}-${token}`
+    const text = item.message_text || ''
+    const fixedText = repairInvoiceLinkInText(text, token, isExchange ? 'exchange' : 'sale')
+    if (fixedText === text && normalizeInvoiceToken(ref.invoice_token) === token && item.reference_id === publicNo) continue
+
+    const newRef = { ...ref, invoice_token: token, ...(isExchange ? { exchange_number: publicNo } : { invoice_number: publicNo }) }
+    const patch = { message_text: fixedText, reference_id: publicNo, reference_data: newRef }
+    Object.assign(item, patch)
+    repaired++
+
+    try {
+      if (db.whatsapp_queue) await db.whatsapp_queue.update(item.id, patch)
+    } catch (_) { /* local cache only */ }
+    try {
+      if (!isSupabaseTableMissing) await supabase.from('whatsapp_queue').update(patch).eq('id', item.id)
+    } catch (err) {
+      console.warn('repairQueueInvoiceLinks: server update failed:', err)
+    }
+    try {
+      const local = getLocalStorageQueue()
+      const idx = local.findIndex(m => m.id === item.id)
+      if (idx !== -1) {
+        local[idx] = { ...local[idx], ...patch }
+        saveLocalStorageQueue(local)
+      }
+    } catch (_) { /* local cache only */ }
+  }
+  return repaired
+}
+
+/**
  * Bulk updates already saved pending WhatsApp messages in the outbox to include warranty terms.
  */
 export async function updateExistingQueueMessagesWithWarranty(shopId, customWarranty = null) {
@@ -1224,10 +1368,10 @@ export async function updateExistingQueueMessagesWithWarranty(shopId, customWarr
         if (Array.isArray(supaRows)) {
           for (const sItem of supaRows) {
             const text = sItem.message_text || ''
-            if (!text.includes('/invoice/') || /INV-\d+/i.test(text)) {
+            if (!text.includes('/invoice/')) {
               const upgraded = upgradeLegacyWhatsAppMessage(text, sItem.shop_id || shopId, sItem.reference_data)
               if (upgraded && upgraded !== text) {
-                await supabase.from('whatsapp_queue').update({ message_text: upgraded }).eq('id', sItem.id).catch(() => {})
+                await supabase.from('whatsapp_queue').update({ message_text: upgraded }).eq('id', sItem.id)
                 if (db.whatsapp_queue) {
                   await db.whatsapp_queue.update(sItem.id, { message_text: upgraded }).catch(() => {})
                 }

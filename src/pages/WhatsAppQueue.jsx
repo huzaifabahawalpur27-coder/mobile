@@ -11,8 +11,10 @@ import {
   replaceOrInjectWarrantyInTemplate,
   upgradeLegacyWhatsAppMessage,
   hasWarrantyTerms,
-  DEFAULT_WARRANTY_TERMS_URDU
+  repairQueueInvoiceLinks
 } from '../services/whatsappQueueService'
+
+const needsLinkUpgrade = (text) => !String(text || '').includes('/invoice/')
 import {
   MessageSquare,
   Smartphone,
@@ -51,6 +53,9 @@ export default function WhatsAppQueue() {
     setLoading(true)
     try {
       const data = await fetchWhatsAppQueue(user?.shop_id, 'all')
+      // Point pending links at the token the server really stored (fixes links
+      // queued by older builds with a client-only or corrupted token).
+      await repairQueueInvoiceLinks(data).catch(err => console.warn('Invoice link repair failed:', err))
       setMessages(data)
     } catch (err) {
       console.error('Failed to load WhatsApp queue:', err)
@@ -82,7 +87,7 @@ export default function WhatsAppQueue() {
   const phoneMessages = useMemo(() => {
     return messages.filter(isSoldPhoneQueueItem).map(m => {
       const text = m.message_text || ''
-      if (!text.includes('/invoice/') || /INV-\d+/i.test(text)) {
+      if (needsLinkUpgrade(text)) {
         const upgraded = upgradeLegacyWhatsAppMessage(text, m.shop_id || user?.shop_id, m.reference_data)
         if (upgraded && upgraded !== text) {
           return { ...m, message_text: upgraded }
@@ -123,26 +128,26 @@ export default function WhatsAppQueue() {
       return
     }
 
+    let textToSend = item.message_text || ''
+    if (needsLinkUpgrade(textToSend)) {
+      textToSend = upgradeLegacyWhatsAppMessage(textToSend, item.shop_id || user?.shop_id, item.reference_data)
+    }
+    const waUrl = `https://wa.me/${item.recipient_phone}?text=${encodeURIComponent(textToSend)}`
+
+    // Open WhatsApp synchronously inside the tap handler, before any await, so mobile
+    // browsers and installed PWAs keep the user gesture and do not block the popup.
+    const opened = window.open(waUrl, '_blank')
+    if (!opened) {
+      // Popup blocked (common in standalone PWAs): navigate this tab instead.
+      window.location.href = waUrl
+    }
+
     setProcessingId(item.id)
     try {
-      // Ensure the text to send has the link and random token
-      let textToSend = item.message_text || ''
-      if (!textToSend.includes('/invoice/') || /INV-\d+/i.test(textToSend)) {
-        textToSend = upgradeLegacyWhatsAppMessage(textToSend, item.shop_id || user?.shop_id, item.reference_data)
-      }
-
-      // Mark as sent
       await markWhatsAppMessageSent(item.id)
       setMessages(prev => prev.map(m => m.id === item.id ? { ...m, message_text: textToSend, status: 'sent', sent_at: new Date().toISOString() } : m))
-
-      // Direct WhatsApp URL
-      const encodedMsg = encodeURIComponent(textToSend)
-      const waUrl = `https://wa.me/${item.recipient_phone}?text=${encodedMsg}`
-
-      // Open Native WhatsApp
-      window.open(waUrl, '_blank')
     } catch (err) {
-      console.error('Error dispatching message:', err)
+      console.error('Error marking message sent:', err)
     } finally {
       setProcessingId(null)
     }
@@ -176,7 +181,7 @@ export default function WhatsAppQueue() {
   const handleCopyText = (e, item) => {
     e.stopPropagation()
     let textToCopy = item.message_text || ''
-    if (!textToCopy.includes('/invoice/') || /INV-\d+/i.test(textToCopy)) {
+    if (needsLinkUpgrade(textToCopy)) {
       textToCopy = upgradeLegacyWhatsAppMessage(textToCopy, item.shop_id || user?.shop_id, item.reference_data)
     }
     navigator.clipboard.writeText(textToCopy)
@@ -511,9 +516,9 @@ export default function WhatsAppQueue() {
                         <>
                           <span>•</span>
                           <span className="font-semibold text-gray-800 dark:text-gray-300">
-                            {item.message_type?.includes('exchange') || item.reference_data?.is_exchange
-                              ? (item.reference_id.startsWith('EXC-') ? item.reference_id : `EXC-${item.reference_id.slice(-6).toUpperCase()}`)
-                              : `INV-${item.reference_id.slice(-6).toUpperCase()}`}
+                            {/^(INV|EXC)-/i.test(item.reference_id)
+                              ? item.reference_id.toUpperCase()
+                              : `${item.message_type?.includes('exchange') || item.reference_data?.is_exchange ? 'EXC' : 'INV'}-${item.reference_id.toUpperCase()}`}
                           </span>
                         </>
                       )}

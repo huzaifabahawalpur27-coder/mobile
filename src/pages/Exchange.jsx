@@ -27,7 +27,7 @@ import {
   buildExchangeWhatsAppText,
   enqueueWhatsAppMessage,
   cleanPakistanPhone,
-  generateRandomInvoiceToken
+  normalizeInvoiceToken
 } from '../services/whatsappQueueService'
 import { IPHONE_MODELS } from '../utils/iphonePresets'
 
@@ -758,10 +758,10 @@ export default function Exchange() {
               warranty_terms: savedWarranty || shopSettings?.warranty_terms,
               wa_exchange_template: savedExchangeTpl || shopSettings?.wa_exchange_template
             }
-            const exchangeToken = result.invoice_token || generateRandomInvoiceToken()
-            const exchangeRef = `EXC-${exchangeToken}`
+            const exchangeToken = normalizeInvoiceToken(result.invoice_token)
+            const exchangeRef = exchangeToken ? `EXC-${exchangeToken}` : (result.exchange_number || null)
             const msgText = buildExchangeWhatsAppText({
-              exchange: { ...completedSnapshot, invoice_token: exchangeToken, exchange_number: exchangeRef, shop_id: sid },
+              exchange: { ...completedSnapshot, invoice_token: exchangeToken, shop_id: sid },
               customer: completedSnapshot.customer,
               shopInfo
             })
@@ -895,8 +895,8 @@ export default function Exchange() {
 
     // Enqueue into outbox if not queued yet
     try {
-        const exToken = exchangeRecord.invoice_token || generateRandomInvoiceToken()
-        const exRef = `EXC-${exToken}`
+        const exToken = normalizeInvoiceToken(exchangeRecord.invoice_token)
+        const exRef = exToken ? `EXC-${exToken}` : (exchangeRecord.exchange_number || null)
         await enqueueWhatsAppMessage({
           shop_id: sid,
           recipient_name: exchangeRecord.customer_name || exchangeRecord.customer?.name || 'Valued Customer',
@@ -968,8 +968,8 @@ export default function Exchange() {
         shopInfo
       })
 
-      const exToken = updatedExchange.invoice_token || generateRandomInvoiceToken()
-      const exRef = `EXC-${exToken}`
+      const exToken = normalizeInvoiceToken(updatedExchange.invoice_token)
+      const exRef = exToken ? `EXC-${exToken}` : (updatedExchange.exchange_number || null)
       const res = await enqueueWhatsAppMessage({
         shop_id: sid,
         recipient_name: updatedExchange.customer_name || 'Valued Customer',

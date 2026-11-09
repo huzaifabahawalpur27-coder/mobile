@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { db } from './db'
+import { fetchServerInvoiceToken } from './whatsappQueueService'
 
 /**
  * Execute atomic phone exchange on PostgreSQL RPC
@@ -70,12 +71,22 @@ export async function processPhoneExchange({
         throw new Error(data?.error || 'Exchange transaction rejected')
       }
 
+      // process_phone_exchange returns only the sequential exchange_number. The public
+      // invoice link needs the unguessable token the row was given by its column default.
+      if (data.exchange_id) {
+        data.id = data.id || data.exchange_id
+        if (!data.invoice_token) {
+          data.invoice_token = await fetchServerInvoiceToken('exchanges', data.exchange_id)
+        }
+      }
+
       // Update local Dexie tables
       try {
         if (data.exchange_id) {
           const exchangeRecord = {
             id: data.exchange_id,
             exchange_number: data.exchange_number,
+            invoice_token: data.invoice_token || null,
             customer_id: customerId,
             customer_name: customerName,
             customer_phone: customerPhone,
