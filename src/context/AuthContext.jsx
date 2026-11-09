@@ -32,10 +32,14 @@ export function AuthProvider({ children }) {
   }, [user?.id, user?.role])
 
   // Detect a session the server does not recognise (e.g. after an offline login when the
-  // connection dropped): every protected query then returns no rows and screens look
-  // empty. Ask the user to sign in again instead. Checked on load, when the connection
-  // returns and when the tab becomes visible (at most once a minute). Device data is kept.
+  // connection dropped during sign-in): every protected query then returns no rows and
+  // screens look empty. The user is NOT signed out (offline mode and the device's data
+  // keep working); Layout shows a banner with "Sign in again" instead. Checked on load,
+  // when the connection returns and when the tab becomes visible (max once a minute).
+  const [sessionDisconnected, setSessionDisconnected] = useState(false)
+
   useEffect(() => {
+    setSessionDisconnected(false)
     if (!user?.shop_id || user.role === 'superadmin' || user.isImpersonating) return
     let cancelled = false
     let lastCheck = 0
@@ -44,18 +48,16 @@ export function AuthProvider({ children }) {
       if (!force && now - lastCheck < 60000) return
       lastCheck = now
       try {
-        const { checkServerSession, RELOGIN_NOTICE_KEY, RELOGIN_MESSAGE } = await import('../services/sessionHealth')
+        const { checkServerSession } = await import('../services/sessionHealth')
         const status = await checkServerSession(user)
-        if (cancelled || status !== 'unrecognised') return
-        console.warn('Server does not recognise this session; asking the user to sign in again.')
-        try { sessionStorage.setItem(RELOGIN_NOTICE_KEY, RELOGIN_MESSAGE) } catch (_) { /* notice is optional */ }
-        // Soft sign-out: clear only the login, keep the device's saved data and sync queue
-        localStorage.removeItem('user')
-        localStorage.removeItem('session_token')
-        localStorage.removeItem('originalUser')
-        setOriginalUser(null)
-        setUser(null)
-        if (!window.location.pathname.startsWith('/login')) window.location.assign('/login')
+        if (cancelled) return
+        if (status === 'unrecognised') {
+          console.warn('Server does not recognise this session; showing the sign-in-again banner.')
+          setSessionDisconnected(true)
+        } else if (status === 'ok' || status === 'ok-open') {
+          setSessionDisconnected(false)
+        }
+        // 'offline' / 'unknown' / 'skip': keep the current state
       } catch (err) {
         console.warn('Session check failed:', err)
       }
@@ -71,6 +73,22 @@ export function AuthProvider({ children }) {
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [user])
+
+  // "Sign in again" from the banner: clear only the login (device data and the sync queue
+  // are kept, so offline sales still sync after signing in) and open the sign-in page.
+  const signInAgain = async () => {
+    try {
+      const { RELOGIN_NOTICE_KEY, RELOGIN_MESSAGE } = await import('../services/sessionHealth')
+      sessionStorage.setItem(RELOGIN_NOTICE_KEY, RELOGIN_MESSAGE)
+    } catch (_) { /* notice is optional */ }
+    localStorage.removeItem('user')
+    localStorage.removeItem('session_token')
+    localStorage.removeItem('originalUser')
+    setOriginalUser(null)
+    setSessionDisconnected(false)
+    setUser(null)
+    window.location.assign('/login')
+  }
 
   const [authorizedShops, setAuthorizedShops] = useState(() => {
     const saved = localStorage.getItem('authorized_shops')
@@ -251,7 +269,9 @@ export function AuthProvider({ children }) {
       logout,
       impersonate,
       stopImpersonating,
-      switchTenantContext
+      switchTenantContext,
+      sessionDisconnected,
+      signInAgain
     }}>
       {children}
     </AuthContext.Provider>

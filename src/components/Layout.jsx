@@ -18,7 +18,7 @@ import BroadcastBanner from './BroadcastBanner'
 let lastLayoutFetchTime = 0
 
 function Layout({ children }) {
-  const { user, logout, stopImpersonating, authorizedShops, branches, switchTenantContext } = useAuth()
+  const { user, logout, stopImpersonating, authorizedShops, branches, switchTenantContext, sessionDisconnected, signInAgain } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const { isDark, toggleTheme, soundEnabled, toggleSound, themeStyle, setThemeStyle } = useTheme()
@@ -697,6 +697,23 @@ function Layout({ children }) {
 
         {/* Global SuperAdmin Broadcast Banner */}
         <BroadcastBanner />
+
+        {sessionDisconnected && (
+          <div role="alert" className="px-4 py-2.5 bg-red-50 text-red-950 border-b border-red-200 text-sm flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <span className="min-w-0">
+              <strong className="font-semibold">Not connected to the server.</strong>{' '}
+              Data can&apos;t load or sync until you sign in again with the internet working. Sales on this device are kept.
+              <span className="block text-xs mt-0.5" dir="rtl" lang="ur">سرور سے رابطہ نہیں ہے۔ انٹرنیٹ چیک کر کے دوبارہ لاگ ان کریں۔</span>
+            </span>
+            <button
+              type="button"
+              onClick={signInAgain}
+              className="shrink-0 min-h-[40px] px-4 rounded-lg bg-red-700 hover:bg-red-800 text-white font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+            >
+              Sign in again
+            </button>
+          </div>
+        )}
 
         {(syncAttentionCount > 0 || pendingSyncCount > 0) && (
           <div role="status" className="px-4 py-2 bg-amber-50 text-amber-950 border-b border-amber-200 text-sm flex items-center justify-between gap-3">
