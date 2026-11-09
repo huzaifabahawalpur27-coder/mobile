@@ -128,7 +128,8 @@ Three things rewrite message text on their own: `fetchWhatsAppQueue` "heals" pen
   - The default template uses a `[Warranty Terms]` placeholder, and old saved templates are converted to it.
   - Messages replace the standard warranty section with the saved terms.
   - Saving changed terms updates pending outbox messages.
-- **Deploy order:** `public_invoice_rpc.sql` → `production_security_hardening.sql` → `phase1_warranty_settings.sql` → `phase0_invoice_link_and_outbox_fix.sql` → `phase0b_legacy_invoice_tokens.sql`. The `phase1` file can also run after the other two; `get_public_invoice` just needs its `shops.warranty_terms` column to exist before it's called.
+- **Deploy order:** `public_invoice_rpc.sql` → `production_security_hardening.sql` → `phase1_warranty_settings.sql` → `phase0_invoice_link_and_outbox_fix.sql` → `phase0b_legacy_invoice_tokens.sql` → `phase1b_bill_customer_backfill.sql` → **`get_public_invoice.sql` (always last)**. Every file can be re-run safely.
+- **Public lookup (`get_public_invoice`):** it is defined only in `sql/get_public_invoice.sql`. Earlier copies assumed `sale_items.imei_snapshot` was JSONB and crashed with `42883 operator does not exist: text ->> unknown` on databases where it is TEXT, so every customer saw "Invoice Not Found". The new version reads optional columns through `to_jsonb(row)` and parses snapshots in any form; it also runs on its own as an immediate fix.
 
 ### Phase 1: Simplify and make it observable (≈1 week)
 
