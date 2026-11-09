@@ -188,6 +188,11 @@ DO $$ DECLARE p record; BEGIN
 END $$;
 
 -- 10. Grant ALL overloads of client RPCs dynamically by name
+-- (Step 4 revoked EXECUTE on every routine, including the session helpers granted in
+-- step 1 that every RLS policy calls; they MUST be re-granted here, otherwise every
+-- table query fails with "permission denied for function current_user_shop_id".
+-- Then run sql/fix_function_grants.sql, which also covers functions defined only in
+-- the live database.)
 DO $$
 DECLARE r record;
 BEGIN
@@ -197,6 +202,22 @@ BEGIN
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
       AND p.proname IN (
+        'current_session_token',
+        'current_user_shop_id',
+        'is_valid_session',
+        'process_phone_exchange',
+        'void_phone_exchange',
+        'allocate_sale_line_fifo',
+        'return_sale_item_batches',
+        'adjust_batch_stock',
+        'adjust_batch_cost',
+        'void_purchase_batches',
+        'check_purchase_batches_before_void',
+        'get_fifo_inventory_valuation',
+        'convert_product_to_batch_tracking',
+        'preview_product_batch_conversion',
+        'revert_product_batch_conversion',
+        'reconcile_product_batches',
         'secure_login',
         'switch_tenant_context',
         'get_shop_status',
