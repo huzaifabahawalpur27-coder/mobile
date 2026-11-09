@@ -10,7 +10,7 @@ import PurchaseSplitPaymentModal from '../components/PurchaseSplitPaymentModal'
 import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment, recordPurchaseToAccounts } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
 import { deduplicateProducts } from '../utils/productUtils'
-import { adjustProductStock, adjustSupplierBalance } from '../services/atomicOps'
+import { receivePurchaseStock, adjustSupplierBalance } from '../services/atomicOps'
 
 function Purchases() {
   const { user } = useAuth()
@@ -451,12 +451,10 @@ function Purchases() {
 
       const purchaseProblems = []
       for (const item of cart) {
-        const stockRes = await adjustProductStock(item.id, Number(item.qty) || 0)
-        if (!stockRes.ok) purchaseProblems.push(`${item.name || item.id}: stock not added (${stockRes.error})`)
-        const { error: costErr } = await supabase.from('products').update({ cost_price: item.purchase_price }).eq('id', item.id)
-        if (costErr) purchaseProblems.push(`${item.name || item.id}: cost price not saved (${costErr.message})`)
-        // Mirror to local DB so Inventory shows the new cost immediately (stock done above)
-        await db.products.update(item.id, { cost_price: item.purchase_price }).catch(() => {})
+        // Stock +qty and weighted-average cost (old stock at old cost blended with this
+        // purchase), in one database step; the device copy is updated the same way
+        const stockRes = await receivePurchaseStock(item.id, Number(item.qty) || 0, Number(item.purchase_price) || 0)
+        if (!stockRes.ok) purchaseProblems.push(`${item.name || item.id}: stock / cost not updated (${stockRes.error})`)
 
         // If batch costing is enabled and item is batch_tracked, create lot batch
         if (isBatchCostingOn && item.inventory_mode === 'batch_tracked') {
@@ -596,9 +594,7 @@ function Purchases() {
         await addToSyncQueue('purchase_items', 'INSERT', items)
 
         for (const item of cart) {
-          await adjustProductStock(item.id, Number(item.qty) || 0, { queueOnly: true })
-          await db.products.update(item.id, { cost_price: item.purchase_price }).catch(() => {})
-          await addToSyncQueue('products', 'UPDATE', { id: item.id, cost_price: item.purchase_price })
+          await receivePurchaseStock(item.id, Number(item.qty) || 0, Number(item.purchase_price) || 0, { queueOnly: true })
         }
 
         if (totalCreditAmount > 0) {

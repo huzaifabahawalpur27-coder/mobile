@@ -28,7 +28,7 @@ import { recordSaleToAccounts, getBankAccounts } from '../services/bankService'
 import { reconcileOfflineProducts } from '../services/syncService'
 import {
   adjustProductStock, adjustCustomerBalance, markPhoneSold, queuePhoneSold,
-  findPhonesNotInStock, applyLocalDelta
+  findPhonesNotInStock, applyLocalDelta, processPosSale
 } from '../services/atomicOps'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
@@ -1375,48 +1375,10 @@ function POS() {
       }
       if (!finalSale) {
         let sale = null
-        let saleError = null
-        const res = await supabase.from('sales').insert([saleData]).select().single()
-        sale = res.data
-        saleError = res.error
-
-        if (saleError) {
-          // Resilient retry without optional columns in case schema hasn't been migrated
-          const cleanSaleData = { ...saleData }
-          delete cleanSaleData.online_provider
-          delete cleanSaleData.transaction_ref
-          delete cleanSaleData.customer_name
-          delete cleanSaleData.payment_details
-          delete cleanSaleData.created_by
-          delete cleanSaleData.branch_id
-          if (saleError.code === '23503' || saleError.message?.includes('customer_id') || saleError.message?.includes('foreign key')) {
-            cleanSaleData.customer_id = null
-          }
-          let retryRes = await supabase.from('sales').insert([cleanSaleData]).select().single()
-          if (retryRes.error && (retryRes.error.code === '23503' || retryRes.error.message?.includes('customer_id') || retryRes.error.message?.includes('foreign key'))) {
-            cleanSaleData.customer_id = null
-            retryRes = await supabase.from('sales').insert([cleanSaleData]).select().single()
-          }
-          sale = retryRes.data
-          saleError = retryRes.error
-        }
-
-        // A network failure can hide a successful insert response. Resolve by
-        // the sale idempotency key before creating a local queued duplicate.
-        if (saleError && saleData.idempotency_key) {
-          const existing = await supabase.from('sales').select('*')
-            .eq('idempotency_key', saleData.idempotency_key).maybeSingle()
-          if (!existing.error && existing.data) {
-            sale = existing.data
-            saleError = null
-          }
-        }
-
-        if (saleError) throw saleError
-        finalSale = sale
-
-        const items = cart.map(i => ({
-          sale_id: sale.id,
+        let resItems = null
+        // Preferred: header, lines, stock, phones and customer balance in ONE database
+        // transaction (sql/atomic_sale_and_cost.sql), so a failure leaves nothing half-saved.
+        const atomicLines = cart.map(i => ({
           product_id: i.phone_id ? null : toIntOrNull(i.id),
           phone_id: i.phone_id || null,
           product_name: i.name,
@@ -1438,26 +1400,117 @@ function POS() {
             additional_costs: Number(i.additional_costs || 0)
           } : null
         }))
-        let { data: resItems, error: itemsError } = await supabase.from('sale_items').insert(items).select()
-        if (itemsError) {
-          const minimalItems = cart.map(i => ({
+        const atomicBalance = (saleType === 'sale' && customerId) ? total - Math.min(total, totalPaid) : 0
+        const atomicOpts = { balanceDelta: atomicBalance, applyStock: saleType === 'sale' }
+        let atomic = await processPosSale(saleData, atomicLines, atomicOpts)
+        // The reply may have been lost after the save: the same idempotency key returns it
+        if (atomic.network && navigator.onLine) atomic = await processPosSale(saleData, atomicLines, atomicOpts)
+        const savedAtomically = atomic.ok
+        if (atomic.ok) {
+          sale = atomic.sale
+          resItems = atomic.items
+        } else if (atomic.network) {
+          throw new Error(atomic.error || 'Network error while saving the sale')
+        } else if (!atomic.missing && /already sold|not in stock|not found in this shop/i.test(atomic.error || '')) {
+          // Refused by the database (phone already sold, product removed): nothing was saved
+          alert(`⚠️ Sale Nahi Ho Saki: ${atomic.error}. Refresh and try again.`)
+          setSaving(false)
+          return
+        } else if (!atomic.missing) {
+          // Some other problem with the data (old column type, branch, ...): nothing was
+          // saved, so use the step-by-step save, which retries without optional fields
+          console.warn('POS: one-step sale failed, using step-by-step save:', atomic.error)
+        }
+
+        if (!savedAtomically) {
+          // Database not migrated yet: old step-by-step save
+          let saleError = null
+          const res = await supabase.from('sales').insert([saleData]).select().single()
+          sale = res.data
+          saleError = res.error
+
+          if (saleError) {
+            // Resilient retry without optional columns in case schema hasn't been migrated
+            const cleanSaleData = { ...saleData }
+            delete cleanSaleData.online_provider
+            delete cleanSaleData.transaction_ref
+            delete cleanSaleData.customer_name
+            delete cleanSaleData.payment_details
+            delete cleanSaleData.created_by
+            delete cleanSaleData.branch_id
+            if (saleError.code === '23503' || saleError.message?.includes('customer_id') || saleError.message?.includes('foreign key')) {
+              cleanSaleData.customer_id = null
+            }
+            let retryRes = await supabase.from('sales').insert([cleanSaleData]).select().single()
+            if (retryRes.error && (retryRes.error.code === '23503' || retryRes.error.message?.includes('customer_id') || retryRes.error.message?.includes('foreign key'))) {
+              cleanSaleData.customer_id = null
+              retryRes = await supabase.from('sales').insert([cleanSaleData]).select().single()
+            }
+            sale = retryRes.data
+            saleError = retryRes.error
+          }
+
+          // A network failure can hide a successful insert response. Resolve by
+          // the sale idempotency key before creating a local queued duplicate.
+          if (saleError && saleData.idempotency_key) {
+            const existing = await supabase.from('sales').select('*')
+              .eq('idempotency_key', saleData.idempotency_key).maybeSingle()
+            if (!existing.error && existing.data) {
+              sale = existing.data
+              saleError = null
+            }
+          }
+
+          if (saleError) throw saleError
+          finalSale = sale
+
+          const items = cart.map(i => ({
             sale_id: sale.id,
             product_id: i.phone_id ? null : toIntOrNull(i.id),
             phone_id: i.phone_id || null,
-            product_name: i.name || null,
+            product_name: i.name,
             quantity: i.qty,
             price: i.custom_price,
             unit_price: i.custom_price,
             cost_price: i.cost_price || 0,
             subtotal: i.custom_price * i.qty,
             line_total: i.custom_price * i.qty,
-            returned_qty: 0
+            returned_qty: 0,
+            imei_snapshot: (i.item_type === 'phone' || i.phone_id) ? {
+              imei_1: i.imei_1,
+              imei_2: i.imei_2,
+              brand: i.brand,
+              model: i.model,
+              condition: i.condition,
+              pta_status: i.pta_status,
+              cost_price: Number(i.cost_price || 0),
+              additional_costs: Number(i.additional_costs || 0)
+            } : null
           }))
-          const retryItems = await supabase.from('sale_items').insert(minimalItems).select()
-          resItems = retryItems.data
-          itemsError = retryItems.error
+          const itemsRes = await supabase.from('sale_items').insert(items).select()
+          resItems = itemsRes.data
+          let itemsError = itemsRes.error
+          if (itemsError) {
+            const minimalItems = cart.map(i => ({
+              sale_id: sale.id,
+              product_id: i.phone_id ? null : toIntOrNull(i.id),
+              phone_id: i.phone_id || null,
+              product_name: i.name || null,
+              quantity: i.qty,
+              price: i.custom_price,
+              unit_price: i.custom_price,
+              cost_price: i.cost_price || 0,
+              subtotal: i.custom_price * i.qty,
+              line_total: i.custom_price * i.qty,
+              returned_qty: 0
+            }))
+            const retryItems = await supabase.from('sale_items').insert(minimalItems).select()
+            resItems = retryItems.data
+            itemsError = retryItems.error
+          }
+          if (itemsError) throw itemsError
         }
-        if (itemsError) throw itemsError
+        finalSale = sale
 
         // Mirror to local Dexie
         await db.sales.put(sale).catch(() => {})
@@ -1489,7 +1542,32 @@ function POS() {
           }
         }
 
-        if (saleType === 'sale') {
+        if (saleType === 'sale' && savedAtomically) {
+          // The database already changed stock, phones and the balance
+          if (!atomic.replay) {
+            for (const item of cart) {
+              if (item.phone_id) {
+                if (db.phones) await db.phones.update(item.phone_id, { status: 'sold', sale_price: parseFloat(item.custom_price) || 0, sold_at: new Date().toISOString() }).catch(() => {})
+              } else if (toIntOrNull(item.id) !== null && String(toIntOrNull(item.id)) === String(item.id)) {
+                await applyLocalDelta('products', item.id, ['stock_quantity'], -(Number(item.qty) || 0))
+              } else {
+                // Product created offline and not synced yet: queue its stock change
+                await adjustProductStock(item.id, -(Number(item.qty) || 0))
+              }
+            }
+            if (atomicBalance !== 0 && sale?.customer_id) {
+              await applyLocalDelta('customers', sale.customer_id, ['outstanding_balance', 'balance'], atomicBalance)
+            }
+          }
+          setPhones(prev => prev.filter(p => !cart.some(c => c.phone_id === p.id)))
+          setProducts(prev => prev.map(p => {
+            const sold = cart.find(c => c.id === p.id && !c.phone_id)
+            if (sold) {
+              return { ...p, stock_quantity: Math.max(0, (Number(p.stock_quantity) || 0) - (Number(sold.qty) || 0)) }
+            }
+            return p
+          }))
+        } else if (saleType === 'sale') {
           // Phones first: if one was sold elsewhere a moment ago, undo this sale
           const markedPhoneIds = []
           for (const item of cart) {

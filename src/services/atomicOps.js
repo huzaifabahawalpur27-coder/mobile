@@ -86,6 +86,7 @@ export async function runLegacyOp(fn, args = {}) {
   if (fn === 'adjust_customer_balance') return legacyPartyBalance('customers', args.p_customer_id, Number(args.p_delta) || 0)
   if (fn === 'adjust_supplier_balance') return legacyPartyBalance('suppliers', args.p_supplier_id, Number(args.p_delta) || 0)
   if (fn === 'mark_phone_sold') return legacyMarkPhoneSold(args.p_phone_id, Number(args.p_sale_price) || 0)
+  if (fn === 'receive_purchase_stock') return legacyReceiveStock(args.p_product_id, Number(args.p_qty) || 0, Number(args.p_unit_cost) || 0)
   return null
 }
 
@@ -98,6 +99,27 @@ async function legacyMarkPhoneSold(phoneId, price) {
   if (res.error) return { ok: false, error: res.error.message }
   if (!res.data || res.data.length === 0) return { ok: false, alreadySold: true, error: `Phone ${phoneId} is not in stock - already sold` }
   return { ok: true, legacy: true }
+}
+
+/** Weighted-average cost: (stock x cost + qty x unitCost) / (stock + qty); the purchase price when nothing is on hand. */
+export function weightedCost(stock, cost, qty, unitCost) {
+  const st = Number(stock) || 0
+  const c = Number(cost) || 0
+  const q = Number(qty) || 0
+  const u = Number(unitCost) || 0
+  if (st > 0 && st + q > 0) return Math.round(((st * c + q * u) / (st + q)) * 100) / 100
+  return u
+}
+
+async function legacyReceiveStock(productId, qty, unitCost) {
+  const { data, error } = await supabase.from('products').select('stock_quantity, cost_price').eq('id', productId).maybeSingle()
+  if (error) return { ok: false, error: error.message }
+  if (!data) return { ok: false, error: `Product ${productId} not found in this shop` }
+  const { error: upErr } = await supabase.from('products').update({
+    stock_quantity: (Number(data.stock_quantity) || 0) + qty,
+    cost_price: weightedCost(data.stock_quantity, data.cost_price, qty, unitCost)
+  }).eq('id', productId)
+  return upErr ? { ok: false, error: upErr.message } : { ok: true, queued: false, legacy: true }
 }
 
 /** Updates only the device's cached copy by a delta (the server was updated elsewhere). */
@@ -127,6 +149,57 @@ export async function adjustProductStock(productId, delta, options = {}) {
   })
   if (result.ok) await bumpLocal('products', productId, ['stock_quantity'], d)
   return result
+}
+
+/**
+ * Purchase received: adds stock and blends the cost price (weighted average) in one
+ * database statement, instead of overwriting cost with the latest purchase price.
+ */
+export async function receivePurchaseStock(productId, qty, unitCost, options = {}) {
+  const q = Number(qty) || 0
+  const u = Number(unitCost) || 0
+  if (!productId || q === 0) return { ok: true, unchanged: true }
+  // Blend on the device copy from its value BEFORE the change
+  let localBefore = null
+  try { localBefore = await (db.products?.get(productId) ?? null) ?? (isServerId(productId) ? await db.products?.get(Number(productId)) : null) } catch (_) { /* cache only */ }
+  const result = await runOrQueue('receive_purchase_stock', { p_product_id: productId, p_qty: q, p_unit_cost: u }, {
+    ...options,
+    legacy: () => legacyReceiveStock(productId, q, u)
+  })
+  if (result.ok && localBefore) {
+    const serverRow = result.data && result.data.stock_quantity !== undefined ? result.data : null
+    try {
+      await db.products.update(localBefore.id, serverRow
+        ? { stock_quantity: Number(serverRow.stock_quantity), cost_price: Number(serverRow.cost_price) }
+        : { stock_quantity: (Number(localBefore.stock_quantity) || 0) + q, cost_price: weightedCost(localBefore.stock_quantity, localBefore.cost_price, q, u) })
+    } catch (_) { /* cache only */ }
+  }
+  return result
+}
+
+/**
+ * Saves a POS sale (header, lines, stock, phones, customer balance) in one database
+ * transaction (sql/atomic_sale_and_cost.sql). Returns
+ *   { ok: true, sale, items }            saved (or an earlier save of the same idempotency key)
+ *   { ok: false, missing: true }         function not installed: use the step-by-step save
+ *   { ok: false, network: true, error }  connection problem: the caller queues it offline
+ *   { ok: false, error }                 refused (phone already sold, ...): nothing was saved
+ */
+export async function processPosSale(sale, items, { balanceDelta = 0, applyStock = true } = {}) {
+  try {
+    const { data, error } = await supabase.rpc('process_pos_sale', {
+      p_sale: sale, p_items: items, p_balance_delta: Number(balanceDelta) || 0, p_apply_stock: Boolean(applyStock)
+    })
+    if (error) {
+      if (isMissingFunction(error)) return { ok: false, missing: true, error: error.message }
+      if (isNetworkError(error)) return { ok: false, network: true, error: error.message }
+      return { ok: false, error: error.message || String(error) }
+    }
+    if (!data || data.success === false || !data.sale) return { ok: false, error: data?.error || 'Sale was not saved' }
+    return { ok: true, sale: data.sale, items: data.items || [], replay: Boolean(data.replay) }
+  } catch (err) {
+    return isNetworkError(err) ? { ok: false, network: true, error: err.message } : { ok: false, error: err?.message || String(err) }
+  }
 }
 
 async function adjustPartyBalance(table, fn, idKey, id, delta, options) {

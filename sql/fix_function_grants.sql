@@ -43,7 +43,8 @@ DECLARE
         'convert_product_to_batch_tracking', 'preview_product_batch_conversion', 'revert_product_batch_conversion',
         'reconcile_product_batches', 'update_product_stock',
         'get_dashboard_stats', 'get_top_products', 'get_revenue_trend', 'get_daily_sales_summary',
-        'adjust_product_stock', 'adjust_customer_balance', 'adjust_supplier_balance', 'mark_phone_sold'
+        'adjust_product_stock', 'adjust_customer_balance', 'adjust_supplier_balance', 'mark_phone_sold',
+        'process_pos_sale', 'receive_purchase_stock'
     ];
     -- Reviewed entry points that are meant to be callable without/before a shop session
     -- (they were already in the hardening script's own re-grant list, or are the public bill)

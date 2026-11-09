@@ -199,6 +199,14 @@ BEGIN
 END;
 $$;
 
+-- Internal helpers must not be callable from the browser. Supabase grants new
+-- functions to anon/authenticated by default, so revoke those grants explicitly.
+DO $$ BEGIN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.edgex_claim_op(UUID, INTEGER, TEXT) FROM anon, authenticated';
+    EXECUTE 'REVOKE ALL ON FUNCTION public.edgex_adjust_party_balance(TEXT, BIGINT, NUMERIC, UUID, TEXT) FROM anon, authenticated';
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
+
 GRANT EXECUTE ON FUNCTION public.adjust_product_stock(BIGINT, NUMERIC, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.adjust_customer_balance(BIGINT, NUMERIC, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.adjust_supplier_balance(BIGINT, NUMERIC, UUID) TO anon, authenticated;
