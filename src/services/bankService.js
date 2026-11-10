@@ -500,6 +500,44 @@ export const getAllBankTransactions = async (shopId, limit = 100) => {
 };
 
 /**
+ * Correct a mistaken bank / cash entry (sql/edit_bank_transaction.sql). The database
+ * changes the account balance by the difference only, moves the entry to another
+ * account if asked, keeps later running balances consistent and notes the original
+ * values with the reason. Needs a connection; transfers cannot be edited.
+ */
+export const editBankTransaction = async ({ transactionId, amount, direction, accountId = null, description = '', reason }) => {
+  if (!navigator.onLine) throw new Error('Connect to the internet to correct a transaction.');
+  if (!/^\d+$/.test(String(transactionId ?? ''))) {
+    throw new Error('This entry has not synced to the server yet. Try again after it syncs.');
+  }
+  const { data, error } = await getClient().rpc('edit_bank_transaction', {
+    p_tx_id: Number(transactionId),
+    p_amount: Number(amount),
+    p_direction: direction,
+    p_account_id: accountId ? Number(accountId) : null,
+    p_description: description?.trim() || null,
+    p_reason: reason?.trim() || null
+  });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message || '')) {
+      throw new Error('Editing is not set up yet: run sql/edit_bank_transaction.sql in Supabase.');
+    }
+    throw new Error(error.message || 'Could not correct the transaction');
+  }
+  // Refresh this device's copy of the affected accounts
+  try {
+    const ids = [data?.account_id, data?.previous_account_id].filter(Boolean);
+    if (ids.length) {
+      const { data: accs } = await getClient().from('bank_accounts').select('*').in('id', ids);
+      if (accs?.length) await db.bank_accounts.bulkPut(accs);
+    }
+  } catch {
+    // cache refresh only
+  }
+  return data;
+};
+
+/**
  * Update an existing bank account.
  */
 export const updateBankAccount = async (id, accountData) => {

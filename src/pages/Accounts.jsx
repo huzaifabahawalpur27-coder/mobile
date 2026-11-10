@@ -7,7 +7,8 @@ import {
   deleteBankAccount,
   adjustBankBalance,
   transferBetweenAccounts,
-  getAllBankTransactions
+  getAllBankTransactions,
+  editBankTransaction
 } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
 
@@ -58,6 +59,11 @@ export default function Accounts() {
   const [editing, setEditing] = useState(false)
 
   const [message, setMessage] = useState({ type: '', text: '' })
+
+  // Correct a mistaken entry (wrong amount, wrong account, deposit/withdrawal swapped)
+  const [editTx, setEditTx] = useState(null)
+  const [txForm, setTxForm] = useState({ amount: '', direction: 'deposit', accountId: '', description: '', reason: '' })
+  const [savingTx, setSavingTx] = useState(false)
 
   const loadData = async () => {
     if (!user?.shop_id) return
@@ -221,6 +227,71 @@ Financial Protection: You cannot delete an account with existing funds. Please t
       is_default: Boolean(acc.is_default)
     })
     setShowEditModal(true)
+  }
+
+  // Transfers have a matching entry on the other account; entries not yet synced have
+  // no server id. Neither can be corrected here.
+  const txEditBlock = (tx) => {
+    if (String(tx?.reference_type || '').toLowerCase().startsWith('transfer')) return 'Transfers cannot be edited; make a new transfer to correct one.'
+    if (!/^\d+$/.test(String(tx?.id ?? ''))) return 'This entry has not synced yet.'
+    return null
+  }
+  const txIsDeposit = (tx) => ['credit', 'deposit'].includes(String(tx?.transaction_type || '').toLowerCase())
+
+  const openEditTx = (tx) => {
+    const blocked = txEditBlock(tx)
+    if (blocked) { alert(blocked); return }
+    setEditTx(tx)
+    setTxForm({
+      amount: String(Number(tx.amount) || ''),
+      direction: txIsDeposit(tx) ? 'deposit' : 'withdrawal',
+      accountId: String(tx.account_id),
+      description: (tx.description || '').replace(/\s*\[Corrected [^\]]*\]/g, '').trim(),
+      reason: ''
+    })
+  }
+
+  // What the correction will do to the balances (shown before saving)
+  const txEditPreview = (() => {
+    if (!editTx) return null
+    const amt = Number(txForm.amount) || 0
+    const oldEffect = (txIsDeposit(editTx) ? 1 : -1) * (Number(editTx.amount) || 0)
+    const newEffect = (txForm.direction === 'deposit' ? 1 : -1) * amt
+    const sameAccount = String(txForm.accountId) === String(editTx.account_id)
+    const name = (id) => accounts.find(a => String(a.id) === String(id))?.account_name || 'Account'
+    const fmt = (n) => `${n >= 0 ? '+' : '-'}Rs. ${Math.abs(n).toLocaleString()}`
+    if (sameAccount) {
+      const delta = newEffect - oldEffect
+      return delta === 0 ? 'Balance unchanged.' : `${name(editTx.account_id)} balance: ${fmt(delta)}`
+    }
+    return `${name(editTx.account_id)}: ${fmt(-oldEffect)} • ${name(txForm.accountId)}: ${fmt(newEffect)}`
+  })()
+
+  const handleEditTxSubmit = async (e) => {
+    e.preventDefault()
+    if (!editTx) return
+    const amt = Number(txForm.amount)
+    if (!(amt > 0)) { alert('Please enter an amount greater than 0.'); return }
+    if (!txForm.reason.trim()) { alert('Please write why this entry is being corrected.'); return }
+    if (!confirm(`Correct this entry?\n\n${txEditPreview}\n\nThe original amount and your reason are kept in the entry's note.`)) return
+    setSavingTx(true)
+    try {
+      await editBankTransaction({
+        transactionId: editTx.id,
+        amount: amt,
+        direction: txForm.direction,
+        accountId: String(txForm.accountId) !== String(editTx.account_id) ? txForm.accountId : null,
+        description: txForm.description,
+        reason: txForm.reason
+      })
+      setEditTx(null)
+      setMessage({ type: 'success', text: 'Transaction corrected and account balance updated.' })
+      await loadData()
+    } catch (err) {
+      alert('Could not correct the transaction: ' + (err?.message || err))
+    } finally {
+      setSavingTx(false)
+    }
   }
 
   // Submit Edit
@@ -616,6 +687,16 @@ CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_
                       Bal: Rs. {Number(tx.balance_after).toLocaleString()}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => openEditTx(tx)}
+                    disabled={Boolean(txEditBlock(tx))}
+                    title={txEditBlock(tx) || 'Correct this entry'}
+                    aria-label="Correct this entry"
+                    className="ml-2 p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
                 </div>
               )
             })}
@@ -876,6 +957,83 @@ CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_
         </div>
       )}
 
+      {/* Correct Transaction Modal */}
+      {editTx && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="edit-tx-title">
+          <form onSubmit={handleEditTxSubmit} className="w-full max-w-md max-h-[90dvh] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col">
+            <div className="px-5 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <h3 id="edit-tx-title" className="font-extrabold text-gray-900 text-base flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-blue-600" /> Correct Transaction
+              </h3>
+              <button type="button" onClick={() => setEditTx(null)} aria-label="Close" className="p-2 -mr-2 text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 text-sm">
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-3 text-xs text-gray-600">
+                <p className="font-bold text-gray-800">Currently: {txIsDeposit(editTx) ? 'Deposit' : 'Withdrawal'} of Rs. {Number(editTx.amount).toLocaleString()}</p>
+                <p>{accounts.find(a => String(a.id) === String(editTx.account_id))?.account_name || 'Account'} • {new Date(editTx.created_at).toLocaleString('en-PK')}</p>
+                {editTx.reference_type && !['deposit', 'withdrawal', 'adjustment', 'manual'].includes(String(editTx.reference_type).toLowerCase()) && (
+                  <p className="mt-1 text-amber-700">Linked to a {String(editTx.reference_type).toLowerCase()} record: only the bank entry changes, not that record.</p>
+                )}
+              </div>
+
+              <fieldset>
+                <legend className="block text-xs font-bold text-gray-700 mb-1">Type</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {[{ id: 'deposit', label: 'Deposit (money in)' }, { id: 'withdrawal', label: 'Withdrawal (money out)' }].map(opt => (
+                    <label key={opt.id} className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold cursor-pointer ${txForm.direction === opt.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600'}`}>
+                      <input type="radio" name="tx-direction" value={opt.id} checked={txForm.direction === opt.id} onChange={() => setTxForm(f => ({ ...f, direction: opt.id }))} className="sr-only" />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div>
+                <label htmlFor="edit-tx-amount" className="block text-xs font-bold text-gray-700 mb-1">Correct amount (Rs.)</label>
+                <input id="edit-tx-amount" type="number" min="0.01" step="0.01" inputMode="decimal" required
+                  value={txForm.amount} onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+
+              <div>
+                <label htmlFor="edit-tx-account" className="block text-xs font-bold text-gray-700 mb-1">Account</label>
+                <select id="edit-tx-account" value={txForm.accountId} onChange={e => setTxForm(f => ({ ...f, accountId: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {accounts.map(a => (
+                    <option key={a.id} value={String(a.id)}>{a.account_name}{a.bank_name ? ` (${a.bank_name})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="edit-tx-desc" className="block text-xs font-bold text-gray-700 mb-1">Description</label>
+                <input id="edit-tx-desc" type="text" value={txForm.description} onChange={e => setTxForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+
+              <div>
+                <label htmlFor="edit-tx-reason" className="block text-xs font-bold text-gray-700 mb-1">Reason for correction *</label>
+                <input id="edit-tx-reason" type="text" required placeholder="e.g. typed 50,000 instead of 5,000"
+                  value={txForm.reason} onChange={e => setTxForm(f => ({ ...f, reason: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+
+              {txEditPreview && (
+                <p className="rounded-xl bg-blue-50 border border-blue-100 px-3 py-2 text-xs font-bold text-blue-800" aria-live="polite">{txEditPreview}</p>
+              )}
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t border-gray-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 shrink-0">
+              <button type="button" onClick={() => setEditTx(null)} className="px-4 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl text-xs">Cancel</button>
+              <button type="submit" disabled={savingTx} className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold rounded-xl text-xs">
+                {savingTx ? 'Saving…' : 'Save correction'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Account Transactions History Modal */}
       {showHistoryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
@@ -929,6 +1087,16 @@ CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_
                           Bal After: Rs. {Number(tx.balance_after).toLocaleString()}
                         </p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => openEditTx(tx)}
+                        disabled={Boolean(txEditBlock(tx))}
+                        title={txEditBlock(tx) || 'Correct this entry'}
+                        aria-label="Correct this entry"
+                        className="ml-2 p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
                     </div>
                   )
                 })
