@@ -18,6 +18,20 @@ export default function EditPriceModal({
   const [errorMsg, setErrorMsg] = useState('')
   const [copiedImei, setCopiedImei] = useState(false)
 
+  // Details (all editable): phone identity or product name / SKU / brand
+  const [brand, setBrand] = useState('')
+  const [model, setModel] = useState('')
+  const [storage, setStorage] = useState('')
+  const [color, setColor] = useState('')
+  const [condition, setCondition] = useState('')
+  const [ptaStatus, setPtaStatus] = useState('')
+  const [imei1, setImei1] = useState('')
+  const [imei2, setImei2] = useState('')
+  const [batteryHealth, setBatteryHealth] = useState('')
+  const [deviceNotes, setDeviceNotes] = useState('')
+  const [name, setName] = useState('')
+  const [sku, setSku] = useState('')
+
   // Permission: Owner, Admin, Manager, Superadmin can view and edit cost prices
   const canViewCost = ['owner', 'admin', 'manager', 'superadmin'].includes(userRole)
 
@@ -38,6 +52,18 @@ export default function EditPriceModal({
       setAdditionalCosts(addCosts ? String(addCosts) : '0')
       setNotes('')
       setErrorMsg('')
+      setBrand(item.brand || '')
+      setModel(item.model || '')
+      setStorage(item.storage || '')
+      setColor(item.color || '')
+      setCondition(item.condition || '')
+      setPtaStatus(item.pta_status || '')
+      setImei1(item.imei_1 || '')
+      setImei2(item.imei_2 || '')
+      setBatteryHealth(item.battery_health !== undefined && item.battery_health !== null ? String(item.battery_health) : '')
+      setDeviceNotes(item.notes || '')
+      setName(item.name || '')
+      setSku(item.sku || '')
     }
   }, [item])
 
@@ -71,8 +97,58 @@ export default function EditPriceModal({
       setErrorMsg('Cost price cannot be negative.')
       return
     }
+    if (isPhone) {
+      if (!model.trim()) { setErrorMsg('Model is required.'); return }
+      if (!imei1.trim()) { setErrorMsg('IMEI 1 is required.'); return }
+      if (imei2.trim() && imei2.trim() === imei1.trim()) { setErrorMsg('IMEI 2 cannot be the same as IMEI 1.'); return }
+      const bh = batteryHealth.trim()
+      if (bh && (!/^\d{1,3}$/.test(bh) || Number(bh) > 100)) { setErrorMsg('Battery health must be a number from 0 to 100.'); return }
+    } else if (!name.trim()) {
+      setErrorMsg('Product name is required.')
+      return
+    }
 
     setSaving(true)
+
+    // Another phone of this shop already using the IMEI would make sales and
+    // buy-backs pick the wrong device: refuse before saving.
+    if (isPhone && navigator.onLine) {
+      const keys = [imei1.trim(), imei2.trim()].filter(Boolean)
+      const changed = keys.some(k => k !== (item.imei_1 || '') && k !== (item.imei_2 || ''))
+      if (changed) {
+        const clean = keys.map(k => k.replace(/[^0-9A-Za-z]/g, '')).filter(Boolean).join(',')
+        let dupQuery = supabase.from('phones').select('id, brand, model, imei_1, imei_2, status')
+          .or(`imei_1.in.(${clean}),imei_2.in.(${clean})`).neq('id', item.id)
+        if (item.shop_id) dupQuery = dupQuery.eq('shop_id', item.shop_id)
+        const { data: dups } = await dupQuery
+        if (dups && dups.length > 0) {
+          const d = dups[0]
+          setErrorMsg(`IMEI already used by ${d.brand || ''} ${d.model || ''} (${d.status || 'phone'} #${d.id}).`.replace(/\s+/g, ' '))
+          setSaving(false)
+          return
+        }
+      }
+    }
+
+    // Identity / detail fields, saved together with the prices
+    const detailUpdates = isPhone
+      ? {
+          brand: brand.trim() || null,
+          model: model.trim(),
+          storage: storage.trim() || null,
+          color: color.trim() || null,
+          condition: condition.trim() || null,
+          pta_status: ptaStatus.trim() || null,
+          imei_1: imei1.trim(),
+          imei_2: imei2.trim() || null,
+          battery_health: batteryHealth.trim() ? Number(batteryHealth.trim()) : null,
+          notes: deviceNotes.trim() || null
+        }
+      : {
+          name: name.trim(),
+          sku: sku.trim() || null,
+          brand: brand.trim() || null
+        }
 
     try {
       const isOnline = navigator.onLine
@@ -80,6 +156,7 @@ export default function EditPriceModal({
       if (isPhone) {
         // === UPDATE MOBILE PHONE ===
         const phoneUpdates = {
+          ...detailUpdates,
           sale_price: parsedSale,
           selling_price: parsedSale,
           expected_sale_price: parsedSale,
@@ -94,11 +171,19 @@ export default function EditPriceModal({
 
         // 1. Supabase Cloud Update
         if (isOnline) {
-          const { data, error } = await supabase
+          let { data, error } = await supabase
             .from('phones')
             .update(phoneUpdates)
             .eq('id', item.id)
             .select()
+
+          // Optional columns some databases do not have: retry without them
+          if (error && (error.code === 'PGRST204' || error.code === '42703' || /column/i.test(error.message || ''))) {
+            for (const optional of ['battery_health', 'selling_price', 'expected_sale_price']) delete phoneUpdates[optional]
+            const retry = await supabase.from('phones').update(phoneUpdates).eq('id', item.id).select()
+            data = retry.data
+            error = retry.error
+          }
 
           if (error) {
             console.warn('Supabase phone price update error:', error)
@@ -114,7 +199,7 @@ export default function EditPriceModal({
             await supabase.from('phone_history').insert([{
               phone_id: item.id,
               shop_id: item.shop_id,
-              action: 'PRICE_UPDATE',
+              action: 'DETAILS_UPDATE',
               previous_status: item.status || 'in_stock',
               new_status: item.status || 'in_stock',
               details: {
@@ -123,7 +208,9 @@ export default function EditPriceModal({
                 old_cost_price: item.cost_price,
                 new_cost_price: parsedCost,
                 additional_costs: parsedAddCosts,
-                reason: notes.trim() || 'Price adjusted via Inventory / Products'
+                old_details: { brand: item.brand, model: item.model, storage: item.storage, color: item.color, condition: item.condition, pta_status: item.pta_status, imei_1: item.imei_1, imei_2: item.imei_2, battery_health: item.battery_health },
+                new_details: detailUpdates,
+                reason: notes.trim() || 'Details edited via Inventory / Products'
               }
             }])
           } catch (_) {
@@ -149,6 +236,7 @@ export default function EditPriceModal({
       } else {
         // === UPDATE REGULAR PRODUCT / ACCESSORY ===
         const productUpdates = {
+          ...detailUpdates,
           sale_price: parsedSale,
           updated_at: new Date().toISOString()
         }
@@ -185,11 +273,12 @@ export default function EditPriceModal({
         onClose()
       }
     } catch (err) {
-      console.error('Error updating price:', err)
+      console.error('Error saving item details:', err)
       const errMsg = err?.message || String(err)
       if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
         // Resilient offline fallback
         const updates = {
+          ...detailUpdates,
           sale_price: parsedSale,
           updated_at: new Date().toISOString()
         }
@@ -204,9 +293,9 @@ export default function EditPriceModal({
 
         if (onSuccess) onSuccess({ ...item, ...updates })
         onClose()
-        alert('Offline mode: Price updated locally and queued for cloud sync! 🔄')
+        alert('Offline mode: Changes saved locally and queued for cloud sync! 🔄')
       } else {
-        setErrorMsg('Failed to update price: ' + errMsg)
+        setErrorMsg((/duplicate key|uq_shop_imei/i.test(errMsg) ? 'This IMEI is already used by another phone. ' : 'Failed to save changes: ') + errMsg)
       }
     } finally {
       setSaving(false)
@@ -233,7 +322,7 @@ export default function EditPriceModal({
             </div>
             <div className="min-w-0">
               <h2 className="text-base sm:text-lg font-black text-gray-900 dark:text-gray-100 truncate">
-                {isPhone ? 'Edit Mobile Phone Price' : 'Edit Product Price'}
+                {isPhone ? 'Edit Mobile Phone' : 'Edit Product'}
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                 {isPhone ? phoneTitle : (item.name || 'Catalog Item')}
@@ -258,11 +347,11 @@ export default function EditPriceModal({
             </div>
           )}
 
-          {/* Device / Product Snapshot Badge Card */}
-          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 space-y-2">
+          {/* Details: every field editable */}
+          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-[10px]">
-                {isPhone ? 'Phone Specification' : 'Item SKU / Reference'}
+                {isPhone ? 'Phone Details' : 'Product Details'}
               </span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                 item.status === 'in_stock' || item.status === 'active'
@@ -273,42 +362,79 @@ export default function EditPriceModal({
               </span>
             </div>
 
-            <div className="text-sm font-black text-gray-900 dark:text-gray-100 flex items-center justify-between">
-              <span>{isPhone ? `${phoneTitle} ${item.storage ? `(${item.storage})` : ''}` : item.name}</span>
-              {item.color && (
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize">
-                  {item.color}
-                </span>
-              )}
-            </div>
-
-            {isPhone && item.imei_1 && (
-              <div className="flex items-center justify-between pt-1 border-t border-gray-200/60 dark:border-gray-700/60 text-xs">
-                <span className="text-gray-500 font-medium">IMEI-1:</span>
-                <button
-                  type="button"
-                  onClick={handleCopyImei}
-                  className="font-mono font-bold text-gray-800 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 cursor-pointer transition"
-                  title="Click to copy IMEI"
-                >
-                  <span>{item.imei_1}</span>
-                  {copiedImei ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} className="text-gray-400" />}
-                </button>
+            {isPhone ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="ep-brand" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Brand</label>
+                  <input id="ep-brand" type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="e.g. Samsung" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                </div>
+                <div>
+                  <label htmlFor="ep-model" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Model *</label>
+                  <input id="ep-model" type="text" required value={model} onChange={e => setModel(e.target.value)} placeholder="e.g. Galaxy S23" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                </div>
+                <div>
+                  <label htmlFor="ep-storage" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Storage</label>
+                  <input id="ep-storage" type="text" list="ep-storage-options" value={storage} onChange={e => setStorage(e.target.value)} placeholder="e.g. 128GB" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                  <datalist id="ep-storage-options">
+                    {['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(o => <option key={o} value={o} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label htmlFor="ep-color" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Color</label>
+                  <input id="ep-color" type="text" value={color} onChange={e => setColor(e.target.value)} placeholder="e.g. Black" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                </div>
+                <div>
+                  <label htmlFor="ep-condition" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Condition</label>
+                  <input id="ep-condition" type="text" list="ep-condition-options" value={condition} onChange={e => setCondition(e.target.value)} placeholder="e.g. Used" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                  <datalist id="ep-condition-options">
+                    {['New', 'Used', 'Refurbished', 'Used - Like New', 'Used - Good', 'Used - Fair', 'Damaged'].map(o => <option key={o} value={o} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label htmlFor="ep-pta" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">PTA Status</label>
+                  <input id="ep-pta" type="text" list="ep-pta-options" value={ptaStatus} onChange={e => setPtaStatus(e.target.value)} placeholder="e.g. PTA Approved" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                  <datalist id="ep-pta-options">
+                    {['PTA Approved', 'Non-PTA', 'JV', 'CPID / Patch', 'CPID Approved', 'VIP Approved', 'Software Patch', '60-Days Extension'].map(o => <option key={o} value={o} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label htmlFor="ep-imei1" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>IMEI 1 *</span>
+                    {item.imei_1 && (
+                      <button type="button" onClick={handleCopyImei} className="normal-case font-semibold text-gray-400 hover:text-blue-600 flex items-center gap-1 cursor-pointer" title="Copy saved IMEI">
+                        {copiedImei ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />} Copy
+                      </button>
+                    )}
+                  </label>
+                  <input id="ep-imei1" type="text" inputMode="numeric" required maxLength={20} value={imei1} onChange={e => setImei1(e.target.value.replace(/\s+/g, ''))} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition font-mono" />
+                </div>
+                <div>
+                  <label htmlFor="ep-imei2" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">IMEI 2</label>
+                  <input id="ep-imei2" type="text" inputMode="numeric" maxLength={20} value={imei2} onChange={e => setImei2(e.target.value.replace(/\s+/g, ''))} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition font-mono" />
+                </div>
+                <div>
+                  <label htmlFor="ep-battery" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Battery Health (%)</label>
+                  <input id="ep-battery" type="number" min="0" max="100" inputMode="numeric" value={batteryHealth} onChange={e => setBatteryHealth(e.target.value)} placeholder="e.g. 89" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="ep-notes" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Device Notes</label>
+                  <input id="ep-notes" type="text" value={deviceNotes} onChange={e => setDeviceNotes(e.target.value)} placeholder="e.g. Box + charger, minor scratch" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                </div>
               </div>
-            )}
-
-            {isPhone && (item.pta_status || item.condition) && (
-              <div className="flex items-center gap-2 pt-1 text-[11px] font-bold">
-                {item.pta_status && (
-                  <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 rounded-md uppercase">
-                    PTA: {item.pta_status}
-                  </span>
-                )}
-                {item.condition && (
-                  <span className="px-2 py-0.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md uppercase">
-                    {item.condition}
-                  </span>
-                )}
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label htmlFor="ep-name" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Product Name *</label>
+                  <input id="ep-name" type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                </div>
+                <div>
+                  <label htmlFor="ep-sku" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">SKU / Barcode</label>
+                  <input id="ep-sku" type="text" value={sku} onChange={e => setSku(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition font-mono" />
+                </div>
+                <div>
+                  <label htmlFor="ep-pbrand" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Brand</label>
+                  <input id="ep-pbrand" type="text" value={brand} onChange={e => setBrand(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
+                </div>
               </div>
             )}
           </div>
@@ -424,7 +550,7 @@ export default function EditPriceModal({
             {/* Note / Adjustment Reason */}
             <div>
               <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1">
-                Reason / Note (Optional)
+                Reason for change (Optional, kept in history)
               </label>
               <input
                 type="text"
@@ -459,7 +585,7 @@ export default function EditPriceModal({
               ) : (
                 <>
                   <CheckCircle2 size={15} />
-                  <span>Update Price</span>
+                  <span>Save Changes</span>
                 </>
               )}
             </button>
