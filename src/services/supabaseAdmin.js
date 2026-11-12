@@ -1,5 +1,21 @@
 // Privileged admin operations are proxied through the authenticated server API.
 // Never place a Supabase service-role key in browser code.
+
+// The admin API answers with JSON. Anything else (an empty 404/405 page) means the API
+// server is not running or not deployed for this site: say so instead of a JSON crash.
+async function readAdminResponse(response) {
+  const text = await response.text()
+  let body = null
+  try { body = text ? JSON.parse(text) : null } catch { body = null }
+  if (body === null) {
+    const hint = [404, 405, 501, 502, 503, 504].includes(response.status)
+      ? 'The admin server is not reachable on this site (/api). Deploy it (api/index.js on Vercel) or start it with npm run api.'
+      : 'Unexpected reply from the admin server.'
+    return { ok: false, body: { error: `${hint} (HTTP ${response.status})`, code: `HTTP_${response.status}` } }
+  }
+  return { ok: response.ok, body }
+}
+
 class AdminQuery {
   constructor(table) {
     this.payload = { table, method: 'GET', select: '*', filters: [], orders: [] }
@@ -33,8 +49,8 @@ class AdminQuery {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('session_token') || ''}` },
         body: JSON.stringify(this.payload)
       })
-      const result = await response.json()
-      return response.ok ? { data: result.data ?? null, error: null } : { data: null, error: { message: result.error || 'Admin request failed', code: result.code } }
+      const { ok, body: result } = await readAdminResponse(response)
+      return ok ? { data: result.data ?? null, error: null } : { data: null, error: { message: result.error || 'Admin request failed', code: result.code } }
     } catch (error) { return { data: null, error: { message: error.message || 'Network error' } } }
   }
 }
@@ -46,8 +62,8 @@ export const supabaseAdmin = {
       const response = await fetch(`/api/admin/rpc/${encodeURIComponent(name)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('session_token') || ''}` }, body: JSON.stringify(args)
       })
-      const result = await response.json()
-      return response.ok ? { data: result.data ?? null, error: null } : { data: null, error: { message: result.error || 'Admin request failed', code: result.code } }
+      const { ok, body: result } = await readAdminResponse(response)
+      return ok ? { data: result.data ?? null, error: null } : { data: null, error: { message: result.error || 'Admin request failed', code: result.code } }
     } catch (error) { return { data: null, error: { message: error.message || 'Network error' } } }
   },
   auth: { admin: {
@@ -59,8 +75,8 @@ export const supabaseAdmin = {
 async function adminAuthRequest(action, body) {
   try {
     const response = await fetch(`/api/admin/auth/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('session_token') || ''}` }, body: JSON.stringify(body) })
-    const result = await response.json()
-    return response.ok ? { data: result.data, error: null } : { data: null, error: { message: result.error || 'Admin request failed' } }
+    const { ok, body: result } = await readAdminResponse(response)
+    return ok ? { data: result.data, error: null } : { data: null, error: { message: result.error || 'Admin request failed' } }
   } catch (error) { return { data: null, error: { message: error.message || 'Network error' } } }
 }
 export default supabaseAdmin

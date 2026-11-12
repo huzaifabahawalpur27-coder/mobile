@@ -31,14 +31,24 @@ const adminRpcs = new Set([
 const rateBuckets = new Map()
 
 app.disable('x-powered-by')
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) return callback(null, true)
-    return callback(new Error('Origin is not allowed'))
-  },
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  maxAge: 600
+// Allowed: no Origin (server-to-server), the configured APP_ORIGINS, and the site the API
+// is served from (same origin, e.g. https://mobile.edgexsuite.com calling its own /api).
+const isSameOrigin = (origin, req) => {
+  try {
+    const host = req.get('x-forwarded-host') || req.get('host')
+    return Boolean(host) && new URL(origin).host === host
+  } catch { return false }
+}
+app.use(cors((req, callback) => {
+  const origin = req.get('origin')
+  const allowed = !origin || allowedOrigins.has(origin) || isSameOrigin(origin, req)
+  if (!allowed) return callback(new Error('Origin is not allowed'))
+  return callback(null, {
+    origin: Boolean(origin),
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 600
+  })
 }))
 app.use(express.json({ limit: '1mb' }))
 
@@ -225,4 +235,10 @@ app.use((err, _req, res, _next) => {
   return res.status(500).json({ error: 'Request failed' })
 })
 
-app.listen(port, () => console.log(`EdgeX API listening on port ${port}`))
+// Local / VPS: run as a server (npm run api). On Vercel the same app is served by
+// api/index.js as a serverless function, so it must not listen.
+if (!process.env.VERCEL) {
+  app.listen(port, () => console.log(`EdgeX API listening on port ${port}`))
+}
+
+export default app
