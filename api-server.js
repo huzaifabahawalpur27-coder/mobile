@@ -23,7 +23,11 @@ const adminTables = new Set([
   'shop_payments', 'shops', 'subscription_plans', 'suppliers', 'users', 'sessions',
   'system_configs', 'support_tickets'
 ])
-const adminRpcs = new Set(['get_global_growth_stats', 'get_top_performing_shops', 'get_inactive_shops'])
+const adminRpcs = new Set([
+  'get_global_growth_stats', 'get_top_performing_shops', 'get_inactive_shops',
+  // Shop notifications (sql/shop_notifications.sql): service role only
+  'push_shop_notification', 'list_notification_campaigns', 'withdraw_notification_campaign'
+])
 const rateBuckets = new Map()
 
 app.disable('x-powered-by')

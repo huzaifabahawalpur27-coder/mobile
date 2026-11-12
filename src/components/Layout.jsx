@@ -14,6 +14,9 @@ import {
 } from 'lucide-react'
 import { getPendingWhatsAppQueueCount } from '../services/whatsappQueueService'
 import BroadcastBanner from './BroadcastBanner'
+import useShopNotifications from '../hooks/useShopNotifications'
+import { ShopUpdatesSection, ShopUpdatePopup } from './ShopNotifications'
+import { canDeleteNotifications } from '../services/notificationService'
 
 let lastLayoutFetchTime = 0
 
@@ -50,6 +53,17 @@ function Layout({ children }) {
   const [pendingSyncCount, setPendingSyncCount] = useState(0)
   const dropdownRef = useRef(null)
   const userDropdownRef = useRef(null)
+
+  // Updates pushed from the superadmin portal (bell list + one-time popup)
+  const shopUpdates = useShopNotifications(user)
+  const { clearNew: clearNewUpdates } = shopUpdates
+  const wasBellOpen = useRef(false)
+  useEffect(() => {
+    // "New" highlights last until the bell list has been opened and closed once
+    if (wasBellOpen.current && !showNotifications) clearNewUpdates()
+    wasBellOpen.current = showNotifications
+  }, [showNotifications, clearNewUpdates])
+  const bellCount = lowStock.length + shopUpdates.newCount
 
   const fetchWaQueueCount = async () => {
     if (!user?.shop_id) return
@@ -500,28 +514,37 @@ function Layout({ children }) {
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
+                aria-label={`Notifications${bellCount ? ` (${bellCount})` : ''}`}
+                aria-expanded={showNotifications}
                 className={`p-2 rounded-full transition relative group ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
               >
-                <div className={`${lowStock.length > 0 ? 'animate-bounce-slow' : ''}`}>
+                <div className={`${bellCount > 0 ? 'animate-bounce-slow' : ''}`}>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
                 </div>
-                {lowStock.length > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white ring-1 ring-red-100">
-                    {lowStock.length}
+                {bellCount > 0 && (
+                  <span className={`absolute top-1.5 right-1.5 min-w-4 h-4 px-0.5 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white ${shopUpdates.newCount > 0 ? 'bg-blue-600 ring-1 ring-blue-100' : 'bg-red-600 ring-1 ring-red-100'}`}>
+                    {bellCount > 99 ? '99+' : bellCount}
                   </span>
                 )}
               </button>
 
               {/* Notification Dropdown */}
               {showNotifications && (
-                <div className="absolute right-0 mt-3 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50 origin-top-right">
+                <div className="fixed left-4 right-4 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-3 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50 origin-top-right">
                   <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
-                    <h3 className="font-bold text-gray-800">Alerts</h3>
-                    <span className="text-[10px] font-black text-white bg-red-600 px-2 py-0.5 rounded-full uppercase tracking-wider">{lowStock.length} Now</span>
+                    <h3 className="font-bold text-gray-800">Notifications</h3>
+                    <span className="text-[10px] font-black text-white bg-red-600 px-2 py-0.5 rounded-full uppercase tracking-wider">{lowStock.length} Low stock</span>
                   </div>
-                  <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                  <div className="max-h-[70dvh] sm:max-h-[28rem] overflow-y-auto custom-scrollbar">
+                    <ShopUpdatesSection
+                      items={shopUpdates.items}
+                      newIds={shopUpdates.newIds}
+                      canDelete={canDeleteNotifications(user)}
+                      onNavigate={() => setShowNotifications(false)}
+                      onDelete={shopUpdates.remove}
+                    />
                     {lowStock.length === 0 ? (
                       <div className="p-10 text-center">
                         <span className="text-4xl mb-2 block">✅</span>
@@ -697,6 +720,12 @@ function Layout({ children }) {
 
         {/* Global SuperAdmin Broadcast Banner */}
         <BroadcastBanner />
+        <ShopUpdatePopup
+          item={shopUpdates.popup?.item}
+          more={shopUpdates.popup?.more || 0}
+          onClose={shopUpdates.closePopup}
+          onShowAll={() => { shopUpdates.closePopup(); setShowNotifications(true) }}
+        />
 
         {sessionDisconnected && (
           <div role="alert" className="px-4 py-2.5 bg-red-50 text-red-950 border-b border-red-200 text-sm flex flex-wrap items-center justify-between gap-x-4 gap-y-2">

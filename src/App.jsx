@@ -49,6 +49,7 @@ const Backups = lazy(() => import('./pages/admin/Backups'))
 const AuditLogs = lazy(() => import('./pages/admin/AuditLogs'))
 const EmailBroadcast = lazy(() => import('./pages/admin/EmailBroadcast'))
 const ResetPassword = lazy(() => import('./pages/admin/ResetPassword'))
+const ShopNotificationsAdmin = lazy(() => import('./pages/admin/ShopNotifications'))
 
 function PageFallback() {
   return (
@@ -95,6 +96,7 @@ function App() {
                 <Route path="backups" element={<Backups />} />
                 <Route path="audit-logs" element={<AuditLogs />} />
                 <Route path="broadcast" element={<EmailBroadcast />} />
+                <Route path="notifications" element={<ShopNotificationsAdmin />} />
                 <Route path="*" element={<Navigate to="/admin" replace />} />
               </Route>
               <Route path="/admin/reset-password" element={<ResetPassword />} />

@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Store, LogOut, ShieldAlert, CreditCard, Activity,
-  Send, Zap, LifeBuoy, TrendingUp, Menu, X, ChevronRight, DatabaseBackup
+  Send, Zap, LifeBuoy, TrendingUp, Menu, X, ChevronRight, DatabaseBackup, Bell
 } from 'lucide-react'
 
 const NAV_SECTIONS = [
@@ -29,6 +29,7 @@ const NAV_SECTIONS = [
       { name: 'Shop Backups', path: '/admin/backups', icon: DatabaseBackup },
       { name: 'System Logs', path: '/admin/audit-logs', icon: Activity },
       { name: 'Email Broadcasts', path: '/admin/broadcast', icon: Send },
+      { name: 'Shop Notifications', path: '/admin/notifications', icon: Bell },
     ]
   },
 ]
