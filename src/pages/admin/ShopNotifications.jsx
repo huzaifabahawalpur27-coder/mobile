@@ -32,6 +32,11 @@ const MODULES = [
 // Recent releases, ready to push (review and edit before sending)
 const RECENT_UPDATES = [
   {
+    title: 'Edit phones and products fully, not just prices',
+    body: 'The edit button now lets you change everything about an item, not only its price. Phones: brand, model, storage, colour, condition, PTA status, IMEI 1 and IMEI 2, battery health and notes. Products: name, SKU and brand. Changes are saved together with the prices, and if you type an IMEI that another phone in your shop already uses, the app warns you instead of saving a duplicate.\n\nاب ایڈٹ بٹن سے فون اور پروڈکٹ کی ہر تفصیل بدلی جا سکتی ہے، صرف قیمت نہیں۔',
+    path: '/products', category: 'fix'
+  },
+  {
     title: 'Correct a mistaken bank or cash entry',
     body: 'Entered a wrong amount or the wrong account? Tap the pencil button on any entry in Accounts. The balance adjusts by the difference only, and the original amount and your reason are kept in the entry\'s note.',
     path: '/accounts', category: 'feature'

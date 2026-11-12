@@ -8,7 +8,7 @@ async function readAdminResponse(response) {
   let body = null
   try { body = text ? JSON.parse(text) : null } catch { body = null }
   if (body === null) {
-    const hint = [404, 405, 501, 502, 503, 504].includes(response.status)
+    const hint = [404, 405, 500, 501, 502, 503, 504].includes(response.status)
       ? 'The admin server is not reachable on this site (/api). Deploy it (api/index.js on Vercel) or start it with npm run api.'
       : 'Unexpected reply from the admin server.'
     return { ok: false, body: { error: `${hint} (HTTP ${response.status})`, code: `HTTP_${response.status}` } }

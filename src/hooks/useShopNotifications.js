@@ -51,6 +51,8 @@ export default function useShopNotifications(user) {
     }
   }, [enabled, shopId, load])
 
+  const closePopup = useCallback(() => setPopup(null), [])
+
   const remove = useCallback(async (id) => {
     await deleteShopNotification(shopId, id)
     setItems(prev => prev.filter(n => String(n.id) !== String(id)))
@@ -62,7 +64,7 @@ export default function useShopNotifications(user) {
     newIds,
     newCount: items.filter(n => newIds.has(String(n.id))).length,
     popup,
-    closePopup: () => setPopup(null),
+    closePopup,
     clearNew: () => setNewIds(new Set()),
     remove,
     refresh: () => load(true)
