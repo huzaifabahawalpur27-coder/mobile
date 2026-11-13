@@ -7,6 +7,7 @@ import { printHTML, getShopBranding, brandedA4Header } from '../utils/printUtils
 import { db, addToSyncQueue, moveToTrash } from '../services/db'
 import PasswordModal from '../components/PasswordModal'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 function Customers() {
   const { user } = useAuth()
@@ -112,7 +113,7 @@ function Customers() {
         return
       }
 
-      if (!confirm(`Import ${data.length} customers?`)) return
+      if (!await confirmDialog(`Import ${data.length} customers?`)) return
 
       setLoading(true)
       const formatted = data.map(row => ({
@@ -129,7 +130,7 @@ function Customers() {
       const skipped = formatted.length - unique.length
 
       if (unique.length === 0) {
-        notify('Tamam rows pehle se exist karti hain (phone number match). Kuch import nahi hua.')
+        notify('Nothing imported: every row matches a customer you already have (same phone number).')
         setLoading(false)
         if (fileInputRef.current) fileInputRef.current.value = ''
         return
@@ -138,7 +139,7 @@ function Customers() {
       const { error } = await supabase.from('customers').insert(unique)
       if (error) notify(error.message)
       else {
-        notify(`Customers import ho gaye! ✅ ${unique.length} add${skipped ? `, ${skipped} skip (duplicate phone)` : ''}`)
+        notify(`${unique.length} customers imported${skipped ? `, ${skipped} skipped (duplicate phone)` : ''}.`, 'success')
         fetchCustomers()
       }
       setLoading(false)
@@ -300,7 +301,7 @@ function Customers() {
     setSelected([])
 
     if (failCount > 0) {
-      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh customers ke sales records abhi bhi database mein hain.\n\nSahi order:\n1. Sale Items delete karein (Trash Bin)\n2. Sales delete karein\n3. Phir yeh customers delete ho jayenge`)
+      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\nThese customers still have sales on record.\n\nDelete in this order:\n1. Sale items (Trash Bin)\n2. Sales\n3. Then these customers`)
     } else if (successCount > 0) {
       notify(`🗑️ ${successCount} customer(s) moved to Trash!`)
     }
@@ -335,7 +336,7 @@ function Customers() {
   const handlePrintOutstanding = () => {
     const outstanding = customers.filter(c => c.outstanding_balance > 0)
     if (outstanding.length === 0) {
-      notify('Sab customers ka balance 0 hai!')
+      notify('No customer has an outstanding balance.')
       return
     }
 
@@ -442,19 +443,19 @@ function Customers() {
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-gray-700 font-medium mb-1">Name *</label>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+              <input aria-label="Name" type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                 required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g. Ahmed Khan" />
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Phone</label>
-              <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              <input aria-label="Phone" type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="03001234567" />
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Address</label>
-              <input type="text" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })}
+              <input aria-label="Address" type="text" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="City, Pakistan" />
             </div>
@@ -476,7 +477,7 @@ function Customers() {
         <p className="text-gray-500">Loading...</p>
       ) : customers.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-400 text-lg">No customers yet</p>
+          <p className="text-gray-500 text-lg">No customers yet</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -508,12 +509,12 @@ function Customers() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-bold text-gray-900 break-words">{c.name}</span>
-                          {seg && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${seg.bg}`}>{seg.label}</span>}
+                          {seg && <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${seg.bg}`}>{seg.label}</span>}
                         </div>
                         <p className="mt-0.5 text-sm text-gray-500">{c.phone || 'No phone'}{c.address ? ` · ${c.address}` : ''}</p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-[10px] font-bold uppercase text-gray-400">Balance</p>
+                        <p className="text-xs font-bold uppercase text-gray-500">Balance</p>
                         <p className={`font-black ${owes ? 'text-red-600' : 'text-green-600'}`}>Rs. {Number(c.outstanding_balance || 0).toLocaleString()}</p>
                       </div>
                     </div>
@@ -569,7 +570,7 @@ function Customers() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-800">{c.name}</span>
-                        {(() => { const seg = getSegment(c); return seg ? <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${seg.bg}`}>{seg.label}</span> : null })()}
+                        {(() => { const seg = getSegment(c); return seg ? <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${seg.bg}`}>{seg.label}</span> : null })()}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-gray-500 whitespace-nowrap">{c.phone || '-'}</td>

@@ -76,7 +76,7 @@ function ProtectedRoute({ children, allowedRoles, requiredModule }) {
   if (!user) return <Navigate to="/" replace />
 
   if (isSuspended) {
-    alert('Aap ka account fee na-adaiyegy ki wajah se muattal (suspended) kar diya gaya hai. Baraye meharbani support se rabta karein: 0301-2616367')
+    alert('This account is suspended because the subscription fee is unpaid. Contact support to restore it: 0301-2616367')
     logout()
     return <Navigate to="/" replace />
   }
@@ -112,7 +112,7 @@ function ProtectedRoute({ children, allowedRoles, requiredModule }) {
         <div className="text-center">
           <p className="text-4xl mb-3">🚫</p>
           <h2 className="text-xl font-bold text-gray-700">Access Denied</h2>
-          <p className="text-gray-400 mt-1">Aap ka is page tak access nahi hai.</p>
+          <p className="text-gray-500 mt-1">You do not have access to this page.</p>
         </div>
       </div>
     )

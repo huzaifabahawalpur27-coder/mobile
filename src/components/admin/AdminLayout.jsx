@@ -84,7 +84,7 @@ export default function AdminLayout() {
             </div>
             <div>
               <h1 className="font-black text-white text-sm leading-tight uppercase tracking-wider">EdgeX Admin</h1>
-              <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">Global Control</p>
+              <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">Global Control</p>
             </div>
           </div>
           <button onClick={closeSidebar} className="lg:hidden text-slate-500 hover:text-white p-1 rounded-lg transition">
@@ -96,7 +96,7 @@ export default function AdminLayout() {
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
           {NAV_SECTIONS.map(section => (
             <div key={section.label}>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 px-3 mb-1.5">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-500 px-3 mb-1.5">
                 {section.label}
               </p>
               <div className="space-y-0.5">
@@ -128,7 +128,7 @@ export default function AdminLayout() {
         {/* Footer */}
         <div className="p-3 border-t border-slate-800">
           <div className="bg-slate-800 rounded-xl px-4 py-3 mb-2">
-            <p className="text-[10px] text-slate-500 font-bold uppercase mb-0.5">Signed in as</p>
+            <p className="text-xs text-slate-500 font-bold uppercase mb-0.5">Signed in as</p>
             <p className="text-xs text-white font-semibold truncate">{user?.email || user?.username}</p>
           </div>
           <button
@@ -190,7 +190,7 @@ export default function AdminLayout() {
                 className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-slate-400 transition`}
               >
                 <Icon size={20} />
-                <span className="text-[10px] font-bold">{tab.name}</span>
+                <span className="text-xs font-bold">{tab.name}</span>
               </button>
             )
           }
@@ -204,7 +204,7 @@ export default function AdminLayout() {
               }`}
             >
               <Icon size={20} />
-              <span className="text-[10px] font-bold">{tab.name}</span>
+              <span className="text-xs font-bold">{tab.name}</span>
               {active && <span className="absolute bottom-0 h-0.5 w-8 bg-blue-600 rounded-full" />}
             </Link>
           )

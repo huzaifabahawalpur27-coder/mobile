@@ -12,8 +12,10 @@ import {
 } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
 import AccountStatementModal from '../components/AccountStatementModal'
-import { confirmAmount } from '../utils/moneyMath'
+import { unusualAmount } from '../utils/moneyMath'
+import { confirmUnusualAmount } from '../utils/dialog'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 export default function Accounts() {
   const { user } = useAuth()
@@ -125,7 +127,7 @@ Financial Protection: You cannot delete an account with existing funds. Please t
       return
     }
 
-    if (confirm(`Are you sure you want to delete ${acc.account_name} (${acc.bank_name})? Any past purchase references will remain in logs.`)) {
+    if (await confirmDialog(`Are you sure you want to delete ${acc.account_name} (${acc.bank_name})? Any past purchase references will remain in logs.`)) {
       try {
         await deleteBankAccount(acc.id, user.shop_id)
         setMessage({ type: 'success', text: `${acc.account_name} deleted successfully.` })
@@ -154,7 +156,7 @@ Financial Protection: You cannot delete an account with existing funds. Please t
     const pastManual = transactions
       .filter(t => String(t.account_id) === String(selectedAccount?.id) && ['deposit', 'withdrawal'].includes(String(t.reference_type || '').toLowerCase()))
       .map(t => t.amount)
-    if (!confirmAmount(adjustForm.amount, pastManual, adjustForm.type === 'DEPOSIT' ? 'Deposit' : 'Withdrawal')) return
+    if (!await confirmUnusualAmount(adjustForm.amount, unusualAmount(adjustForm.amount, pastManual), adjustForm.type === 'DEPOSIT' ? 'Deposit' : 'Withdrawal')) return
     if (!selectedAccount) return
     setAdjusting(true)
     try {
@@ -282,7 +284,7 @@ Financial Protection: You cannot delete an account with existing funds. Please t
     const amt = Number(txForm.amount)
     if (!(amt > 0)) { notify('Please enter an amount greater than 0.'); return }
     if (!txForm.reason.trim()) { notify('Please write why this entry is being corrected.'); return }
-    if (!confirm(`Correct this entry?\n\n${txEditPreview}\n\nThe original amount and your reason are kept in the entry's note.`)) return
+    if (!await confirmDialog(`Correct this entry?\n\n${txEditPreview}\n\nThe original amount and your reason are kept in the entry's note.`)) return
     setSavingTx(true)
     try {
       await editBankTransaction({
@@ -436,7 +438,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
             : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
         }`}>
           <span>{message.text}</span>
-          <button onClick={() => setMessage({ type: '', text: '' })} className="font-bold text-gray-400 hover:text-gray-600 ml-4">✕</button>
+          <button onClick={() => setMessage({ type: '', text: '' })} className="font-bold text-gray-500 hover:text-gray-600 ml-4">✕</button>
         </div>
       )}
 
@@ -452,7 +454,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
             <div className="text-3xl font-black tracking-tight">
               Rs. {totalBalance.toLocaleString()}
             </div>
-            <p className="text-[11px] text-blue-200/80 font-medium pt-1">
+            <p className="text-xs text-blue-200/80 font-medium pt-1">
               Combined balance across {accounts.length} business account{accounts.length === 1 ? '' : 's'}
             </p>
           </div>
@@ -463,7 +465,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm space-y-2">
           <div className="flex items-center justify-between text-gray-500 text-xs font-bold uppercase tracking-wider">
             <span>Primary Settlement Account</span>
-            <span className="text-amber-500 font-bold flex items-center gap-1 text-[11px]">
+            <span className="text-amber-500 font-bold flex items-center gap-1 text-xs">
               <Star className="w-3.5 h-3.5 fill-amber-400" /> Default
             </span>
           </div>
@@ -476,7 +478,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
               </p>
             </div>
           ) : (
-            <p className="text-xs text-gray-400 italic py-3">No default account set. Add an account to get started.</p>
+            <p className="text-xs text-gray-500 italic py-3">No default account set. Add an account to get started.</p>
           )}
         </div>
 
@@ -491,12 +493,12 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
             </p>
           </div>
           <div className="pt-3 flex items-center justify-between border-t border-gray-100 mt-2">
-            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
+            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
               ● Live Sync Ready
             </span>
             <button
               onClick={() => setShowSqlModal(true)}
-              className="text-[11px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-1"
+              className="text-xs text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-1"
             >
               <FileText className="w-3.5 h-3.5" /> Supabase SQL
             </button>
@@ -576,7 +578,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
                         <div className="flex items-center gap-1.5">
                           <h3 className="font-extrabold text-gray-900 text-base truncate">{acc.account_name}</h3>
                           {isDefault && (
-                            <span className="shrink-0 bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-blue-200">
+                            <span className="shrink-0 bg-blue-50 text-blue-700 text-xs font-black px-2 py-0.5 rounded-full border border-blue-200">
                               Primary
                             </span>
                           )}
@@ -599,7 +601,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
                         )}
                         <button
                           onClick={() => openEdit(acc)}
-                          className="p-1 text-gray-400 hover:text-blue-600 transition cursor-pointer"
+                          className="p-1 text-gray-500 hover:text-blue-600 transition cursor-pointer"
                           title="Edit Details"
                         >
                           <Edit3 className="w-4 h-4" />
@@ -616,13 +618,13 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
                     {/* Balance */}
                     <div className="my-4 bg-gray-50 rounded-xl p-3 border border-gray-100">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Available Balance</span>
+                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Available Balance</span>
                       <p className={`text-2xl font-black font-mono ${
                         acc.current_balance < 0 ? 'text-red-600' : 'text-gray-900'
                       }`}>
                         Rs. {acc.current_balance.toLocaleString()}
                       </p>
-                      <div className="flex justify-between items-center text-[10px] text-gray-400 font-semibold mt-1 pt-1 border-t border-gray-200/50">
+                      <div className="flex justify-between items-center text-xs text-gray-500 font-semibold mt-1 pt-1 border-t border-gray-200/50">
                         <span>Opening: Rs. {acc.opening_balance.toLocaleString()}</span>
                         <span className="text-emerald-600 font-bold">● Active</span>
                       </div>
@@ -671,7 +673,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
               <History className="w-4 h-4 text-blue-600" />
               Recent Bank Deductions & Entries
             </h3>
-            <span className="text-xs text-gray-400 font-medium">Last {transactions.length} records</span>
+            <span className="text-xs text-gray-500 font-medium">Last {transactions.length} records</span>
           </div>
 
           <div className="divide-y divide-gray-100">
@@ -701,7 +703,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
                       <p className="font-bold text-gray-800 truncate">
                         {tx.description || (isCredit ? 'Deposit' : 'Purchase Payment')}
                       </p>
-                      <p className="text-[10px] text-gray-400 font-medium">
+                      <p className="text-xs text-gray-500 font-medium">
                         {acc ? `${acc.account_name} (${acc.bank_name})` : 'Bank Account'} • {dateStr}
                       </p>
                     </div>
@@ -711,7 +713,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
                     <p className={`font-mono font-bold text-sm ${isCredit ? 'text-emerald-600' : 'text-gray-900'}`}>
                       {isCredit ? '+' : '-'}Rs. {Number(tx.amount).toLocaleString()}
                     </p>
-                    <p className="text-[10px] text-gray-400 font-mono">
+                    <p className="text-xs text-gray-500 font-mono">
                       Bal: Rs. {Number(tx.balance_after).toLocaleString()}
                     </p>
                   </div>
@@ -721,7 +723,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
                     disabled={Boolean(txEditBlock(tx))}
                     title={txEditBlock(tx) || 'Correct this entry'}
                     aria-label="Correct this entry"
-                    className="ml-2 p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                    className="ml-2 p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
                   >
                     <Edit3 className="w-4 h-4" />
                   </button>
@@ -734,14 +736,14 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
       {/* Adjust / Deposit / Withdraw Modal */}
       {showAdjustModal && selectedAccount && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <h3 className="font-extrabold text-gray-900 text-base">Adjust Funds: {selectedAccount.account_name}</h3>
                 <p className="text-xs text-gray-500 font-semibold">{selectedAccount.bank_name} • Current Bal: Rs. {selectedAccount.current_balance.toLocaleString()}</p>
               </div>
-              <button onClick={() => setShowAdjustModal(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              <button onClick={() => setShowAdjustModal(false)} className="text-gray-500 hover:text-gray-600 text-xl font-bold">✕</button>
             </div>
 
             <form onSubmit={handleAdjustSubmit} className="p-6 space-y-4 text-xs">
@@ -775,7 +777,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
               <div>
                 <label className="block font-bold text-gray-700 mb-1.5">Amount (Rs.) *</label>
-                <input
+                <input aria-label="Amount (Rs.)"
                   type="number"
                   min="1"
                   required
@@ -789,7 +791,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
               <div>
                 <label className="block font-bold text-gray-700 mb-1.5">Description / Note</label>
-                <input
+                <input aria-label="Description / Note"
                   type="text"
                   placeholder="e.g. Cash deposited from shop vault, ATM withdrawal"
                   value={adjustForm.notes}
@@ -825,20 +827,20 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
       {/* Transfer Funds Modal */}
       {showTransferModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ArrowLeftRight className="w-5 h-5 text-indigo-700" />
                 <h3 className="font-extrabold text-indigo-900 text-base">Transfer Between Accounts</h3>
               </div>
-              <button onClick={() => setShowTransferModal(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              <button onClick={() => setShowTransferModal(false)} className="text-gray-500 hover:text-gray-600 text-xl font-bold">✕</button>
             </div>
 
             <form onSubmit={handleTransferSubmit} className="p-6 space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-gray-700 mb-1">From Account (Source) *</label>
-                <select
+                <select aria-label="From Account (Source)"
                   value={transferForm.fromAccountId}
                   onChange={e => setTransferForm(prev => ({ ...prev, fromAccountId: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-xl font-semibold outline-none bg-white"
@@ -853,7 +855,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
               <div>
                 <label className="block font-bold text-gray-700 mb-1">To Account (Destination) *</label>
-                <select
+                <select aria-label="To Account (Destination)"
                   value={transferForm.toAccountId}
                   onChange={e => setTransferForm(prev => ({ ...prev, toAccountId: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-xl font-semibold outline-none bg-white"
@@ -868,7 +870,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
               <div>
                 <label className="block font-bold text-gray-700 mb-1">Transfer Amount (Rs.) *</label>
-                <input
+                <input aria-label="Transfer Amount (Rs.)"
                   type="number"
                   min="1"
                   required
@@ -881,7 +883,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
               <div>
                 <label className="block font-bold text-gray-700 mb-1">Notes (Optional)</label>
-                <input
+                <input aria-label="Notes (Optional)"
                   type="text"
                   placeholder="e.g. IBFT transfer from Meezan to HBL"
                   value={transferForm.notes}
@@ -913,17 +915,17 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
       {/* Edit Account Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-extrabold text-gray-900 text-base">Edit Account Details</h3>
-              <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              <button onClick={() => setShowEditModal(false)} className="text-gray-500 hover:text-gray-600 text-xl font-bold">✕</button>
             </div>
 
             <form onSubmit={handleEditSubmit} className="p-6 space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-gray-700 mb-1">Account Display Name *</label>
-                <input
+                <input aria-label="Account Display Name"
                   type="text"
                   required
                   value={editForm.account_name}
@@ -934,7 +936,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
               <div>
                 <label className="block font-bold text-gray-700 mb-1">Bank / Institution Name *</label>
-                <input
+                <input aria-label="Bank / Institution Name"
                   type="text"
                   required
                   value={editForm.bank_name}
@@ -945,7 +947,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
               <div>
                 <label className="block font-bold text-gray-700 mb-1">Account Number / IBAN</label>
-                <input
+                <input aria-label="Account Number / IBAN"
                   type="text"
                   value={editForm.account_number}
                   onChange={e => setEditForm(prev => ({ ...prev, account_number: e.target.value }))}
@@ -993,7 +995,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
               <h3 id="edit-tx-title" className="font-extrabold text-gray-900 text-base flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-blue-600" /> Correct Transaction
               </h3>
-              <button type="button" onClick={() => setEditTx(null)} aria-label="Close" className="p-2 -mr-2 text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              <button type="button" onClick={() => setEditTx(null)} aria-label="Close" className="p-2 -mr-2 text-gray-500 hover:text-gray-600 text-xl font-bold">✕</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-4 text-sm">
@@ -1071,7 +1073,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
       {/* Account Transactions History Modal */}
       {showHistoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden max-h-[85dvh] flex flex-col">
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
@@ -1080,7 +1082,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
                   {selectedAccount ? `Transaction History: ${selectedAccount.account_name}` : 'All Account Transactions'}
                 </h3>
               </div>
-              <button onClick={() => { setShowHistoryModal(false); setSelectedAccount(null) }} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              <button onClick={() => { setShowHistoryModal(false); setSelectedAccount(null) }} className="text-gray-500 hover:text-gray-600 text-xl font-bold">✕</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-2 divide-y divide-gray-100">
@@ -1091,7 +1093,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
                 if (filtered.length === 0) {
                   return (
-                    <div className="text-center py-12 text-gray-400 text-xs">
+                    <div className="text-center py-12 text-gray-500 text-xs">
                       No transactions recorded for this account yet.
                     </div>
                   )
@@ -1110,7 +1112,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
                     <div key={tx.id || idx} className="pt-2.5 pb-2 flex items-center justify-between text-xs">
                       <div className="min-w-0 pr-2">
                         <p className="font-bold text-gray-900">{tx.description || tx.reference_type}</p>
-                        <p className="text-[11px] text-gray-500">
+                        <p className="text-xs text-gray-500">
                           {acc?.account_name} • Ref: {tx.reference_type || 'MANUAL'} • {dateStr}
                         </p>
                       </div>
@@ -1118,7 +1120,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
                         <p className={`font-mono font-bold text-sm ${isCredit ? 'text-emerald-600' : 'text-gray-900'}`}>
                           {isCredit ? '+' : '-'}Rs. {Number(tx.amount).toLocaleString()}
                         </p>
-                        <p className="text-[10px] text-gray-400 font-mono">
+                        <p className="text-xs text-gray-500 font-mono">
                           Bal After: Rs. {Number(tx.balance_after).toLocaleString()}
                         </p>
                       </div>
@@ -1128,7 +1130,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
                         disabled={Boolean(txEditBlock(tx))}
                         title={txEditBlock(tx) || 'Correct this entry'}
                         aria-label="Correct this entry"
-                        className="ml-2 p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                        className="ml-2 p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
@@ -1152,14 +1154,14 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
 
       {/* Cloud SQL Setup Modal */}
       {showSqlModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden max-h-[85dvh] flex flex-col">
             <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <Landmark className="w-5 h-5 text-blue-700" />
                 <h3 className="font-extrabold text-blue-900 text-base">Supabase Cloud Database Setup (Optional)</h3>
               </div>
-              <button onClick={() => setShowSqlModal(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              <button onClick={() => setShowSqlModal(false)} className="text-gray-500 hover:text-gray-600 text-xl font-bold">✕</button>
             </div>
 
             <div className="p-6 overflow-y-auto space-y-4 text-xs">
@@ -1168,7 +1170,7 @@ CREATE POLICY tenant_session_scope ON public.bank_account_transactions
               </p>
 
               <div className="relative">
-                <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-[11px] font-mono overflow-x-auto max-h-64 custom-scrollbar">
+                <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono overflow-x-auto max-h-64 custom-scrollbar">
                   {sqlSetupScript}
                 </pre>
                 <button

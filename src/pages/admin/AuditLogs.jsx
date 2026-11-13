@@ -68,8 +68,8 @@ export default function AuditLogs() {
 
             <div className="flex flex-col sm:flex-row gap-4">
                 <div className="relative flex-1">
-                    <Search className="absolute left-3 top-2.5 text-slate-400" size={20} />
-                    <input
+                    <Search className="absolute left-3 top-2.5 text-slate-500" size={20} />
+                    <input aria-label="Search by Admin Email, Action, or Target ID"
                         type="text"
                         placeholder="Search by Admin Email, Action, or Target ID..."
                         value={search}
@@ -104,20 +104,20 @@ export default function AuditLogs() {
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
                         {loading ? (
-                            <tr><td colSpan="4" className="p-8 text-center text-slate-400 font-bold">Loading audit trails...</td></tr>
+                            <tr><td colSpan="4" className="p-8 text-center text-slate-500 font-bold">Loading audit trails...</td></tr>
                         ) : filteredLogs.length === 0 ? (
-                            <tr><td colSpan="4" className="p-8 text-center text-slate-400">No logs match your search.</td></tr>
+                            <tr><td colSpan="4" className="p-8 text-center text-slate-500">No logs match your search.</td></tr>
                         ) : (
                             filteredLogs.map(log => (
                                 <tr key={log.id} className="hover:bg-slate-50/50 transition align-top">
                                     <td className="p-4 pl-6">
                                         <div className="flex items-start gap-3">
                                             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 mt-1">
-                                                <User className="text-slate-400" size={16} />
+                                                <User className="text-slate-500" size={16} />
                                             </div>
                                             <div>
                                                 <p className="font-bold text-slate-800">{log.actor_email || 'System'}</p>
-                                                <p className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                                <p className="text-xs text-slate-500 font-mono mt-0.5 flex items-center gap-1">
                                                     <CalendarClock size={12} />
                                                     {new Date(log.created_at).toLocaleString()}
                                                 </p>

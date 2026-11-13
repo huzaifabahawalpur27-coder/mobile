@@ -41,6 +41,15 @@ Standalone admin: `cd superadmin`, then the same npm scripts.
 - A new SQL script must be safe to re-run, go at the END of `sql/MIGRATION_ORDER.txt`, and get a check under `sql/tests/` (see `sql/README.md`). Never add a `USING (true)` policy on a table with `shop_id`.
 - `.github/workflows/backup.yml` makes an encrypted nightly backup and restores it into a throwaway database (`scripts/backup.sh`, `scripts/restore_check.sh`); it needs the `SUPABASE_DB_URL` and `BACKUP_PASSPHRASE` repository secrets.
 
+## UI Foundations
+
+- Tokens live at the end of `src/index.css` (`--ui-*`; they follow the shop's theme from `themeSystem.js`). Shared pieces are in `src/components/ui`: `Button`, `Field` (visible label tied to its control), `Modal`, `EmptyState`. New screens use these instead of hand-built buttons, inputs and overlays.
+- Every pop-up is `role="dialog" aria-modal="true"`; `src/utils/dialog.js` (installed in `main.jsx`) then gives it Esc-to-close, a focus trap, focus return and a scroll lock. Its close control must be findable: `aria-label="Close"`, a ✕ / Cancel / Close button, or `data-dialog-close`.
+- Ask yes / no with `await confirmDialog(question, { confirmLabel, danger })`, never `confirm()`. The first line is the question; the button says what happens ("Delete expense"), and `danger: true` for anything that cannot be undone.
+- Floors: no text under 12px (`text-xs`; printed previews are the exception), secondary text `text-gray-500` / `text-[#6e6e73]` or darker on light surfaces, and 40px touch targets (global rule for touch screens; opt out with class `tap-exempt`).
+- Every input, select and textarea has an accessible name: a `<label htmlFor>` (use `Field`) or, where there is no room, `aria-label`. A placeholder is an example, not the label.
+- App text is English, sentence case, plain words. Message templates sent to customers and suppliers over WhatsApp are the shop's own wording and are edited in Settings.
+
 ## UI And Product Conventions
 
 - Keep the app shell full-screen; let `Layout` own available height and pages scroll inside `<main>`. Prefer flex + `min-h-0`/`h-full`, and `dvh` when viewport sizing is unavoidable. Avoid page-local `100vh` subtraction.

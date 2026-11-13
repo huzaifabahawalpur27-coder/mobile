@@ -87,7 +87,7 @@ export default function BulkWhatsAppModal({ shops = [], onClose }) {
   const totalCount = filteredShops.length
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 animate-fadeIn">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 animate-fadeIn">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-200 flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
@@ -107,7 +107,7 @@ export default function BulkWhatsAppModal({ shops = [], onClose }) {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition"
+            className="p-1.5 text-slate-500 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition"
           >
             <X size={18} />
           </button>
@@ -163,19 +163,19 @@ export default function BulkWhatsAppModal({ shops = [], onClose }) {
 
           {/* Payment Account Details Accordion */}
           <details className="group">
-            <summary className="text-[11px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer list-none flex items-center gap-1 select-none">
+            <summary className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer list-none flex items-center gap-1 select-none">
               <span>⚙️ Edit Payment / Bank Accounts included in messages</span>
               <span className="group-open:rotate-180 transition-transform">▾</span>
             </summary>
             <div className="mt-2 pt-2 border-t border-slate-200">
-              <textarea
+              <textarea aria-label="Enter bank accounts / JazzCash / EasyPaisa"
                 rows={3}
                 value={bankDetails}
                 onChange={(e) => handleBankDetailsChange(e.target.value)}
                 placeholder="Enter bank accounts / JazzCash / EasyPaisa..."
                 className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none"
               />
-              <p className="text-[10px] text-slate-400">Saved in browser storage for future broadcasts.</p>
+              <p className="text-xs text-slate-500">Saved in browser storage for future broadcasts.</p>
             </div>
           </details>
         </div>
@@ -183,7 +183,7 @@ export default function BulkWhatsAppModal({ shops = [], onClose }) {
         {/* Shop List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2.5 divide-y divide-slate-100">
           {filteredShops.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 text-xs">
+            <div className="py-12 text-center text-slate-500 text-xs">
               <AlertCircle size={28} className="mx-auto mb-2 text-slate-300" />
               <span>No shops match this filter with valid phone numbers.</span>
             </div>
@@ -214,9 +214,9 @@ export default function BulkWhatsAppModal({ shops = [], onClose }) {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h4 className="font-bold text-slate-800 text-xs truncate">{shop.name}</h4>
-                        <span className="text-[10px] text-slate-500 font-mono">({shop.phone})</span>
+                        <span className="text-xs text-slate-500 font-mono">({shop.phone})</span>
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                      <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
                         <span className="font-semibold text-slate-700">
                           {shop.subscription_plans?.name || shop.subscription_plan || 'Standard'}
                         </span>
@@ -262,7 +262,7 @@ export default function BulkWhatsAppModal({ shops = [], onClose }) {
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-          <p className="text-[11px] text-slate-500">
+          <p className="text-xs text-slate-500">
             Clicking opens WhatsApp Web or App with pre-filled message.
           </p>
           <button

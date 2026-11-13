@@ -211,7 +211,7 @@ export default function EditPurchasePaymentModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-900 to-blue-900 text-white">
@@ -221,7 +221,7 @@ export default function EditPurchasePaymentModal({
             </div>
             <div>
               <h2 className="text-sm font-black tracking-tight">Edit Payment Method</h2>
-              <p className="text-[11px] text-blue-200">Purchase PR-{String(purchase.id).slice(-8)}</p>
+              <p className="text-xs text-blue-200">Purchase PR-{String(purchase.id).slice(-8)}</p>
             </div>
           </div>
           <button
@@ -244,11 +244,11 @@ export default function EditPurchasePaymentModal({
           {/* Bill Info */}
           <div className="bg-gray-50 p-3 rounded-xl border border-gray-200/80 flex items-center justify-between">
             <div>
-              <p className="text-[10px] text-gray-500 font-bold uppercase">Supplier</p>
+              <p className="text-xs text-gray-500 font-bold uppercase">Supplier</p>
               <p className="text-xs font-bold text-gray-800">{supplierName}</p>
             </div>
             <div className="text-right">
-              <p className="text-[10px] text-gray-500 font-bold uppercase">Total Bill</p>
+              <p className="text-xs text-gray-500 font-bold uppercase">Total Bill</p>
               <p className="text-sm font-black text-blue-700">Rs. {totalAmount.toLocaleString()}</p>
             </div>
           </div>
@@ -307,7 +307,7 @@ export default function EditPurchasePaymentModal({
               <label className="block text-xs font-bold text-gray-700 mb-1">
                 🏦 Bank Account to Deduct *
               </label>
-              <select
+              <select aria-label=" Bank Account to Deduct "
                 value={selectedBankId}
                 onChange={e => setSelectedBankId(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white font-semibold text-xs outline-none focus:ring-2 focus:ring-blue-500"
@@ -327,7 +327,7 @@ export default function EditPurchasePaymentModal({
               <label className="block text-xs font-bold text-blue-900 mb-1">
                 🏦 Bank Account to Receive Refund *
               </label>
-              <select
+              <select aria-label=" Bank Account to Receive Refund "
                 value={refundBankId}
                 onChange={e => setRefundBankId(e.target.value)}
                 className="w-full px-3 py-2 border border-blue-300 rounded-xl bg-blue-50/50 font-semibold text-xs outline-none focus:ring-2 focus:ring-blue-500"
@@ -347,7 +347,7 @@ export default function EditPurchasePaymentModal({
               <label className="block text-xs font-bold text-gray-700 mb-1">
                 💵 Cash Vault / Drawer:
               </label>
-              <select
+              <select aria-label=" Cash Vault / Drawer "
                 value={selectedCashId}
                 onChange={e => setSelectedCashId(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white font-semibold text-xs outline-none focus:ring-2 focus:ring-blue-500"
@@ -363,7 +363,7 @@ export default function EditPurchasePaymentModal({
 
           {/* Financial Impact Alert */}
           {financialSummary && (
-            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-blue-900 text-[11px]">
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-blue-900 text-xs">
               {financialSummary}
             </div>
           )}
@@ -373,7 +373,7 @@ export default function EditPurchasePaymentModal({
             <label className="block text-xs font-bold text-gray-700 mb-1">
               Adjustment Reason / Note (Optional)
             </label>
-            <input
+            <input aria-label=" Adjustment Reason / Note (Optional) "
               type="text"
               placeholder="e.g. Paid cash at shop counter"
               value={notes}

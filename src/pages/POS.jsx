@@ -32,6 +32,7 @@ import {
 } from '../services/atomicOps'
 import { buildSaleTenders, applyTenders, isCashName } from '../utils/moneyMath'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
   { id: 'easypaisa', name: 'Easypaisa', icon: '🟢' },
@@ -782,7 +783,7 @@ function POS() {
 
   const addPhoneToCart = (phone) => {
     if (cart.some(i => i.phone_id === phone.id)) {
-      notify(`⚠️ Phone (IMEI: ${phone.imei_1}) pehle hi cart mein shamil hai!`)
+      notify(`This phone (IMEI ${phone.imei_1}) is already in the cart.`, 'warning')
       return
     }
     const phoneItem = {
@@ -948,9 +949,9 @@ function POS() {
     }
   }
 
-  const handleResumeCart = (held) => {
+  const handleResumeCart = async (held) => {
     if (cart.length > 0) {
-      if (!confirm('Current cart replace ho jayegi. Continue?')) return
+      if (!await confirmDialog('Replace the current cart?\nThe items in the cart now will be removed.', { confirmLabel: 'Replace cart' })) return
     }
     const heldItems = held.items || []
     const validItems = []
@@ -996,8 +997,8 @@ function POS() {
     setShowHeldCarts(false)
   }
 
-  const applyBrandDiscount = () => {
-    if (!selectedBrand) { notify('Pehle brand select karo!'); return }
+  const applyBrandDiscount = async () => {
+    if (!selectedBrand) { notify('Select a brand first.'); return }
     const brandProducts = products.filter(p => p.brand === selectedBrand)
     const val = parseFloat(brandDiscountValue) || 0
 
@@ -1030,8 +1031,8 @@ function POS() {
       const details = lossItems.map(({ name, cRate, costPrice, discountedPrice }) =>
         `• ${name}${cRate > 0 ? ` (C.Rate: Rs.${cRate})` : ''} | Purchase: Rs.${costPrice} | Discount Price: Rs.${discountedPrice}`
       ).join('\n')
-      const confirmed = window.confirm(
-        `⚠️ Nuqsan (Loss) Alert!\n\nYeh brand discount apply karne se in products par nuqsan hoga:\n${details}\n\nPhir bhi apply karein?`
+      const confirmed = await confirmDialog(
+        `This discount sells below cost\nThese products would sell at a loss:\n${details}`, { confirmLabel: 'Apply discount anyway', cancelLabel: 'Go back', danger: true }
       )
       if (!confirmed) return
     }
@@ -1107,7 +1108,7 @@ function POS() {
 
   const handleCompleteSale = async () => {
     if (cart.length === 0) {
-      notify('Cart khali hai! Pehle item add karein.')
+      notify('The cart is empty. Add an item first.')
       return
     }
 
@@ -1142,7 +1143,7 @@ function POS() {
     const { applied: appliedPayments, tendered: tenderedTotal, paid: totalPaid } = applyTenders(finalPayments, total)
 
     if ((paymentType === 'credit' || totalPaid < total) && !customerId && !walkInName.trim()) {
-      notify('Balance amount (Credit) ke liye customer select karein ya Walk-in Name likhein!')
+      notify('Part of this bill is on credit. Select a customer or type a walk-in name.')
       return
     }
 
@@ -1846,7 +1847,7 @@ function POS() {
     let customerPhone = lastReceipt.customer?.phone || ''
     let customerName = lastReceipt.customer?.name || lastReceipt.walkInName || 'Customer'
     if (!customerPhone) {
-      const input = window.prompt('Customer ka WhatsApp mobile number enter karein (e.g. 03001234567):', '')
+      const input = window.prompt('Customer WhatsApp number (e.g. 03001234567):', '')
       if (!input || !input.trim()) return
       customerPhone = input.trim()
     }
@@ -1992,7 +1993,7 @@ function POS() {
       .single()
 
     if (error || !sale) {
-      notify('Quotation nahi mili! Sahi number check karein.')
+      notify('Quotation not found. Check the number.')
       return
     }
 
@@ -2094,7 +2095,7 @@ function POS() {
         {barcodeMode && (
           <form onSubmit={handleBarcodeSubmit} className="flex gap-2 items-center bg-green-50 border-2 border-green-400 rounded-xl px-3 py-2">
             <span className="text-green-600 text-lg">📷</span>
-            <input
+            <input aria-label="Scan barcode or type SKU Enter"
               ref={barcodeRef}
               type="text"
               value={barcodeInput}
@@ -2110,7 +2111,7 @@ function POS() {
 
         {/* Search + Filters */}
         <div className="flex gap-2 flex-wrap">
-          <input
+          <input aria-label="Search products / brand (F2)"
             ref={searchInputRef}
             type="text"
             placeholder="🔍 Search products / brand (F2)..."
@@ -2118,12 +2119,12 @@ function POS() {
             onChange={e => setSearch(e.target.value)}
             className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0 shadow-sm"
           />
-          <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
+          <select aria-label="Categories filter" value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
             className="px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none shadow-sm">
             <option value="">All Categories</option>
             {posCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select value={selectedBrand} onChange={e => setSelectedBrand(e.target.value)}
+          <select aria-label="Brands filter" value={selectedBrand} onChange={e => setSelectedBrand(e.target.value)}
             className="px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none shadow-sm">
             <option value="">All Brands</option>
             {displayBrands.map(bName => <option key={bName} value={bName}>{bName}</option>)}
@@ -2158,7 +2159,7 @@ function POS() {
             className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-transform duration-150 ease-out motion-safe:active:scale-[0.96] motion-reduce:transform-none whitespace-nowrap flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${catalogTab === 'phones' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'}`}
           >
             <span>📱 Mobile Phones</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${catalogTab === 'phones' ? 'bg-white/25 text-white' : 'bg-emerald-200/80 dark:bg-emerald-800/80 text-emerald-900 dark:text-emerald-100'}`}>
+            <span className={`text-xs px-1.5 py-0.2 rounded-full font-black ${catalogTab === 'phones' ? 'bg-white/25 text-white' : 'bg-emerald-200/80 dark:bg-emerald-800/80 text-emerald-900 dark:text-emerald-100'}`}>
               {filteredPhones.length}
             </span>
           </button>
@@ -2181,17 +2182,17 @@ function POS() {
                 {/* Row 1: Brand & Model */}
                 <div className="w-full mb-1">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-[9px] font-black uppercase text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded-md">
+                    <span className="text-xs font-black uppercase text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded-md">
                       📱 Phone
                     </span>
-                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 capitalize">
+                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 capitalize">
                       {phone.condition || 'Used'}
                     </span>
                   </div>
                   <h3 className="font-bold text-gray-900 dark:text-[#f5f5f7] text-xs sm:text-sm leading-snug break-words mt-1">
                     {phone.brand} {phone.model}
                   </h3>
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400 flex gap-1 mt-0.5">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 flex gap-1 mt-0.5">
                     {phone.storage && <span>{phone.storage}</span>}
                     {phone.color && <span>· {phone.color}</span>}
                   </div>
@@ -2202,7 +2203,7 @@ function POS() {
                   <span className="font-black text-sm sm:text-base text-emerald-600 dark:text-emerald-400 tracking-tight">
                     Rs. {Number(phone.sale_price).toLocaleString()}
                   </span>
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border uppercase ${
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md border uppercase ${
                     phone.pta_status === 'approved'
                       ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                       : 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
@@ -2212,12 +2213,12 @@ function POS() {
                 </div>
 
                 {/* Row 3: IMEI snippet & Masked/Visible Cost */}
-                <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-white/10 mt-0.5 text-[10px]">
+                <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-white/10 mt-0.5 text-xs">
                   <span className="font-mono text-gray-600 dark:text-gray-400 truncate max-w-[130px]" title={`IMEI 1: ${phone.imei_1}`}>
                     SN: {String(phone.imei_1).slice(-6)}
                   </span>
                   {isPrivileged ? (
-                    <span className="text-gray-400 dark:text-gray-500">Cost: Rs.{phone.cost_price}</span>
+                    <span className="text-gray-500 dark:text-gray-500">Cost: Rs.{phone.cost_price}</span>
                   ) : (
                     <span className="text-gray-300 dark:text-gray-600">Cost: ***</span>
                   )}
@@ -2259,21 +2260,21 @@ function POS() {
 
                   <div className="flex items-center gap-1 shrink-0">
                     {catName && (
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border truncate max-w-[75px] ${catStyle.pill}`} title={catName}>
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md border truncate max-w-[75px] ${catStyle.pill}`} title={catName}>
                         {catName}
                       </span>
                     )}
                     {p.brand && (
-                      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-700/60 truncate max-w-[80px]">
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded-md border border-slate-200/60 dark:border-slate-700/60 truncate max-w-[80px]">
                         {p.brand}
                       </span>
                     )}
                     {isOutOfStock ? (
-                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300">
+                      <span className="text-xs font-black uppercase px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300">
                         Out
                       </span>
                     ) : isLowStock ? (
-                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
+                      <span className="text-xs font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
                         Low
                       </span>
                     ) : null}
@@ -2282,19 +2283,19 @@ function POS() {
 
                 {/* Row 3: Stock, Cost & Quick Qty Action */}
                 <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-white/10 mt-0.5">
-                  <div className="text-[11px] flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                  <div className="text-xs flex items-center gap-1 text-gray-500 dark:text-gray-400">
                     <span className={isOutOfStock ? 'text-red-600 dark:text-red-400 font-bold' : isLowStock ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}>
                       Stock: <span className="font-semibold">{p.stock_quantity}</span>
                     </span>
                     {isPrivileged && p.cost_price != null && (
-                      <span className="text-gray-400 dark:text-gray-500 text-[10px] hidden sm:inline">
+                      <span className="text-gray-500 dark:text-gray-500 text-xs hidden sm:inline">
                         · Cost: {p.cost_price}
                       </span>
                     )}
                   </div>
 
                   <div onClick={e => e.stopPropagation()} className="flex items-center gap-1 shrink-0">
-                    <input
+                    <input aria-label="Qty"
                       type="number"
                       step="any"
                       min="0.001"
@@ -2310,7 +2311,7 @@ function POS() {
                       }}
                       placeholder="Qty"
                       title="Custom quantity"
-                      className="w-12 text-[11px] font-medium text-center border border-gray-200 dark:border-[#38383a] rounded-md px-1 py-0.5 outline-none focus:border-blue-500 bg-white dark:bg-[#2c2c2e] text-gray-900 dark:text-white"
+                      className="w-12 text-xs font-medium text-center border border-gray-200 dark:border-[#38383a] rounded-md px-1 py-0.5 outline-none focus:border-blue-500 bg-white dark:bg-[#2c2c2e] text-gray-900 dark:text-white"
                     />
                     <button
                       type="button"
@@ -2338,8 +2339,8 @@ function POS() {
           className="md:hidden fixed bottom-5 right-5 z-40 bg-blue-600 text-white rounded-full w-16 h-16 flex flex-col items-center justify-center shadow-2xl hover:bg-blue-700 transition active:scale-95"
         >
           <span className="text-lg">🛒</span>
-          <span className="text-[10px] font-black">{cart.length}</span>
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center">Rs.{total.toFixed(0)}</span>
+          <span className="text-xs font-black">{cart.length}</span>
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center">Rs.{total.toFixed(0)}</span>
         </button>
       )}
 
@@ -2355,7 +2356,7 @@ function POS() {
           type="button"
           onClick={() => setShowMobileCart(false)}
           aria-label="Close cart drawer"
-          className="md:hidden self-end text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg font-bold -mt-1 -mr-1 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition active:scale-95"
+          className="md:hidden self-end text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 text-lg font-bold -mt-1 -mr-1 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition active:scale-95"
         >
           ✕
         </button>
@@ -2365,13 +2366,13 @@ function POS() {
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-black text-blue-950 tracking-tight flex items-center gap-1.5">
               <span>🛒 Cart</span>
-              <span className="bg-blue-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{cart.length}</span>
+              <span className="bg-blue-600 text-white text-xs font-black px-1.5 py-0.5 rounded-full">{cart.length}</span>
             </h2>
-            {saleType === 'quotation' && <span className="text-purple-600 font-bold text-[10px] uppercase bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">Quotation</span>}
+            {saleType === 'quotation' && <span className="text-purple-600 font-bold text-xs uppercase bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">Quotation</span>}
           </div>
           <div className="flex items-center gap-1.5">
             {/* Quick POS Layout Switcher */}
-            <div className="hidden sm:flex items-center bg-white/90 p-0.5 rounded-lg border border-blue-200/80 text-[10px] font-bold shadow-2xs">
+            <div className="hidden sm:flex items-center bg-white/90 p-0.5 rounded-lg border border-blue-200/80 text-xs font-bold shadow-2xs">
               <button
                 type="button"
                 onClick={() => switchPosLayout('two_stage')}
@@ -2404,14 +2405,14 @@ function POS() {
             {heldCarts.length > 0 && (
               <button
                 onClick={() => setShowHeldCarts(true)}
-                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 rounded-lg text-[10px] font-bold uppercase transition flex items-center gap-1"
+                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 rounded-lg text-xs font-bold uppercase transition flex items-center gap-1"
               >
                 <span>⏸️</span> Held ({heldCarts.length})
               </button>
             )}
             <button
               onClick={() => setShowQuickView(true)}
-              className="px-2 py-1 bg-white hover:bg-blue-100 text-blue-700 border border-blue-200/80 rounded-lg text-[10px] font-black uppercase transition flex items-center gap-1 shadow-2xs"
+              className="px-2 py-1 bg-white hover:bg-blue-100 text-blue-700 border border-blue-200/80 rounded-lg text-xs font-black uppercase transition flex items-center gap-1 shadow-2xs"
             >
               <span>🔍</span> Quick
             </button>
@@ -2421,7 +2422,7 @@ function POS() {
         {/* Compact Customer Selector with Real-Time Credit Badge */}
         <div className="flex flex-col gap-1 shrink-0 bg-white/95 p-1.5 rounded-xl border border-blue-200/90 shadow-2xs">
           <div className="flex items-center gap-1.5">
-            <select
+            <select aria-label="Walk-in Customer"
               value={customerId}
               onChange={e => setCustomerId(e.target.value)}
               className="flex-1 min-w-0 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs truncate"
@@ -2436,7 +2437,7 @@ function POS() {
 
             {!customerId && (
               <>
-                <input
+                <input aria-label="Walk-in Name"
                   type="text"
                   placeholder="Walk-in Name"
                   value={walkInName}
@@ -2467,7 +2468,7 @@ function POS() {
               }`}>
                 <span className="flex items-center gap-1 font-semibold truncate max-w-[200px]">
                   <span>👤 {selectedCust.name}</span>
-                  {selectedCust.phone && <span className="text-[10px] text-slate-500">({selectedCust.phone})</span>}
+                  {selectedCust.phone && <span className="text-xs text-slate-500">({selectedCust.phone})</span>}
                 </span>
                 <span className="font-mono font-black shrink-0">
                   {bal > 0 ? `🔴 Udhaar: Rs. ${bal.toLocaleString()}` : `🟢 Previous Due: Clean`}
@@ -2480,10 +2481,10 @@ function POS() {
         {/* Cart Items — Expanded High-Density Scrollable View */}
         <div className="flex-1 overflow-y-auto min-h-0 space-y-1.5 pr-0.5 custom-scrollbar">
           {cart.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full py-12 text-center text-gray-400">
+            <div className="flex flex-col items-center justify-center h-full py-12 text-center text-gray-500">
               <span className="text-3xl mb-1 opacity-50">🛍️</span>
               <p className="text-xs font-semibold">Cart is empty</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">Click products on left panel to add</p>
+              <p className="text-xs text-gray-500 mt-0.5">Click products on left panel to add</p>
             </div>
           )}
           {cart.map(item => {
@@ -2497,30 +2498,30 @@ function POS() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1 flex-wrap">
                       {isPhone && (
-                        <span className="text-[9px] font-black uppercase text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded shrink-0">
+                        <span className="text-xs font-black uppercase text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded shrink-0">
                           📱 PHONE
                         </span>
                       )}
                       <p className="text-xs font-bold text-slate-900 truncate leading-tight">{item.name}</p>
-                      {item.brand && !isPhone && <span className="text-[9px] text-slate-400 font-medium shrink-0">({item.brand})</span>}
+                      {item.brand && !isPhone && <span className="text-xs text-slate-500 font-medium shrink-0">({item.brand})</span>}
                     </div>
 
                     {isPhone && (
-                      <div className="text-[10px] font-mono text-emerald-800 flex items-center gap-1 mt-0.5">
+                      <div className="text-xs font-mono text-emerald-800 flex items-center gap-1 mt-0.5">
                         <span className="bg-emerald-100/70 px-1 rounded">IMEI: {item.imei_1}</span>
-                        {item.pta_status && <span className="text-[9px] text-slate-500 font-sans uppercase">({item.pta_status})</span>}
+                        {item.pta_status && <span className="text-xs text-slate-500 font-sans uppercase">({item.pta_status})</span>}
                       </div>
                     )}
 
-                    <div className="flex items-center gap-1 mt-0.5 text-[10px]">
-                      <span className="font-bold text-slate-400 uppercase">Unit:</span>
+                    <div className="flex items-center gap-1 mt-0.5 text-xs">
+                      <span className="font-bold text-slate-500 uppercase">Unit:</span>
                       <div className={`flex items-center bg-white border rounded px-1.5 py-0.5 shadow-2xs transition-all ${
                         Number(item.custom_price || 0) <= 0
                           ? 'border-amber-500 ring-2 ring-amber-300 bg-amber-50/60'
                           : 'border-blue-200'
                       }`} title="Editable Unit Price">
-                        <span className="font-bold text-slate-400 mr-0.5">Rs.</span>
-                        <input
+                        <span className="font-bold text-slate-500 mr-0.5">Rs.</span>
+                        <input aria-label="Price"
                           type="number"
                           value={item.custom_price === 0 || item.custom_price === '0' ? '' : item.custom_price}
                           placeholder="Price *"
@@ -2534,7 +2535,7 @@ function POS() {
                       </div>
 
                       {Number(item.custom_price || 0) <= 0 ? (
-                        <span className="bg-amber-500 text-white font-black text-[9px] px-1.5 py-0.5 rounded shadow-xs uppercase tracking-wider">
+                        <span className="bg-amber-500 text-white font-black text-xs px-1.5 py-0.5 rounded shadow-xs uppercase tracking-wider">
                           Enter Price *
                         </span>
                       ) : (
@@ -2550,7 +2551,7 @@ function POS() {
                   {/* Right: Stepper (or locked 1 pcs for phone) + Line Total + Remove button */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     {isPhone ? (
-                      <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                      <span className="text-xs font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
                         1 pcs
                       </span>
                     ) : (
@@ -2589,7 +2590,7 @@ function POS() {
                       type="button"
                       onClick={() => removeFromCart(item.id)}
                       aria-label="Remove item from cart"
-                      className="w-6 h-6 [@media(pointer:coarse)]:w-10 [@media(pointer:coarse)]:h-10 flex items-center justify-center text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md font-bold text-xs transition active:scale-90"
+                      className="w-6 h-6 [@media(pointer:coarse)]:w-10 [@media(pointer:coarse)]:h-10 flex items-center justify-center text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md font-bold text-xs transition active:scale-90"
                       title="Remove item"
                     >
                       ✕
@@ -2606,10 +2607,10 @@ function POS() {
           <div className="shrink-0 pt-1.5 border-t border-blue-200/70 flex items-center justify-between text-xs bg-white/90 px-3 py-1.5 rounded-xl border border-blue-200/80 shadow-2xs">
             <div className="flex items-center gap-1.5 text-slate-700 font-bold">
               <span>🛒 {cart.length} items</span>
-              <span className="text-slate-400">·</span>
+              <span className="text-slate-500">·</span>
               <span className="text-slate-900 font-black">Subtotal: Rs. {subtotal.toFixed(0)}</span>
             </div>
-            <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full border border-blue-300/60">
+            <span className="text-xs font-black uppercase text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full border border-blue-300/60">
               Terminal Below ↓
             </span>
           </div>
@@ -2628,8 +2629,8 @@ function POS() {
 
                 {hasFeature('discount') && (
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] font-bold text-slate-500">Disc:</span>
-                    <div className="flex bg-slate-200/80 rounded p-0.5 text-[9px] font-bold">
+                    <span className="text-xs font-bold text-slate-500">Disc:</span>
+                    <div className="flex bg-slate-200/80 rounded p-0.5 text-xs font-bold">
                       <button
                         type="button"
                         onClick={() => setDiscountMode('fixed')}
@@ -2658,11 +2659,11 @@ function POS() {
                           placeholder="0"
                           className="w-12 px-1 py-0.5 border border-blue-300 rounded text-right text-xs font-bold text-blue-700 bg-white outline-none"
                         />
-                        <span className="text-[10px] font-bold text-slate-400">%</span>
+                        <span className="text-xs font-bold text-slate-500">%</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-0.5">
-                        <span className="text-[10px] text-slate-400">Rs.</span>
+                        <span className="text-xs text-slate-500">Rs.</span>
                         <input
                           type="number"
                           step="any"
@@ -2681,7 +2682,7 @@ function POS() {
               {/* Quick % Presets */}
               {hasFeature('discount') && (
                 <div className="flex items-center gap-1 pt-0.5 border-t border-slate-200/50">
-                  <span className="text-[9px] text-slate-400 font-semibold shrink-0">Quick %:</span>
+                  <span className="text-xs text-slate-500 font-semibold shrink-0">Quick %:</span>
                   {[2, 5, 10, 15, 20].map(pct => (
                     <button
                       key={pct}
@@ -2690,7 +2691,7 @@ function POS() {
                         setDiscountMode('percent')
                         handlePercentDiscountChange(pct.toString())
                       }}
-                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold border transition shrink-0 ${
+                      className={`px-1.5 py-0.2 rounded text-xs font-bold border transition shrink-0 ${
                         discountMode === 'percent' && Number(discountPercent) === pct
                           ? 'bg-blue-600 text-white border-blue-600'
                           : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -2706,13 +2707,13 @@ function POS() {
                         setDiscount(0)
                         setDiscountPercent('')
                       }}
-                      className="text-[9px] text-red-500 hover:underline ml-1 font-bold shrink-0"
+                      className="text-xs text-red-500 hover:underline ml-1 font-bold shrink-0"
                     >
                       Clear
                     </button>
                   )}
                   {Number(totalDiscount) > 0 && (
-                    <span className="text-[10px] font-bold text-red-600 ml-auto">
+                    <span className="text-xs font-bold text-red-600 ml-auto">
                       −Rs. {Number(totalDiscount).toFixed(0)}
                     </span>
                   )}
@@ -2722,9 +2723,9 @@ function POS() {
               {/* Net Total & Profit */}
               <div className="flex justify-between items-center pt-1 border-t border-slate-200/70">
                 <div>
-                  <span className="text-slate-500 text-[10px] uppercase font-black tracking-wider block">Net Total</span>
+                  <span className="text-slate-500 text-xs uppercase font-black tracking-wider block">Net Total</span>
                   {isPrivileged && totalProfit !== 0 && (
-                    <div className={`text-[10px] font-bold ${totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                    <div className={`text-xs font-bold ${totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                       Profit: Rs. {totalProfit.toFixed(0)}
                     </div>
                   )}
@@ -2785,7 +2786,7 @@ function POS() {
                   className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-sm rounded-xl transition-all shadow-lg shadow-blue-200/50 active:scale-[0.97] duration-150 ease-out disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <span>💳 Charge Rs. {total.toFixed(0)}</span>
-                  <span className="text-[10px] bg-white/25 px-1.5 py-0.5 rounded font-mono font-normal">F4 →</span>
+                  <span className="text-xs bg-white/25 px-1.5 py-0.5 rounded font-mono font-normal">F4 →</span>
                 </button>
               )}
             </div>
@@ -2805,8 +2806,8 @@ function POS() {
 
                 {hasFeature('discount') && (
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] font-bold text-slate-500">Disc:</span>
-                    <div className="flex bg-slate-200/80 rounded p-0.5 text-[9px] font-bold">
+                    <span className="text-xs font-bold text-slate-500">Disc:</span>
+                    <div className="flex bg-slate-200/80 rounded p-0.5 text-xs font-bold">
                       <button
                         type="button"
                         onClick={() => setDiscountMode('fixed')}
@@ -2835,11 +2836,11 @@ function POS() {
                           placeholder="0"
                           className="w-12 px-1 py-0.5 border border-blue-300 rounded text-right text-xs font-bold text-blue-700 bg-white outline-none"
                         />
-                        <span className="text-[10px] font-bold text-slate-400">%</span>
+                        <span className="text-xs font-bold text-slate-500">%</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-0.5">
-                        <span className="text-[10px] text-slate-400">Rs.</span>
+                        <span className="text-xs text-slate-500">Rs.</span>
                         <input
                           type="number"
                           step="any"
@@ -2858,7 +2859,7 @@ function POS() {
               {/* Quick % Presets */}
               {hasFeature('discount') && (
                 <div className="flex items-center gap-1 pt-0.5 border-t border-slate-200/50">
-                  <span className="text-[9px] text-slate-400 font-semibold shrink-0">Quick %:</span>
+                  <span className="text-xs text-slate-500 font-semibold shrink-0">Quick %:</span>
                   {[2, 5, 10, 15, 20].map(pct => (
                     <button
                       key={pct}
@@ -2867,7 +2868,7 @@ function POS() {
                         setDiscountMode('percent')
                         handlePercentDiscountChange(pct.toString())
                       }}
-                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold border transition shrink-0 ${
+                      className={`px-1.5 py-0.2 rounded text-xs font-bold border transition shrink-0 ${
                         discountMode === 'percent' && Number(discountPercent) === pct
                           ? 'bg-blue-600 text-white border-blue-600'
                           : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -2883,13 +2884,13 @@ function POS() {
                         setDiscount(0)
                         setDiscountPercent('')
                       }}
-                      className="text-[9px] text-red-500 hover:underline ml-1 font-bold shrink-0"
+                      className="text-xs text-red-500 hover:underline ml-1 font-bold shrink-0"
                     >
                       Clear
                     </button>
                   )}
                   {Number(totalDiscount) > 0 && (
-                    <span className="text-[10px] font-bold text-red-600 ml-auto">
+                    <span className="text-xs font-bold text-red-600 ml-auto">
                       −Rs. {Number(totalDiscount).toFixed(0)}
                     </span>
                   )}
@@ -2899,9 +2900,9 @@ function POS() {
               {/* Net Total */}
               <div className="flex justify-between items-center pt-1 border-t border-slate-200/70">
                 <div>
-                  <span className="text-slate-500 text-[10px] uppercase font-black tracking-wider block">Net Total</span>
+                  <span className="text-slate-500 text-xs uppercase font-black tracking-wider block">Net Total</span>
                   {isPrivileged && totalProfit !== 0 && (
-                    <div className={`text-[10px] font-bold ${totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                    <div className={`text-xs font-bold ${totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                       Net Profit: Rs. {totalProfit.toFixed(0)}
                     </div>
                   )}
@@ -2917,9 +2918,9 @@ function POS() {
               <div className="flex flex-col gap-1 bg-gradient-to-br from-blue-50/80 to-indigo-50/50 p-2 rounded-xl border border-blue-100 shadow-2xs">
                 <div className="flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-[11px] font-bold text-blue-900">💵 Tendered:</span>
+                    <span className="text-xs font-bold text-blue-900">💵 Tendered:</span>
                     <div className="flex items-center bg-white border border-blue-300 rounded-md px-1.5 py-0.5 shadow-2xs">
-                      <span className="text-[10px] font-bold text-slate-400 mr-0.5">Rs.</span>
+                      <span className="text-xs font-bold text-slate-500 mr-0.5">Rs.</span>
                       <input
                         type="number"
                         value={receivedAmount}
@@ -2939,7 +2940,7 @@ function POS() {
                     <button
                       type="button"
                       onClick={() => { setPaymentType('cash'); setReceivedAmount(total.toString()) }}
-                      className="px-1.5 py-0.5 text-[9px] font-black rounded bg-emerald-600 hover:bg-emerald-700 text-white transition shrink-0 shadow-2xs"
+                      className="px-1.5 py-0.5 text-xs font-black rounded bg-emerald-600 hover:bg-emerald-700 text-white transition shrink-0 shadow-2xs"
                     >
                       Exact
                     </button>
@@ -2961,7 +2962,7 @@ function POS() {
                           key={note}
                           type="button"
                           onClick={() => { setPaymentType('cash'); setReceivedAmount(note.toString()) }}
-                          className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-white border border-blue-200 hover:bg-blue-100 text-blue-700 transition shrink-0 shadow-2xs"
+                          className="px-1.5 py-0.5 text-xs font-bold rounded bg-white border border-blue-200 hover:bg-blue-100 text-blue-700 transition shrink-0 shadow-2xs"
                         >
                           Rs.{note}
                         </button>
@@ -2985,26 +2986,26 @@ function POS() {
 
                 <div className="grid grid-cols-4 gap-1">
                   <button onClick={() => { setPaymentType('cash'); setReceivedAmount(total.toString()) }}
-                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'cash' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
+                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-xs uppercase transition flex items-center justify-center gap-1 ${paymentType === 'cash' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
                     💵 Cash
                   </button>
                   <button onClick={() => { setPaymentType('online'); setReceivedAmount(total.toString()) }}
-                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'online' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
+                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-xs uppercase transition flex items-center justify-center gap-1 ${paymentType === 'online' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
                     📱 Online
                   </button>
                   <button onClick={() => { setPaymentType('credit'); setReceivedAmount('0') }}
-                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'credit' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
+                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-xs uppercase transition flex items-center justify-center gap-1 ${paymentType === 'credit' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
                     📒 Credit
                   </button>
                   <button onClick={() => { setPaymentType('split'); setShowPaymentModal(true); if (payments.length === 0) setPayments([{ method: 'cash', amount: total }]) }}
-                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'split' ? 'bg-purple-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
+                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-xs uppercase transition flex items-center justify-center gap-1 ${paymentType === 'split' ? 'bg-purple-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
                     🔀 Split
                   </button>
                 </div>
 
                 {paymentType === 'cash' && cashVaults.length > 0 && (
                   <div className="p-1.5 bg-emerald-50/80 border border-emerald-200 rounded-lg flex items-center gap-1.5 shadow-2xs">
-                    <span className="text-[10px] font-bold text-emerald-900 shrink-0">Vault:</span>
+                    <span className="text-xs font-bold text-emerald-900 shrink-0">Vault:</span>
                     <select
                       value={selectedCashVaultId}
                       onChange={e => setSelectedCashVaultId(e.target.value)}
@@ -3023,7 +3024,7 @@ function POS() {
                   <div className="p-1.5 bg-white border border-blue-200 rounded-lg space-y-1 shadow-2xs">
                     {bankOnlyAccounts.length > 0 && (
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-blue-900 shrink-0">Bank:</span>
+                        <span className="text-xs font-bold text-blue-900 shrink-0">Bank:</span>
                         <select
                           value={selectedBankAccountId}
                           onChange={e => {
@@ -3058,8 +3059,8 @@ function POS() {
                       </div>
                     )}
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold text-blue-900 shrink-0">Provider:</span>
-                      <select
+                      <span className="text-xs font-bold text-blue-900 shrink-0">Provider:</span>
+                      <select aria-label="JazzCash"
                         value={onlineProvider}
                         onChange={e => setOnlineProvider(e.target.value)}
                         className="w-full text-xs font-semibold px-2 py-0.5 bg-slate-50 border border-blue-300 rounded-md focus:ring-1 focus:ring-blue-500 outline-none text-slate-800"
@@ -3085,8 +3086,8 @@ function POS() {
                       </select>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-semibold text-blue-800 shrink-0">TID / Ref:</span>
-                      <input
+                      <span className="text-xs font-semibold text-blue-800 shrink-0">TID / Ref:</span>
+                      <input aria-label="TID-98214 (optional)"
                         type="text"
                         value={transactionRef}
                         onChange={e => setTransactionRef(e.target.value)}
@@ -3157,7 +3158,7 @@ function POS() {
                   <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200/90 shadow-2xs shrink-0">
                     <span className="text-xs font-bold text-slate-600 shrink-0 whitespace-nowrap">💵 Tendered:</span>
                     <div className="flex items-center bg-slate-50 border border-slate-300 rounded-lg px-2 py-0.5 shrink-0 focus-within:border-blue-500 focus-within:bg-white transition">
-                      <span className="text-xs font-bold text-slate-400 mr-1 shrink-0">Rs.</span>
+                      <span className="text-xs font-bold text-slate-500 mr-1 shrink-0">Rs.</span>
                       <input
                         type="number"
                         value={receivedAmount}
@@ -3257,7 +3258,7 @@ function POS() {
 
                   {paymentType === 'online' && (
                     <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-blue-200 shadow-2xs">
-                      <select
+                      <select aria-label="JazzCash"
                         value={onlineProvider}
                         onChange={e => setOnlineProvider(e.target.value)}
                         className="text-xs font-semibold px-2 py-0.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-blue-500"
@@ -3278,7 +3279,7 @@ function POS() {
                           <option value="other_bank">Other Bank</option>
                         </optgroup>
                       </select>
-                      <input
+                      <input aria-label="TID/Ref"
                         type="text"
                         value={transactionRef}
                         onChange={e => setTransactionRef(e.target.value)}
@@ -3316,14 +3317,14 @@ function POS() {
               {/* Totals & Discount Card */}
               <div className="bg-white border border-blue-200/90 rounded-xl px-3 py-2 shadow-2xs flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider leading-none">Net Payable</span>
+                  <span className="text-xs uppercase font-black text-slate-500 tracking-wider leading-none">Net Payable</span>
                   {hasFeature('discount') && (
                     <div className="flex items-center gap-1.5 text-xs">
-                      <span className="font-bold text-slate-500 text-[11px]">Disc:</span>
+                      <span className="font-bold text-slate-500 text-xs">Disc:</span>
                       <button
                         type="button"
                         onClick={() => setDiscountMode(m => m === 'percent' ? 'fixed' : 'percent')}
-                        className="px-2 py-0.5 rounded-md text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white transition shadow-2xs"
+                        className="px-2 py-0.5 rounded-md text-xs font-black bg-blue-600 hover:bg-blue-700 text-white transition shadow-2xs"
                       >
                         {discountMode === 'percent' ? '%' : 'Rs'}
                       </button>
@@ -3339,11 +3340,11 @@ function POS() {
                             placeholder="0"
                             className="w-16 text-center text-xs font-black text-blue-700 bg-transparent outline-none"
                           />
-                          <span className="text-[10px] font-bold text-slate-400 ml-0.5">%</span>
+                          <span className="text-xs font-bold text-slate-500 ml-0.5">%</span>
                         </div>
                       ) : (
                         <div className="flex items-center bg-slate-50 border border-slate-300 rounded-lg px-2 py-0.5 focus-within:border-blue-500 focus-within:bg-white transition">
-                          <span className="text-[10px] font-bold text-slate-400 mr-1">Rs.</span>
+                          <span className="text-xs font-bold text-slate-500 mr-1">Rs.</span>
                           <input
                             type="number"
                             step="any"
@@ -3360,7 +3361,7 @@ function POS() {
                 </div>
                 <div className="flex items-baseline justify-between gap-1 mt-1">
                   <div className="text-xl font-black text-slate-900 leading-tight tracking-tight">Rs. {total.toFixed(0)}</div>
-                  <div className="text-[10px] text-slate-500 font-medium">Subtotal: Rs. {subtotal.toFixed(0)}</div>
+                  <div className="text-xs text-slate-500 font-medium">Subtotal: Rs. {subtotal.toFixed(0)}</div>
                 </div>
               </div>
 
@@ -3384,12 +3385,12 @@ function POS() {
 
       {/* 5. TWO-STAGE TENDER SHEET MODAL */}
       {showTenderSheet && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 animate-in fade-in duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[92dvh]">
             {/* Tender Header */}
             <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white p-4 flex justify-between items-center shrink-0">
               <div>
-                <span className="text-[10px] uppercase tracking-wider font-bold text-blue-200 block">EdgeX Checkout</span>
+                <span className="text-xs uppercase tracking-wider font-bold text-blue-200 block">EdgeX Checkout</span>
                 <h3 className="text-xl font-black flex items-center gap-2">
                   <span>💳 Total Payable:</span>
                   <span className="text-emerald-300">Rs. {total.toFixed(0)}</span>
@@ -3416,7 +3417,7 @@ function POS() {
                 {customerId && (() => {
                   const cust = customers.find(c => String(c.id) === String(customerId))
                   return cust?.outstanding_balance > 0 ? (
-                    <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-[11px] font-bold">
+                    <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-bold">
                       Prev Due: Rs. {cust.outstanding_balance}
                     </span>
                   ) : null
@@ -3427,11 +3428,11 @@ function POS() {
               <div className="bg-gradient-to-br from-blue-50/90 to-indigo-50/60 p-3 rounded-xl border border-blue-200/80 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-black text-blue-900 uppercase tracking-wide">💵 Received / Tendered Amount</label>
-                  <span className="text-[11px] text-blue-600 font-semibold">Bill: Rs. {total.toFixed(0)}</span>
+                  <span className="text-xs text-blue-600 font-semibold">Bill: Rs. {total.toFixed(0)}</span>
                 </div>
 
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">Rs.</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-500 text-sm">Rs.</span>
                   <input
                     type="number"
                     autoFocus
@@ -3455,7 +3456,7 @@ function POS() {
 
                 {/* Quick Cash Presets */}
                 <div className="flex items-center gap-1.5 pt-1 overflow-x-auto custom-scrollbar">
-                  <span className="text-[10px] font-bold text-blue-800 shrink-0">Quick Cash:</span>
+                  <span className="text-xs font-bold text-blue-800 shrink-0">Quick Cash:</span>
                   <button
                     type="button"
                     onClick={() => { setPaymentType('cash'); setReceivedAmount(total.toString()) }}
@@ -3622,7 +3623,7 @@ function POS() {
                   )}
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <span className="text-xs font-bold text-blue-900 shrink-0">Select Bank / Wallet:</span>
-                    <select
+                    <select aria-label="JazzCash"
                       value={onlineProvider}
                       onChange={e => setOnlineProvider(e.target.value)}
                       className="flex-1 text-xs font-semibold px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-slate-800"
@@ -3649,7 +3650,7 @@ function POS() {
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <span className="text-xs font-semibold text-blue-800 shrink-0">Transaction Ref / TID:</span>
-                    <input
+                    <input aria-label="TID-98214 (optional)"
                       type="text"
                       value={transactionRef}
                       onChange={e => setTransactionRef(e.target.value)}
@@ -3685,14 +3686,14 @@ function POS() {
 
       {/* Save Walk-in as Customer Modal */}
       {showSaveCustomer && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-sm">
             <h3 className="font-bold text-gray-800 text-lg mb-1">👤 Customer Save Karein</h3>
-            <p className="text-sm text-gray-500 mb-4">Yeh walk-in customer ko apni customer list mein add karein</p>
+            <p className="text-sm text-gray-500 mb-4">Add this walk-in customer to your customer list</p>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Naam *</label>
-                <input
+                <input aria-label="Naam"
                   type="text"
                   value={saveCustomerForm.name}
                   onChange={e => setSaveCustomerForm(f => ({ ...f, name: e.target.value }))}
@@ -3703,7 +3704,7 @@ function POS() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number</label>
-                <input
+                <input aria-label="Mobile Number"
                   type="tel"
                   value={saveCustomerForm.mobile}
                   onChange={e => setSaveCustomerForm(f => ({ ...f, mobile: e.target.value }))}
@@ -3733,7 +3734,7 @@ function POS() {
 
       {/* Brand Discount Modal */}
       {showBrandDiscount && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-sm">
             <h3 className="font-bold text-gray-800 mb-2">🏷️ {selectedBrand} — Brand Discount</h3>
 
@@ -3750,8 +3751,8 @@ function POS() {
             </div>
             <p className="text-xs text-gray-500 mb-3">
               {brandDiscountMode === 'cart_only'
-                ? 'Sirf cart mein mojood is brand ke products ki price update hogi.'
-                : 'Is brand ke tamam products cart mein add honge discount ke saath.'}
+                ? 'Only this brand\'s products already in the cart get the new price.'
+                : 'Every product of this brand is added to the cart with the discount.'}
             </p>
 
             {/* Discount Type */}
@@ -3779,10 +3780,10 @@ function POS() {
                     const inCart = cartBrandItems.find(c => c.id === p.id)
                     return inCart || p
                   })
-              if (previewItems.length === 0) return <p className="text-xs text-gray-400 mb-3 italic">No matching items in cart.</p>
+              if (previewItems.length === 0) return <p className="text-xs text-gray-500 mb-3 italic">No matching items in cart.</p>
               return (
                 <div className="bg-gray-50 rounded-lg p-2 mb-3 max-h-32 overflow-y-auto">
-                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Preview</p>
+                  <p className="text-xs font-bold text-gray-500 uppercase mb-1">Preview</p>
                   {previewItems.slice(0, 5).map(item => {
                     const cRate = parseFloat(item.c_rate) || 0
                     const currentPrice = item.custom_price || item.sale_price
@@ -3797,12 +3798,12 @@ function POS() {
                     return (
                       <div key={item.id} className="flex justify-between text-xs text-gray-600">
                         <span className="truncate flex-1">{item.name}</span>
-                        <span className="text-gray-400 line-through mx-1">{Math.round(currentPrice)}</span>
+                        <span className="text-gray-500 line-through mx-1">{Math.round(currentPrice)}</span>
                         <span className="text-green-600 font-bold">{Math.round(newPrice)}</span>
                       </div>
                     )
                   })}
-                  {previewItems.length > 5 && <p className="text-[10px] text-gray-400">+{previewItems.length - 5} more...</p>}
+                  {previewItems.length > 5 && <p className="text-xs text-gray-500">+{previewItems.length - 5} more...</p>}
                 </div>
               )
             })()}
@@ -3819,7 +3820,7 @@ function POS() {
 
       {/* Receipt Modal */}
       {lastReceipt && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-start sm:items-center justify-center z-[100] overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-start sm:items-center justify-center z-[100] overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-sm">
             <div className="text-center mb-4">
               <div className="text-4xl mb-1">✅</div>
@@ -3832,9 +3833,9 @@ function POS() {
               )}
               {lastReceipt.changeDue > 0 && (
                 <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white rounded-2xl p-3.5 text-center shadow-xl my-3 border-2 border-emerald-300 transform transition">
-                  <p className="text-[11px] uppercase font-black tracking-widest text-emerald-100">🟢 WAPIS KAREIN (CHANGE DUE)</p>
+                  <p className="text-xs uppercase font-black tracking-widest text-emerald-100">🟢 WAPIS KAREIN (CHANGE DUE)</p>
                   <p className="text-3xl font-black font-mono mt-1 tracking-tight">Rs. {lastReceipt.changeDue.toFixed(0)}</p>
-                  <div className="flex justify-center gap-3 text-[10px] text-emerald-100 mt-1 font-semibold pt-1 border-t border-emerald-500/50">
+                  <div className="flex justify-center gap-3 text-xs text-emerald-100 mt-1 font-semibold pt-1 border-t border-emerald-500/50">
                     <span>Paid: Rs. {lastReceipt.receivedAmount}</span>
                     <span>•</span>
                     <span>Total: Rs. {lastReceipt.total.toFixed(0)}</span>
@@ -3871,7 +3872,7 @@ function POS() {
                     <span>📲</span>
                     <span>Queued in Mobile Outbox</span>
                   </span>
-                  <Link to="/whatsapp-queue" className="font-black text-emerald-700 underline text-[11px] hover:text-emerald-900">
+                  <Link to="/whatsapp-queue" className="font-black text-emerald-700 underline text-xs hover:text-emerald-900">
                     Open Outbox →
                   </Link>
                 </div>
@@ -3939,7 +3940,7 @@ function POS() {
               )}
 
               {/* Desktop fallback link */}
-              <div className="flex justify-center items-center gap-3 text-[11px] text-gray-500 pt-0.5">
+              <div className="flex justify-center items-center gap-3 text-xs text-gray-500 pt-0.5">
                 <button
                   type="button"
                   onClick={() => handleQueueWhatsAppInvoice('urdu', true)}
@@ -3963,12 +3964,12 @@ function POS() {
       )}
       {/* Quotation Search Modal */}
       {showQuotationSearch && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-sm">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Search Quotation</h2>
-            <p className="text-sm text-gray-500 mb-4">Quotation number (e.g. QT-abcd1234) enter karein jo bill par likha hai.</p>
+            <p className="text-sm text-gray-500 mb-4">Enter the quotation number printed on the bill (e.g. QT-abcd1234).</p>
             <div className="space-y-4">
-              <input
+              <input aria-label="Last 8 digits or full ID"
                 type="text"
                 autoFocus
                 placeholder="Last 8 digits or full ID..."
@@ -3996,11 +3997,11 @@ function POS() {
       )}
       {/* Held Carts Modal */}
       {showHeldCarts && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">⏸️ Held Bills</h2>
-              <button onClick={() => setShowHeldCarts(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setShowHeldCarts(false)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
             <div className="max-h-[400px] overflow-y-auto space-y-3">
               {heldCarts.map(held => (
@@ -4008,7 +4009,7 @@ function POS() {
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <p className="font-bold text-gray-800">{held.customer_name || 'Walk-in Customer'}</p>
-                      <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">
+                      <p className="text-xs text-gray-500 uppercase font-bold tracking-tighter">
                         Saved: {new Date(held.saved_at).toLocaleTimeString()}
                       </p>
                     </div>
@@ -4016,17 +4017,17 @@ function POS() {
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {held.items.slice(0, 3).map((it, idx) => (
-                      <span key={idx} className="text-[10px] bg-white border px-1.5 py-0.5 rounded text-gray-500">
+                      <span key={idx} className="text-xs bg-white border px-1.5 py-0.5 rounded text-gray-500">
                         {it.name} × {it.qty}
                       </span>
                     ))}
-                    {held.items.length > 3 && <span className="text-[10px] text-gray-400 ml-1">+{held.items.length - 3} more</span>}
+                    {held.items.length > 3 && <span className="text-xs text-gray-500 ml-1">+{held.items.length - 3} more</span>}
                   </div>
                   <button className="w-full mt-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold opacity-0 group-hover:opacity-100 transition">Resume Bill</button>
                 </div>
               ))}
               {heldCarts.length === 0 && (
-                <div className="text-center py-10 text-gray-400 italic">No held bills found</div>
+                <div className="text-center py-10 text-gray-500 italic">No held bills found</div>
               )}
             </div>
           </div>
@@ -4034,14 +4035,14 @@ function POS() {
       )}
       {/* Split Payment Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-sm">
             <h2 className="text-xl font-bold text-gray-800 mb-4">🔀 Split Payment</h2>
             <div className="space-y-3 mb-4 max-h-[340px] overflow-y-auto">
               {payments.map((p, idx) => (
                 <div key={idx} className="flex flex-col gap-1.5 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
                   <div className="flex gap-2 items-center">
-                    <select
+                    <select aria-label="Cash"
                       value={p.method}
                       onChange={(e) => {
                         const newP = [...payments]; newP[idx].method = e.target.value; setPayments(newP)
@@ -4065,7 +4066,7 @@ function POS() {
                         <option value="card">💳 Card</option>
                       </optgroup>
                     </select>
-                    <input
+                    <input aria-label="Amount"
                       type="number"
                       step="any"
                       min="0"
@@ -4078,13 +4079,13 @@ function POS() {
                     />
                     <button onClick={() => setPayments(payments.filter((_, i) => i !== idx))} className="text-red-500 font-bold px-1 text-sm hover:bg-red-50 rounded">✕</button>
                   </div>
-                  <input
+                  <input aria-label="TID / Ref / Account (optional)"
                     type="text"
                     value={p.ref || ''}
                     onChange={(e) => {
                       const newP = [...payments]; newP[idx].ref = e.target.value; setPayments(newP)
                     }}
-                    className="w-full text-[11px] border border-gray-200 rounded px-2 py-1 bg-white outline-none focus:border-blue-400 placeholder:text-gray-400"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white outline-none focus:border-blue-400 placeholder:text-gray-400"
                     placeholder="TID / Ref # / Account (optional)"
                   />
                 </div>
@@ -4100,7 +4101,7 @@ function POS() {
               </div>
               <div className="flex justify-between text-sm">
                 <span>Remaining:</span>
-                <span className={`font-bold ${total - payments.reduce((s, p) => s + Number(p.amount), 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                <span className={`font-bold ${total - payments.reduce((s, p) => s + Number(p.amount), 0) > 0 ? 'text-red-600' : 'text-gray-500'}`}>
                   Rs. {(total - payments.reduce((s, p) => s + Number(p.amount), 0)).toFixed(0)}
                 </span>
               </div>
@@ -4123,14 +4124,14 @@ function POS() {
       )}
       {/* Quick View Modal */}
       {showQuickView && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-4xl flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center mb-4 shrink-0">
               <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                 <span>🔍 Cart Quick View</span>
                 <span className="text-sm font-normal text-gray-500">({cart.length} items)</span>
               </h2>
-              <button onClick={() => setShowQuickView(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setShowQuickView(false)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
 
             <div className="flex-1 overflow-y-auto mb-4 border rounded-xl">
@@ -4149,14 +4150,14 @@ function POS() {
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <p className="font-semibold text-gray-800">{item.name}</p>
-                        {item.brand && <p className="text-xs text-gray-400">{item.brand}</p>}
+                        {item.brand && <p className="text-xs text-gray-500">{item.brand}</p>}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex flex-col items-center">
-                          <input type="number" value={item.custom_price === 0 || item.custom_price === '0' ? '' : item.custom_price} placeholder="Price *" onChange={e => updatePrice(item.id, e.target.value)}
+                          <input aria-label="Price" type="number" value={item.custom_price === 0 || item.custom_price === '0' ? '' : item.custom_price} placeholder="Price *" onChange={e => updatePrice(item.id, e.target.value)}
                             className={`w-24 px-2 py-1 border rounded text-center font-semibold outline-none ${Number(item.custom_price || 0) <= 0 ? 'border-amber-500 ring-2 ring-amber-300 text-amber-800 bg-amber-50' : 'text-blue-600 focus:ring-1 focus:ring-blue-500'}`} />
                           {Number(item.custom_price || 0) <= 0 && (
-                            <span className="text-[10px] font-black text-amber-600 mt-0.5">Enter Price *</span>
+                            <span className="text-xs font-black text-amber-600 mt-0.5">Enter Price *</span>
                           )}
                         </div>
                       </td>
@@ -4177,7 +4178,7 @@ function POS() {
                     </tr>
                   ))}
                   {cart.length === 0 && (
-                    <tr><td colSpan="5" className="px-4 py-10 text-center text-gray-400 italic">Cart is empty</td></tr>
+                    <tr><td colSpan="5" className="px-4 py-10 text-center text-gray-500 italic">Cart is empty</td></tr>
                   )}
                 </tbody>
               </table>

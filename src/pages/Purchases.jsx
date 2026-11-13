@@ -14,6 +14,7 @@ import { receivePurchaseStock, adjustSupplierBalance } from '../services/atomicO
 import { insertBillPayment } from '../services/moneyOps'
 import { notify } from '../utils/toast'
 import { isCashName } from '../utils/moneyMath'
+import { confirmDialog } from '../utils/dialog'
 
 function Purchases() {
   const { user } = useAuth()
@@ -262,9 +263,9 @@ function Purchases() {
     }
   }
 
-  const handleResumePurchase = (held) => {
+  const handleResumePurchase = async (held) => {
     if (cart.length > 0) {
-      if (!confirm('Current cart will be replaced. Continue?')) return
+      if (!await confirmDialog('Replace the current cart?\nThe items in the cart now will be removed.', { confirmLabel: 'Replace cart' })) return
     }
     setCart(held.items)
     setSupplierId(held.supplier_id || '')
@@ -749,14 +750,14 @@ function Purchases() {
 
         {/* Search + Filters */}
         <div className="flex gap-2 flex-wrap">
-          <input
+          <input aria-label="Search products / brands"
             type="text"
             placeholder="🔍 Search products / brands..."
             className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <select
+          <select aria-label="Brands filter"
             value={selectedBrand}
             onChange={e => setSelectedBrand(e.target.value)}
             className="px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none"
@@ -776,7 +777,7 @@ function Purchases() {
 
         {/* Product Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 overflow-y-auto flex-1 content-start">
-          {filteredProducts.length === 0 && <p className="text-gray-400 col-span-3 text-center py-10">No products found</p>}
+          {filteredProducts.length === 0 && <p className="text-gray-500 col-span-3 text-center py-10">No products found</p>}
           {filteredProducts.map(p => (
             <div key={p.id}
               className="bg-white rounded-xl shadow-sm p-3 text-left hover:shadow-md hover:bg-blue-50 transition border border-transparent hover:border-blue-300 h-fit group relative"
@@ -786,7 +787,7 @@ function Purchases() {
                 className="w-full text-left"
               >
                 <p className="font-semibold text-gray-800 text-sm leading-tight group-hover:text-blue-700">{p.name}</p>
-                {p.brand && <p className="text-xs text-gray-400">{p.brand}</p>}
+                {p.brand && <p className="text-xs text-gray-500">{p.brand}</p>}
                 <div className="flex justify-between items-end mt-2">
                   <p className="text-xs font-bold text-green-600">Stock: {p.stock_quantity}</p>
                   <p className="text-xs text-gray-500">Cost: Rs.{p.cost_price}</p>
@@ -811,8 +812,8 @@ function Purchases() {
           className="md:hidden fixed bottom-5 right-5 z-40 bg-green-600 text-white rounded-full w-16 h-16 flex flex-col items-center justify-center shadow-2xl hover:bg-green-700 transition active:scale-95"
         >
           <span className="text-lg">🛒</span>
-          <span className="text-[10px] font-black">{cart.length}</span>
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center">Rs.{total.toFixed(0)}</span>
+          <span className="text-xs font-black">{cart.length}</span>
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center">Rs.{total.toFixed(0)}</span>
         </button>
       )}
 
@@ -825,7 +826,7 @@ function Purchases() {
       <div className={`${showMobileCart ? 'fixed inset-0 z-50 w-full flex' : 'hidden md:flex'} md:static md:w-96 flex-col gap-2 bg-white rounded-xl shadow-lg p-4 h-[calc(100dvh-80px)] md:h-full border border-gray-100 overflow-hidden`}>
 
         {/* Mobile close button */}
-        <button onClick={() => setShowMobileCart(false)} className="md:hidden self-end text-gray-400 hover:text-gray-700 text-2xl font-bold mb-1">✕</button>
+        <button onClick={() => setShowMobileCart(false)} className="md:hidden self-end text-gray-500 hover:text-gray-700 text-2xl font-bold mb-1">✕</button>
 
         {/* Cart Header */}
         <h2 className="text-base font-bold text-gray-800 border-b pb-2 shrink-0 flex justify-between items-center">
@@ -834,7 +835,7 @@ function Purchases() {
             {heldPurchases.length > 0 && (
               <button
                 onClick={() => setShowHeldPurchases(true)}
-                className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-bold uppercase hover:bg-orange-200 transition"
+                className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-bold uppercase hover:bg-orange-200 transition"
               >
                 ⏸️ Held ({heldPurchases.length})
               </button>
@@ -843,7 +844,7 @@ function Purchases() {
         </h2>
 
         {/* Supplier */}
-        <select
+        <select aria-label="Supplier (Vendor)"
           className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shrink-0"
           value={supplierId}
           onChange={e => setSupplierId(e.target.value)}
@@ -921,14 +922,14 @@ function Purchases() {
               <button
                 type="button"
                 onClick={() => setShowSplitModal(true)}
-                className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer shadow-xs"
+                className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-xs"
               >
                 Configure
               </button>
             </div>
 
             {/* Compact list of split tenders */}
-            <div className="space-y-1 max-h-28 overflow-y-auto custom-scrollbar text-[11px]">
+            <div className="space-y-1 max-h-28 overflow-y-auto custom-scrollbar text-xs">
               {splitPayments.length === 0 ? (
                 <p className="text-gray-500 italic py-1">No payment tenders configured yet.</p>
               ) : (
@@ -952,7 +953,7 @@ function Purchases() {
               const splitPaid = splitPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
               const splitRemaining = Math.max(0, total - splitPaid)
               return (
-                <div className="pt-1.5 border-t border-purple-200/80 flex items-center justify-between text-[11px]">
+                <div className="pt-1.5 border-t border-purple-200/80 flex items-center justify-between text-xs">
                   <div>
                     <span className="text-gray-500">Paid: </span>
                     <span className="font-bold text-emerald-700">Rs. {Math.round(splitPaid).toLocaleString()}</span>
@@ -974,7 +975,7 @@ function Purchases() {
         {/* Cash Vault Selector (for Cash purchases) */}
         {paymentType === 'cash' && cashVaults.length > 0 && (
           <div className="shrink-0 rounded-xl p-2.5 space-y-1.5 border transition bg-emerald-50/90 border-emerald-300 ring-2 ring-emerald-100">
-            <span className="text-[11px] font-bold text-emerald-900 block">
+            <span className="text-xs font-bold text-emerald-900 block">
               💵 Deduct From Cash Drawer / Vault:
             </span>
             <select
@@ -994,12 +995,12 @@ function Purchases() {
         {/* Bank Account Selector (for Bank purchases) */}
         {paymentType === 'bank' && (
           <div className="shrink-0 rounded-xl p-2.5 space-y-1.5 border transition bg-blue-50/90 border-blue-300 ring-2 ring-blue-100">
-            <div className="flex items-center justify-between text-[11px] font-bold text-blue-900">
+            <div className="flex items-center justify-between text-xs font-bold text-blue-900">
               <span>🏦 Pay Through Bank Account:</span>
               <button
                 type="button"
                 onClick={() => setShowBankModal(true)}
-                className="text-blue-600 hover:underline flex items-center gap-0.5 text-[11px]"
+                className="text-blue-600 hover:underline flex items-center gap-0.5 text-xs"
               >
                 + Add Bank
               </button>
@@ -1007,7 +1008,7 @@ function Purchases() {
 
             {bankOnlyAccounts.length === 0 ? (
               <div className="bg-white p-2 rounded-lg border border-blue-200 space-y-1">
-                <p className="text-[11px] text-gray-600 font-medium">No bank account linked yet.</p>
+                <p className="text-xs text-gray-600 font-medium">No bank account linked yet.</p>
                 <button
                   type="button"
                   onClick={() => setShowBankModal(true)}
@@ -1017,7 +1018,7 @@ function Purchases() {
                 </button>
               </div>
             ) : (
-              <select
+              <select aria-label="Bank Account"
                 value={selectedBankAccountId}
                 onChange={e => setSelectedBankAccountId(e.target.value)}
                 className="w-full px-2 py-1.5 border border-blue-300 rounded-lg text-xs bg-white font-bold outline-none text-slate-800"
@@ -1035,13 +1036,13 @@ function Purchases() {
 
         {/* Cart Items — scrollable */}
         <div className="flex-1 overflow-y-auto min-h-0 space-y-1 pr-1 custom-scrollbar">
-          {cart.length === 0 && <p className="text-gray-400 text-xs text-center py-8">Products select karein ←</p>}
+          {cart.length === 0 && <p className="text-gray-500 text-xs text-center py-8">Select products on the left</p>}
           {cart.map(item => (
             <div key={item.id} className="bg-gray-50 rounded-lg p-2 border border-gray-100">
               <div className="flex items-center gap-1">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-gray-800 truncate">{item.name}</p>
-                  {item.brand && <p className="text-[10px] text-gray-400">{item.brand}</p>}
+                  {item.brand && <p className="text-xs text-gray-500">{item.brand}</p>}
                 </div>
                 <button onClick={() => removeFromCart(item.id)} className="text-red-400 hover:text-red-600 font-bold pl-1 text-sm">×</button>
               </div>
@@ -1067,7 +1068,7 @@ function Purchases() {
                 {/* Price */}
                 <div className="flex-1 flex flex-col gap-0.5">
                   <div className="flex items-center gap-1 bg-white border border-gray-200 rounded px-1">
-                    <span className="text-[10px] text-gray-400">Rate</span>
+                    <span className="text-xs text-gray-500">Rate</span>
                     <input
                       type="number"
                       value={item.purchase_price}
@@ -1075,10 +1076,10 @@ function Purchases() {
                       className={`w-full text-xs font-bold outline-none ${item.purchase_price > (item.cost_price || 0) ? 'text-red-600' : item.purchase_price < (item.cost_price || 0) ? 'text-green-600' : 'text-blue-600'}`}
                     />
                   </div>
-                  <p className="text-[8px] text-gray-400">Prev Cost: Rs.{item.cost_price || 0}</p>
+                  <p className="text-xs text-gray-500">Prev Cost: Rs.{item.cost_price || 0}</p>
                 </div>
               </div>
-              <p className="text-right text-[10px] font-bold text-gray-500 mt-0.5">Total: Rs. {(item.purchase_price * item.qty).toLocaleString()}</p>
+              <p className="text-right text-xs font-bold text-gray-500 mt-0.5">Total: Rs. {(item.purchase_price * item.qty).toLocaleString()}</p>
             </div>
           ))}
         </div>
@@ -1093,11 +1094,11 @@ function Purchases() {
               </div>
               <div className="flex items-center justify-between">
                 <label className="text-gray-600">Disc (Rs):</label>
-                <input type="number" value={discount} onChange={e => setDiscount(e.target.value)} className="w-16 px-1 border rounded text-right outline-none" min="0" max={subtotal} placeholder="0" />
+                <input aria-label="Disc (Rs)" type="number" value={discount} onChange={e => setDiscount(e.target.value)} className="w-16 px-1 border rounded text-right outline-none" min="0" max={subtotal} placeholder="0" />
               </div>
             </div>
             <div className="flex flex-col justify-end text-right border-l pl-2 border-gray-200">
-              <div className="text-gray-500 text-[10px] uppercase">Net Total</div>
+              <div className="text-gray-500 text-xs uppercase">Net Total</div>
               <div className="font-black text-lg text-gray-800 leading-none">Rs.{total.toLocaleString()}</div>
             </div>
           </div>
@@ -1114,11 +1115,11 @@ function Purchases() {
       </div>
       )}
       {quickViewProduct && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4" onClick={() => setQuickViewProduct(null)}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4" onClick={() => setQuickViewProduct(null)}>
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4 shrink-0">
               <h3 className="text-lg font-bold text-gray-800">📋 Product Details & Price History</h3>
-              <button onClick={() => setQuickViewProduct(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setQuickViewProduct(null)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
             <div className="flex-1 overflow-y-auto space-y-3">
               <div>
@@ -1141,11 +1142,11 @@ function Purchases() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="bg-blue-50 rounded-lg p-2 text-center">
-                  <p className="text-[10px] text-blue-500 uppercase font-bold">Current Cost</p>
+                  <p className="text-xs text-blue-500 uppercase font-bold">Current Cost</p>
                   <p className="font-bold text-blue-700 text-lg">Rs. {quickViewProduct.cost_price || 0}</p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-2 text-center">
-                  <p className="text-[10px] text-green-500 uppercase font-bold">Sale Price</p>
+                  <p className="text-xs text-green-500 uppercase font-bold">Sale Price</p>
                   <p className="font-bold text-green-700 text-lg">Rs. {quickViewProduct.sale_price || 0}</p>
                 </div>
               </div>
@@ -1154,9 +1155,9 @@ function Purchases() {
               <div className="border-t pt-3">
                 <h4 className="font-bold text-gray-700 text-sm mb-2">📊 Purchase Price History</h4>
                 {loadingHistory ? (
-                  <p className="text-center text-gray-400 text-xs py-4">Loading history...</p>
+                  <p className="text-center text-gray-500 text-xs py-4">Loading history...</p>
                 ) : priceHistory.length === 0 ? (
-                  <p className="text-center text-gray-400 text-xs py-4 italic">No previous purchases found for this product.</p>
+                  <p className="text-center text-gray-500 text-xs py-4 italic">No previous purchases found for this product.</p>
                 ) : (
                   <div className="border rounded-lg overflow-hidden overflow-x-auto">
                     <table className="w-full text-xs min-w-[360px]">
@@ -1195,14 +1196,14 @@ function Purchases() {
 
       {/* Held Purchases Modal */}
       {showHeldPurchases && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4" onClick={() => setShowHeldPurchases(false)}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4" onClick={() => setShowHeldPurchases(false)}>
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-gray-800">⏸️ Held Purchases</h3>
-              <button onClick={() => setShowHeldPurchases(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setShowHeldPurchases(false)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
             <div className="overflow-y-auto space-y-3 flex-1">
-              {heldPurchases.length === 0 && <p className="text-gray-400 text-center py-8">No held purchases</p>}
+              {heldPurchases.length === 0 && <p className="text-gray-500 text-center py-8">No held purchases</p>}
               {heldPurchases.map(held => {
                 const sup = suppliers.find(s => String(s.id) === String(held.supplier_id))
                 return (
@@ -1212,7 +1213,7 @@ function Purchases() {
                       <p className="font-bold text-gray-800">Rs. {held.total?.toLocaleString()}</p>
                     </div>
                     {sup && <p className="text-xs text-gray-600 mb-1">Supplier: {sup.name}</p>}
-                    <p className="text-xs text-gray-400">{held.items?.length} items</p>
+                    <p className="text-xs text-gray-500">{held.items?.length} items</p>
                     <div className="flex gap-2 mt-2">
                       <button onClick={() => handleResumePurchase(held)}
                         className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition">

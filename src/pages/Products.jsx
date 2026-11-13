@@ -17,6 +17,7 @@ import { Boxes } from 'lucide-react'
 import { hasFeature } from '../utils/featureGate'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 function Products() {
   const [products, setProducts] = useState([])
@@ -550,7 +551,7 @@ function Products() {
     }
 
     if (formatted.length === 0) {
-      notify(`⚠️ Koi naya product nahi mila.\n${skipped.length} products pehle se mojood hain (duplicate skip kiye).`)
+      notify(`No new products found\n${skipped.length} products already exist and were skipped.`, 'warning')
       setLoading(false)
       setImportPreviewRows([])
       return
@@ -677,10 +678,10 @@ function Products() {
 
   const handleBulkEdit = async () => {
     if (!bulkCategory && !bulkBrand && !bulkUnit) {
-      notify('Category, Brand ya Unit mein se kuch toh select karo!')
+      notify('Choose a category, brand or unit to change.')
       return
     }
-    if (!confirm(`${selected.length} product(s) update honge. Continue?`)) return
+    if (!await confirmDialog(`Update ${selected.length} product(s)?`, { confirmLabel: 'Update products' })) return
 
     setBulkSaving(true)
     const updates = {}
@@ -742,14 +743,14 @@ function Products() {
 
   const handleManualSync = async () => {
     if (!navigator.onLine) {
-      notify('Internet connection nahi hai. Cloud sync ke liye online hona zaroori hai.')
+      notify('No internet connection. Go online to sync with the cloud.')
       return
     }
     setManualSyncing(true)
     try {
       const res = await reconcileOfflineProducts(user.shop_id)
       await fetchProducts()
-      notify(`Cloud sync mukammal! ${res?.synced || 0} product(s) sync ho gaye.`)
+      notify(`Cloud sync finished. ${res?.synced || 0} product(s) synced.`, 'success')
     } catch (err) {
       notify('Sync error: ' + (err?.message || err))
     } finally {
@@ -848,10 +849,10 @@ function Products() {
             <span className="text-2xl">⚠️</span>
             <div>
               <div className="font-bold text-amber-950">
-                {unsyncedCount} Product(s) Offline Stored (Cloud par mojood nahi)
+                {unsyncedCount} product(s) saved on this device only
               </div>
               <div className="text-xs text-amber-800">
-                Ye products local IndexedDB mein hain aur abhi tak Supabase Cloud par sync nahi hue. Online version par dekhne ke liye sync button dabayein.
+                These products are saved on this device and have not reached the cloud yet. Press the sync button to upload them.
               </div>
             </div>
           </div>
@@ -868,30 +869,30 @@ function Products() {
       {/* Practical High-Level KPI Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase text-gray-400">Total Portfolio</p>
+          <p className="text-xs font-black uppercase text-gray-500">Total Portfolio</p>
           <p className="text-xl font-black text-gray-900 mt-0.5">{phones.length + products.length}</p>
-          <p className="text-[10px] text-gray-400">Total catalog items</p>
+          <p className="text-xs text-gray-500">Total catalog items</p>
         </div>
         <div className="bg-white p-3 rounded-xl border border-purple-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase text-purple-600">Mobile Phones</p>
+          <p className="text-xs font-black uppercase text-purple-600">Mobile Phones</p>
           <p className="text-xl font-black text-purple-700 mt-0.5">{phones.length}</p>
-          <p className="text-[10px] text-purple-500 font-semibold">{inStockPhonesCount} in stock</p>
+          <p className="text-xs text-purple-500 font-semibold">{inStockPhonesCount} in stock</p>
         </div>
         <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase text-blue-600">General Products</p>
+          <p className="text-xs font-black uppercase text-blue-600">General Products</p>
           <p className="text-xl font-black text-blue-700 mt-0.5">{products.length}</p>
-          <p className="text-[10px] text-gray-400">Accessories & items</p>
+          <p className="text-xs text-gray-500">Accessories & items</p>
         </div>
         <div className="bg-white p-3 rounded-xl border border-amber-100 shadow-xs">
-          <p className="text-[10px] font-black uppercase text-amber-600">Low Stock Alert</p>
+          <p className="text-xs font-black uppercase text-amber-600">Low Stock Alert</p>
           <p className="text-xl font-black text-amber-600 mt-0.5">{lowStockCount}</p>
-          <p className="text-[10px] text-gray-400">Items below threshold</p>
+          <p className="text-xs text-gray-500">Items below threshold</p>
         </div>
         {(user?.role === 'admin' || user?.role === 'manager' || user?.role === 'owner') && (
           <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-xs col-span-2 sm:col-span-1">
-            <p className="text-[10px] font-black uppercase text-emerald-600">Stock Valuation (Cost)</p>
+            <p className="text-xs font-black uppercase text-emerald-600">Stock Valuation (Cost)</p>
             <p className="text-lg font-black text-emerald-700 mt-0.5">Rs. {totalInventoryCost.toLocaleString()}</p>
-            <p className="text-[10px] text-gray-400">Invested asset value</p>
+            <p className="text-xs text-gray-500">Invested asset value</p>
           </div>
         )}
       </div>
@@ -935,7 +936,7 @@ function Products() {
         {/* Row 2: Search Input & Dynamic Dropdown Filters */}
         <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
           <div className="relative flex-1">
-            <input
+            <input aria-label="Search name, brand, SKU, or IMEI (e.g. 3529...)"
               type="text"
               placeholder="🔍 Search name, brand, SKU, or IMEI (e.g. 3529...)..."
               className="w-full pl-3.5 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -945,7 +946,7 @@ function Products() {
             {search && (
               <button
                 onClick={() => setSearch('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 text-xs"
               >
                 ✕
               </button>
@@ -955,7 +956,7 @@ function Products() {
           <div className="flex flex-wrap gap-2 items-center">
             {/* Category Filter */}
             {catalogType !== 'phones' && (
-              <select
+              <select aria-label="Categories filter"
                 className="px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold outline-none bg-white"
                 value={selectedCategory}
                 onChange={e => setSelectedCategory(e.target.value)}
@@ -969,7 +970,7 @@ function Products() {
             {/* Mobile Phone Specific Filters (PTA & Storage) */}
             {catalogType !== 'products' && (
               <>
-                <select
+                <select aria-label="Pta status filter"
                   className="px-3 py-2 border border-purple-200 rounded-lg text-xs font-bold text-purple-800 outline-none bg-purple-50/50"
                   value={selectedPta}
                   onChange={e => setSelectedPta(e.target.value)}
@@ -982,7 +983,7 @@ function Products() {
                   <option value="vip">VIP / Gevey</option>
                 </select>
 
-                <select
+                <select aria-label="Storage filter"
                   className="px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold outline-none bg-white"
                   value={selectedStorage}
                   onChange={e => setSelectedStorage(e.target.value)}
@@ -1015,7 +1016,7 @@ function Products() {
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-amber-800 font-bold text-xs sm:text-sm">⚠️ Low Stock Category Alerts</span>
-            <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300">
+            <span className="bg-amber-100 text-amber-700 text-xs font-black px-2 py-0.5 rounded-full border border-amber-300">
               {categoryLowStockAlerts.length} categories
             </span>
           </div>
@@ -1024,7 +1025,7 @@ function Products() {
               <button
                 key={cat.id}
                 onClick={() => { setSelectedCategory(String(cat.id)); setShowLowStockOnly(true) }}
-                className="bg-white border border-amber-300 hover:border-amber-400 text-amber-800 text-[11px] font-semibold px-2.5 py-1 rounded-full transition cursor-pointer"
+                className="bg-white border border-amber-300 hover:border-amber-400 text-amber-800 text-xs font-semibold px-2.5 py-1 rounded-full transition cursor-pointer"
               >
                 📦 {cat.name}: <span className="text-red-600 font-bold">{count} low</span>
               </button>
@@ -1035,7 +1036,7 @@ function Products() {
 
       {/* Loading */}
       {loading && (
-        <div className="py-16 text-center text-gray-400 animate-pulse text-base font-medium">
+        <div className="py-16 text-center text-gray-500 animate-pulse text-base font-medium">
           Loading catalog portfolio & mobile IMEI inventory...
         </div>
       )}
@@ -1044,7 +1045,7 @@ function Products() {
       {!loading && filteredCatalog.length === 0 && (
         <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
           <p className="text-gray-500 font-bold text-base">No items found matching your filters</p>
-          <p className="text-gray-400 text-xs mt-1">Try searching for a different keyword, SKU, or IMEI, or adjust the filters above.</p>
+          <p className="text-gray-500 text-xs mt-1">Try searching for a different keyword, SKU, or IMEI, or adjust the filters above.</p>
         </div>
       )}
 
@@ -1065,7 +1066,7 @@ function Products() {
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-black uppercase tracking-wider ${
                           isPhone 
                             ? 'bg-purple-100 text-purple-800 border border-purple-200' 
                             : item.inventory_mode === 'batch_tracked'
@@ -1079,29 +1080,29 @@ function Products() {
 
                       <div className="mt-1.5 flex flex-wrap gap-1 items-center">
                         {item.brand && (
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{item.brand}</span>
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-bold text-gray-700">{item.brand}</span>
                         )}
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">{item.category_name}</span>
+                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{item.category_name}</span>
                         {isPhone && item.pta_status && (
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-bold uppercase ${
                             item.pta_status === 'pta_approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                           }`}>
                             {item.pta_status.replace(/_/g, ' ')}
                           </span>
                         )}
                         {isPhone && item.storage && (
-                          <span className="rounded bg-purple-50 text-purple-700 px-1.5 py-0.5 text-[10px] font-bold">{item.storage}</span>
+                          <span className="rounded bg-purple-50 text-purple-700 px-1.5 py-0.5 text-xs font-bold">{item.storage}</span>
                         )}
                       </div>
 
                       {/* IMEI Display on Mobile */}
                       {isPhone && item.imei_1 && (
-                        <div className="mt-1.5 flex items-center gap-1 text-[11px] font-mono text-purple-800 bg-purple-50/70 px-2 py-0.5 rounded border border-purple-100">
+                        <div className="mt-1.5 flex items-center gap-1 text-xs font-mono text-purple-800 bg-purple-50/70 px-2 py-0.5 rounded border border-purple-100">
                           <span className="font-bold">IMEI:</span>
                           <span className="font-semibold">{item.imei_1}</span>
                           <button
                             onClick={(e) => handleCopyImei(e, item.imei_1)}
-                            className="ml-auto text-[10px] font-sans font-bold text-purple-600 hover:text-purple-800"
+                            className="ml-auto text-xs font-sans font-bold text-purple-600 hover:text-purple-800"
                             title="Copy IMEI"
                           >
                             {copiedImei === item.imei_1 ? '✓ Copied' : '📋 Copy'}
@@ -1120,18 +1121,18 @@ function Products() {
 
                   <div className="mt-2.5 grid grid-cols-3 gap-2 text-xs border-t border-gray-100 pt-2">
                     <div>
-                      <p className="text-[10px] font-bold uppercase text-gray-400">Stock</p>
+                      <p className="text-xs font-bold uppercase text-gray-500">Stock</p>
                       <p className={`font-black ${isLow ? 'text-red-600' : 'text-emerald-600'}`}>
                         {isPhone ? (item.stock_quantity > 0 ? 'In Stock (1)' : 'Sold') : item.stock_quantity}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase text-gray-400">Sale Price</p>
+                      <p className="text-xs font-bold uppercase text-gray-500">Sale Price</p>
                       <p className="font-black text-gray-900">Rs. {sale.toLocaleString()}</p>
                     </div>
                     {(user?.role === 'admin' || user?.role === 'manager' || user?.role === 'owner') && (
                       <div>
-                        <p className="text-[10px] font-bold uppercase text-gray-400">Margin</p>
+                        <p className="text-xs font-bold uppercase text-gray-500">Margin</p>
                         <p className={`font-black ${margin >= 25 ? 'text-emerald-600' : margin >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
                           {margin.toFixed(0)}%
                         </p>
@@ -1140,7 +1141,7 @@ function Products() {
                   </div>
 
                   <div className="mt-2.5 flex items-center justify-between gap-1.5 pt-2 border-t border-gray-50">
-                    <p className="font-mono text-[10px] text-gray-400 truncate max-w-[120px]">{item.sku || 'No SKU'}</p>
+                    <p className="font-mono text-xs text-gray-500 truncate max-w-[120px]">{item.sku || 'No SKU'}</p>
                     <div className="flex gap-1.5">
                       <button
                         onClick={() => setDetailProduct(item)}
@@ -1257,7 +1258,7 @@ function Products() {
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <select
+                        <select aria-label="None"
                           value={inlineForm.category_id || ''}
                           onChange={e => setInlineForm(f => ({ ...f, category_id: e.target.value }))}
                           className="w-full text-sm border rounded px-2 py-1 outline-none"
@@ -1266,7 +1267,7 @@ function Products() {
                           {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </td>
-                      <td className="px-3 py-2 text-gray-400 text-xs text-center">{item.stock_quantity}</td>
+                      <td className="px-3 py-2 text-gray-500 text-xs text-center">{item.stock_quantity}</td>
                       <td className="px-3 py-2">
                         <input
                           type="number"
@@ -1285,7 +1286,7 @@ function Products() {
                       </td>
                       {(user?.role === 'admin' || user?.role === 'manager' || user?.role === 'owner') && <td className="px-3 py-2"></td>}
                       <td className="px-3 py-2">
-                        <select
+                        <select aria-label="active"
                           value={inlineForm.status || 'active'}
                           onChange={e => setInlineForm(f => ({ ...f, status: e.target.value }))}
                           className="text-xs border rounded px-2 py-1 outline-none"
@@ -1328,14 +1329,14 @@ function Products() {
                         <div className="font-bold text-gray-900 flex items-center gap-2">
                           <span>{item.name}</span>
                           {isPhone ? (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-black uppercase bg-purple-100 text-purple-800 border border-purple-200">
+                            <span className="px-1.5 py-0.2 rounded text-xs font-black uppercase bg-purple-100 text-purple-800 border border-purple-200">
                               Phone
                             </span>
                           ) : item.inventory_mode === 'batch_tracked' ? (
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); setBatchManageProduct(item.raw_item || item) }}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 flex items-center gap-1 cursor-pointer transition"
+                              className="px-1.5 py-0.5 rounded text-xs font-black uppercase bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 flex items-center gap-1 cursor-pointer transition"
                               title="FIFO Batch Tracked — Click to view lots"
                             >
                               <Boxes size={11} /> FIFO Batches
@@ -1344,7 +1345,7 @@ function Products() {
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); setConvertProduct(item.raw_item || item) }}
-                              className="px-1.5 py-0.5 rounded text-[9px] font-bold text-gray-500 hover:text-emerald-700 bg-gray-100 hover:bg-emerald-50 border border-dashed border-gray-300 hover:border-emerald-400 flex items-center gap-1 transition cursor-pointer"
+                              className="px-1.5 py-0.5 rounded text-xs font-bold text-gray-500 hover:text-emerald-700 bg-gray-100 hover:bg-emerald-50 border border-dashed border-gray-300 hover:border-emerald-400 flex items-center gap-1 transition cursor-pointer"
                               title="Click to convert to FIFO batch tracking"
                             >
                               <Boxes size={10} /> + FIFO
@@ -1353,13 +1354,13 @@ function Products() {
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {item.brand && (
-                            <span className="text-[10px] font-black text-gray-500 uppercase">{item.brand}</span>
+                            <span className="text-xs font-black text-gray-500 uppercase">{item.brand}</span>
                           )}
                           {isPhone && item.storage && (
-                            <span className="text-[10px] text-purple-700 font-bold">• {item.storage}</span>
+                            <span className="text-xs text-purple-700 font-bold">• {item.storage}</span>
                           )}
                           {isPhone && item.color && (
-                            <span className="text-[10px] text-gray-400">• {item.color}</span>
+                            <span className="text-xs text-gray-500">• {item.color}</span>
                           )}
                         </div>
                       </td>
@@ -1369,12 +1370,12 @@ function Products() {
                         {isPhone ? (
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 w-fit">
-                              <span className="text-[10px] font-sans text-purple-400">IMEI:</span>
+                              <span className="text-xs font-sans text-purple-400">IMEI:</span>
                               <span>{item.imei_1 || 'N/A'}</span>
                               {item.imei_1 && (
                                 <button
                                   onClick={(e) => handleCopyImei(e, item.imei_1)}
-                                  className="text-[10px] text-purple-500 hover:text-purple-800 font-sans cursor-pointer"
+                                  className="text-xs text-purple-500 hover:text-purple-800 font-sans cursor-pointer"
                                   title="Copy IMEI"
                                 >
                                   {copiedImei === item.imei_1 ? '✓' : '📋'}
@@ -1382,7 +1383,7 @@ function Products() {
                               )}
                             </div>
                             {item.pta_status && (
-                              <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-black uppercase tracking-wider ${
+                              <span className={`inline-block px-1.5 py-0.2 rounded text-xs font-black uppercase tracking-wider ${
                                 String(item.pta_status).toLowerCase().includes('approved')
                                   ? 'bg-emerald-100 text-emerald-800'
                                   : String(item.pta_status).toLowerCase().includes('non')
@@ -1441,7 +1442,7 @@ function Products() {
 
                       {/* Status */}
                       <td className="px-3 py-3.5">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
                           item.status === 'active' || item.status === 'in_stock'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-gray-100 text-gray-600 border border-gray-200'
@@ -1523,19 +1524,19 @@ function Products() {
 
       {/* Import Preview Modal */}
       {showImportPreview && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-50 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-4xl flex flex-col">
             <h2 className="text-xl font-bold text-gray-800 mb-1">📥 Import Preview</h2>
-            <p className="text-sm text-gray-500 mb-3">{importPreviewRows.length} products ready to import. Category match status check karein.</p>
+            <p className="text-sm text-gray-500 mb-3">{importPreviewRows.length} products ready to import. Check that each category matched.</p>
 
             {importPreviewRows.some(r => r.categoryName && !r.categoryId) && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
                 <p className="text-sm text-yellow-800 font-medium">
-                  ⚠️ {importPreviewRows.filter(r => r.categoryName && !r.categoryId).length} row(s) mein category match nahi hui.
+                  ⚠️ {importPreviewRows.filter(r => r.categoryName && !r.categoryId).length} row(s) have a category that does not exist yet.
                 </p>
                 <label className="flex items-center gap-2 mt-2 cursor-pointer">
                   <input type="checkbox" checked={autoCreateCategories} onChange={e => setAutoCreateCategories(e.target.checked)} className="w-4 h-4 rounded accent-blue-600" />
-                  <span className="text-sm text-yellow-800">Missing categories auto-create karo</span>
+                  <span className="text-sm text-yellow-800">Create the missing categories</span>
                 </label>
               </div>
             )}
@@ -1543,11 +1544,11 @@ function Products() {
             {importPreviewRows.some(r => r.brand && !r.brandMatched) && (
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
                 <p className="text-sm text-orange-800 font-medium">
-                  ⚠️ {importPreviewRows.filter(r => r.brand && !r.brandMatched).length} row(s) mein brand match nahi hui — ye brands aapke system mein nahi hain.
+                  ⚠️ {importPreviewRows.filter(r => r.brand && !r.brandMatched).length} row(s) have a brand that does not exist yet.
                 </p>
                 <label className="flex items-center gap-2 mt-2 cursor-pointer">
                   <input type="checkbox" checked={autoCreateBrands} onChange={e => setAutoCreateBrands(e.target.checked)} className="w-4 h-4 rounded accent-orange-500" />
-                  <span className="text-sm text-orange-800">Missing brands auto-create karo</span>
+                  <span className="text-sm text-orange-800">Create the missing brands</span>
                 </label>
               </div>
             )}
@@ -1568,7 +1569,7 @@ function Products() {
                 <tbody className="divide-y divide-gray-100">
                   {importPreviewRows.map((row, i) => (
                     <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 text-gray-400 text-xs">{i + 1}</td>
+                      <td className="px-3 py-2 text-gray-500 text-xs">{i + 1}</td>
                       <td className="px-3 py-2 font-medium text-gray-800">{row.name}</td>
                       <td className="px-3 py-2">
                         {row.brand ? (
@@ -1578,7 +1579,7 @@ function Products() {
                             <span className="text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full text-xs font-medium">✗ {row.brand}</span>
                           )
                         ) : (
-                          <span className="text-gray-400 text-xs">—</span>
+                          <span className="text-gray-500 text-xs">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -1589,7 +1590,7 @@ function Products() {
                             <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded-full text-xs font-medium">✗ {row.categoryName}</span>
                           )
                         ) : (
-                          <span className="text-gray-400 text-xs">—</span>
+                          <span className="text-gray-500 text-xs">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-gray-600">Rs.{row.cost_price}</td>
@@ -1626,15 +1627,15 @@ function Products() {
 
       {/* Bulk Edit Modal */}
       {showBulkEdit && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-sm">
             <h2 className="text-xl font-bold text-gray-800 mb-1">✏️ Bulk Edit</h2>
-            <p className="text-sm text-gray-500 mb-4">{selected.length} product(s) selected. Sirf woh fields update hongi jo aap select karein.</p>
+            <p className="text-sm text-gray-500 mb-4">{selected.length} product(s) selected. Only the fields you choose are changed.</p>
 
             <div className="space-y-4">
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Category</label>
-                <select
+                <select aria-label="Category"
                   value={bulkCategory}
                   onChange={e => setBulkCategory(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -1646,7 +1647,7 @@ function Products() {
 
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Brand</label>
-                <select
+                <select aria-label="Brand"
                   value={bulkBrand}
                   onChange={e => setBulkBrand(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -1658,7 +1659,7 @@ function Products() {
 
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Unit</label>
-                <select
+                <select aria-label="Unit"
                   value={bulkUnit}
                   onChange={e => setBulkUnit(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"

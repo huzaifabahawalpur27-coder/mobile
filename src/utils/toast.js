@@ -38,7 +38,12 @@ function getHost() {
 }
 
 export function notify(message, kind) {
-  const text = String(message ?? '')
+  let text = String(message ?? '')
+  // The database refused the request because the login session is missing or expired
+  if (/row-level security policy|row violates row-level security/i.test(text)) {
+    text = 'Your login has expired\nLog out, then log in again to continue. Nothing was saved.'
+    kind = 'error'
+  }
   if (typeof document === 'undefined' || !document.body) {
     console.log(text)
     return

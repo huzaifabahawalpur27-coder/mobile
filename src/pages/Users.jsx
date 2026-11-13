@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { db } from '../services/db'
 import { hashPassword, verifyPassword } from '../utils/authUtils'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 function Users() {
   const { user } = useAuth()
@@ -103,7 +104,7 @@ function Users() {
       const { error } = await supabase.from('users').update(updateData).eq('id', editingId)
       if (error) {
         if (error.message?.toLowerCase().includes('row-level security') || error.message?.toLowerCase().includes('rls')) {
-          notify('⚠️ Session Expired: Meharbani karke app se Log Out karke dobara Log In karein taake server connection refresh ho sake.')
+          notify('Your login has expired\nLog out, then log in again to continue.', 'error')
         } else {
           notify('Error: ' + error.message)
         }
@@ -112,16 +113,16 @@ function Users() {
     } else {
       // Dynamic Limit Enforcement
       if (users.length >= (limits.user_limit || 2)) {
-        notify(`Limit Reached! Aapka ${limits.plan_name || 'TRIAL'} plan sirf ${limits.user_limit || 2} staff accounts ki ijazat deta hai. Meharbani karke Superadmin se plan upgrade karwayein.`)
+        notify(`Staff limit reached\nThe ${limits.plan_name || 'TRIAL'} plan allows ${limits.user_limit || 2} staff accounts. Ask support to upgrade the plan.`, 'warning')
         setSaving(false)
         return
       }
-      if (!form.password) { notify('Password zaroori hai!'); setSaving(false); return }
+      if (!form.password) { notify('Enter a password.'); setSaving(false); return }
       const hashedPassword = await hashPassword(form.password)
       const { error } = await supabase.from('users').insert([{ ...form, password: hashedPassword, shop_id: user.shop_id }])
       if (error) {
         if (error.message?.toLowerCase().includes('row-level security') || error.message?.toLowerCase().includes('rls')) {
-          notify('⚠️ Session Expired: Meharbani karke app se Log Out karke dobara Log In karein taake server connection refresh ho sake.')
+          notify('Your login has expired\nLog out, then log in again to continue.', 'error')
         } else {
           notify('Error: ' + error.message)
         }
@@ -137,8 +138,8 @@ function Users() {
   }
 
   const handleDelete = async (id) => {
-    if (id === user.id) { notify('Aap apna khud ka account delete nahi kar sakte!'); return }
-    if (!confirm('Is user ko delete karo?')) return
+    if (id === user.id) { notify('You cannot delete your own account.'); return }
+    if (!await confirmDialog('Delete this user?\nThey will no longer be able to log in.', { confirmLabel: 'Delete user', danger: true })) return
     await supabase.from('users').delete().eq('id', id).eq('shop_id', user.shop_id)
     fetchUsers()
   }
@@ -160,9 +161,9 @@ function Users() {
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
-    if (!currentPw || !newPw || !confirmPw) { notify('Tamam fields fill karo!'); return }
+    if (!currentPw || !newPw || !confirmPw) { notify('Fill in all three password fields.'); return }
     if (newPw.length < 4) { notify('Naya password kam az kam 4 characters ka hona chahiye!'); return }
-    if (newPw !== confirmPw) { notify('Naya password aur confirm password match nahi karte!'); return }
+    if (newPw !== confirmPw) { notify('The new password and its confirmation do not match.'); return }
 
     setChangingPw(true)
     try {
@@ -172,15 +173,15 @@ function Users() {
         // Try to get from DB
         const localUser = await db.users.get(user.id)
         if (!localUser?.password) {
-          notify('Current password verify nahi ho saka. Please logout aur dobara login karein.')
+          notify('Could not check the current password. Log out and log in again.', 'error')
           setChangingPw(false)
           return
         }
         const isValid = await verifyPassword(currentPw, localUser.password)
-        if (!isValid) { notify('Current password ghalat hai!'); setChangingPw(false); return }
+        if (!isValid) { notify('The current password is wrong.', 'error'); setChangingPw(false); return }
       } else {
         const isValid = await verifyPassword(currentPw, storedHash)
-        if (!isValid) { notify('Current password ghalat hai!'); setChangingPw(false); return }
+        if (!isValid) { notify('The current password is wrong.', 'error'); setChangingPw(false); return }
       }
 
       // Hash new password and update
@@ -192,7 +193,7 @@ function Users() {
       localStorage.setItem('user_pw_hash', newHash)
       await db.users.update(user.id, { password: newHash })
 
-      notify('Password successfully change ho gaya! ✅')
+      notify('Password changed.', 'success')
       setCurrentPw('')
       setNewPw('')
       setConfirmPw('')
@@ -225,7 +226,7 @@ function Users() {
           <button
             onClick={() => {
               if (!showForm && users.length >= (limits.user_limit || 2) && !editingId) {
-                notify(`Plan Limit! Aapka current plan max ${limits.user_limit || 2} users allow karta hai.`)
+                notify(`Staff limit reached\nYour plan allows ${limits.user_limit || 2} users.`, 'warning')
                 return
               }
               setShowForm(!showForm)
@@ -240,27 +241,27 @@ function Users() {
       {showChangePw && (
         <div className="bg-white rounded-xl shadow p-6 mb-6 max-w-md border-2 border-green-100">
           <h2 className="font-bold text-gray-800 mb-1 flex items-center gap-2">🔑 Change My Password</h2>
-          <p className="text-xs text-gray-500 mb-4">Apna password yahan change karein. Current password zaroori hai.</p>
+          <p className="text-xs text-gray-500 mb-4">Change your password here. You need your current password.</p>
           <form onSubmit={handleChangePassword} className="space-y-3">
             <div>
               <label className="block text-gray-700 font-medium mb-1 text-sm">Current Password *</label>
-              <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)}
+              <input aria-label="Current Password" type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)}
                 required className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="Purana password" />
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1 text-sm">New Password *</label>
-              <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
+              <input aria-label="New Password" type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
                 required className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="Naya password (min 4 characters)" />
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1 text-sm">Confirm New Password *</label>
-              <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+              <input aria-label="Confirm New Password" type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
                 required className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="Naya password dobara darj karein" />
+                placeholder="Type the new password again" />
               {newPw && confirmPw && newPw !== confirmPw && (
-                <p className="text-red-500 text-xs mt-1">❌ Passwords match nahi karte</p>
+                <p className="text-red-500 text-xs mt-1">The passwords do not match</p>
               )}
             </div>
             <div className="flex gap-3 pt-1">
@@ -283,27 +284,27 @@ function Users() {
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-gray-700 font-medium mb-1">Username *</label>
-              <input type="text" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })}
+              <input aria-label="Username" type="text" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })}
                 required className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g. cashier1" />
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Email *</label>
-              <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+              <input aria-label="Email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
                 required className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g. ali@shop.com" />
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">
-                Password {editingId && <span className="text-gray-400 text-xs">(khali chhorein agar change nahi karna)</span>}
+                Password {editingId && <span className="text-gray-500 text-xs">(leave blank to keep the current one)</span>}
               </label>
-              <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+              <input aria-label=" Password " type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder={editingId ? 'Naya password (optional)' : 'Password'} />
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Role</label>
-              <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}
+              <select aria-label="Role" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="cashier">Cashier</option>
                 <option value="manager">Manager</option>
@@ -342,7 +343,7 @@ function Users() {
               <input type="checkbox" id="is_active" checked={form.is_active}
                 onChange={e => setForm({ ...form, is_active: e.target.checked })}
                 className="w-4 h-4 text-blue-600" />
-              <label htmlFor="is_active" className="text-gray-700 font-medium">Active (login kar sakta hai)</label>
+              <label htmlFor="is_active" className="text-gray-700 font-medium">Active (can log in)</label>
             </div>
             <div className="flex gap-3">
               <button type="submit" disabled={saving}
@@ -359,7 +360,7 @@ function Users() {
       )}
 
       {loading ? <p className="text-gray-500">Loading...</p> : users.length === 0 ? (
-        <div className="text-center py-12"><p className="text-gray-400 text-lg">No users yet</p></div>
+        <div className="text-center py-12"><p className="text-gray-500 text-lg">No users yet</p></div>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
           <table className="w-full min-w-[520px]">

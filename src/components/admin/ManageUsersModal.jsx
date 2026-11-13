@@ -9,6 +9,7 @@ import {
   AlertTriangle, CheckCircle2, Eye, EyeOff, KeyRound, User, Copy, Check, MessageSquare
 } from 'lucide-react'
 import { notify } from '../../utils/toast'
+import { confirmDialog } from '../../utils/dialog'
 
 const EMPTY_FORM = { username: '', email: '', password: '', role: 'cashier', is_active: true }
 
@@ -176,7 +177,7 @@ export default function ManageUsersModal({ shop, onClose }) {
   }
 
   const handleDelete = async (u) => {
-    if (!confirm(`Delete user "${u.username}"? This cannot be undone.`)) return
+    if (!await confirmDialog(`Delete user "${u.username}"? This cannot be undone.`)) return
     setDeletingId(u.id)
     try {
       const { error: delErr } = await supabaseAdmin.from('users').delete().eq('id', u.id)
@@ -257,7 +258,7 @@ export default function ManageUsersModal({ shop, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
 
         {/* Header */}
@@ -277,7 +278,7 @@ export default function ManageUsersModal({ shop, onClose }) {
               </button>
             )}
             <button onClick={onClose}
-              className="text-slate-400 hover:text-slate-600 bg-white p-1.5 rounded-xl border border-slate-200">
+              className="text-slate-500 hover:text-slate-600 bg-white p-1.5 rounded-xl border border-slate-200">
               <X size={18} />
             </button>
           </div>
@@ -302,7 +303,7 @@ export default function ManageUsersModal({ shop, onClose }) {
               <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 {formMode === 'add' ? '+ New Staff User' : 'Edit User'}
               </p>
-              <button type="button" onClick={closeForm} className="text-slate-400 hover:text-slate-600 text-xs font-bold">
+              <button type="button" onClick={closeForm} className="text-slate-500 hover:text-slate-600 text-xs font-bold">
                 ✕
               </button>
             </div>
@@ -312,8 +313,8 @@ export default function ManageUsersModal({ shop, onClose }) {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500">Username *</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-2.5 text-slate-400" size={14} />
-                  <input
+                  <User className="absolute left-3 top-2.5 text-slate-500" size={14} />
+                  <input aria-label="cashier1"
                     type="text" required value={form.username}
                     onChange={e => setForm(p => ({ ...p, username: e.target.value }))}
                     placeholder="e.g. cashier1"
@@ -325,7 +326,7 @@ export default function ManageUsersModal({ shop, onClose }) {
               {/* Email */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500">Email (optional)</label>
-                <input
+                <input aria-label="Email (optional)"
                   type="email" value={form.email}
                   onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                   placeholder="e.g. cashier@shop.com"
@@ -339,7 +340,7 @@ export default function ManageUsersModal({ shop, onClose }) {
                   Password {formMode === 'add' ? '*' : '(leave blank to keep)'}
                 </label>
                 <div className="relative">
-                  <KeyRound className="absolute left-3 top-2.5 text-slate-400" size={14} />
+                  <KeyRound className="absolute left-3 top-2.5 text-slate-500" size={14} />
                   <input
                     type={showPass ? 'text' : 'password'}
                     value={form.password}
@@ -348,7 +349,7 @@ export default function ManageUsersModal({ shop, onClose }) {
                     className="w-full pl-8 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono"
                   />
                   <button type="button" onClick={() => setShowPass(v => !v)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">
+                    className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-600">
                     {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
                 </div>
@@ -357,7 +358,7 @@ export default function ManageUsersModal({ shop, onClose }) {
               {/* Role */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500">Role *</label>
-                <select value={form.role}
+                <select aria-label="Role" value={form.role}
                   onChange={e => setForm(p => ({ ...p, role: e.target.value }))}
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-bold">
                   <option value="cashier">Cashier</option>
@@ -392,12 +393,12 @@ export default function ManageUsersModal({ shop, onClose }) {
         {/* Users List */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2.5">
           {loading ? (
-            <div className="py-10 text-center text-slate-400 font-bold animate-pulse">Loading users…</div>
+            <div className="py-10 text-center text-slate-500 font-bold animate-pulse">Loading users…</div>
           ) : users.length === 0 ? (
             <div className="py-10 text-center">
               <Users size={36} className="mx-auto text-slate-200 mb-2" />
-              <p className="text-slate-400 font-bold text-sm">No users found.</p>
-              <p className="text-slate-400 text-xs mt-1">Click <strong>Add User</strong> to create the first staff account.</p>
+              <p className="text-slate-500 font-bold text-sm">No users found.</p>
+              <p className="text-slate-500 text-xs mt-1">Click <strong>Add User</strong> to create the first staff account.</p>
             </div>
           ) : (
             users.map(u => (
@@ -406,11 +407,11 @@ export default function ManageUsersModal({ shop, onClose }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-bold text-slate-800 text-sm font-mono">{u.username}</p>
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : u.role === 'manager' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                    <span className={`px-2 py-0.5 rounded-md text-xs font-black uppercase tracking-wider ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : u.role === 'manager' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
                       {u.role}
                     </span>
                     {!u.is_active && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-600">
+                      <span className="px-2 py-0.5 rounded-md text-xs font-black uppercase tracking-wider bg-red-100 text-red-600">
                         Inactive
                       </span>
                     )}
@@ -419,7 +420,7 @@ export default function ManageUsersModal({ shop, onClose }) {
 
                   {/* ── PASSWORD REVEAL & WHATSAPP ROW ── */}
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Password:</span>
+                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Password:</span>
                     {u.raw_password ? (
                       <div className="inline-flex items-center gap-1.5 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 text-xs font-mono font-bold text-slate-700">
                         <span>{revealedPasswords[u.id] ? u.raw_password : '••••••'}</span>
@@ -427,7 +428,7 @@ export default function ManageUsersModal({ shop, onClose }) {
                           type="button"
                           onClick={() => setRevealedPasswords(p => ({ ...p, [u.id]: !p[u.id] }))}
                           title={revealedPasswords[u.id] ? 'Hide Password' : 'Show Password'}
-                          className="text-slate-400 hover:text-slate-700 p-0.5"
+                          className="text-slate-500 hover:text-slate-700 p-0.5"
                         >
                           {revealedPasswords[u.id] ? <EyeOff size={13} /> : <Eye size={13} />}
                         </button>
@@ -435,7 +436,7 @@ export default function ManageUsersModal({ shop, onClose }) {
                           type="button"
                           onClick={() => copyText(u.raw_password, u.id)}
                           title="Copy Password"
-                          className="text-slate-400 hover:text-slate-700 p-0.5"
+                          className="text-slate-500 hover:text-slate-700 p-0.5"
                         >
                           {copiedId === u.id ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
                         </button>
@@ -444,7 +445,7 @@ export default function ManageUsersModal({ shop, onClose }) {
                       <button
                         type="button"
                         onClick={() => { setResetModalUser(u); setNewPasswordInput('') }}
-                        className="text-[10px] font-bold text-blue-600 hover:underline bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition"
+                        className="text-xs font-bold text-blue-600 hover:underline bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition"
                       >
                         🔑 Reset & Reveal Password
                       </button>
@@ -455,7 +456,7 @@ export default function ManageUsersModal({ shop, onClose }) {
                       type="button"
                       onClick={() => handleSendUserWhatsApp(u)}
                       title="Send credentials to owner via WhatsApp"
-                      className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded transition"
+                      className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded transition"
                     >
                       <MessageSquare size={12} />
                       <span>WhatsApp</span>
@@ -486,7 +487,7 @@ export default function ManageUsersModal({ shop, onClose }) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 shrink-0 flex justify-between items-center">
-          <p className="text-xs text-slate-400">{users.length} user{users.length !== 1 ? 's' : ''} in this shop</p>
+          <p className="text-xs text-slate-500">{users.length} user{users.length !== 1 ? 's' : ''} in this shop</p>
           <button onClick={onClose}
             className="px-4 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition">
             Close
@@ -496,14 +497,14 @@ export default function ManageUsersModal({ shop, onClose }) {
 
       {/* ── RESET & REVEAL PASSWORD MODAL ── */}
       {resetModalUser && (
-        <div className="fixed inset-0 bg-black/50 z-60 flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 z-60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                 <KeyRound size={16} className="text-blue-600" />
                 <span>Reset Password: {resetModalUser.username}</span>
               </h3>
-              <button onClick={() => setResetModalUser(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+              <button onClick={() => setResetModalUser(null)} className="text-slate-500 hover:text-slate-600">✕</button>
             </div>
             <p className="text-xs text-slate-500">
               Enter a new readable password. It will be immediately visible for Superadmin support and sent via WhatsApp.
@@ -512,7 +513,7 @@ export default function ManageUsersModal({ shop, onClose }) {
             <form onSubmit={handleQuickReset} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">New Password</label>
-                <input
+                <input aria-label="New Password"
                   type="text"
                   required
                   autoFocus

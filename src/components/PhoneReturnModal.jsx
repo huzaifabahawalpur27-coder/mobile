@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { getBankAccounts } from '../services/bankService'
 import { returnPhoneToSupplier } from '../services/purchaseService'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 export default function PhoneReturnModal({
   isOpen,
@@ -49,7 +50,7 @@ export default function PhoneReturnModal({
       return
     }
 
-    if (!confirm(`Are you sure you want to return ${phone.brand} ${phone.model} (IMEI: ${phone.imei_1}) to ${supplierName} for Rs. ${costPrice.toLocaleString()}?`)) {
+    if (!await confirmDialog(`Are you sure you want to return ${phone.brand} ${phone.model} (IMEI: ${phone.imei_1}) to ${supplierName} for Rs. ${costPrice.toLocaleString()}?`)) {
       return
     }
 
@@ -75,7 +76,7 @@ export default function PhoneReturnModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-100 flex flex-col max-h-[92dvh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-red-900 to-rose-900 text-white">
@@ -85,7 +86,7 @@ export default function PhoneReturnModal({
             </div>
             <div>
               <h2 className="text-sm font-black tracking-tight">Return Phone to Supplier (RMA)</h2>
-              <p className="text-[11px] text-rose-200">Stock & Financial Balance Reversal</p>
+              <p className="text-xs text-rose-200">Stock & Financial Balance Reversal</p>
             </div>
           </div>
           <button
@@ -110,31 +111,31 @@ export default function PhoneReturnModal({
             <div className="flex justify-between items-start">
               <div>
                 <p className="font-bold text-gray-900 text-sm">{phone.brand} {phone.model}</p>
-                <p className="text-gray-500 text-[11px]">
+                <p className="text-gray-500 text-xs">
                   {phone.storage} {phone.color ? `• ${phone.color}` : ''} • {phone.condition}
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] text-gray-400 uppercase font-bold">Cost / Refund Value</p>
+                <p className="text-xs text-gray-500 uppercase font-bold">Cost / Refund Value</p>
                 <p className="text-base font-black text-rose-700">Rs. {costPrice.toLocaleString()}</p>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 font-mono text-[11px]">
+            <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 font-mono text-xs">
               <div>
-                <span className="text-gray-400 font-sans mr-1">IMEI 1:</span>
+                <span className="text-gray-500 font-sans mr-1">IMEI 1:</span>
                 <span className="font-bold text-gray-800">{phone.imei_1}</span>
               </div>
               {phone.imei_2 && (
                 <div>
-                  <span className="text-gray-400 font-sans mr-1">IMEI 2:</span>
+                  <span className="text-gray-500 font-sans mr-1">IMEI 2:</span>
                   <span className="font-bold text-gray-800">{phone.imei_2}</span>
                 </div>
               )}
             </div>
 
             {supplierName && (
-              <div className="text-[11px] text-gray-600 pt-1">
+              <div className="text-xs text-gray-600 pt-1">
                 <span className="font-medium text-gray-500">Supplier:</span> <strong className="text-gray-900">{supplierName}</strong>
               </div>
             )}
@@ -145,7 +146,7 @@ export default function PhoneReturnModal({
             <label className="block text-xs font-bold text-gray-700 mb-1">
               Return Reason *
             </label>
-            <select
+            <select aria-label=" Return Reason "
               value={reason}
               onChange={e => setReason(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white font-semibold text-xs outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
@@ -159,7 +160,7 @@ export default function PhoneReturnModal({
             </select>
 
             {reason === 'Other' && (
-              <input
+              <input aria-label="Specify return reason"
                 type="text"
                 placeholder="Specify return reason..."
                 value={customReason}
@@ -188,7 +189,7 @@ export default function PhoneReturnModal({
                   <FileSpreadsheet className="w-4 h-4 text-rose-600" />
                   <span className="text-xs">Credit Note</span>
                 </div>
-                <p className="text-[10px] text-gray-500 font-normal">Deduct from Supplier Udhaar</p>
+                <p className="text-xs text-gray-500 font-normal">Deduct from Supplier Udhaar</p>
               </button>
 
               <button
@@ -204,7 +205,7 @@ export default function PhoneReturnModal({
                   <Banknote className="w-4 h-4 text-emerald-600" />
                   <span className="text-xs">Cash Refund</span>
                 </div>
-                <p className="text-[10px] text-gray-500 font-normal">Supplier paid cash back</p>
+                <p className="text-xs text-gray-500 font-normal">Supplier paid cash back</p>
               </button>
 
               <button
@@ -220,7 +221,7 @@ export default function PhoneReturnModal({
                   <Landmark className="w-4 h-4 text-blue-600" />
                   <span className="text-xs">Bank Refund</span>
                 </div>
-                <p className="text-[10px] text-gray-500 font-normal">Supplier wired to Bank</p>
+                <p className="text-xs text-gray-500 font-normal">Supplier wired to Bank</p>
               </button>
             </div>
           </div>
@@ -231,7 +232,7 @@ export default function PhoneReturnModal({
               <label className="block text-xs font-bold text-gray-700 mb-1">
                 Deposit Into Bank Account *
               </label>
-              <select
+              <select aria-label=" Deposit Into Bank Account "
                 value={selectedBankId}
                 onChange={e => setSelectedBankId(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white font-semibold text-xs outline-none focus:ring-2 focus:ring-blue-500"
@@ -246,7 +247,7 @@ export default function PhoneReturnModal({
           )}
 
           {/* Settlement Explanation */}
-          <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl text-rose-900 text-[11px] flex items-start gap-2">
+          <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl text-rose-900 text-xs flex items-start gap-2">
             <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div>
               <p className="font-bold">Financial Accounting Notice:</p>
@@ -271,7 +272,7 @@ export default function PhoneReturnModal({
             <label className="block text-xs font-bold text-gray-700 mb-1">
               Return Remarks / Condition Notes (Optional)
             </label>
-            <textarea
+            <textarea aria-label=" Return Remarks / Condition Notes (Optional) "
               rows="2"
               placeholder="e.g. Sent back with rider, replacement promised next week"
               value={notes}

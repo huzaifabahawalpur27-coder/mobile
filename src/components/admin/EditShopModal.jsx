@@ -84,14 +84,14 @@ export default function EditShopModal({ shop, onClose, onUpdated }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
         <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50">
           <div>
             <h2 className="text-xl font-bold text-slate-800">Edit Shop Details</h2>
             <p className="text-xs text-slate-500">Update contact info and notification email.</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-600 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
             <X size={20} />
           </button>
         </div>
@@ -103,7 +103,7 @@ export default function EditShopModal({ shop, onClose, onUpdated }) {
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Shop/Business Name</label>
               <div className="relative">
-                <Store className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                <Store className="absolute left-3 top-2.5 text-slate-500" size={16} />
                 <input required type="text" value={shopName} onChange={e => setShopName(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
               </div>
@@ -112,19 +112,19 @@ export default function EditShopModal({ shop, onClose, onUpdated }) {
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Notification Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                <Mail className="absolute left-3 top-2.5 text-slate-500" size={16} />
+                <input aria-label="For expiry warnings & billing" type="email" value={email} onChange={e => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                   placeholder="For expiry warnings & billing" />
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">This email receives the automated Resend warnings.</p>
+              <p className="text-xs text-slate-500 mt-1">This email receives the automated Resend warnings.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Phone Number</label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                  <Phone className="absolute left-3 top-2.5 text-slate-500" size={16} />
                   <input type="text" value={phone} onChange={e => setPhone(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                 </div>
@@ -132,7 +132,7 @@ export default function EditShopModal({ shop, onClose, onUpdated }) {
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">City/Address</label>
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                  <MapPin className="absolute left-3 top-2.5 text-slate-500" size={16} />
                   <input type="text" value={address} onChange={e => setAddress(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                 </div>
@@ -141,7 +141,7 @@ export default function EditShopModal({ shop, onClose, onUpdated }) {
 
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Subscription Tier</label>
-              <select
+              <select aria-label="Subscription Tier"
                 value={planId}
                 onChange={e => setPlanId(e.target.value)}
                 className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-700"
@@ -155,7 +155,7 @@ export default function EditShopModal({ shop, onClose, onUpdated }) {
 
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Internal Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)}
+              <textarea aria-label="Internal Notes" value={notes} onChange={e => setNotes(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm min-h-[80px]"
                 placeholder="Add secret hints, terms, or historical notes (Only visible to Superadmins)"
               />

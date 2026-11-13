@@ -5,6 +5,7 @@ import { Store, Users, Activity, TrendingUp, CreditCard, DollarSign, AlertCircle
 import { buildWhatsAppUrl, formatRenewalMessage } from '../../utils/whatsappTemplates'
 import BroadcastBannerModal from '../../components/admin/BroadcastBannerModal'
 import { notify } from '../../utils/toast'
+import { confirmDialog } from '../../utils/dialog'
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({ shops: 0, users: 0, activeShops: 0, mrr: 0, totalRevenue: 0, overdue: 0, onTrial: 0, gmv: 0, activeToday: 0 })
@@ -140,7 +141,7 @@ export default function AdminDashboard() {
   }
 
   const handleDeleteAnnouncement = async (id) => {
-    if (!confirm('Are you sure you want to delete this announcement?')) return
+    if (!await confirmDialog('Are you sure you want to delete this announcement?')) return
     try {
       await supabaseAdmin.from('announcements').delete().eq('id', id)
       fetchStats()
@@ -151,7 +152,7 @@ export default function AdminDashboard() {
 
   const handlePushUpdate = async () => {
     if (!supabaseAdmin) return notify('The administrator API is unavailable.')
-    if (!confirm('This will force ALL active POS clients to reload within 5 minutes. Continue?')) return
+    if (!await confirmDialog('This will force ALL active POS clients to reload within 5 minutes. Continue?')) return
     setPushingUpdate(true)
     try {
       const newVersion = String(Date.now())
@@ -194,7 +195,7 @@ export default function AdminDashboard() {
               {c.icon}
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{c.title}</p>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{c.title}</p>
               <h3 className="text-3xl font-black text-slate-800 mt-1">{c.value}</h3>
             </div>
           </div>
@@ -222,7 +223,7 @@ export default function AdminDashboard() {
             <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2 text-sm"><RefreshCw size={16} className="text-indigo-500" /> Force Client Update</h3>
             <p className="text-xs text-slate-500 mb-3">After deploying a new build, click this to force all active POS clients to reload within 5 minutes.</p>
             {lastPushTime && (
-              <p className="text-[10px] text-slate-400 mb-2 flex items-center gap-1"><CheckCircle size={10} className="text-emerald-500" /> Last push: {lastPushTime}</p>
+              <p className="text-xs text-slate-500 mb-2 flex items-center gap-1"><CheckCircle size={10} className="text-emerald-500" /> Last push: {lastPushTime}</p>
             )}
             <button
               onClick={handlePushUpdate}
@@ -266,13 +267,13 @@ export default function AdminDashboard() {
             </div>
             <div>
               <h2 className="text-xl font-bold text-slate-800">Renewals</h2>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Next 7 Days</p>
+              <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Next 7 Days</p>
             </div>
           </div>
 
           <div className="space-y-3 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
             {upcomingRenewals.length === 0 ? (
-              <p className="text-center text-slate-400 py-8 text-sm italic">No renewals due this week</p>
+              <p className="text-center text-slate-500 py-8 text-sm italic">No renewals due this week</p>
             ) : (
               upcomingRenewals.map(shop => {
                 const today = new Date();
@@ -283,14 +284,14 @@ export default function AdminDashboard() {
                   <div key={shop.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50 flex justify-between items-center hover:bg-slate-50 transition">
                     <div>
                       <p className="font-bold text-slate-800 text-xs">{shop.name}</p>
-                      <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest">{shop.subscription_plan}</p>
+                      <p className="text-xs text-slate-500 uppercase font-black tracking-widest">{shop.subscription_plan}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="text-right">
-                        <p className={`text-[10px] font-black ${daysLeft <= 2 ? 'text-red-500' : 'text-orange-500'}`}>
+                        <p className={`text-xs font-black ${daysLeft <= 2 ? 'text-red-500' : 'text-orange-500'}`}>
                           {daysLeft === 0 ? 'Expires Today' : `In ${daysLeft} Day${daysLeft > 1 ? 's' : ''}`}
                         </p>
-                        <p className="text-[9px] text-slate-400">{expiry.toLocaleDateString()}</p>
+                        <p className="text-xs text-slate-500">{expiry.toLocaleDateString()}</p>
                       </div>
                       <button
                         type="button"
@@ -367,7 +368,7 @@ export default function AdminDashboard() {
             </div>
             {/* Row 2: Type + Message + Post */}
             <div className="flex flex-col sm:flex-row gap-2">
-              <select
+              <select aria-label="Info (Blue)"
                 className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 value={newAnnouncement.type}
                 onChange={e => setNewAnnouncement({ ...newAnnouncement, type: e.target.value })}
@@ -395,14 +396,14 @@ export default function AdminDashboard() {
 
           <div className="flex-1 overflow-y-auto min-h-[200px] border border-slate-100 rounded-xl bg-slate-50 p-4">
             {announcements.length === 0 ? (
-              <p className="text-center text-slate-400 py-8 text-sm">No active announcements</p>
+              <p className="text-center text-slate-500 py-8 text-sm">No active announcements</p>
             ) : (
               <div className="space-y-3">
                 {announcements.map(ann => (
                   <div key={ann.id} className={`bg-white p-4 rounded-lg shadow-sm border flex justify-between gap-4 ${ann.shop_id ? 'border-orange-200 bg-orange-50/40' : 'border-slate-200'}`}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center flex-wrap gap-2 mb-1">
-                        <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full ${ann.type === 'error' ? 'bg-red-100 text-red-700' :
+                        <span className={`text-xs uppercase tracking-wider font-bold px-2 py-0.5 rounded-full ${ann.type === 'error' ? 'bg-red-100 text-red-700' :
                           ann.type === 'warning' ? 'bg-orange-100 text-orange-700' :
                             ann.type === 'success' ? 'bg-emerald-100 text-emerald-700' :
                               'bg-blue-100 text-blue-700'
@@ -410,15 +411,15 @@ export default function AdminDashboard() {
                           {ann.type}
                         </span>
                         {ann.shop_id ? (
-                          <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 flex items-center gap-1">
+                          <span className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 flex items-center gap-1">
                             🏪 {shopsList.find(s => s.id === ann.shop_id)?.name || `Shop #${ann.shop_id}`}
                           </span>
                         ) : (
-                          <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                          <span className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
                             📢 Global
                           </span>
                         )}
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-slate-500">
                           {new Date(ann.created_at).toLocaleDateString()}
                         </span>
                       </div>
@@ -426,7 +427,7 @@ export default function AdminDashboard() {
                     </div>
                     <button
                       onClick={() => handleDeleteAnnouncement(ann.id)}
-                      className="text-slate-400 hover:text-red-500 transition self-start p-1"
+                      className="text-slate-500 hover:text-red-500 transition self-start p-1"
                       title="Delete Announcement"
                     >
                       <Trash2 size={16} />

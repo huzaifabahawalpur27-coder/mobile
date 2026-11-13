@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { Download, DatabaseBackup, CheckCircle, AlertTriangle, Clock, RefreshCw, Search } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { notify } from '../../utils/toast'
+import { confirmDialog } from '../../utils/dialog'
 
 // Tables to export per shop (in order)
 const BACKUP_TABLES = [
@@ -51,22 +52,22 @@ function BackupStatusChip({ lastBackup }) {
   const [days] = useState(() => lastBackup ? Math.floor((Date.now() - new Date(lastBackup).getTime()) / 86400000) : null)
 
   if (days === null) return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">
+    <span className="inline-flex items-center gap-1 text-xs font-black uppercase px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">
       <AlertTriangle size={9} /> Never
     </span>
   )
   if (days <= 3) return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
+    <span className="inline-flex items-center gap-1 text-xs font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
       <CheckCircle size={9} /> {days === 0 ? 'Today' : `${days}d ago`}
     </span>
   )
   if (days <= 7) return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+    <span className="inline-flex items-center gap-1 text-xs font-black uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
       <Clock size={9} /> {days}d ago
     </span>
   )
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">
+    <span className="inline-flex items-center gap-1 text-xs font-black uppercase px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">
       <AlertTriangle size={9} /> {days}d ago
     </span>
   )
@@ -180,7 +181,7 @@ export default function Backups() {
   }
 
   const handleExportAll = async () => {
-    if (!confirm(`This will export backups for ALL ${filtered.length} shops. This may take several minutes. Continue?`)) return
+    if (!await confirmDialog(`This will export backups for ALL ${filtered.length} shops. This may take several minutes. Continue?`)) return
     setExportingAll(true)
     for (const shop of filtered) {
       await exportShopBackup(shop)
@@ -240,8 +241,8 @@ export default function Backups() {
 
       {/* Search */}
       <div className="relative w-full sm:w-72">
-        <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-        <input
+        <Search className="absolute left-3 top-2.5 text-slate-500" size={18} />
+        <input aria-label="Search shops"
           type="text"
           placeholder="Search shops…"
           value={search}
@@ -254,7 +255,7 @@ export default function Backups() {
       <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse text-sm">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500 font-black">
+            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-black">
               <th className="p-4 pl-6">Shop</th>
               <th className="p-4">Last Backup</th>
               <th className="p-4">Status</th>
@@ -264,9 +265,9 @@ export default function Backups() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr><td colSpan="5" className="p-8 text-center text-slate-400">Loading shops…</td></tr>
+              <tr><td colSpan="5" className="p-8 text-center text-slate-500">Loading shops…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan="5" className="p-8 text-center text-slate-400">No shops found.</td></tr>
+              <tr><td colSpan="5" className="p-8 text-center text-slate-500">No shops found.</td></tr>
             ) : filtered.map(shop => {
               const meta = backupMeta[shop.id]
               const isExporting = exporting[shop.id]
@@ -274,7 +275,7 @@ export default function Backups() {
                 <tr key={shop.id} className="hover:bg-slate-50/50 transition">
                   <td className="p-4 pl-6">
                     <p className="font-bold text-slate-800">{shop.name}</p>
-                    <p className="text-xs text-slate-400 font-mono">#{shop.id} · {shop.phone || 'No phone'}</p>
+                    <p className="text-xs text-slate-500 font-mono">#{shop.id} · {shop.phone || 'No phone'}</p>
                   </td>
                   <td className="p-4 text-xs text-slate-600">
                     {meta ? new Date(meta.backed_up_at).toLocaleString('en-PK') : '—'}
@@ -305,7 +306,7 @@ export default function Backups() {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-3">
         {loading ? (
-          <div className="bg-white rounded-2xl p-6 text-center text-slate-400 border border-slate-200">Loading…</div>
+          <div className="bg-white rounded-2xl p-6 text-center text-slate-500 border border-slate-200">Loading…</div>
         ) : filtered.map(shop => {
           const meta = backupMeta[shop.id]
           const isExporting = exporting[shop.id]
@@ -314,14 +315,14 @@ export default function Backups() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-black text-slate-800">{shop.name}</p>
-                  <p className="text-xs text-slate-400 font-mono">#{shop.id}</p>
+                  <p className="text-xs text-slate-500 font-mono">#{shop.id}</p>
                 </div>
                 <BackupStatusChip lastBackup={meta?.backed_up_at} />
               </div>
               <div className="text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
                 <span className="font-bold text-slate-600">Last backup: </span>
                 {meta ? new Date(meta.backed_up_at).toLocaleString('en-PK') : 'Never'}
-                {meta?.backup_rows && <span className="ml-2 text-slate-400">({meta.backup_rows.toLocaleString()} rows)</span>}
+                {meta?.backup_rows && <span className="ml-2 text-slate-500">({meta.backup_rows.toLocaleString()} rows)</span>}
               </div>
               <button
                 onClick={() => exportShopBackup(shop)}

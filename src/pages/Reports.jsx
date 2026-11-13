@@ -1258,18 +1258,18 @@ function Reports() {
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pt-1 pb-1">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 text-[#1d1d1f] dark:text-[#f5f5f7] border border-black/[0.04] dark:border-white/[0.08]">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 text-[#1d1d1f] dark:text-[#f5f5f7] border border-black/[0.04] dark:border-white/[0.08]">
               <span className="text-xs leading-none font-bold text-[#0071e3]"></span>
               <span>Reports & Analytics</span>
             </span>
-            <span className="text-xs text-[#86868b] font-medium">
+            <span className="text-xs text-[#6e6e73] font-medium">
               • {filteredProducts.length} Products Analyzed
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
             Business Intelligence
           </h1>
-          <p className="text-[#86868b] text-xs sm:text-sm mt-0.5 font-normal">
+          <p className="text-[#6e6e73] text-xs sm:text-sm mt-0.5 font-normal">
             Product sales volume, gross margins, inventory turnover, and financial performance.
           </p>
         </div>
@@ -1291,7 +1291,7 @@ function Reports() {
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                   range === r.id
                     ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                    : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                    : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
                 }`}
               >
                 {r.label}
@@ -1328,7 +1328,7 @@ function Reports() {
             <span>Custom Date Interval:</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[#86868b] text-[11px] font-medium">From:</span>
+            <span className="text-[#6e6e73] text-xs font-medium">From:</span>
             <input
               type="date"
               className="px-2.5 py-1 bg-[#f5f5f7] dark:bg-[#2c2c2e] border border-black/[0.06] dark:border-white/[0.08] rounded-full text-xs font-semibold outline-none focus:border-[#0071e3] text-[#1d1d1f] dark:text-[#f5f5f7]"
@@ -1337,7 +1337,7 @@ function Reports() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[#86868b] text-[11px] font-medium">To:</span>
+            <span className="text-[#6e6e73] text-xs font-medium">To:</span>
             <input
               type="date"
               className="px-2.5 py-1 bg-[#f5f5f7] dark:bg-[#2c2c2e] border border-black/[0.06] dark:border-white/[0.08] rounded-full text-xs font-semibold outline-none focus:border-[#0071e3] text-[#1d1d1f] dark:text-[#f5f5f7]"
@@ -1370,7 +1370,7 @@ function Reports() {
             {/* 1. Gross Revenue */}
             <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Gross Revenue</span>
+                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Gross Revenue</span>
                 <div className="w-7 h-7 rounded-[9px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center shrink-0">
                   <DollarSign size={14} />
                 </div>
@@ -1379,30 +1379,30 @@ function Reports() {
                 <div className="text-xl sm:text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                   Rs. {stats.grossSales.toLocaleString()}
                 </div>
-                <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">Total sales receipts</p>
+                <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">Total sales receipts</p>
               </div>
             </div>
 
             {/* 2. Units Sold */}
             <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Units Sold</span>
+                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Units Sold</span>
                 <div className="w-7 h-7 rounded-[9px] bg-[#5856d6]/10 text-[#5856d6] flex items-center justify-center shrink-0">
                   <Package size={14} />
                 </div>
               </div>
               <div>
                 <div className="text-xl sm:text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
-                  {stats.totalUnitsSold} <span className="text-xs font-normal text-[#86868b]">pcs</span>
+                  {stats.totalUnitsSold} <span className="text-xs font-normal text-[#6e6e73]">pcs</span>
                 </div>
-                <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">{filteredProducts.length} unique items</p>
+                <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">{filteredProducts.length} unique items</p>
               </div>
             </div>
 
             {/* 3. Cost of Goods (COGS) */}
             <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Cost (COGS)</span>
+                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Cost (COGS)</span>
                 <div className="w-7 h-7 rounded-[9px] bg-[#ff9500]/10 text-[#ff9500] flex items-center justify-center shrink-0">
                   <ShoppingBag size={14} />
                 </div>
@@ -1411,7 +1411,7 @@ function Reports() {
                 <div className="text-xl sm:text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                   Rs. {stats.costOfSales.toLocaleString()}
                 </div>
-                <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">
+                <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">
                   {stats.totalDirectCosts > 0 ? `Incl. Rs. ${stats.totalDirectCosts.toLocaleString()} direct cost` : 'Stock purchase basis'}
                 </p>
               </div>
@@ -1420,7 +1420,7 @@ function Reports() {
             {/* 4. Gross Profit */}
             <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Gross Profit</span>
+                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Gross Profit</span>
                 <div className="w-7 h-7 rounded-[9px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center shrink-0">
                   <TrendingUp size={14} />
                 </div>
@@ -1429,7 +1429,7 @@ function Reports() {
                 <div className="text-xl sm:text-2xl font-bold tracking-tight text-[#34c759] tabular-nums">
                   Rs. {stats.grossProfit.toLocaleString()}
                 </div>
-                <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">
+                <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">
                   {stats.grossSales > 0 ? ((stats.grossProfit / stats.grossSales) * 100).toFixed(1) : 0}% Margin
                 </p>
               </div>
@@ -1438,7 +1438,7 @@ function Reports() {
             {/* 5. Operating Expenses */}
             <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Expenses</span>
+                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Expenses</span>
                 <div className="w-7 h-7 rounded-[9px] bg-[#ff3b30]/10 text-[#ff3b30] flex items-center justify-center shrink-0">
                   <Layers size={14} />
                 </div>
@@ -1447,14 +1447,14 @@ function Reports() {
                 <div className="text-xl sm:text-2xl font-bold tracking-tight text-[#ff3b30] tabular-nums">
                   Rs. {stats.expenses.toLocaleString()}
                 </div>
-                <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">Shop operations</p>
+                <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">Shop operations</p>
               </div>
             </div>
 
             {/* 6. Net Business Profit */}
             <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Net Profit</span>
+                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Net Profit</span>
                 <div className="w-7 h-7 rounded-[9px] bg-[#af52de]/10 text-[#af52de] flex items-center justify-center shrink-0">
                   <Zap size={14} />
                 </div>
@@ -1463,7 +1463,7 @@ function Reports() {
                 <div className={`text-xl sm:text-2xl font-bold tracking-tight tabular-nums ${stats.netProfit >= 0 ? 'text-[#0071e3]' : 'text-[#ff3b30]'}`}>
                   Rs. {stats.netProfit.toLocaleString()}
                 </div>
-                <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">All costs deducted</p>
+                <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">All costs deducted</p>
               </div>
             </div>
           </div>
@@ -1476,7 +1476,7 @@ function Reports() {
                 <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
                   Weekly 7-Day breakdown is ready.
                 </span>
-                <span className="text-[#86868b] hidden sm:inline">
+                <span className="text-[#6e6e73] hidden sm:inline">
                   Inspect day-by-day revenue velocity, phone vs accessory volume, gross profit, and operating expenses.
                 </span>
               </div>
@@ -1498,7 +1498,7 @@ function Reports() {
               className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'products'
                   ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
               }`}
             >
               <Package size={13} className={activeTab === 'products' ? 'text-[#0071e3]' : ''} />
@@ -1510,13 +1510,13 @@ function Reports() {
               className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'daily'
                   ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
               }`}
             >
               <Calendar size={13} className={activeTab === 'daily' ? 'text-[#0071e3]' : ''} />
               <span>📅 Daily Breakdown ({dailyBreakdown.length} Days)</span>
               {range === 'week' && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#0071e3]/15 text-[#0071e3] text-[9px] font-bold">
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#0071e3]/15 text-[#0071e3] text-xs font-bold">
                   Weekly
                 </span>
               )}
@@ -1527,7 +1527,7 @@ function Reports() {
               className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'overview'
                   ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
               }`}
             >
               <BarChart3 size={13} className={activeTab === 'overview' ? 'text-[#0071e3]' : ''} />
@@ -1539,7 +1539,7 @@ function Reports() {
               className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'flow'
                   ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
               }`}
             >
               <Layers size={13} className={activeTab === 'flow' ? 'text-[#0071e3]' : ''} />
@@ -1551,7 +1551,7 @@ function Reports() {
               className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'financials'
                   ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
               }`}
             >
               <DollarSign size={13} className={activeTab === 'financials' ? 'text-[#0071e3]' : ''} />
@@ -1568,7 +1568,7 @@ function Reports() {
                   {topRevenueProduct && (
                     <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] rounded-[22px] p-4 shadow-xs flex items-center justify-between">
                       <div className="min-w-0 pr-3">
-                        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#0071e3] mb-1">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#0071e3] mb-1">
                           <Award size={12} />
                           <span>Highest Revenue</span>
                         </div>
@@ -1576,7 +1576,7 @@ function Reports() {
                           {topRevenueProduct.name}
                         </h4>
                         <span className="text-xs font-bold text-[#0071e3] mt-0.5 block">
-                          Rs. {Math.round(topRevenueProduct.revenue).toLocaleString()} <span className="text-[11px] font-normal text-[#86868b]">({topRevenueProduct.qty} sold)</span>
+                          Rs. {Math.round(topRevenueProduct.revenue).toLocaleString()} <span className="text-xs font-normal text-[#6e6e73]">({topRevenueProduct.qty} sold)</span>
                         </span>
                       </div>
                       <div className="w-10 h-10 rounded-[12px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center shrink-0">
@@ -1588,7 +1588,7 @@ function Reports() {
                   {topUnitsProduct && (
                     <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] rounded-[22px] p-4 shadow-xs flex items-center justify-between">
                       <div className="min-w-0 pr-3">
-                        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#34c759] mb-1">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#34c759] mb-1">
                           <Zap size={12} />
                           <span>Most Units Sold</span>
                         </div>
@@ -1596,7 +1596,7 @@ function Reports() {
                           {topUnitsProduct.name}
                         </h4>
                         <span className="text-xs font-bold text-[#34c759] mt-0.5 block">
-                          {topUnitsProduct.qty} Units <span className="text-[11px] font-normal text-[#86868b]">(Rs. {Math.round(topUnitsProduct.revenue).toLocaleString()})</span>
+                          {topUnitsProduct.qty} Units <span className="text-xs font-normal text-[#6e6e73]">(Rs. {Math.round(topUnitsProduct.revenue).toLocaleString()})</span>
                         </span>
                       </div>
                       <div className="w-10 h-10 rounded-[12px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center shrink-0">
@@ -1608,7 +1608,7 @@ function Reports() {
                   {topProfitProduct && (
                     <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] rounded-[22px] p-4 shadow-xs flex items-center justify-between">
                       <div className="min-w-0 pr-3">
-                        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#af52de] mb-1">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#af52de] mb-1">
                           <TrendingUp size={12} />
                           <span>Top Profit Contributor</span>
                         </div>
@@ -1616,7 +1616,7 @@ function Reports() {
                           {topProfitProduct.name}
                         </h4>
                         <span className="text-xs font-bold text-[#af52de] mt-0.5 block">
-                          Rs. {Math.round(topProfitProduct.profit).toLocaleString()} <span className="text-[11px] font-normal text-[#86868b]">({(topProfitProduct.margin ?? 0).toFixed(1)}% margin)</span>
+                          Rs. {Math.round(topProfitProduct.profit).toLocaleString()} <span className="text-xs font-normal text-[#6e6e73]">({(topProfitProduct.margin ?? 0).toFixed(1)}% margin)</span>
                         </span>
                       </div>
                       <div className="w-10 h-10 rounded-[12px] bg-[#af52de]/10 text-[#af52de] flex items-center justify-center shrink-0">
@@ -1630,8 +1630,8 @@ function Reports() {
               {/*  Product Search & iOS Pill Filters Bar */}
               <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl p-3 sm:p-3.5 rounded-[22px] border border-black/[0.05] dark:border-white/[0.08] shadow-xs flex flex-col md:flex-row gap-2.5 justify-between items-stretch md:items-center">
                 <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#86868b]" />
-                  <input
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6e6e73]" />
+                  <input aria-label="Search by product name or category"
                     type="text"
                     placeholder="Search by product name or category..."
                     className="w-full pl-9 pr-8 py-2 text-xs bg-[#f5f5f7] dark:bg-[#2c2c2e] border border-black/[0.04] dark:border-white/[0.06] rounded-full focus:outline-none focus:border-[#0071e3] text-[#1d1d1f] dark:text-[#f5f5f7] placeholder-[#86868b] transition"
@@ -1641,7 +1641,7 @@ function Reports() {
                   {productSearch && (
                     <button
                       onClick={() => setProductSearch('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-white"
                     >
                       <X size={13} />
                     </button>
@@ -1663,7 +1663,7 @@ function Reports() {
                         className={`px-3 py-1 rounded-full text-xs font-semibold transition cursor-pointer ${
                           catalogSegment === seg.id
                             ? 'bg-white dark:bg-[#1c1c1e] text-[#0071e3] shadow-xs'
-                            : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                            : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
                         }`}
                       >
                         {seg.label}
@@ -1671,7 +1671,7 @@ function Reports() {
                     ))}
                   </div>
 
-                  <select
+                  <select aria-label="Categories filter"
                     className="px-3 py-1.5 bg-[#f5f5f7] dark:bg-[#2c2c2e] border border-black/[0.06] dark:border-white/[0.08] rounded-full text-xs font-semibold outline-none text-[#1d1d1f] dark:text-[#f5f5f7] cursor-pointer"
                     value={selectedCategory}
                     onChange={e => setSelectedCategory(e.target.value)}
@@ -1680,7 +1680,7 @@ function Reports() {
                     {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                   </select>
 
-                  <select
+                  <select aria-label="Stock status filter"
                     className="px-3 py-1.5 bg-[#f5f5f7] dark:bg-[#2c2c2e] border border-black/[0.06] dark:border-white/[0.08] rounded-full text-xs font-semibold outline-none text-[#1d1d1f] dark:text-[#f5f5f7] cursor-pointer"
                     value={stockFilter}
                     onChange={e => setStockFilter(e.target.value)}
@@ -1691,7 +1691,7 @@ function Reports() {
                     <option value="out_of_stock">Out of Stock (0)</option>
                   </select>
 
-                  <select
+                  <select aria-label="Sort Highest Revenue"
                     className="px-3 py-1.5 bg-[#0071e3]/10 border border-[#0071e3]/20 rounded-full text-xs font-bold text-[#0071e3] outline-none cursor-pointer"
                     value={sortBy}
                     onChange={e => setSortBy(e.target.value)}
@@ -1710,7 +1710,7 @@ function Reports() {
               <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.03)] overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 border-b border-black/[0.04] dark:border-white/[0.06] text-[#86868b] uppercase text-[10px] font-semibold tracking-wider">
+                    <thead className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 border-b border-black/[0.04] dark:border-white/[0.06] text-[#6e6e73] uppercase text-xs font-semibold tracking-wider">
                       <tr>
                         <th className="px-4 py-3 w-10">#</th>
                         <th className="px-5 py-3">Product Name</th>
@@ -1730,7 +1730,7 @@ function Reports() {
                     <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
                       {filteredProducts.map((p, idx) => (
                         <tr key={p.name} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition group">
-                          <td className="px-4 py-3 text-[#86868b] font-medium">{idx + 1}</td>
+                          <td className="px-4 py-3 text-[#6e6e73] font-medium">{idx + 1}</td>
 
                           {/* Product Name */}
                           <td className="px-5 py-3">
@@ -1747,7 +1747,7 @@ function Reports() {
 
                           {/* Type */}
                           <td className="px-3 py-3 text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
                               p.item_type === 'phone'
                                 ? 'bg-[#af52de]/10 text-[#af52de]'
                                 : 'bg-[#0071e3]/10 text-[#0071e3]'
@@ -1758,15 +1758,15 @@ function Reports() {
 
                           {/* Category */}
                           <td className="px-4 py-3">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#e5e5ea]/70 dark:bg-[#2c2c2e]/70 text-[#86868b]">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e5e5ea]/70 dark:bg-[#2c2c2e]/70 text-[#6e6e73]">
                               {p.category}
                             </span>
                           </td>
 
                           {/* Inward Qty */}
-                          <td className="px-3 py-3 text-center font-semibold text-[#86868b]">
+                          <td className="px-3 py-3 text-center font-semibold text-[#6e6e73]">
                             {p.inwardQty ? (
-                              <span className="text-[#0071e3] bg-[#0071e3]/10 px-2 py-0.5 rounded-full text-[11px] font-bold">
+                              <span className="text-[#0071e3] bg-[#0071e3]/10 px-2 py-0.5 rounded-full text-xs font-bold">
                                 +{p.inwardQty}
                               </span>
                             ) : (
@@ -1783,45 +1783,45 @@ function Reports() {
 
                           {/* Net Movement */}
                           <td className="px-3 py-3 text-center">
-                            <span className={`text-[11px] font-bold ${
+                            <span className={`text-xs font-bold ${
                               (p.netMovement ?? 0) > 0
                                 ? 'text-[#0071e3]'
                                 : (p.netMovement ?? 0) < 0
                                   ? 'text-[#ff9500]'
-                                  : 'text-[#86868b]'
+                                  : 'text-[#6e6e73]'
                             }`}>
                               {(p.netMovement ?? 0) > 0 ? `+${p.netMovement}` : p.netMovement ?? 0}
                             </span>
                           </td>
 
                           {/* Avg Price */}
-                          <td className="px-4 py-3 text-right text-[#86868b] font-medium tabular-nums">
+                          <td className="px-4 py-3 text-right text-[#6e6e73] font-medium tabular-nums">
                             {p.qty > 0 ? (
                               `Rs. ${Math.round(p.avgPrice).toLocaleString()}`
                             ) : p.catalogPrice > 0 ? (
                               <span title="Catalog / Target Price">Rs. {Math.round(p.catalogPrice).toLocaleString()}</span>
                             ) : (
-                              <span className="text-slate-400 text-xs italic" title="Not sold in this period; price set at POS">—</span>
+                              <span className="text-slate-500 text-xs italic" title="Not sold in this period; price set at POS">—</span>
                             )}
                           </td>
 
                           {/* Total Revenue */}
                           <td className="px-5 py-3 text-right font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
-                            {p.qty > 0 ? `Rs. ${Math.round(p.revenue).toLocaleString()}` : <span className="text-slate-400 font-normal">—</span>}
+                            {p.qty > 0 ? `Rs. ${Math.round(p.revenue).toLocaleString()}` : <span className="text-slate-500 font-normal">—</span>}
                           </td>
 
                           {/* Cost */}
-                          <td className="px-4 py-3 text-right text-[#86868b] font-medium tabular-nums">
+                          <td className="px-4 py-3 text-right text-[#6e6e73] font-medium tabular-nums">
                             {p.qty > 0 ? (
                               <div>
                                 <div>Rs. {Math.round(p.cost).toLocaleString()}</div>
                                 {p.directCost > 0 && (
-                                  <div className="text-[10px] text-amber-600 font-semibold" title="Direct costs (courier/repair/tax) included in total cost">
+                                  <div className="text-xs text-amber-600 font-semibold" title="Direct costs (courier/repair/tax) included in total cost">
                                     +Rs. {Math.round(p.directCost).toLocaleString()} Direct Cost
                                   </div>
                                 )}
                               </div>
-                            ) : <span className="text-slate-400 font-normal">—</span>}
+                            ) : <span className="text-slate-500 font-normal">—</span>}
                           </td>
 
                           {/* Gross Profit */}
@@ -1831,14 +1831,14 @@ function Reports() {
                                 Rs. {Math.round(p.profit).toLocaleString()}
                               </span>
                             ) : (
-                              <span className="text-slate-400 font-normal">—</span>
+                              <span className="text-slate-500 font-normal">—</span>
                             )}
                           </td>
 
                           {/* Margin % */}
                           <td className="px-4 py-3 text-right">
                             {p.qty > 0 && p.margin !== null ? (
-                              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                                 p.margin >= 25
                                   ? 'bg-[#34c759]/10 text-[#34c759]'
                                   : p.margin >= 10
@@ -1848,18 +1848,18 @@ function Reports() {
                                 {(p.margin ?? 0).toFixed(1)}%
                               </span>
                             ) : (
-                              <span className="text-slate-400 font-normal">—</span>
+                              <span className="text-slate-500 font-normal">—</span>
                             )}
                           </td>
 
                           {/* In-Stock */}
                           <td className="px-4 py-3 text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
                               Number(p.stock) > 3
                                 ? 'bg-[#34c759]/10 text-[#34c759]'
                                 : Number(p.stock) > 0
                                   ? 'bg-[#ff9500]/10 text-[#ff9500]'
-                                  : 'bg-black/5 dark:bg-white/10 text-[#86868b]'
+                                  : 'bg-black/5 dark:bg-white/10 text-[#6e6e73]'
                             }`}>
                               {Number(p.stock) > 0 ? `${p.stock} in stock` : 'Out of stock'}
                             </span>
@@ -1869,7 +1869,7 @@ function Reports() {
 
                       {filteredProducts.length === 0 && (
                         <tr>
-                          <td colSpan="13" className="py-12 text-center text-[#86868b] font-medium">
+                          <td colSpan="13" className="py-12 text-center text-[#6e6e73] font-medium">
                             No product sales recorded for this period matching your filter.
                           </td>
                         </tr>
@@ -1880,7 +1880,7 @@ function Reports() {
                     {filteredProducts.length > 0 && (
                       <tfoot className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 font-bold text-xs border-t border-black/[0.08] dark:border-white/[0.08]">
                         <tr>
-                          <td colSpan="4" className="px-5 py-3 text-[#86868b] uppercase text-[10px] tracking-wider">
+                          <td colSpan="4" className="px-5 py-3 text-[#6e6e73] uppercase text-xs tracking-wider">
                             Period Totals ({filteredProducts.length} Products):
                           </td>
                           <td className="px-3 py-3 text-center text-[#0071e3]">
@@ -1889,12 +1889,12 @@ function Reports() {
                           <td className="px-4 py-3 text-center text-[#34c759]">
                             {filteredProducts.reduce((s, p) => s + p.qty, 0)} Pcs
                           </td>
-                          <td className="px-3 py-3 text-center text-[#86868b]">—</td>
-                          <td className="px-4 py-3 text-right text-[#86868b]">—</td>
+                          <td className="px-3 py-3 text-center text-[#6e6e73]">—</td>
+                          <td className="px-4 py-3 text-right text-[#6e6e73]">—</td>
                           <td className="px-5 py-3 text-right text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                             Rs. {Math.round(filteredProducts.reduce((s, p) => s + p.revenue, 0)).toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right text-[#86868b] tabular-nums">
+                          <td className="px-4 py-3 text-right text-[#6e6e73] tabular-nums">
                             Rs. {Math.round(filteredProducts.reduce((s, p) => s + p.cost, 0)).toLocaleString()}
                           </td>
                           <td className="px-5 py-3 text-right text-[#34c759] tabular-nums">
@@ -1927,7 +1927,7 @@ function Reports() {
                 {/* 1. Peak Sales Day */}
                 <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Peak Sales Day</span>
+                    <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Peak Sales Day</span>
                     <div className="w-7 h-7 rounded-[9px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center font-bold text-xs">
                       🏆
                     </div>
@@ -1936,7 +1936,7 @@ function Reports() {
                     <div className="text-lg sm:text-xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                       {dailySummary.peakSalesDay ? `Rs. ${Math.round(dailySummary.peakSalesDay.grossSales).toLocaleString()}` : '—'}
                     </div>
-                    <p className="text-[11px] text-[#0071e3] mt-1 font-semibold truncate">
+                    <p className="text-xs text-[#0071e3] mt-1 font-semibold truncate">
                       {dailySummary.peakSalesDay ? `${dailySummary.peakSalesDay.dayName} (${dailySummary.peakSalesDay.fullDate})` : 'No sales recorded'}
                     </p>
                   </div>
@@ -1945,7 +1945,7 @@ function Reports() {
                 {/* 2. Most Profitable Day */}
                 <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Best Profit Day</span>
+                    <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Best Profit Day</span>
                     <div className="w-7 h-7 rounded-[9px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center font-bold text-xs">
                       📈
                     </div>
@@ -1954,7 +1954,7 @@ function Reports() {
                     <div className="text-lg sm:text-xl font-bold tracking-tight text-[#34c759] tabular-nums">
                       {dailySummary.peakProfitDay ? `Rs. ${Math.round(dailySummary.peakProfitDay.grossProfit).toLocaleString()}` : '—'}
                     </div>
-                    <p className="text-[11px] text-[#34c759] mt-1 font-semibold truncate">
+                    <p className="text-xs text-[#34c759] mt-1 font-semibold truncate">
                       {dailySummary.peakProfitDay ? `${dailySummary.peakProfitDay.dayName} • ${(dailySummary.peakProfitDay.margin ?? 0).toFixed(1)}% margin` : 'No profit recorded'}
                     </p>
                   </div>
@@ -1963,7 +1963,7 @@ function Reports() {
                 {/* 3. Daily Average Revenue */}
                 <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Daily Avg Sales</span>
+                    <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Daily Avg Sales</span>
                     <div className="w-7 h-7 rounded-[9px] bg-[#5856d6]/10 text-[#5856d6] flex items-center justify-center">
                       <BarChart3 size={14} />
                     </div>
@@ -1972,7 +1972,7 @@ function Reports() {
                     <div className="text-lg sm:text-xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                       Rs. {Math.round(dailySummary.avgDailySales).toLocaleString()}
                     </div>
-                    <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">
+                    <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">
                       Across {dailyBreakdown.length} days
                     </p>
                   </div>
@@ -1981,7 +1981,7 @@ function Reports() {
                 {/* 4. Daily Average Profit */}
                 <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-[#86868b] tracking-wider uppercase">Daily Avg Profit</span>
+                    <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Daily Avg Profit</span>
                     <div className="w-7 h-7 rounded-[9px] bg-[#af52de]/10 text-[#af52de] flex items-center justify-center">
                       <TrendingUp size={14} />
                     </div>
@@ -1990,7 +1990,7 @@ function Reports() {
                     <div className="text-lg sm:text-xl font-bold tracking-tight text-[#af52de] tabular-nums">
                       Rs. {Math.round(dailySummary.avgDailyProfit).toLocaleString()}
                     </div>
-                    <p className="text-[11px] text-[#86868b] mt-1 font-medium truncate">
+                    <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">
                       {dailySummary.avgDailySales > 0 ? `${((dailySummary.avgDailyProfit / dailySummary.avgDailySales) * 100).toFixed(1)}% avg margin` : '—'}
                     </p>
                   </div>
@@ -2005,7 +2005,7 @@ function Reports() {
                       <span className="w-2 h-4 bg-[#0071e3] rounded-full"></span>
                       <span>Daily Sales vs. Profit Velocity</span>
                     </h3>
-                    <p className="text-[11px] text-[#86868b] mt-0.5">
+                    <p className="text-xs text-[#6e6e73] mt-0.5">
                       Day-by-day comparison of gross revenue, cost of goods, and gross profit.
                     </p>
                   </div>
@@ -2060,7 +2060,7 @@ function Reports() {
                       <span className="w-2 h-4 bg-[#34c759] rounded-full"></span>
                       <span>Daily Breakdown Matrix ({dailyBreakdown.length} Days)</span>
                     </h3>
-                    <p className="text-[11px] text-[#86868b] mt-0.5">
+                    <p className="text-xs text-[#6e6e73] mt-0.5">
                       Full audit of each day's orders, device flow, revenue, margins, expenses, and net profit.
                     </p>
                   </div>
@@ -2087,7 +2087,7 @@ function Reports() {
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 border-b border-black/[0.04] dark:border-white/[0.06] text-[#86868b] uppercase text-[10px] font-semibold tracking-wider">
+                    <thead className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 border-b border-black/[0.04] dark:border-white/[0.06] text-[#6e6e73] uppercase text-xs font-semibold tracking-wider">
                       <tr>
                         <th className="px-3 py-3 w-8 text-center">#</th>
                         <th className="px-4 py-3">Date & Day</th>
@@ -2116,10 +2116,10 @@ function Reports() {
                                 isExpanded ? 'bg-[#0071e3]/5 dark:bg-[#0071e3]/10' : ''
                               }`}
                             >
-                              <td className="px-3 py-3.5 text-center text-[#86868b] font-medium">{idx + 1}</td>
+                              <td className="px-3 py-3.5 text-center text-[#6e6e73] font-medium">{idx + 1}</td>
                               <td className="px-4 py-3.5">
                                 <div className="flex items-center gap-2">
-                                  <span className={`w-7 h-7 rounded-[8px] flex items-center justify-center font-bold text-[11px] ${
+                                  <span className={`w-7 h-7 rounded-[8px] flex items-center justify-center font-bold text-xs ${
                                     d.dayName === 'Sun' ? 'bg-[#ff3b30]/10 text-[#ff3b30]' : 'bg-[#0071e3]/10 text-[#0071e3]'
                                   }`}>
                                     {d.dayName}
@@ -2128,7 +2128,7 @@ function Reports() {
                                     <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] block">
                                       {d.fullDate}
                                     </span>
-                                    <span className="text-[10px] text-[#86868b] block">{d.dateKey}</span>
+                                    <span className="text-xs text-[#6e6e73] block">{d.dateKey}</span>
                                   </div>
                                 </div>
                               </td>
@@ -2153,7 +2153,7 @@ function Reports() {
                                 {hasSales ? `Rs. ${Math.round(d.grossSales).toLocaleString()}` : '—'}
                               </td>
 
-                              <td className="px-4 py-3.5 text-right font-medium text-[#86868b] tabular-nums">
+                              <td className="px-4 py-3.5 text-right font-medium text-[#6e6e73] tabular-nums">
                                 {d.cogs > 0 ? `Rs. ${Math.round(d.cogs).toLocaleString()}` : '—'}
                               </td>
 
@@ -2163,7 +2163,7 @@ function Reports() {
 
                               <td className="px-3 py-3.5 text-right">
                                 {d.margin > 0 ? (
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
                                     d.margin >= 20 ? 'bg-[#34c759]/10 text-[#34c759]' : d.margin >= 10 ? 'bg-[#ff9500]/10 text-[#ff9500]' : 'bg-[#ff3b30]/10 text-[#ff3b30]'
                                   }`}>
                                     {(d.margin ?? 0).toFixed(1)}%
@@ -2176,13 +2176,13 @@ function Reports() {
                               </td>
 
                               <td className="px-4 py-3.5 text-right font-bold tabular-nums">
-                                <span className={d.netProfit > 0 ? 'text-[#0071e3]' : d.netProfit < 0 ? 'text-[#ff3b30]' : 'text-[#86868b]'}>
+                                <span className={d.netProfit > 0 ? 'text-[#0071e3]' : d.netProfit < 0 ? 'text-[#ff3b30]' : 'text-[#6e6e73]'}>
                                   {d.netProfit !== 0 ? `Rs. ${Math.round(d.netProfit).toLocaleString()}` : '—'}
                                 </span>
                               </td>
 
                               <td className="px-4 py-3.5 text-center">
-                                <div className="flex items-center justify-center gap-1 text-[10px]">
+                                <div className="flex items-center justify-center gap-1 text-xs">
                                   {d.cashSales > 0 && (
                                     <span className="px-1.5 py-0.5 rounded bg-[#34c759]/10 text-[#34c759] font-semibold" title={`Cash: Rs. ${Math.round(d.cashSales).toLocaleString()}`}>
                                       💵 {Math.round(d.cashSales / 1000)}k
@@ -2199,7 +2199,7 @@ function Reports() {
                                     </span>
                                   )}
                                   {!d.cashSales && !d.onlineSales && !d.creditSales && (
-                                    <span className="text-[#86868b]">None</span>
+                                    <span className="text-[#6e6e73]">None</span>
                                   )}
                                 </div>
                               </td>
@@ -2211,43 +2211,43 @@ function Reports() {
                                 <td colSpan="13" className="px-6 py-4">
                                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                                     <div className="p-3 bg-white dark:bg-[#1c1c1e] rounded-[16px] border border-black/[0.04] dark:border-white/[0.06]">
-                                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">📱 Phone Sales</span>
+                                      <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider block">📱 Phone Sales</span>
                                       <span className="font-bold text-sm text-[#af52de] mt-1 block">
                                         {d.phonesSold} Units • Rs. {Math.round(d.phonesRevenue).toLocaleString()}
                                       </span>
-                                      <span className="text-[11px] text-[#86868b]">
+                                      <span className="text-xs text-[#6e6e73]">
                                         Cost: Rs. {Math.round(d.phonesCost).toLocaleString()} • Profit: Rs. {Math.round(d.phonesRevenue - d.phonesCost).toLocaleString()}
                                       </span>
                                     </div>
 
                                     <div className="p-3 bg-white dark:bg-[#1c1c1e] rounded-[16px] border border-black/[0.04] dark:border-white/[0.06]">
-                                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">🔌 Accessories Sales</span>
+                                      <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider block">🔌 Accessories Sales</span>
                                       <span className="font-bold text-sm text-[#0071e3] mt-1 block">
                                         {d.bulkSold} Pcs • Rs. {Math.round(d.bulkRevenue).toLocaleString()}
                                       </span>
-                                      <span className="text-[11px] text-[#86868b]">
+                                      <span className="text-xs text-[#6e6e73]">
                                         Cost: Rs. {Math.round(d.bulkCost).toLocaleString()} • Profit: Rs. {Math.round(d.bulkRevenue - d.bulkCost).toLocaleString()}
                                       </span>
                                     </div>
 
                                     <div className="p-3 bg-white dark:bg-[#1c1c1e] rounded-[16px] border border-black/[0.04] dark:border-white/[0.06]">
-                                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">💸 Outflows & Expenses</span>
+                                      <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider block">💸 Outflows & Expenses</span>
                                       <span className="font-bold text-sm text-[#ff3b30] mt-1 block">
                                         Rs. {Math.round(d.expenses).toLocaleString()}
                                       </span>
-                                      <span className="text-[11px] text-[#86868b]">
+                                      <span className="text-xs text-[#6e6e73]">
                                         Purchases made on day: Rs. {Math.round(d.purchases).toLocaleString()}
                                       </span>
                                     </div>
 
                                     <div className="p-3 bg-white dark:bg-[#1c1c1e] rounded-[16px] border border-black/[0.04] dark:border-white/[0.06]">
-                                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">💰 Day Drawer Settlement</span>
+                                      <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider block">💰 Day Drawer Settlement</span>
                                       <span className={`font-bold text-sm mt-1 block ${
                                         (d.cashSales - d.expenses) >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'
                                       }`}>
                                         Rs. {Math.round(d.cashSales - d.expenses).toLocaleString()}
                                       </span>
-                                      <span className="text-[11px] text-[#86868b]">
+                                      <span className="text-xs text-[#6e6e73]">
                                         Net Cash Flow (Cash Sales - Expenses)
                                       </span>
                                     </div>
@@ -2265,7 +2265,7 @@ function Reports() {
                       <tfoot className="bg-[#f5f5f7]/95 dark:bg-[#2c2c2e]/95 font-bold text-xs border-t-2 border-black/[0.08] dark:border-white/[0.08]">
                         {/* 1. Period Totals Row */}
                         <tr>
-                          <td colSpan="2" className="px-4 py-3 text-[#86868b] uppercase text-[10px] tracking-wider">
+                          <td colSpan="2" className="px-4 py-3 text-[#6e6e73] uppercase text-xs tracking-wider">
                             Period Totals ({dailyBreakdown.length} Days):
                           </td>
                           <td className="px-3 py-3 text-center text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
@@ -2283,7 +2283,7 @@ function Reports() {
                           <td className="px-4 py-3 text-right text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                             Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.grossSales, 0)).toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right text-[#86868b] tabular-nums">
+                          <td className="px-4 py-3 text-right text-[#6e6e73] tabular-nums">
                             Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.cogs, 0)).toLocaleString()}
                           </td>
                           <td className="px-4 py-3 text-right text-[#34c759] tabular-nums">
@@ -2302,13 +2302,13 @@ function Reports() {
                           <td className="px-4 py-3 text-right text-[#0071e3] tabular-nums">
                             Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.netProfit, 0)).toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-center text-[#86868b]">
+                          <td className="px-4 py-3 text-center text-[#6e6e73]">
                             {dailyBreakdown.length} days
                           </td>
                         </tr>
 
                         {/* 2. Daily Average Row */}
-                        <tr className="text-[11px] text-[#86868b] border-t border-black/[0.04] dark:border-white/[0.04]">
+                        <tr className="text-xs text-[#6e6e73] border-t border-black/[0.04] dark:border-white/[0.04]">
                           <td colSpan="2" className="px-4 py-2 font-medium">
                             Daily Average Run-Rate:
                           </td>
@@ -2333,7 +2333,7 @@ function Reports() {
                           <td className="px-4 py-2 text-right font-semibold text-[#34c759] tabular-nums">
                             Rs. {Math.round(dailySummary.avgDailyProfit).toLocaleString()}/d
                           </td>
-                          <td className="px-3 py-2 text-right text-[#86868b]">—</td>
+                          <td className="px-3 py-2 text-right text-[#6e6e73]">—</td>
                           <td className="px-4 py-2 text-right text-[#ff3b30] tabular-nums">
                             Rs. {Math.round(dailyBreakdown.reduce((s, d) => s + d.expenses, 0) / (dailyBreakdown.length || 1)).toLocaleString()}
                           </td>
@@ -2367,10 +2367,10 @@ function Reports() {
                           <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm leading-tight">
                             Accessories Flow
                           </h3>
-                          <span className="text-[11px] text-[#86868b]">Chargers, Covers, Cables & Parts</span>
+                          <span className="text-xs text-[#6e6e73]">Chargers, Covers, Cables & Parts</span>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0071e3]/10 text-[#0071e3]">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#0071e3]/10 text-[#0071e3]">
                         High Volume
                       </span>
                     </div>
@@ -2379,7 +2379,7 @@ function Reports() {
                       {/* Inward Purchases */}
                       <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04]">
                         <div className="flex justify-between items-center text-xs">
-                          <span className="text-[#86868b] font-medium flex items-center gap-1.5">
+                          <span className="text-[#6e6e73] font-medium flex items-center gap-1.5">
                             <span className="w-2 h-2 rounded-full bg-[#0071e3]"></span>
                             <span>Inward (Purchased):</span>
                           </span>
@@ -2387,7 +2387,7 @@ function Reports() {
                             {flowStats.bulkPurchasedUnits} units • Rs. {Math.round(flowStats.bulkPurchasedCost).toLocaleString()}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-2 text-[10px] text-[#86868b]">
+                        <div className="flex items-center gap-1.5 mt-2 text-xs text-[#6e6e73]">
                           <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 font-medium">💵 Cash: Rs. {Math.round(flowStats.bulkPurchasedCash).toLocaleString()}</span>
                           <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 font-medium">🏦 Bank: Rs. {Math.round(flowStats.bulkPurchasedBank).toLocaleString()}</span>
                           {flowStats.bulkPurchasedCredit > 0 && (
@@ -2399,7 +2399,7 @@ function Reports() {
                       {/* Outward Sales */}
                       <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04]">
                         <div className="flex justify-between items-center text-xs">
-                          <span className="text-[#86868b] font-medium flex items-center gap-1.5">
+                          <span className="text-[#6e6e73] font-medium flex items-center gap-1.5">
                             <span className="w-2 h-2 rounded-full bg-[#34c759]"></span>
                             <span>Outward (Sold):</span>
                           </span>
@@ -2407,8 +2407,8 @@ function Reports() {
                             {flowStats.bulkSoldUnits} units • Rs. {Math.round(flowStats.bulkSoldRevenue).toLocaleString()}
                           </span>
                         </div>
-                        <div className="flex justify-between items-center mt-2 text-[11px]">
-                          <span className="text-[#86868b]">Gross Profit & Margin:</span>
+                        <div className="flex justify-between items-center mt-2 text-xs">
+                          <span className="text-[#6e6e73]">Gross Profit & Margin:</span>
                           <span className="font-bold text-[#34c759]">
                             Rs. {Math.round(flowStats.bulkSoldProfit).toLocaleString()} ({(flowStats.bulkSoldMargin ?? 0).toFixed(1)}%)
                           </span>
@@ -2417,7 +2417,7 @@ function Reports() {
 
                       {/* Net Flow Movement */}
                       <div className="flex justify-between items-center text-xs pt-1 px-1">
-                        <span className="text-[#86868b] font-medium">Net Stock Movement:</span>
+                        <span className="text-[#6e6e73] font-medium">Net Stock Movement:</span>
                         <span className={`font-bold tabular-nums ${
                           (flowStats.bulkPurchasedUnits - flowStats.bulkSoldUnits) >= 0 ? 'text-[#0071e3]' : 'text-[#ff9500]'
                         }`}>
@@ -2428,7 +2428,7 @@ function Reports() {
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
-                    <span className="text-[#86868b] font-medium">Current Stock Asset:</span>
+                    <span className="text-[#6e6e73] font-medium">Current Stock Asset:</span>
                     <span className="font-bold text-[#0071e3] tabular-nums">
                       {flowStats.bulkStockUnits} pcs • Rs. {Math.round(flowStats.bulkStockValue).toLocaleString()}
                     </span>
@@ -2447,10 +2447,10 @@ function Reports() {
                           <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm leading-tight">
                             Mobile Phones Flow
                           </h3>
-                          <span className="text-[11px] text-[#86868b]">Serialized Devices (IMEI)</span>
+                          <span className="text-xs text-[#6e6e73]">Serialized Devices (IMEI)</span>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#af52de]/10 text-[#af52de]">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#af52de]/10 text-[#af52de]">
                         High Value
                       </span>
                     </div>
@@ -2459,7 +2459,7 @@ function Reports() {
                       {/* Inward Purchases */}
                       <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04]">
                         <div className="flex justify-between items-center text-xs">
-                          <span className="text-[#86868b] font-medium flex items-center gap-1.5">
+                          <span className="text-[#6e6e73] font-medium flex items-center gap-1.5">
                             <span className="w-2 h-2 rounded-full bg-[#af52de]"></span>
                             <span>Inward (Purchased):</span>
                           </span>
@@ -2467,7 +2467,7 @@ function Reports() {
                             {flowStats.phonePurchasedUnits} phones • Rs. {Math.round(flowStats.phonePurchasedCost).toLocaleString()}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-2 text-[10px] text-[#86868b]">
+                        <div className="flex items-center gap-1.5 mt-2 text-xs text-[#6e6e73]">
                           <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 font-medium">💵 Cash: Rs. {Math.round(flowStats.phonePurchasedCash).toLocaleString()}</span>
                           <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 font-medium">🏦 Bank: Rs. {Math.round(flowStats.phonePurchasedBank).toLocaleString()}</span>
                           {flowStats.phonePurchasedCredit > 0 && (
@@ -2479,7 +2479,7 @@ function Reports() {
                       {/* Outward Sales */}
                       <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04]">
                         <div className="flex justify-between items-center text-xs">
-                          <span className="text-[#86868b] font-medium flex items-center gap-1.5">
+                          <span className="text-[#6e6e73] font-medium flex items-center gap-1.5">
                             <span className="w-2 h-2 rounded-full bg-[#34c759]"></span>
                             <span>Outward (Sold):</span>
                           </span>
@@ -2487,8 +2487,8 @@ function Reports() {
                             {flowStats.phoneSoldUnits} phones • Rs. {Math.round(flowStats.phoneSoldRevenue).toLocaleString()}
                           </span>
                         </div>
-                        <div className="flex justify-between items-center mt-2 text-[11px]">
-                          <span className="text-[#86868b]">Gross Profit & Margin:</span>
+                        <div className="flex justify-between items-center mt-2 text-xs">
+                          <span className="text-[#6e6e73]">Gross Profit & Margin:</span>
                           <span className="font-bold text-[#34c759]">
                             Rs. {Math.round(flowStats.phoneSoldProfit).toLocaleString()} ({(flowStats.phoneSoldMargin ?? 0).toFixed(1)}%)
                           </span>
@@ -2497,7 +2497,7 @@ function Reports() {
 
                       {/* Net Flow Movement */}
                       <div className="flex justify-between items-center text-xs pt-1 px-1">
-                        <span className="text-[#86868b] font-medium">Net Stock Movement:</span>
+                        <span className="text-[#6e6e73] font-medium">Net Stock Movement:</span>
                         <span className={`font-bold tabular-nums ${
                           (flowStats.phonePurchasedUnits - flowStats.phoneSoldUnits) >= 0 ? 'text-[#af52de]' : 'text-[#ff9500]'
                         }`}>
@@ -2508,7 +2508,7 @@ function Reports() {
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
-                    <span className="text-[#86868b] font-medium">Current Stock Asset:</span>
+                    <span className="text-[#6e6e73] font-medium">Current Stock Asset:</span>
                     <span className="font-bold text-[#af52de] tabular-nums">
                       {flowStats.phoneStockUnits} units • Rs. {Math.round(flowStats.phoneStockValue).toLocaleString()}
                     </span>
@@ -2527,16 +2527,16 @@ function Reports() {
                           <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm leading-tight">
                             Inventory Asset Split
                           </h3>
-                          <span className="text-[11px] text-[#86868b]">Capital Allocation</span>
+                          <span className="text-xs text-[#6e6e73]">Capital Allocation</span>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#34c759]/10 text-[#34c759]">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#34c759]/10 text-[#34c759]">
                         Valuation
                       </span>
                     </div>
 
                     <div className="p-3.5 rounded-[18px] bg-[#f5f5f7] dark:bg-white/[0.03] border border-black/[0.04] dark:border-white/[0.04] mb-3">
-                      <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Total Shop Inventory Assets</span>
+                      <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider block">Total Shop Inventory Assets</span>
                       <span className="text-xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] mt-0.5 block tabular-nums">
                         Rs. {Math.round(flowStats.totalStockValuation).toLocaleString()}
                       </span>
@@ -2561,7 +2561,7 @@ function Reports() {
                     </div>
 
                     <div className="space-y-2 text-xs">
-                      <div className="flex justify-between items-center text-[#86868b]">
+                      <div className="flex justify-between items-center text-[#6e6e73]">
                         <span className="flex items-center gap-1.5 font-medium">
                           <span className="w-2.5 h-2.5 rounded-full bg-[#af52de]"></span>
                           <span>Phones Holding:</span>
@@ -2570,7 +2570,7 @@ function Reports() {
                           Rs. {Math.round(flowStats.phoneStockValue).toLocaleString()} ({flowStats.totalStockValuation > 0 ? ((flowStats.phoneStockValue / flowStats.totalStockValuation) * 100).toFixed(0) : 0}%)
                         </span>
                       </div>
-                      <div className="flex justify-between items-center text-[#86868b]">
+                      <div className="flex justify-between items-center text-[#6e6e73]">
                         <span className="flex items-center gap-1.5 font-medium">
                           <span className="w-2.5 h-2.5 rounded-full bg-[#0071e3]"></span>
                           <span>Accessories Holding:</span>
@@ -2583,7 +2583,7 @@ function Reports() {
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
-                    <span className="text-[#86868b] font-medium">Period Total Inward Outflow:</span>
+                    <span className="text-[#6e6e73] font-medium">Period Total Inward Outflow:</span>
                     <span className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                       Rs. {Math.round(flowStats.bulkPurchasedCost + flowStats.phonePurchasedCost).toLocaleString()}
                     </span>
@@ -2599,7 +2599,7 @@ function Reports() {
                       <span className="w-2 h-4 bg-[#0071e3] rounded-full"></span>
                       <span>Product Stock Velocity & Inflow/Outflow Matrix</span>
                     </h3>
-                    <p className="text-[11px] text-[#86868b] mt-0.5">
+                    <p className="text-xs text-[#6e6e73] mt-0.5">
                       Units purchased vs sold, net movement delta, and current inventory valuation.
                     </p>
                   </div>
@@ -2618,7 +2618,7 @@ function Reports() {
                         className={`px-3 py-1 rounded-full text-xs font-semibold transition cursor-pointer ${
                           catalogSegment === seg.id
                             ? 'bg-white dark:bg-[#1c1c1e] text-[#0071e3] shadow-xs'
-                            : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                            : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
                         }`}
                       >
                         {seg.label}
@@ -2629,7 +2629,7 @@ function Reports() {
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 border-b border-black/[0.04] dark:border-white/[0.06] text-[#86868b] uppercase text-[10px] font-semibold tracking-wider">
+                    <thead className="bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 border-b border-black/[0.04] dark:border-white/[0.06] text-[#6e6e73] uppercase text-xs font-semibold tracking-wider">
                       <tr>
                         <th className="px-4 py-3 w-10">#</th>
                         <th className="px-5 py-3">Product Name</th>
@@ -2652,21 +2652,21 @@ function Reports() {
                         const isSlow = p.qty === 0 && Number(p.stock) > 0
                         return (
                           <tr key={p.name} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition">
-                            <td className="px-4 py-3 text-[#86868b] font-medium">{idx + 1}</td>
+                            <td className="px-4 py-3 text-[#6e6e73] font-medium">{idx + 1}</td>
                             <td className="px-5 py-3">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] block">
                                   {p.name}
                                 </span>
                                 {p.inventory_mode === 'batch_tracked' && (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 shrink-0">
+                                  <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 shrink-0">
                                     FIFO Lot
                                   </span>
                                 )}
                               </div>
                             </td>
                             <td className="px-3 py-3 text-center">
-                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
                                 p.item_type === 'phone'
                                   ? 'bg-[#af52de]/10 text-[#af52de]'
                                   : 'bg-[#0071e3]/10 text-[#0071e3]'
@@ -2674,7 +2674,7 @@ function Reports() {
                                 {p.item_type === 'phone' ? '📱 Mobile' : '🔌 Accessory'}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-[#86868b]">{p.category}</td>
+                            <td className="px-4 py-3 text-[#6e6e73]">{p.category}</td>
                             <td className="px-3 py-3 text-center font-bold text-[#0071e3]">
                               {p.inwardQty ? `+${p.inwardQty}` : '—'}
                             </td>
@@ -2687,7 +2687,7 @@ function Reports() {
                                   ? 'text-[#0071e3]'
                                   : (p.netMovement ?? 0) < 0
                                     ? 'text-[#ff9500]'
-                                    : 'text-[#86868b]'
+                                    : 'text-[#6e6e73]'
                               }>
                                 {(p.netMovement ?? 0) > 0 ? `+${p.netMovement}` : p.netMovement ?? 0}
                               </span>
@@ -2706,19 +2706,19 @@ function Reports() {
                             </td>
                             <td className="px-4 py-3 text-center">
                               {isHighVelocity ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#34c759]/10 text-[#34c759]">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#34c759]/10 text-[#34c759]">
                                   ⚡ High Velocity
                                 </span>
                               ) : isSteady ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0071e3]/10 text-[#0071e3]">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#0071e3]/10 text-[#0071e3]">
                                   🟢 Steady
                                 </span>
                               ) : isSlow ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ff9500]/10 text-[#ff9500]">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-[#ff9500]/10 text-[#ff9500]">
                                   🟡 Slow Moving
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-black/5 dark:bg-white/10 text-[#86868b]">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-black/5 dark:bg-white/10 text-[#6e6e73]">
                                   ⚪ Out of Stock
                                 </span>
                               )}
@@ -2744,7 +2744,7 @@ function Reports() {
                       <span className="w-2 h-4 bg-[#0071e3] rounded-full"></span>
                       <span>Daily Sales Revenue Velocity</span>
                     </h3>
-                    <span className="text-xs text-[#86868b] font-medium">Revenues over time</span>
+                    <span className="text-xs text-[#6e6e73] font-medium">Revenues over time</span>
                   </div>
                   <div className="h-64 w-full">
                     <ResponsiveContainer width="100%" height={250}>
@@ -2775,7 +2775,7 @@ function Reports() {
                       <span className="w-2 h-4 bg-[#af52de] rounded-full"></span>
                       <span>Gross Profit by Category</span>
                     </h3>
-                    <span className="text-xs text-[#86868b] font-medium">Category contribution</span>
+                    <span className="text-xs text-[#6e6e73] font-medium">Category contribution</span>
                   </div>
                   <div className="h-64 w-full">
                     <ResponsiveContainer width="100%" height={250}>
@@ -2816,7 +2816,7 @@ function Reports() {
                     <span className="w-2 h-4 bg-[#34c759] rounded-full"></span>
                     <span>Top Product Champions (Revenue vs Profit)</span>
                   </h3>
-                  <span className="text-xs text-[#86868b] font-medium">Top 8 bestsellers</span>
+                  <span className="text-xs text-[#6e6e73] font-medium">Top 8 bestsellers</span>
                 </div>
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height={250}>
@@ -2852,15 +2852,15 @@ function Reports() {
                     <span className="w-2 h-5 bg-[#0071e3] rounded-full"></span>
                     <span>Profit & Loss Statement (P&L)</span>
                   </h3>
-                  <span className="text-xs text-[#86868b] font-medium">Financial breakdown</span>
+                  <span className="text-xs text-[#6e6e73] font-medium">Financial breakdown</span>
                 </div>
                 <div className="space-y-3.5 text-xs">
                   <div className="flex justify-between items-center pb-2.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-                    <span className="text-[#86868b] font-medium">Gross Sales Value</span>
+                    <span className="text-[#6e6e73] font-medium">Gross Sales Value</span>
                     <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">Rs. {stats.grossSales.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center pb-2.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-                    <span className="text-[#86868b] font-medium">Total Customer Discounts</span>
+                    <span className="text-[#6e6e73] font-medium">Total Customer Discounts</span>
                     <span className="font-semibold text-[#ff3b30] tabular-nums">- Rs. {stats.totalDiscount.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center p-2.5 rounded-[14px] bg-[#0071e3]/5 border border-[#0071e3]/10">
@@ -2868,7 +2868,7 @@ function Reports() {
                     <span className="font-bold text-[#0071e3] tabular-nums">Rs. {(stats.grossSales - stats.totalDiscount).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center pb-2.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-                    <span className="text-[#86868b] font-medium">Cost of Goods Sold (COGS)</span>
+                    <span className="text-[#6e6e73] font-medium">Cost of Goods Sold (COGS)</span>
                     <span className="font-semibold text-[#ff9500] tabular-nums">- Rs. {stats.costOfSales.toLocaleString()}</span>
                   </div>
                   {stats.totalDirectCosts > 0 && (
@@ -2890,7 +2890,7 @@ function Reports() {
                     <span className="font-bold text-[#34c759] text-sm tabular-nums">Rs. {stats.grossProfit.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center pb-2.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-                    <span className="text-[#86868b] font-medium">Operational Shop Expenses</span>
+                    <span className="text-[#6e6e73] font-medium">Operational Shop Expenses</span>
                     <span className="font-semibold text-[#ff3b30] tabular-nums">- Rs. {stats.expenses.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center pt-3 border-t border-black/[0.08] dark:border-white/[0.08]">
@@ -2910,7 +2910,7 @@ function Reports() {
                     {expenseBreakdown.map(e => (
                       <div key={e.cat} className="flex flex-col gap-1">
                         <div className="flex justify-between text-xs">
-                          <span className="text-[#86868b] font-medium">{e.cat}</span>
+                          <span className="text-[#6e6e73] font-medium">{e.cat}</span>
                           <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">Rs. {e.val.toLocaleString()}</span>
                         </div>
                         <div className="w-full h-1.5 bg-[#e5e5ea] dark:bg-[#2c2c2e] rounded-full overflow-hidden">
@@ -2922,7 +2922,7 @@ function Reports() {
                       </div>
                     ))}
                     {expenseBreakdown.length === 0 && (
-                      <p className="text-center text-[#86868b] py-4 text-xs">No expenses recorded in this period</p>
+                      <p className="text-center text-[#6e6e73] py-4 text-xs">No expenses recorded in this period</p>
                     )}
                   </div>
                 </div>
@@ -2932,7 +2932,7 @@ function Reports() {
                     <ShoppingBag size={16} />
                   </div>
                   <h3 className="font-bold text-sm text-[#1d1d1f] dark:text-[#f5f5f7] mb-0.5">New Inventory Purchases</h3>
-                  <p className="text-xs text-[#86868b] mb-3">Stock purchased in this selected period</p>
+                  <p className="text-xs text-[#6e6e73] mb-3">Stock purchased in this selected period</p>
                   <p className="text-2xl font-bold text-[#5856d6] tabular-nums">Rs. {stats.purchases.toLocaleString()}</p>
                 </div>
               </div>

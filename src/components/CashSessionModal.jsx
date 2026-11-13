@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase'
 import { db } from '../services/db'
 import { cashPortion, isCountedSale, isCashExpenseInShift, isPurchaseBillPayment, isCashPartyPayment } from '../utils/moneyMath'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 export default function CashSessionModal({ isOpen, onClose, user, onSessionChange }) {
   const openingFloatId = useId()
@@ -279,7 +280,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
     const variance = actualVal - expectedCash
 
     const confirmMsg = `Confirm Close Shift?\nExpected: Rs. ${expectedCash.toLocaleString()}\nCounted: Rs. ${actualVal.toLocaleString()}\nVariance: Rs. ${variance > 0 ? '+' : ''}${variance.toLocaleString()}`
-    if (!window.confirm(confirmMsg)) return
+    if (!await confirmDialog(confirmMsg)) return
 
     setLoading(true)
     try {
@@ -326,7 +327,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
   const calculatedVariance = actualCash !== '' ? (parseFloat(actualCash) || 0) - expectedTotal : 0
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
         
         {/* Modal Header */}
@@ -335,7 +336,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
             <span className="text-2xl">💵</span>
             <div>
               <h2 className="font-bold text-base leading-tight">Cash Register & Drawer Sessions</h2>
-              <p className="text-xs text-slate-400">Shift tracking, cash movements & reconciliation</p>
+              <p className="text-xs text-slate-500">Shift tracking, cash movements & reconciliation</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -346,7 +347,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
             </span>
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              className="text-slate-500 hover:text-white p-1 rounded-lg transition"
             >
               ✕
             </button>
@@ -389,7 +390,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Active Shift #{currentSession.id}</span>
-                        <span className="text-[11px] text-emerald-700">
+                        <span className="text-xs text-emerald-700">
                           Opened: {new Date(currentSession.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
@@ -410,37 +411,37 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
                   {/* Cash Breakdown Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                     <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <div className="text-[11px] font-bold text-gray-500 uppercase">Opening Float</div>
+                      <div className="text-xs font-bold text-gray-500 uppercase">Opening Float</div>
                       <div className="text-base font-black text-gray-900 mt-0.5">
                         Rs. {Number(currentSession.opening_cash).toLocaleString()}
                       </div>
                     </div>
                     <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100">
-                      <div className="text-[11px] font-bold text-blue-600 uppercase">Cash Sales</div>
+                      <div className="text-xs font-bold text-blue-600 uppercase">Cash Sales</div>
                       <div className="text-base font-black text-blue-800 mt-0.5">
                         + Rs. {sessionStats.cashSales.toLocaleString()}
                       </div>
                     </div>
                     <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-100">
-                      <div className="text-[11px] font-bold text-purple-600 uppercase">Customer In</div>
+                      <div className="text-xs font-bold text-purple-600 uppercase">Customer In</div>
                       <div className="text-base font-black text-purple-800 mt-0.5">
                         + Rs. {sessionStats.cashPayments.toLocaleString()}
                       </div>
                     </div>
                     <div className="p-3 bg-rose-50/60 rounded-xl border border-rose-100">
-                      <div className="text-[11px] font-bold text-rose-600 uppercase">Expenses Out</div>
+                      <div className="text-xs font-bold text-rose-600 uppercase">Expenses Out</div>
                       <div className="text-base font-black text-rose-800 mt-0.5">
                         - Rs. {sessionStats.cashExpenses.toLocaleString()}
                       </div>
                     </div>
                     <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-100">
-                      <div className="text-[11px] font-bold text-amber-600 uppercase">Purchases Out</div>
+                      <div className="text-xs font-bold text-amber-600 uppercase">Purchases Out</div>
                       <div className="text-base font-black text-amber-800 mt-0.5">
                         - Rs. {(sessionStats.cashPurchases || 0).toLocaleString()}
                       </div>
                     </div>
                     <div className="p-3 bg-orange-50/60 rounded-xl border border-orange-100">
-                      <div className="text-[11px] font-bold text-orange-600 uppercase">Supplier Out</div>
+                      <div className="text-xs font-bold text-orange-600 uppercase">Supplier Out</div>
                       <div className="text-base font-black text-orange-800 mt-0.5">
                         - Rs. {(sessionStats.cashSupplierPayments || 0).toLocaleString()}
                       </div>
@@ -450,12 +451,12 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
                   {/* Expected Cash in Drawer */}
                   <div className="p-4 bg-slate-900 text-white rounded-xl flex items-center justify-between">
                     <div>
-                      <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Calculated Expected Cash in Drawer</div>
+                      <div className="text-xs text-slate-500 font-bold uppercase tracking-wider">Calculated Expected Cash in Drawer</div>
                       <div className="text-2xl font-black text-emerald-400 mt-0.5">
                         Rs. {expectedTotal.toLocaleString()}
                       </div>
                     </div>
-                    <div className="text-right text-xs text-slate-400">
+                    <div className="text-right text-xs text-slate-500">
                       <div>Total Sales: {sessionStats.salesCount}</div>
                       <div>Currency: PKR</div>
                     </div>
@@ -609,7 +610,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
             <div className="space-y-3">
               <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Recent Closed Sessions</div>
               {sessionHistory.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 text-xs">No previous cash sessions recorded.</div>
+                <div className="text-center py-8 text-gray-500 text-xs">No previous cash sessions recorded.</div>
               ) : (
                 <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100 text-xs">
                   {sessionHistory.map(s => {
@@ -619,24 +620,24 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
                         <div>
                           <div className="font-bold text-gray-900 flex items-center gap-1.5">
                             <span>Shift #{s.id}</span>
-                            <span className={`px-1.5 py-0.2 rounded text-[10px] font-black uppercase ${
+                            <span className={`px-1.5 py-0.2 rounded text-xs font-black uppercase ${
                               s.status === 'open' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
                             }`}>
                               {s.status}
                             </span>
                           </div>
-                          <div className="text-[11px] text-gray-500 mt-0.5">
+                          <div className="text-xs text-gray-500 mt-0.5">
                             {new Date(s.opened_at).toLocaleDateString()} · Opened {new Date(s.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             {s.closed_at && ` → Closed ${new Date(s.closed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
                           </div>
-                          {s.notes && <div className="text-[10px] text-gray-400 italic mt-0.5">{s.notes}</div>}
+                          {s.notes && <div className="text-xs text-gray-500 italic mt-0.5">{s.notes}</div>}
                         </div>
                         <div className="text-right">
                           <div className="font-mono font-bold text-gray-800">
                             Float: Rs. {Number(s.opening_cash).toLocaleString()}
                           </div>
                           {s.status === 'closed' && (
-                            <div className={`font-mono text-[11px] font-bold ${
+                            <div className={`font-mono text-xs font-bold ${
                               varVal === 0 ? 'text-emerald-600' : varVal < 0 ? 'text-rose-600' : 'text-blue-600'
                             }`}>
                               Var: {varVal > 0 ? '+' : ''}{varVal.toLocaleString()}

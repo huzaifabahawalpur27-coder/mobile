@@ -5,6 +5,7 @@ import { db, addToSyncQueue } from '../services/db'
 import Categories from './Categories'
 import Brands from './Brands'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 // ── Default units for "Seed Defaults" button ──────────────────────────────────
 const DEFAULT_UNITS = [
@@ -97,7 +98,7 @@ function UnitsTab() {
         if (editingId) await db.units.update(editingId, offlineData)
         else await db.units.add(offlineData)
         handleCancel(); fetchUnits()
-        notify('Offline: Locally save ho gaya. Online hone par sync hoga.')
+        notify('Saved on this device. It syncs when you are back online.', 'info')
       } else {
         notify('Error: ' + msg)
       }
@@ -105,7 +106,7 @@ function UnitsTab() {
   }
 
   const handleDelete = async (u) => {
-    if (!confirm(`"${u.name}" delete karein?`)) return
+    if (!await confirmDialog(`Delete the unit "${u.name}"?`, { confirmLabel: 'Delete unit', danger: true })) return
     try {
       if (!navigator.onLine) throw new TypeError('Failed to fetch')
       const { error } = await supabase.from('units').delete().eq('id', u.id)
@@ -123,14 +124,14 @@ function UnitsTab() {
   }
 
   const handleSeedDefaults = async () => {
-    if (!confirm(`${DEFAULT_UNITS.length} default units add karein?`)) return
+    if (!await confirmDialog(`Add the ${DEFAULT_UNITS.length} standard units?`, { confirmLabel: 'Add units' })) return
     setSaving(true)
     try {
       const existingNames = new Set(units.map(u => u.name.toLowerCase()))
       const toInsert = DEFAULT_UNITS
         .filter(u => !existingNames.has(u.name.toLowerCase()))
         .map(u => ({ ...u, shop_id: user.shop_id }))
-      if (!toInsert.length) { notify('Tamam default units pehle se mojood hain.'); setSaving(false); return }
+      if (!toInsert.length) { notify('All the standard units are already here.'); setSaving(false); return }
       if (navigator.onLine) {
         const { error } = await supabase.from('units').insert(toInsert)
         if (error) throw error
@@ -142,7 +143,7 @@ function UnitsTab() {
         }
       }
       fetchUnits()
-      notify(`${toInsert.length} units add ho gayi! ✅`)
+      notify(`${toInsert.length} units added.`, 'success')
     } catch (err) { notify('Error: ' + err.message) }
     finally { setSaving(false) }
   }
@@ -169,13 +170,13 @@ function UnitsTab() {
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-gray-700 font-medium mb-1 text-sm">Name *</label>
-              <input type="text" required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              <input aria-label="Name" type="text" required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="e.g. Feet, Kg, Box"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1 text-sm">Abbreviation</label>
-              <input type="text" value={form.abbreviation} onChange={e => setForm(f => ({ ...f, abbreviation: e.target.value }))}
+              <input aria-label="Abbreviation" type="text" value={form.abbreviation} onChange={e => setForm(f => ({ ...f, abbreviation: e.target.value }))}
                 placeholder="e.g. ft, Kg, Box"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
             </div>
@@ -193,11 +194,11 @@ function UnitsTab() {
         </div>
       )}
 
-      {loading ? <p className="text-gray-400">Loading...</p> : units.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <p className="text-lg mb-2">Koi unit nahi mili</p>
+      {loading ? <p className="text-gray-500">Loading...</p> : units.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          <p className="text-lg mb-2">No units yet</p>
           <p className="text-sm">
-            "Seed Defaults" dabayein 14 standard units add karne ke liye,<br />ya manually add karein.
+            Press "Seed Defaults" to add 14 standard units,<br />or add your own.
           </p>
         </div>
       ) : (
@@ -214,7 +215,7 @@ function UnitsTab() {
             <tbody className="divide-y divide-gray-100">
               {units.map((u, idx) => (
                 <tr key={u.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-3 text-gray-400">{idx + 1}</td>
+                  <td className="px-6 py-3 text-gray-500">{idx + 1}</td>
                   <td className="px-6 py-3 font-semibold text-gray-800">{u.name}</td>
                   <td className="px-6 py-3">
                     <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-mono text-xs font-bold">

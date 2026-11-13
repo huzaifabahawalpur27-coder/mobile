@@ -11,6 +11,7 @@ import PasswordModal from '../components/PasswordModal'
 import { adjustSupplierBalance } from '../services/atomicOps'
 import { notify } from '../utils/toast'
 import { isCashName } from '../utils/moneyMath'
+import { confirmDialog } from '../utils/dialog'
 
 function Suppliers() {
   const { user } = useAuth()
@@ -257,12 +258,12 @@ function Suppliers() {
         const ws = wb.Sheets[wb.SheetNames[0]]
         const rows = XLSX.utils.sheet_to_json(ws)
 
-        if (rows.length === 0) { notify('File khali hai!'); return }
+        if (rows.length === 0) { notify('The file is empty.'); return }
 
         // Validate columns
         const sample = rows[0]
         if (!('Amount (Rs.)' in sample) && !('Amount' in sample)) {
-          notify('Column "Amount (Rs.)" nahi mili. Sahi format use karein:\nDate | Bill Number | Type | Amount (Rs.) | Description')
+          notify('Column "Amount (Rs.)" is missing\nUse these columns: Date | Bill Number | Type | Amount (Rs.) | Description', 'error')
           return
         }
 
@@ -270,7 +271,7 @@ function Suppliers() {
           `${r['Date'] || ''} | Bill#${r['Bill Number'] || '-'} | ${r['Type'] || 'Debit'} | Rs.${r['Amount (Rs.)'] || r['Amount'] || 0}`
         ).join('\n')
 
-        if (!confirm(`${rows.length} transactions import karein?\n\nPehli entries:\n${preview}`)) return
+        if (!await confirmDialog(`Import ${rows.length} transactions?\nFirst entries:\n${preview}`, { confirmLabel: 'Import transactions' })) return
 
         setTxImporting(true)
 
@@ -334,7 +335,7 @@ function Suppliers() {
 
         // Recalculate balance from all transactions (re-fetch ledger)
         await openTxModal(txSup)
-        notify(`✅ ${inserted} transactions import ho gayi!${!navigator.onLine ? '\n(Offline: sync hogi jab online hon)' : ''}`)
+        notify(`${inserted} transactions imported.${!navigator.onLine ? '\nSaved on this device; they sync when you are online.' : ''}`, 'success')
       } catch (err) {
         notify('Import error: ' + (err.message || err))
       } finally {
@@ -465,7 +466,7 @@ function Suppliers() {
         return
       }
 
-      if (!confirm(`Import ${data.length} suppliers ? `)) return
+      if (!await confirmDialog(`Import ${data.length} suppliers?`, { confirmLabel: 'Import suppliers' })) return
 
       setLoading(true)
       const formatted = data.map(row => ({
@@ -649,7 +650,7 @@ function Suppliers() {
     setSelected([])
 
     if (failCount > 0) {
-      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh suppliers ke purchase records abhi bhi database mein hain.\n\nSahi order:\n1. Purchase Items delete karein (Trash Bin)\n2. Purchases delete karein\n3. Phir yeh suppliers delete ho jayenge`)
+      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\nThese suppliers still have purchases on record.\n\nDelete in this order:\n1. Purchase items (Trash Bin)\n2. Purchases\n3. Then these suppliers`)
     } else if (successCount > 0) {
       notify(`🗑️ ${successCount} supplier(s) moved to Trash!`)
     }
@@ -688,17 +689,17 @@ function Suppliers() {
             <div className="bg-white rounded-xl shadow p-4 border-l-4 border-red-400">
               <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">Total Amount Due</p>
               <p className="text-2xl font-bold text-red-600 mt-1">Rs. {totalDue.toLocaleString()}</p>
-              <p className="text-xs text-gray-400 mt-1">Across all suppliers</p>
+              <p className="text-xs text-gray-500 mt-1">Across all suppliers</p>
             </div>
             <div className="bg-white rounded-xl shadow p-4 border-l-4 border-orange-400">
               <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">Suppliers with Balance</p>
               <p className="text-2xl font-bold text-orange-600 mt-1">{suppliersWithDue}</p>
-              <p className="text-xs text-gray-400 mt-1">Have outstanding amount</p>
+              <p className="text-xs text-gray-500 mt-1">Have outstanding amount</p>
             </div>
             <div className="bg-white rounded-xl shadow p-4 border-l-4 border-green-400">
               <p className="text-xs text-gray-500 uppercase font-semibold tracking-wide">Cleared / No Balance</p>
               <p className="text-2xl font-bold text-green-600 mt-1">{cleared}</p>
-              <p className="text-xs text-gray-400 mt-1">Out of {suppliers.length} total</p>
+              <p className="text-xs text-gray-500 mt-1">Out of {suppliers.length} total</p>
             </div>
           </div>
         )
@@ -731,7 +732,7 @@ function Suppliers() {
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-gray-700 font-medium mb-1">Name *</label>
-              <input
+              <input aria-label="Name"
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -742,7 +743,7 @@ function Suppliers() {
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Phone</label>
-              <input
+              <input aria-label="Phone"
                 type="text"
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -752,7 +753,7 @@ function Suppliers() {
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Address</label>
-              <input
+              <input aria-label="Address"
                 type="text"
                 value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
@@ -763,7 +764,7 @@ function Suppliers() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Brand (Dealer of)</label>
-                <select
+                <select aria-label="Brand (Dealer of)"
                   value={form.brand}
                   onChange={(e) => setForm({ ...form, brand: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
@@ -775,7 +776,7 @@ function Suppliers() {
               </div>
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Product Type / Category</label>
-                <input
+                <input aria-label="Product Type / Category"
                   type="text"
                   value={form.product_type}
                   onChange={(e) => setForm({ ...form, product_type: e.target.value })}
@@ -786,7 +787,7 @@ function Suppliers() {
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Other Details</label>
-              <input
+              <input aria-label="Other Details"
                 type="text"
                 value={form.other_details}
                 onChange={(e) => setForm({ ...form, other_details: e.target.value })}
@@ -816,7 +817,7 @@ function Suppliers() {
         <p className="text-gray-500">Loading...</p>
       ) : suppliers.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-400 text-lg">No suppliers yet</p>
+          <p className="text-gray-500 text-lg">No suppliers yet</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -850,7 +851,7 @@ function Suppliers() {
                         <p className="mt-0.5 text-xs font-bold uppercase text-blue-600">{sup.brand || 'No Brand'} <span className="font-medium normal-case text-gray-500">· {sup.product_type || 'General'}</span></p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-[10px] font-bold uppercase text-gray-400">Payable</p>
+                        <p className="text-xs font-bold uppercase text-gray-500">Payable</p>
                         <p className={`font-black ${owed ? 'text-red-600' : 'text-green-600'}`}>Rs. {Number(sup.outstanding_balance || 0).toLocaleString()}</p>
                       </div>
                     </div>
@@ -904,7 +905,7 @@ function Suppliers() {
                     <td className="px-6 py-4 font-medium text-gray-800 whitespace-nowrap">{sup.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <p className="text-gray-800 text-sm font-bold">{sup.phone || '-'}</p>
-                      <p className="text-gray-400 text-xs">{sup.address || '-'}</p>
+                      <p className="text-gray-500 text-xs">{sup.address || '-'}</p>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <p className="text-blue-600 text-xs font-black uppercase tracking-tighter">{sup.brand || 'No Brand'}</p>
@@ -960,7 +961,7 @@ function Suppliers() {
 
       {/* ── Supplier Transaction Modal ── */}
       {showTxModal && txSup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-50 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col">
 
             {/* Header */}
@@ -971,13 +972,13 @@ function Suppliers() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-right">
-                  <p className="text-xs text-gray-400 uppercase font-semibold">Outstanding</p>
+                  <p className="text-xs text-gray-500 uppercase font-semibold">Outstanding</p>
                   <p className={`text-xl font-bold ${txSup.outstanding_balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                     Rs. {(txSup.outstanding_balance || 0).toLocaleString()}
                   </p>
                 </div>
                 <button onClick={() => setShowTxModal(false)}
-                  className="text-gray-400 hover:text-gray-600 text-2xl font-light leading-none">✕</button>
+                  className="text-gray-500 hover:text-gray-600 text-2xl font-light leading-none">✕</button>
               </div>
             </div>
 
@@ -1020,14 +1021,14 @@ function Suppliers() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
-                      <input type="date" required
+                      <input aria-label="Date" type="date" required
                         value={txForm.date}
                         onChange={e => setTxForm({ ...txForm, date: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">Bill Number</label>
-                      <input type="text"
+                      <input aria-label="Bill Number" type="text"
                         value={txForm.bill_number}
                         onChange={e => setTxForm({ ...txForm, bill_number: e.target.value })}
                         placeholder="e.g. 1045"
@@ -1035,7 +1036,7 @@ function Suppliers() {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">Type *</label>
-                      <select value={txForm.type}
+                      <select aria-label="Type" value={txForm.type}
                         onChange={e => setTxForm({ ...txForm, type: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400">
                         <option value="debit">🔴 Debit (Purchase / We Owe)</option>
@@ -1044,7 +1045,7 @@ function Suppliers() {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">Amount (Rs.) *</label>
-                      <input type="number" min="1" step="any" required
+                      <input aria-label="Amount (Rs.)" type="number" min="1" step="any" required
                         value={txForm.amount}
                         onChange={e => setTxForm({ ...txForm, amount: e.target.value })}
                         placeholder="0"
@@ -1052,7 +1053,7 @@ function Suppliers() {
                     </div>
                   </div>
                   <div className="flex gap-3">
-                    <input type="text"
+                    <input aria-label="Description / Note (optional)" type="text"
                       value={txForm.note}
                       onChange={e => setTxForm({ ...txForm, note: e.target.value })}
                       placeholder="Description / Note (optional)"
@@ -1069,9 +1070,9 @@ function Suppliers() {
             {/* Ledger Table */}
             <div className="flex-1 overflow-auto px-5 pb-5">
               {txLoading ? (
-                <div className="py-10 text-center text-gray-400">Loading transactions...</div>
+                <div className="py-10 text-center text-gray-500">Loading transactions...</div>
               ) : txLedger.length === 0 ? (
-                <div className="py-10 text-center text-gray-400">No transactions found for this supplier.</div>
+                <div className="py-10 text-center text-gray-500">No transactions found for this supplier.</div>
               ) : (
                 <table className="w-full text-sm border-collapse">
                   <thead className="sticky top-0 bg-gray-50 z-10">
@@ -1099,8 +1100,8 @@ function Suppliers() {
                           </td>
                           <td className="px-4 py-3 text-gray-700">
                             <span>{item.note || (isDebitRow ? 'Purchase' : 'Payment')}</span>
-                            {item.type === 'return' && <span className="ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold uppercase">Return</span>}
-                            {item.type === 'debit' && <span className="ml-2 text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-bold uppercase">Manual</span>}
+                            {item.type === 'return' && <span className="ml-2 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold uppercase">Return</span>}
+                            {item.type === 'debit' && <span className="ml-2 text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-bold uppercase">Manual</span>}
                           </td>
                           <td className="px-4 py-3 text-right font-medium text-orange-600 whitespace-nowrap">
                             {isDebitRow ? `Rs. ${Number(item.amount).toLocaleString()}` : ''}

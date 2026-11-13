@@ -37,7 +37,7 @@ export default function EditLedgerEntryModal({ entry, title, preview, saving, on
       <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <h3 className="text-base font-extrabold text-gray-900">{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-xl font-bold text-gray-400 hover:text-gray-600">✕</button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-xl font-bold text-gray-500 hover:text-gray-600">✕</button>
         </div>
         <form onSubmit={submit} className="space-y-4 p-5 text-sm">
           <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">

@@ -68,7 +68,7 @@ export default function BatchStockAdjustmentModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[92dvh] animate-in fade-in zoom-in-95 duration-150">
         
         {/* Header */}
@@ -81,14 +81,14 @@ export default function BatchStockAdjustmentModal({
               <h2 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
                 Adjust Batch Quantity
               </h2>
-              <p className="text-[11px] text-gray-500 dark:text-slate-400 font-mono">
+              <p className="text-xs text-gray-500 dark:text-slate-400 font-mono">
                 Lot: {batch.batch_no} • {product?.name || ''}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition cursor-pointer"
+            className="p-1.5 text-gray-500 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -106,13 +106,13 @@ export default function BatchStockAdjustmentModal({
           {/* Current Batch Stats */}
           <div className="grid grid-cols-2 gap-2.5">
             <div className="p-3 bg-gray-50 dark:bg-slate-800/60 rounded-xl border border-gray-200 dark:border-slate-700">
-              <span className="text-gray-400 text-[10px] uppercase font-bold block mb-0.5">Current Lot Stock</span>
+              <span className="text-gray-500 text-xs uppercase font-bold block mb-0.5">Current Lot Stock</span>
               <span className="text-base font-black text-gray-900 dark:text-white font-mono">
                 {currentRemaining} <span className="text-xs font-normal text-gray-500">units</span>
               </span>
             </div>
             <div className="p-3 bg-gray-50 dark:bg-slate-800/60 rounded-xl border border-gray-200 dark:border-slate-700">
-              <span className="text-gray-400 text-[10px] uppercase font-bold block mb-0.5">Unit Cost</span>
+              <span className="text-gray-500 text-xs uppercase font-bold block mb-0.5">Unit Cost</span>
               <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
                 Rs. {Number(batch.current_unit_cost || 0).toLocaleString('en-PK')}
               </span>
@@ -153,7 +153,7 @@ export default function BatchStockAdjustmentModal({
             <label className="font-bold text-gray-700 dark:text-gray-300 block mb-1">
               Quantity to {adjustmentType === 'decrease' ? 'Deduct' : 'Add'} <span className="text-red-500">*</span>
             </label>
-            <input
+            <input aria-label=" Quantity to "
               type="number"
               min="0.01"
               step="any"
@@ -180,7 +180,7 @@ export default function BatchStockAdjustmentModal({
             <label className="font-bold text-gray-700 dark:text-gray-300 block mb-1">
               Reason for Adjustment <span className="text-red-500">*</span>
             </label>
-            <input
+            <input aria-label=" Reason for Adjustment "
               type="text"
               required
               value={reason}
@@ -190,7 +190,7 @@ export default function BatchStockAdjustmentModal({
             />
           </div>
 
-          <div className="p-2.5 bg-gray-50 dark:bg-slate-800/40 rounded-xl border border-gray-200 dark:border-slate-800 text-[11px] text-gray-500 space-y-0.5">
+          <div className="p-2.5 bg-gray-50 dark:bg-slate-800/40 rounded-xl border border-gray-200 dark:border-slate-800 text-xs text-gray-500 space-y-0.5">
             <p>• Updates this specific batch and the master product stock balance in sync.</p>
             <p>• Creates an immutable audit entry in <code>stock_adjustments</code>.</p>
           </div>

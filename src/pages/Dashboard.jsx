@@ -53,19 +53,19 @@ const AppleWidget = ({
           {icon}
         </div>
         {badge && (
-          <span className={`text-[10px] font-bold tracking-wider px-2.5 py-0.5 rounded-full border ${
+          <span className={`text-xs font-bold tracking-wider px-2.5 py-0.5 rounded-full border ${
             badgeStyle || (isHero
               ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/25'
-              : 'bg-[#f5f5f7] dark:bg-white/10 text-[#86868b] dark:text-gray-300 border-black/[0.04] dark:border-white/[0.06]')
+              : 'bg-[#f5f5f7] dark:bg-white/10 text-[#6e6e73] dark:text-gray-300 border-black/[0.04] dark:border-white/[0.06]')
           }`}>
             {badge}
           </span>
         )}
       </div>
       <div className="flex items-center gap-1.5 flex-wrap">
-        <h3 className="text-[#86868b] text-[11px] font-bold uppercase tracking-wider">{title}</h3>
+        <h3 className="text-[#6e6e73] text-xs font-bold uppercase tracking-wider">{title}</h3>
         {hint && (
-          <span className="text-[10px] font-bold text-[#86868b]/90 dark:text-[#86868b] px-1.5 py-0.5 rounded bg-black/[0.04] dark:bg-white/[0.06]">
+          <span className="text-xs font-bold text-[#6e6e73]/90 dark:text-[#86868b] px-1.5 py-0.5 rounded bg-black/[0.04] dark:bg-white/[0.06]">
             {hint}
           </span>
         )}
@@ -80,9 +80,9 @@ const AppleWidget = ({
     </div>
 
     {subValue && (
-      <div className="pt-2 mt-2 border-t border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between text-[11px]">
-        <span className="text-[#86868b] font-medium truncate">{subValue}</span>
-        <span className={`group-hover:translate-x-0.5 transition-transform ${isHero ? 'text-emerald-500 font-bold' : 'text-gray-400 group-hover:text-[#0071e3]'}`}>→</span>
+      <div className="pt-2 mt-2 border-t border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between text-xs">
+        <span className="text-[#6e6e73] font-medium truncate">{subValue}</span>
+        <span className={`group-hover:translate-x-0.5 transition-transform ${isHero ? 'text-emerald-500 font-bold' : 'text-gray-500 group-hover:text-[#0071e3]'}`}>→</span>
       </div>
     )}
   </button>
@@ -704,17 +704,17 @@ function Dashboard() {
               </span>
               <span className="font-extrabold text-blue-600">📱 {shopName}</span>
             </span>
-            <span className="text-xs text-[#86868b] font-medium">
+            <span className="text-xs text-[#6e6e73] font-medium">
               • {new Date().toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
           </div>
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
             Dashboard
           </h1>
-          <p className="text-[#86868b] text-xs sm:text-sm mt-0.5 font-normal">
+          <p className="text-[#6e6e73] text-xs sm:text-sm mt-0.5 font-normal">
             Today’s sales, purchases, cash, and stock at a glance.
           </p>
-          <p className="text-[11px] text-[#86868b] mt-1" aria-live="polite">
+          <p className="text-xs text-[#6e6e73] mt-1" aria-live="polite">
             {usingOfflineData ? 'Offline data' : 'Online data'}{lastRefreshed ? ` · Updated ${lastRefreshed.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' })}` : ''}{loading ? ' · Refreshing…' : ''}
           </p>
         </div>
@@ -823,13 +823,13 @@ function Dashboard() {
         >
           <div>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Cash in Drawer</span>
-              <span className="text-[10px] text-emerald-600 font-bold">(گلہ)</span>
+              <span className="text-xs font-bold text-[#6e6e73] uppercase tracking-wider block">Cash in Drawer</span>
+              <span className="text-xs text-emerald-600 font-bold">(گلہ)</span>
             </div>
             <span className={`text-base font-extrabold tabular-nums font-mono ${cashInHandBalance >= 0 ? 'text-[#34c759]' : 'text-[#ff3b30]'}`}>
               Rs. {Math.round(cashInHandBalance).toLocaleString()}
             </span>
-            <span className="text-[10px] text-[#86868b] block mt-0.5">Cash in hand balance</span>
+            <span className="text-xs text-[#6e6e73] block mt-0.5">Cash in hand balance</span>
           </div>
           <div className="w-8.5 h-8.5 rounded-[10px] bg-[#34c759]/15 text-[#34c759] flex items-center justify-center font-bold text-xs shrink-0">
             <Wallet size={16} />
@@ -844,11 +844,11 @@ function Dashboard() {
           className="w-full text-left bg-gradient-to-br from-sky-500/[0.06] via-white/95 to-blue-500/[0.02] dark:from-sky-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-sky-500/25 dark:border-sky-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
         >
           <div>
-            <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Digital / Bank</span>
+            <span className="text-xs font-bold text-[#6e6e73] uppercase tracking-wider block">Digital / Bank</span>
             <span className="text-base font-extrabold text-[#0071e3] dark:text-[#3894ff] tabular-nums font-mono">
               Rs. {Math.round(stats.todayOnlineSales).toLocaleString()}
             </span>
-            <span className="text-[10px] text-[#86868b] block mt-0.5">JazzCash • Bank transfers</span>
+            <span className="text-xs text-[#6e6e73] block mt-0.5">JazzCash • Bank transfers</span>
           </div>
           <div className="w-8.5 h-8.5 rounded-[10px] bg-[#0071e3]/15 text-[#0071e3] flex items-center justify-center font-bold text-xs shrink-0">
             💳
@@ -864,13 +864,13 @@ function Dashboard() {
         >
           <div>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Today's Expenses</span>
-              <span className="text-[10px] text-rose-500 font-bold">(خرچے)</span>
+              <span className="text-xs font-bold text-[#6e6e73] uppercase tracking-wider block">Today's Expenses</span>
+              <span className="text-xs text-rose-500 font-bold">(خرچے)</span>
             </div>
             <span className="text-base font-extrabold text-[#ff3b30] tabular-nums font-mono">
               Rs. {Math.round(stats.todayExpenses).toLocaleString()}
             </span>
-            <span className="text-[10px] text-[#86868b] block mt-0.5">Shop running costs</span>
+            <span className="text-xs text-[#6e6e73] block mt-0.5">Shop running costs</span>
           </div>
           <div className="w-8.5 h-8.5 rounded-[10px] bg-[#ff3b30]/15 text-[#ff3b30] flex items-center justify-center font-bold text-xs shrink-0">
             💸
@@ -885,11 +885,11 @@ function Dashboard() {
           className="w-full text-left bg-gradient-to-br from-teal-500/[0.06] via-white/95 to-teal-500/[0.02] dark:from-teal-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-teal-500/25 dark:border-teal-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
         >
           <div>
-            <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Month Sales (MTD)</span>
+            <span className="text-xs font-bold text-[#6e6e73] uppercase tracking-wider block">Month Sales (MTD)</span>
             <span className="text-base font-extrabold text-teal-700 dark:text-teal-400 tabular-nums font-mono">
               Rs. {Math.round(stats.monthlySales).toLocaleString()}
             </span>
-            <span className="text-[10px] text-[#86868b] block mt-0.5">{stats.monthlyOrdersCount} orders this month</span>
+            <span className="text-xs text-[#6e6e73] block mt-0.5">{stats.monthlyOrdersCount} orders this month</span>
           </div>
           <div className="w-8.5 h-8.5 rounded-[10px] bg-teal-500/15 text-teal-600 flex items-center justify-center font-bold text-xs shrink-0">
             <Activity size={16} />
@@ -904,11 +904,11 @@ function Dashboard() {
           className="col-span-2 sm:col-span-3 lg:col-span-1 w-full text-left bg-gradient-to-br from-amber-500/[0.06] via-white/95 to-amber-500/[0.02] dark:from-amber-950/30 dark:via-[#1c1c1e]/95 backdrop-blur-xl p-3.5 rounded-[18px] border border-amber-500/25 dark:border-amber-500/35 shadow-2xs flex items-center justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-xs motion-safe:active:scale-[0.96] motion-reduce:transform-none transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
         >
           <div>
-            <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider block">Catalog Health</span>
+            <span className="text-xs font-bold text-[#6e6e73] uppercase tracking-wider block">Catalog Health</span>
             <span className={`text-base font-extrabold tabular-nums font-mono ${stats.lowStockCount > 0 ? 'text-[#ff9500]' : 'text-[#34c759]'}`}>
               {stats.lowStockCount > 0 ? `${stats.lowStockCount} Reorders Due` : 'Stock Healthy'}
             </span>
-            <span className="text-[10px] text-[#86868b] block mt-0.5">
+            <span className="text-xs text-[#6e6e73] block mt-0.5">
               {stats.lowStockCount > 0 ? 'Items below reorder point' : 'All items well-stocked'}
             </span>
           </div>
@@ -929,7 +929,7 @@ function Dashboard() {
                   <span className="w-2 h-2 bg-[#0071e3] rounded-full"></span>
                   <span>Sales Trend</span>
                 </h3>
-                <p className="text-[#86868b] text-xs mt-0.5">
+                <p className="text-[#6e6e73] text-xs mt-0.5">
                   Net sales by day • Avg: Rs. {Math.round(weeklyAvg).toLocaleString()}/day
                 </p>
               </div>
@@ -939,7 +939,7 @@ function Dashboard() {
                   {[7, 30].map(days => <button key={days} type="button" aria-pressed={trendRange === days} onClick={() => setTrendRange(days)} className={`min-h-9 px-3 rounded-md text-xs font-semibold ${trendRange === days ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10'}`}>{days} days</button>)}
                 </div>
                 <div>
-                  <span className="text-[10px] font-semibold uppercase text-[#86868b] tracking-wider block">{trendRange}-Day Total</span>
+                  <span className="text-xs font-semibold uppercase text-[#6e6e73] tracking-wider block">{trendRange}-Day Total</span>
                   <span className="text-base sm:text-lg font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                     Rs. {Math.round(weeklyTotal).toLocaleString()}
                   </span>
@@ -1004,21 +1004,21 @@ function Dashboard() {
           {/* Quick Metrics Bar Under Velocity Chart */}
           <div className="grid grid-cols-3 gap-2.5 pt-4 border-t border-black/[0.04] dark:border-white/[0.06] mt-3">
             <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.04] text-center border border-black/[0.02] dark:border-white/[0.04]">
-                  <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Today’s Avg. Sale</span>
+                  <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider block">Today’s Avg. Sale</span>
               <span className="text-xs sm:text-sm font-bold text-[#1d1d1f] dark:text-[#f5f5f7] mt-0.5 block tabular-nums">
                 Rs. {Math.round(stats.todayAOV).toLocaleString()}
               </span>
             </div>
 
             <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.04] text-center border border-black/[0.02] dark:border-white/[0.04]">
-              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Phones Sold (Today)</span>
+              <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider block">Phones Sold (Today)</span>
               <span className="text-xs sm:text-sm font-bold text-[#af52de] mt-0.5 block tabular-nums">
                 {stats.todayPhonesSold} Units • Rs. {Math.round(stats.todayPhonesRevenue).toLocaleString()}
               </span>
             </div>
 
             <div className="p-3 rounded-[16px] bg-[#f5f5f7] dark:bg-white/[0.04] text-center border border-black/[0.02] dark:border-white/[0.04]">
-              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Accessories Sold</span>
+              <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider block">Accessories Sold</span>
               <span className="text-xs sm:text-sm font-bold text-[#0071e3] mt-0.5 block tabular-nums">
                 {stats.todayBulkSold} Pcs • Rs. {Math.round(stats.todayBulkRevenue).toLocaleString()}
               </span>
@@ -1036,7 +1036,7 @@ function Dashboard() {
                 </div>
                 <div>
                   <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-[15px] leading-tight">Stock Valuation</h3>
-                  <p className="text-[11px] text-[#86868b]">Cost basis inventory investment</p>
+                  <p className="text-xs text-[#6e6e73]">Cost basis inventory investment</p>
                 </div>
               </div>
               <button
@@ -1048,7 +1048,7 @@ function Dashboard() {
             </div>
 
             <div className="p-3.5 rounded-[18px] bg-[#f5f5f7] dark:bg-white/[0.04] border border-black/[0.03] dark:border-white/[0.04] mb-3.5">
-              <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider block">Total Inventory Assets</span>
+              <span className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider block">Total Inventory Assets</span>
               <span className="text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-white mt-0.5 block tabular-nums">
                 Rs. {Math.round(stats.totalStockValuation).toLocaleString()}
               </span>
@@ -1126,7 +1126,7 @@ function Dashboard() {
                   <Sparkles size={16} className="text-[#ff9500]" />
                   <span>Top Moving Products Today</span>
                 </h3>
-                <p className="text-[#86868b] text-xs">Fastest velocity items sold today</p>
+                <p className="text-[#6e6e73] text-xs">Fastest velocity items sold today</p>
               </div>
               <Link to="/reports" className="text-xs text-[#0071e3] font-semibold hover:underline flex items-center gap-0.5">
                 <span>View Report</span>
@@ -1149,7 +1149,7 @@ function Dashboard() {
                         <h4 className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-xs sm:text-sm truncate max-w-[160px] sm:max-w-[200px]" title={p.name}>
                           {p.name}
                         </h4>
-                        <span className="text-[11px] text-[#86868b]">
+                        <span className="text-xs text-[#6e6e73]">
                           {p.qty} {p.isPhone ? 'phones' : 'pcs'} sold today
                         </span>
                       </div>
@@ -1158,7 +1158,7 @@ function Dashboard() {
                       <span className="font-bold text-xs sm:text-sm text-[#1d1d1f] dark:text-white block tabular-nums">
                         Rs. {Math.round(p.revenue).toLocaleString()}
                       </span>
-                      <span className="text-[10px] font-semibold text-[#86868b]">
+                      <span className="text-xs font-semibold text-[#6e6e73]">
                         Sales today
                       </span>
                     </div>
@@ -1166,14 +1166,14 @@ function Dashboard() {
                 ))}
               </div>
             ) : (
-              <div className="py-9 text-center text-[#86868b] text-xs italic bg-[#f5f5f7] dark:bg-white/[0.03] rounded-[18px]">
+              <div className="py-9 text-center text-[#6e6e73] text-xs italic bg-[#f5f5f7] dark:bg-white/[0.03] rounded-[18px]">
                 No product sales recorded yet today. Completed orders will appear here.
               </div>
             )}
           </div>
 
           <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
-            <span className="text-[#86868b] font-medium">Period Total Units:</span>
+            <span className="text-[#6e6e73] font-medium">Period Total Units:</span>
             <span className="font-bold text-[#0071e3] tabular-nums">
               {stats.todayItemsSold} Items Sold Today
             </span>
@@ -1189,7 +1189,7 @@ function Dashboard() {
                   <Clock size={16} className="text-[#0071e3]" />
                   <span>Recent Checkout Activity</span>
                 </h3>
-                <p className="text-[#86868b] text-xs">Most recent completed sales</p>
+                <p className="text-[#6e6e73] text-xs">Most recent completed sales</p>
               </div>
               <Link to="/sales" className="text-xs text-[#0071e3] font-semibold hover:underline flex items-center gap-0.5">
                 <span>All Orders</span>
@@ -1215,7 +1215,7 @@ function Dashboard() {
                         </div>
                         <div className="truncate max-w-[120px] sm:max-w-[150px]">
                           <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-xs block truncate">{custName}</span>
-                          <span className="text-[11px] text-[#86868b]">{timeStr}</span>
+                          <span className="text-xs text-[#6e6e73]">{timeStr}</span>
                         </div>
                       </div>
 
@@ -1223,7 +1223,7 @@ function Dashboard() {
                         <span className="font-bold text-xs sm:text-sm text-[#1d1d1f] dark:text-[#f5f5f7] block tabular-nums">
                           Rs. {Math.round(netAmount).toLocaleString()}
                         </span>
-                        <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full inline-block ${
+                        <span className={`text-xs font-semibold uppercase px-2 py-0.5 rounded-full inline-block ${
                           pType === 'cash'
                             ? 'bg-[#34c759]/10 text-[#34c759]'
                             : pType === 'credit'
@@ -1238,14 +1238,14 @@ function Dashboard() {
                 })}
               </div>
             ) : (
-              <div className="py-9 text-center text-[#86868b] text-xs italic bg-[#f5f5f7] dark:bg-white/[0.03] rounded-[18px]">
+              <div className="py-9 text-center text-[#6e6e73] text-xs italic bg-[#f5f5f7] dark:bg-white/[0.03] rounded-[18px]">
                 No recent transactions recorded yet.
               </div>
             )}
           </div>
 
           <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
-            <span className="text-[#86868b] font-medium">Total Orders Today:</span>
+            <span className="text-[#6e6e73] font-medium">Total Orders Today:</span>
             <span className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
               {stats.todayOrdersCount} Invoices
             </span>
@@ -1261,7 +1261,7 @@ function Dashboard() {
                   <AlertTriangle size={16} className={stats.lowStockCount > 0 ? 'text-[#ff3b30]' : 'text-[#34c759]'} />
                   <span>Reorder & Critical Stock</span>
                 </h3>
-                <p className="text-[#86868b] text-xs">Items nearing depletion or zero stock</p>
+                <p className="text-[#6e6e73] text-xs">Items nearing depletion or zero stock</p>
               </div>
               <Link to="/products" className="text-xs text-[#0071e3] font-semibold hover:underline flex items-center gap-0.5">
                 <span>Manage</span>
@@ -1280,7 +1280,7 @@ function Dashboard() {
                       <span className="font-semibold text-[#1d1d1f] dark:text-gray-200 block truncate" title={item.name}>
                         {item.name}
                       </span>
-                      <span className="text-[11px] text-[#86868b]">
+                      <span className="text-xs text-[#6e6e73]">
                         Cost: Rs. {Math.round(Number(item.cost_price || 0)).toLocaleString()} • Threshold: {item.low_stock_threshold || 5}
                       </span>
                     </div>
@@ -1298,7 +1298,7 @@ function Dashboard() {
           </div>
 
           <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
-            <span className="text-[#86868b] font-medium">Reorder Items:</span>
+            <span className="text-[#6e6e73] font-medium">Reorder Items:</span>
             <span className={`font-bold tabular-nums ${stats.lowStockCount > 0 ? 'text-[#ff3b30]' : 'text-[#34c759]'}`}>
               {stats.lowStockCount} Items Below Threshold
             </span>
@@ -1308,7 +1308,7 @@ function Dashboard() {
 
       {/*  macOS / iOS App Launchpad */}
       <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[#86868b] mb-3">More tools</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[#6e6e73] mb-3">More tools</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <Link
             to="/pos"
@@ -1318,7 +1318,7 @@ function Dashboard() {
               <ShoppingBag size={22} />
             </div>
             <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">New POS Sale</span>
-            <span className="text-[10px] text-[#86868b]">Register Checkout</span>
+            <span className="text-xs text-[#6e6e73]">Register Checkout</span>
           </Link>
 
           <Link
@@ -1329,7 +1329,7 @@ function Dashboard() {
               <Smartphone size={22} />
             </div>
             <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Mobile Devices</span>
-            <span className="text-[10px] text-[#86868b]">Phones & IMEIs</span>
+            <span className="text-xs text-[#6e6e73]">Phones & IMEIs</span>
           </Link>
 
           <Link
@@ -1340,7 +1340,7 @@ function Dashboard() {
               <Package size={22} />
             </div>
             <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Product Catalog</span>
-            <span className="text-[10px] text-[#86868b]">Stock & Barcodes</span>
+            <span className="text-xs text-[#6e6e73]">Stock & Barcodes</span>
           </Link>
 
           <Link
@@ -1351,7 +1351,7 @@ function Dashboard() {
               <CreditCard size={22} />
             </div>
             <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Purchases</span>
-            <span className="text-[10px] text-[#86868b]">Stock Procurement</span>
+            <span className="text-xs text-[#6e6e73]">Stock Procurement</span>
           </Link>
 
           <Link
@@ -1362,7 +1362,7 @@ function Dashboard() {
               <FileText size={22} />
             </div>
             <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Reports & P&L</span>
-            <span className="text-[10px] text-[#86868b]">Daily & Weekly Trends</span>
+            <span className="text-xs text-[#6e6e73]">Daily & Weekly Trends</span>
           </Link>
 
           <Link
@@ -1373,14 +1373,14 @@ function Dashboard() {
               <Receipt size={22} />
             </div>
             <span className="text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Customers</span>
-            <span className="text-[10px] text-[#86868b]">Customer Profiles</span>
+            <span className="text-xs text-[#6e6e73]">Customer Profiles</span>
           </Link>
         </div>
       </div>
 
       {/*  Apple Modal Sheet: End of Day Summary */}
       {showEOD && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-2xl rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.25)] border border-black/[0.08] dark:border-white/[0.12] w-full max-w-md overflow-hidden">
             {/* Sheet Handle */}
             <div className="pt-3 pb-1 flex justify-center">
@@ -1393,39 +1393,39 @@ function Dashboard() {
                   <h2 className="text-lg font-bold text-[#1d1d1f] dark:text-[#f5f5f7] flex items-center gap-1.5">
                     <Moon size={17} className="text-[#0071e3]" /> End of Day Settlement
                   </h2>
-                  <p className="text-[#86868b] text-xs mt-0.5">
+                  <p className="text-[#6e6e73] text-xs mt-0.5">
                     {new Date().toLocaleDateString('en-PK', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                   </p>
                 </div>
                 <button
                   onClick={() => setShowEOD(false)}
-                  className="w-7 h-7 rounded-full bg-[#f5f5f7] dark:bg-white/10 text-[#86868b] hover:text-[#1d1d1f] flex items-center justify-center text-xs font-bold cursor-pointer"
+                  className="w-7 h-7 rounded-full bg-[#f5f5f7] dark:bg-white/10 text-[#6e6e73] hover:text-[#1d1d1f] flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
               {eodLoading ? (
-                <div className="py-12 text-center text-[#86868b] text-xs font-medium">Calculating settlement metrics...</div>
+                <div className="py-12 text-center text-[#6e6e73] text-xs font-medium">Calculating settlement metrics...</div>
               ) : eodData ? (
                 <div className="space-y-4">
                   {/* Collections */}
                   <div className="bg-[#f5f5f7] dark:bg-white/[0.04] p-4 rounded-[18px] border border-black/[0.02] dark:border-white/[0.04] space-y-2 text-xs">
-                    <p className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider">Collections</p>
+                    <p className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider">Collections</p>
                     <div className="flex justify-between">
-                      <span className="text-[#86868b]">Cash Collections:</span>
+                      <span className="text-[#6e6e73]">Cash Collections:</span>
                       <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
                         Rs. {Math.round(eodData.cashSales).toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#86868b]">Digital / Online:</span>
+                      <span className="text-[#6e6e73]">Digital / Online:</span>
                       <span className="font-semibold text-[#0071e3]">
                         Rs. {Math.round(eodData.onlineSales).toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#86868b]">Customer Credit:</span>
+                      <span className="text-[#6e6e73]">Customer Credit:</span>
                       <span className="font-semibold text-[#ff9500]">
                         Rs. {Math.round(eodData.creditSales).toLocaleString()}
                       </span>
@@ -1438,15 +1438,15 @@ function Dashboard() {
 
                   {/* Outflows */}
                   <div className="bg-[#f5f5f7] dark:bg-white/[0.04] p-4 rounded-[18px] border border-black/[0.02] dark:border-white/[0.04] space-y-2 text-xs">
-                    <p className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wider">Outflows</p>
+                    <p className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider">Outflows</p>
                     <div className="flex justify-between">
-                      <span className="text-[#86868b]">Operating Expenses:</span>
+                      <span className="text-[#6e6e73]">Operating Expenses:</span>
                       <span className="font-semibold text-[#ff3b30]">
                         - Rs. {Math.round(eodData.expenses).toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#86868b]">Cash Purchases:</span>
+                      <span className="text-[#6e6e73]">Cash Purchases:</span>
                       <span className="font-semibold text-[#ff3b30]">
                         - Rs. {Math.round(eodData.cashPurchases).toLocaleString()}
                       </span>

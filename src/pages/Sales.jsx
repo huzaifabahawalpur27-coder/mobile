@@ -380,13 +380,13 @@ function Sales() {
   // Handle return
   const handleReturn = async () => {
     const itemsToReturn = saleItems.filter(i => returnQtys[i.id] > 0)
-    if (itemsToReturn.length === 0) { notify('Return karne ke liye qty enter karo!'); return }
+    if (itemsToReturn.length === 0) { notify('Enter the quantity to return.'); return }
 
     for (const item of itemsToReturn) {
       const returnQty = parseInt(returnQtys[item.id]) || 0
       const alreadyReturned = item.returned_qty || 0
       const maxReturn = item.quantity - alreadyReturned
-      if (returnQty > maxReturn) { notify(`${item.display_name || item.product_name || 'Item'}: max ${maxReturn} return ho sakta hai`); return }
+      if (returnQty > maxReturn) { notify(`${item.display_name || item.product_name || 'Item'}: only ${maxReturn} can be returned`); return }
     }
 
     setReturning(true)
@@ -592,16 +592,16 @@ function Sales() {
   const renderPaymentBadge = (sale) => {
     const pt = (sale.payment_type || sale.payment_method || 'cash').toLowerCase()
     if (pt === 'cash') {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700">💵 Cash</span>
+      return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">💵 Cash</span>
     }
     if (pt === 'credit') {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">📒 Credit</span>
+      return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">📒 Credit</span>
     }
     if (pt === 'split') {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">🔀 Split</span>
+      return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">🔀 Split</span>
     }
     const label = pt.charAt(0).toUpperCase() + pt.slice(1)
-    return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-800">📱 {label}</span>
+    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">📱 {label}</span>
   }
 
   const exportToExcel = () => {
@@ -757,7 +757,7 @@ function Sales() {
     setSelected([])
 
     if (failCount > 0) {
-      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh sales mein payments ya ledger entries linked hain.\n\nSahi order:\n1. Pehle Sale Items delete karein (Trash Bin > Sale Items filter)\n2. Phir yeh sales delete ho jayengi`)
+      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\nThese sales still have payments or ledger entries linked to them.\n\nDelete in this order:\n1. Sale items (Trash Bin > Sale Items filter)\n2. Then these sales`)
     } else if (successCount > 0) {
       notify(`🗑️ ${successCount} sale(s) moved to Trash!`)
     }
@@ -794,7 +794,7 @@ function Sales() {
         {/* Filters */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center flex-wrap">
           <div className="flex gap-4 w-full sm:w-auto">
-            <input
+            <input aria-label="Search invoice, customer, model, IMEI"
               type="text"
               placeholder="Search invoice, customer, model, IMEI..."
               className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -803,12 +803,12 @@ function Sales() {
             />
           </div>
           <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 items-center">
-            <select className="px-4 py-2 border rounded-lg outline-none flex-shrink-0" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+            <select aria-label="Types filter" className="px-4 py-2 border rounded-lg outline-none flex-shrink-0" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
               <option value="all">All Types</option>
               <option value="quotation">Quotations Only</option>
               <option value="sale">Sales Only</option>
             </select>
-            <select className="px-4 py-2 border rounded-lg outline-none flex-shrink-0 bg-white text-sm" value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)}>
+            <select aria-label="Payments filter" className="px-4 py-2 border rounded-lg outline-none flex-shrink-0 bg-white text-sm" value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)}>
               <option value="all">All Payments</option>
               <option value="cash">💵 Cash Only</option>
               <option value="online">📱 Online / Bank</option>
@@ -828,7 +828,7 @@ function Sales() {
           <p className="text-gray-500">Loading sales...</p>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-400 text-lg">No sales found</p>
+            <p className="text-gray-500 text-lg">No sales found</p>
           </div>
         ) : (
           <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -848,7 +848,7 @@ function Sales() {
                           <p className="font-mono text-xs font-bold text-gray-500">
                             {sale.sale_type === 'quotation' ? 'QT-' : '#'}{String(sale.id).slice(-8)}
                           </p>
-                          <span className={`px-2 py-0.2 rounded-full text-[10px] font-medium ${sale.sale_type === 'quotation' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                          <span className={`px-2 py-0.2 rounded-full text-xs font-medium ${sale.sale_type === 'quotation' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
                             {sale.sale_type === 'quotation' ? '📄 Quotation' : '🧾 Sale'}
                           </span>
                         </div>
@@ -863,22 +863,22 @@ function Sales() {
                               📱 {firstPhoneName}
                             </span>
                             {items.length > 1 && (
-                              <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full">
+                              <span className="text-xs bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full">
                                 +{items.length - 1} more
                               </span>
                             )}
                             <button
                               type="button"
                               onClick={() => toggleExpand(sale.id)}
-                              className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-0.5 ml-1 cursor-pointer"
+                              className="text-xs font-bold text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-0.5 ml-1 cursor-pointer"
                             >
                               <span>{isExpanded ? 'Hide Details' : 'Details'}</span>
-                              <span className={`text-[9px] transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                              <span className={`text-xs transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
                             </button>
                           </div>
                         ) : null}
 
-                        <p className="mt-1 text-xs text-gray-400">{new Date(sale.created_at).toLocaleDateString('en-PK')}</p>
+                        <p className="mt-1 text-xs text-gray-500">{new Date(sale.created_at).toLocaleDateString('en-PK')}</p>
                       </div>
                       <input type="checkbox" checked={selected.includes(sale.id)} onChange={() => toggleSelect(sale.id)} className="mt-1 h-4 w-4 rounded" />
                     </div>
@@ -903,7 +903,7 @@ function Sales() {
                       <div className="mt-3 pt-3 border-t border-blue-100 bg-blue-50/50 -mx-4 -mb-4 p-3.5 rounded-b-xl space-y-2">
                         <div className="flex items-center justify-between text-xs font-bold text-blue-900 border-b border-blue-200/60 pb-1.5">
                           <span>📱 Items in Sale ({items.length})</span>
-                          <span className="font-mono text-[10px] text-gray-500">#{String(sale.id).slice(-8)}</span>
+                          <span className="font-mono text-xs text-gray-500">#{String(sale.id).slice(-8)}</span>
                         </div>
                         <div className="space-y-2">
                           {items.map((it, iidx) => {
@@ -922,57 +922,57 @@ function Sales() {
                                 <div className="flex items-start justify-between gap-1">
                                   <p className="font-bold text-gray-900">{name}</p>
                                   {fullyReturned ? (
-                                    <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 bg-red-100 text-red-700">
+                                    <span className="text-xs px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 bg-red-100 text-red-700">
                                       Returned
                                     </span>
                                   ) : (
-                                    <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 bg-green-100 text-green-700">
+                                    <span className="text-xs px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 bg-green-100 text-green-700">
                                       Sold
                                     </span>
                                   )}
                                 </div>
-                                {specs && <p className="text-[11px] text-gray-500">{specs}</p>}
+                                {specs && <p className="text-xs text-gray-500">{specs}</p>}
                                 {(imei || imei2) && (
                                   <div className="flex flex-wrap items-center gap-1">
                                     {imei && (
-                                      <span className="font-mono text-[10px] bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded">
+                                      <span className="font-mono text-xs bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded">
                                         IMEI: {imei}
                                       </span>
                                     )}
                                     {imei2 && (
-                                      <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
+                                      <span className="font-mono text-xs bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
                                         IMEI 2: {imei2}
                                       </span>
                                     )}
                                   </div>
                                 )}
-                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-[11px]">
+                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-xs">
                                   <div>
-                                    <span className="text-gray-400 block text-[10px]">Purchase Cost</span>
+                                    <span className="text-gray-500 block text-xs">Purchase Cost</span>
                                     <span className="font-semibold text-gray-700">Rs. {Number(it.base_cost || 0).toLocaleString()}</span>
                                   </div>
                                   <div>
-                                    <span className="text-gray-400 block text-[10px]">Direct Cost (Courier)</span>
+                                    <span className="text-gray-500 block text-xs">Direct Cost (Courier)</span>
                                     <span className={`font-semibold ${Number(it.direct_cost) > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
                                       Rs. {Number(it.direct_cost || 0).toLocaleString()}
                                     </span>
                                   </div>
                                   <div>
-                                    <span className="text-gray-400 block text-[10px]">Total Cost</span>
+                                    <span className="text-gray-500 block text-xs">Total Cost</span>
                                     <span className="font-bold text-gray-800">Rs. {Number(it.total_cost || 0).toLocaleString()}</span>
                                   </div>
                                   <div>
-                                    <span className="text-gray-400 block text-[10px]">Sale Price (Qty {netQty})</span>
+                                    <span className="text-gray-500 block text-xs">Sale Price (Qty {netQty})</span>
                                     <span className="font-bold text-blue-700">Rs. {Number(rate).toLocaleString()}</span>
                                   </div>
                                 </div>
-                                <div className="flex justify-between items-center pt-1.5 border-t border-dashed border-gray-200 text-[11px]">
+                                <div className="flex justify-between items-center pt-1.5 border-t border-dashed border-gray-200 text-xs">
                                   <span className="text-gray-500 font-medium">Profit / Margin:</span>
                                   <div className="flex items-center gap-1.5">
                                     <span className={`font-black ${(it.profit || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                       {(it.profit || 0) >= 0 ? '+' : ''}Rs. {Math.round(it.profit || 0).toLocaleString()}
                                     </span>
-                                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${(it.profit || 0) >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                    <span className={`text-xs px-1.5 py-0.2 rounded font-bold ${(it.profit || 0) >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                                       {Number(it.margin || 0).toFixed(1)}%
                                     </span>
                                   </div>
@@ -1018,7 +1018,7 @@ function Sales() {
                             {sale.sale_type === 'quotation' ? 'QT-' : '#'}{String(sale.id).slice(-8)}
                           </td>
                           <td className="px-4 py-3 text-gray-800 whitespace-nowrap">
-                            {sale.customers?.name || sale.customer_name || <span className="text-gray-400 italic">Walk-in</span>}
+                            {sale.customers?.name || sale.customer_name || <span className="text-gray-500 italic">Walk-in</span>}
                           </td>
                           <td className="px-4 py-3">
                             {items.length > 0 ? (
@@ -1028,7 +1028,7 @@ function Sales() {
                                     {firstPhoneName}
                                   </span>
                                   {items.length > 1 && (
-                                    <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full shrink-0">
+                                    <span className="text-xs bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full shrink-0">
                                       +{items.length - 1} more
                                     </span>
                                   )}
@@ -1036,26 +1036,26 @@ function Sales() {
                                 <button
                                   type="button"
                                   onClick={() => toggleExpand(sale.id)}
-                                  className={`inline-flex items-center gap-1 text-[11px] font-bold transition w-fit cursor-pointer ${
+                                  className={`inline-flex items-center gap-1 text-xs font-bold transition w-fit cursor-pointer ${
                                     isExpanded ? 'text-blue-700 underline' : 'text-blue-600 hover:text-blue-800'
                                   }`}
                                   title="Click to view full phone details, specs, and IMEI"
                                 >
                                   <span>{isExpanded ? 'Hide Details' : 'Details'}</span>
-                                  <span className={`text-[9px] transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                                  <span className={`text-xs transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
                                 </button>
                               </div>
                             ) : (
-                              <span className="text-gray-400 text-xs italic">Direct Sale</span>
+                              <span className="text-gray-500 text-xs italic">Direct Sale</span>
                             )}
                           </td>
                           <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
                             Rs. {Math.max(0, Number(sale.net_amount ?? (Number(sale.total_amount || 0) - Number(sale.discount || 0)))).toFixed(0)}
-                            {sale.discount > 0 && Number(sale.total_amount) > 0 && <span className="text-xs text-gray-400 ml-1">(disc: {sale.discount})</span>}
+                            {sale.discount > 0 && Number(sale.total_amount) > 0 && <span className="text-xs text-gray-500 ml-1">(disc: {sale.discount})</span>}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex flex-col gap-1 items-start">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${sale.sale_type === 'quotation' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium w-fit ${sale.sale_type === 'quotation' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
                                 {sale.sale_type === 'quotation' ? '📄 Quotation' : '🧾 Sale'}
                               </span>
                               {renderPaymentBadge(sale)}
@@ -1115,11 +1115,11 @@ function Sales() {
                                           <div className="flex items-start justify-between gap-2">
                                             <h4 className="font-bold text-gray-900 text-xs sm:text-sm">{name}</h4>
                                             {fullyReturned ? (
-                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 bg-red-100 text-red-700">
+                                              <span className="px-2 py-0.5 rounded-full text-xs font-bold uppercase shrink-0 bg-red-100 text-red-700">
                                                 Returned
                                               </span>
                                             ) : (
-                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 bg-green-100 text-green-700">
+                                              <span className="px-2 py-0.5 rounded-full text-xs font-bold uppercase shrink-0 bg-green-100 text-green-700">
                                                 Sold
                                               </span>
                                             )}
@@ -1132,12 +1132,12 @@ function Sales() {
                                           {(imei || imei2) && (
                                             <div className="mt-2 flex flex-wrap gap-1 items-center">
                                               {imei && (
-                                                <span className="font-mono text-[10px] bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.5 rounded">
+                                                <span className="font-mono text-xs bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.5 rounded">
                                                   IMEI: {imei}
                                                 </span>
                                               )}
                                               {imei2 && (
-                                                <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1.5 py-0.5 rounded">
+                                                <span className="font-mono text-xs bg-gray-50 text-gray-600 border border-gray-200 px-1.5 py-0.5 rounded">
                                                   IMEI 2: {imei2}
                                                 </span>
                                               )}
@@ -1147,21 +1147,21 @@ function Sales() {
 
                                         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-xs">
                                           <div>
-                                            <span className="text-gray-400 block text-[10px]">Purchase Cost</span>
+                                            <span className="text-gray-500 block text-xs">Purchase Cost</span>
                                             <span className="font-semibold text-gray-700">Rs. {Number(it.base_cost || 0).toLocaleString()}</span>
                                           </div>
                                           <div>
-                                            <span className="text-gray-400 block text-[10px]">Direct Cost (Courier)</span>
+                                            <span className="text-gray-500 block text-xs">Direct Cost (Courier)</span>
                                             <span className={`font-semibold ${Number(it.direct_cost) > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
                                               Rs. {Number(it.direct_cost || 0).toLocaleString()}
                                             </span>
                                           </div>
                                           <div>
-                                            <span className="text-gray-400 block text-[10px]">Total Cost</span>
+                                            <span className="text-gray-500 block text-xs">Total Cost</span>
                                             <span className="font-bold text-gray-800">Rs. {Number(it.total_cost || 0).toLocaleString()}</span>
                                           </div>
                                           <div>
-                                            <span className="text-gray-400 block text-[10px]">Sale Price (Qty {netQty})</span>
+                                            <span className="text-gray-500 block text-xs">Sale Price (Qty {netQty})</span>
                                             <span className="font-bold text-blue-700">Rs. {Number(rate).toLocaleString()}</span>
                                           </div>
                                         </div>
@@ -1171,7 +1171,7 @@ function Sales() {
                                             <span className={`font-black ${(it.profit || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                               {(it.profit || 0) >= 0 ? '+' : ''}Rs. {Math.round(it.profit || 0).toLocaleString()}
                                             </span>
-                                            <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${(it.profit || 0) >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                            <span className={`text-xs px-1.5 py-0.2 rounded font-bold ${(it.profit || 0) >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                                               {Number(it.margin || 0).toFixed(1)}%
                                             </span>
                                           </div>
@@ -1197,7 +1197,7 @@ function Sales() {
         {/* Sale Detail Modal */}
         {
           selectedSale && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+            <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
               <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-2xl rounded-[26px] shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-black/[0.08] dark:border-white/[0.12] w-full max-w-3xl max-h-[92dvh] overflow-y-auto flex flex-col p-4 sm:p-6 text-gray-900 dark:text-gray-100">
                 <div className="flex justify-between items-start mb-4 pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
                   <div className="flex items-center gap-3">
@@ -1210,13 +1210,13 @@ function Sales() {
                           {selectedSale.sale_type === 'quotation' ? 'Quotation QT-' : 'Invoice #'}
                           {String(selectedSale.id).slice(-8)}
                         </h2>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
                           selectedSale.sale_type === 'quotation' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
                         }`}>
                           {selectedSale.sale_type === 'quotation' ? 'Quotation' : 'Completed Sale'}
                         </span>
                       </div>
-                      <p className="text-xs text-[#86868b] dark:text-[#98989d] mt-0.5 flex items-center gap-2 flex-wrap">
+                      <p className="text-xs text-[#6e6e73] dark:text-[#98989d] mt-0.5 flex items-center gap-2 flex-wrap">
                         <span>{new Date(selectedSale.created_at).toLocaleString('en-PK')}</span>
                         <span>•</span>
                         <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedSale.customers?.name || selectedSale.customer_name || 'Walk-in'}</span>
@@ -1229,7 +1229,7 @@ function Sales() {
                   </div>
                   <button
                     onClick={() => setSelectedSale(null)}
-                    className="w-8 h-8 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.1] dark:hover:bg-white/[0.15] text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white flex items-center justify-center transition cursor-pointer text-lg font-bold shrink-0"
+                    className="w-8 h-8 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.1] dark:hover:bg-white/[0.15] text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-white flex items-center justify-center transition cursor-pointer text-lg font-bold shrink-0"
                   >
                     ×
                   </button>
@@ -1238,13 +1238,13 @@ function Sales() {
                 {loadingItems ? (
                   <div className="text-center py-12 flex flex-col items-center justify-center gap-2">
                     <div className="w-8 h-8 border-2 border-[#0071e3] border-t-transparent rounded-full animate-spin" />
-                    <p className="text-xs text-[#86868b] font-medium">Loading sale items...</p>
+                    <p className="text-xs text-[#6e6e73] font-medium">Loading sale items...</p>
                   </div>
                 ) : (
                   <>
                     <div className="overflow-x-auto rounded-[16px] border border-black/[0.06] dark:border-white/[0.08] mb-4">
                       <table className="w-full text-xs">
-                        <thead className="bg-[#f5f5f7] dark:bg-white/[0.04] text-[#86868b] dark:text-gray-400 font-bold uppercase tracking-wider text-[10px]">
+                        <thead className="bg-[#f5f5f7] dark:bg-white/[0.04] text-[#6e6e73] dark:text-gray-400 font-bold uppercase tracking-wider text-xs">
                           <tr>
                             <th className="px-3.5 py-2.5 text-left whitespace-nowrap">Product / Phone</th>
                             <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Purchase Cost</th>
@@ -1273,21 +1273,21 @@ function Sales() {
                                   <div className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
                                     <span>{item.display_name || item.product_name || "Item"}</span>
                                     {fullyReturned && (
-                                      <span className="text-[9px] bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-1.5 py-0.2 rounded font-black uppercase">
+                                      <span className="text-xs bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-1.5 py-0.2 rounded font-black uppercase">
                                         Fully Returned
                                       </span>
                                     )}
                                   </div>
-                                  {item.specs && <p className="text-[11px] text-[#86868b] mt-0.5">{item.specs}</p>}
+                                  {item.specs && <p className="text-xs text-[#6e6e73] mt-0.5">{item.specs}</p>}
                                   {(item.imei || item.imei2) && (
                                     <div className="flex flex-wrap items-center gap-1 mt-1">
                                       {item.imei && (
-                                        <span className="font-mono text-[10px] bg-[#0071e3]/10 text-[#0071e3] dark:text-[#3894ff] border border-[#0071e3]/20 px-1.5 py-0.2 rounded-md font-semibold">
+                                        <span className="font-mono text-xs bg-[#0071e3]/10 text-[#0071e3] dark:text-[#3894ff] border border-[#0071e3]/20 px-1.5 py-0.2 rounded-md font-semibold">
                                           IMEI: {item.imei}
                                         </span>
                                       )}
                                       {item.imei2 && (
-                                        <span className="font-mono text-[10px] bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-black/[0.08] dark:border-white/[0.1] px-1 py-0.2 rounded-md">
+                                        <span className="font-mono text-xs bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-black/[0.08] dark:border-white/[0.1] px-1 py-0.2 rounded-md">
                                           IMEI 2: {item.imei2}
                                         </span>
                                       )}
@@ -1308,7 +1308,7 @@ function Sales() {
                                 </td>
                                 <td className="px-3.5 py-2.5 text-right font-bold text-gray-800 dark:text-gray-200 whitespace-nowrap">
                                   {netQty}
-                                  {returnedQty > 0 && <span className="text-[10px] text-red-500 block">(-{returnedQty} ret)</span>}
+                                  {returnedQty > 0 && <span className="text-xs text-red-500 block">(-{returnedQty} ret)</span>}
                                 </td>
                                 <td className="px-3.5 py-2.5 text-right font-extrabold whitespace-nowrap">
                                   Rs. {netAmount.toFixed(0)}
@@ -1317,7 +1317,7 @@ function Sales() {
                                   <div className={lineProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
                                     {lineProfit >= 0 ? "+" : ""}Rs. {Math.round(lineProfit).toLocaleString()}
                                   </div>
-                                  <div className="text-[10px] text-gray-400 font-normal">
+                                  <div className="text-xs text-gray-500 font-normal">
                                     {lineMargin.toFixed(1)}% margin
                                   </div>
                                 </td>
@@ -1332,7 +1332,7 @@ function Sales() {
                                       className="w-16 border border-black/[0.1] dark:border-white/[0.15] bg-white dark:bg-[#2c2c2e] rounded-lg px-2 py-1 text-center text-xs font-bold"
                                       placeholder="0"
                                     />
-                                  ) : <span className="text-xs text-gray-400">Done</span>}
+                                  ) : <span className="text-xs text-gray-500">Done</span>}
                                 </td>
                               </tr>
                             )
@@ -1353,21 +1353,21 @@ function Sales() {
                       return (
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 bg-gradient-to-br from-blue-500/[0.07] via-indigo-500/[0.04] to-emerald-500/[0.06] dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-emerald-950/30 p-3.5 rounded-[18px] border border-blue-500/20 dark:border-blue-500/30 text-xs">
                           <div>
-                            <span className="text-[#86868b] dark:text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Net Sale Amount</span>
+                            <span className="text-[#6e6e73] dark:text-gray-400 block text-xs uppercase font-bold tracking-wider">Net Sale Amount</span>
                             <span className="font-black text-gray-900 dark:text-white text-sm">Rs. {netRev.toLocaleString()}</span>
                           </div>
                           <div>
-                            <span className="text-[#86868b] dark:text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Direct Cost (Courier)</span>
+                            <span className="text-[#6e6e73] dark:text-gray-400 block text-xs uppercase font-bold tracking-wider">Direct Cost (Courier)</span>
                             <span className={"font-black text-sm " + (totalDirectCost > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-600 dark:text-gray-400")}>
                               Rs. {totalDirectCost.toLocaleString()}
                             </span>
                           </div>
                           <div>
-                            <span className="text-[#86868b] dark:text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Total Cost (COGS)</span>
+                            <span className="text-[#6e6e73] dark:text-gray-400 block text-xs uppercase font-bold tracking-wider">Total Cost (COGS)</span>
                             <span className="font-black text-gray-800 dark:text-gray-200 text-sm">Rs. {totalCOGS.toLocaleString()}</span>
                           </div>
                           <div>
-                            <span className="text-[#86868b] dark:text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Net Profit</span>
+                            <span className="text-[#6e6e73] dark:text-gray-400 block text-xs uppercase font-bold tracking-wider">Net Profit</span>
                             <span className={"font-black text-sm " + (netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
                               {netProfit >= 0 ? "+" : ""}Rs. {Math.round(netProfit).toLocaleString()} ({overallMargin.toFixed(1)}%)
                             </span>
@@ -1381,12 +1381,12 @@ function Sales() {
                         <p className="text-sm font-black text-gray-900 dark:text-white">
                           Total: <span className="text-[#0071e3] dark:text-[#3894ff]">Rs. {(Number(selectedSale.total_amount) - Number(selectedSale.discount || 0)).toFixed(0)}</span>
                         </p>
-                        {selectedSale.discount > 0 && <p className="text-[11px] text-gray-400">Discount: Rs. {selectedSale.discount}</p>}
+                        {selectedSale.discount > 0 && <p className="text-xs text-gray-500">Discount: Rs. {selectedSale.discount}</p>}
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                         {selectedSale.sale_type !== "quotation" && (
                           <div className="flex flex-wrap items-center gap-2.5 bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08] px-3 py-1.5 rounded-xl sm:mr-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Refund:</span>
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Refund:</span>
                             <label className="flex items-center gap-1 text-xs font-semibold cursor-pointer">
                               <input type="radio" checked={refundType === "cash"} onChange={() => setRefundType("cash")} className="w-3.5 h-3.5 text-blue-600" />
                               💵 Cash

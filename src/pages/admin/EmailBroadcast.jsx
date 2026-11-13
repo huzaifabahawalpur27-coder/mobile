@@ -8,6 +8,7 @@ import ReactQuill from 'react-quill-new'
 import 'react-quill-new/dist/quill.snow.css'
 import { FileText } from 'lucide-react'
 import { notify } from '../../utils/toast'
+import { confirmDialog } from '../../utils/dialog'
 
 export default function EmailBroadcast() {
     const [searchParams] = useSearchParams()
@@ -104,7 +105,7 @@ export default function EmailBroadcast() {
             return
         }
 
-        if (!confirm(`Are you sure you want to send this email to ${recipients.length} shop(s)?`)) return
+        if (!await confirmDialog(`Are you sure you want to send this email to ${recipients.length} shop(s)?`)) return
 
         setSending(true)
         setStatusMsg({ text: 'Dispatching emails...', type: 'loading' })
@@ -186,7 +187,7 @@ export default function EmailBroadcast() {
     }
 
     const handleDeleteTemplate = async (id) => {
-        if (!confirm('Are you sure you want to delete this template?')) return
+        if (!await confirmDialog('Are you sure you want to delete this template?')) return
         try {
             const { error } = await supabaseAdmin.from('email_templates').delete().eq('id', id)
             if (error) throw error
@@ -240,7 +241,7 @@ export default function EmailBroadcast() {
 
                         {targetAudience === 'SPECIFIC' && (
                             <div className="mt-4 animate-in fade-in slide-in-from-top-2">
-                                <select
+                                <select aria-label="a Shop"
                                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     value={selectedShopId}
                                     onChange={(e) => setSelectedShopId(e.target.value)}
@@ -265,14 +266,14 @@ export default function EmailBroadcast() {
                                 <button
                                     type="button"
                                     onClick={() => setIsManagingTemplates(!isManagingTemplates)}
-                                    className="text-[10px] font-bold text-purple-700 hover:bg-purple-200 bg-purple-100 px-2 py-1 rounded transition"
+                                    className="text-xs font-bold text-purple-700 hover:bg-purple-200 bg-purple-100 px-2 py-1 rounded transition"
                                 >
                                     {isManagingTemplates ? 'Exit Template Editor' : 'Manage / Save as Template'}
                                 </button>
                             </div>
 
                             <div className="flex gap-3">
-                                <select
+                                <select aria-label="a preset"
                                     onChange={handleTemplateSelect}
                                     className="flex-1 px-4 py-2 bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 font-bold text-slate-700"
                                 >
@@ -285,13 +286,13 @@ export default function EmailBroadcast() {
 
                             {isManagingTemplates && (
                                 <div className="mt-4 p-5 bg-white rounded-xl border border-purple-200 space-y-4 animate-in slide-in-from-top-2 text-sm ring-4 ring-purple-50/50">
-                                    <div className="flex items-center gap-2 mb-2 p-2 bg-purple-50 rounded-lg text-[10px] text-purple-700 font-bold uppercase tracking-tight">
+                                    <div className="flex items-center gap-2 mb-2 p-2 bg-purple-50 rounded-lg text-xs text-purple-700 font-bold uppercase tracking-tight">
                                         <AlertTriangle size={14} /> Correct templates will be updated if the name matches.
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Preset Name / Save As</label>
+                                        <label className="block text-xs font-black text-slate-500 uppercase mb-1 tracking-widest">Preset Name / Save As</label>
                                         <div className="flex gap-2">
-                                            <input
+                                            <input aria-label="Preset Name / Save As"
                                                 type="text"
                                                 value={templateName}
                                                 onChange={e => setTemplateName(e.target.value)}
@@ -301,7 +302,7 @@ export default function EmailBroadcast() {
                                             <button
                                                 type="button"
                                                 onClick={handleSaveTemplate}
-                                                className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-black text-[10px] uppercase tracking-widest shadow-lg shadow-purple-500/20 active:scale-95 transition"
+                                                className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-black text-xs uppercase tracking-widest shadow-lg shadow-purple-500/20 active:scale-95 transition"
                                             >
                                                 Update / Save
                                             </button>
@@ -309,7 +310,7 @@ export default function EmailBroadcast() {
                                     </div>
                                     {dbTemplates.length > 0 && (
                                         <div className="border-t border-slate-100 pt-3">
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Current Presets</label>
+                                            <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-widest">Current Presets</label>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                                 {dbTemplates.map(t => (
                                                     <div key={t.id} className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 group transition-all hover:border-purple-200">
@@ -333,7 +334,7 @@ export default function EmailBroadcast() {
 
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email Subject</label>
-                            <input
+                            <input aria-label="Email Subject"
                                 type="text"
                                 value={subject}
                                 onChange={e => setSubject(e.target.value)}
@@ -362,7 +363,7 @@ export default function EmailBroadcast() {
                                     }}
                                 />
                             </div>
-                            <p className="text-[10px] text-slate-400 mt-2 italic">* The system will automatically add a professional header and footer to your message.</p>
+                            <p className="text-xs text-slate-500 mt-2 italic">* The system will automatically add a professional header and footer to your message.</p>
                         </div>
                     </div>
 

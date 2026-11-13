@@ -42,5 +42,5 @@ export async function checkServerSession(user) {
 export const RELOGIN_NOTICE_KEY = 'login_notice'
 
 export const RELOGIN_MESSAGE =
-  'Aap ka login server se connect nahi hai, is liye data show nahi ho raha. Baraye meharbani internet check kar ke dobara login karein. ' +
+  'Your login is not connected to the server, so no data is showing. Check the internet connection, then log in again. ' +
   '(Your session is not connected to the server, so no data can load. Please check the internet and sign in again.)'

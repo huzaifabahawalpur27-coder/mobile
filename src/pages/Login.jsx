@@ -118,19 +118,19 @@ function Login() {
         )
 
         if (!localUser) {
-          setError('Server se rabta nahi ho saka aur is device par offline login save nahi hai. Pehle online login karein.')
+          setError('Cannot reach the server, and this device has no saved login for offline use. Log in once while online.')
           setLoading(false)
           return false
         }
 
         if (localUser.password !== hashedPassword) {
-          setError('Offline: Password ghalat hai.')
+          setError('Offline: the password is wrong.')
           setLoading(false)
           return false
         }
 
         if (localUser.is_active === false) {
-          setError('Offline: Yeh account inactive hai.')
+          setError('Offline: this account is inactive.')
           setLoading(false)
           return false
         }
@@ -408,11 +408,11 @@ function Login() {
               <span className="font-bold text-base text-[#1d1d1f] tracking-tight">
                 {platformName}
               </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-[#0071e3] border border-blue-500/20">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-[#0071e3] border border-blue-500/20">
                 POS
               </span>
             </div>
-            <p className="text-[11px] text-[#86868b] hidden sm:block">
+            <p className="text-xs text-[#6e6e73] hidden sm:block">
               Mobile Store Retail & Serialized Inventory
             </p>
           </div>
@@ -428,12 +428,12 @@ function Login() {
             {isOnline ? (
               <>
                 <Wifi size={13} className="text-emerald-600" />
-                <span className="text-[11px] font-medium">Terminal Online</span>
+                <span className="text-xs font-medium">Terminal Online</span>
               </>
             ) : (
               <>
                 <WifiOff size={13} className="text-amber-600" />
-                <span className="text-[11px] font-medium">Offline Ready</span>
+                <span className="text-xs font-medium">Offline Ready</span>
               </>
             )}
           </div>
@@ -465,7 +465,7 @@ function Login() {
                   IMEI & Sale.
                 </span>
               </h1>
-              <p className="text-[#86868b] text-[15px] leading-relaxed max-w-xl">
+              <p className="text-[#6e6e73] text-[15px] leading-relaxed max-w-xl">
                 Experience high-speed barcode checkout, automated bilingual WhatsApp receipts, instant customer credit ledgers, and multi-vault inventory protection.
               </p>
             </div>
@@ -477,7 +477,7 @@ function Login() {
                   <Smartphone size={20} />
                 </div>
                 <h3 className="text-xs font-bold text-[#1d1d1f]">Dual IMEI & PTA</h3>
-                <p className="text-[11px] text-[#86868b] leading-[15px]">
+                <p className="text-xs text-[#6e6e73] leading-[15px]">
                   Tracks box-pack, used, PTA approved, and warranty statuses seamlessly.
                 </p>
               </div>
@@ -487,7 +487,7 @@ function Login() {
                   <Receipt size={20} />
                 </div>
                 <h3 className="text-xs font-bold text-[#1d1d1f]">WhatsApp Slips</h3>
-                <p className="text-[11px] text-[#86868b] leading-[15px]">
+                <p className="text-xs text-[#6e6e73] leading-[15px]">
                   Dispatches branded customer invoices directly to phone with warranty notes.
                 </p>
               </div>
@@ -497,14 +497,14 @@ function Login() {
                   <Users size={20} />
                 </div>
                 <h3 className="text-xs font-bold text-[#1d1d1f]">Khata & Ledgers</h3>
-                <p className="text-[11px] text-[#86868b] leading-[15px]">
+                <p className="text-xs text-[#6e6e73] leading-[15px]">
                   Dealer udhaar, supplier balance tracking, and daily cash drawer shifts.
                 </p>
               </div>
             </div>
 
             {/* Apple Trust Pill */}
-            <div className="flex items-center gap-2 text-xs font-medium text-[#86868b] pt-1">
+            <div className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] pt-1">
               <ShieldCheck size={16} className="text-emerald-500" />
               <span>Offline-first PWA sync • Thermal ESC/POS ready • Bank transfer reconciliation</span>
             </div>
@@ -524,7 +524,7 @@ function Login() {
                   <h2 className="text-2xl font-bold text-[#1d1d1f] tracking-tight">
                     Sign in to EdgeX
                   </h2>
-                  <p className="text-xs sm:text-sm text-[#86868b] mt-0.5">
+                  <p className="text-xs sm:text-sm text-[#6e6e73] mt-0.5">
                     Enter your staff credentials to continue
                   </p>
                 </div>
@@ -535,14 +535,14 @@ function Login() {
                 
                 {/* Username Input */}
                 <div className="space-y-1.5">
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73] ml-0.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6e6e73] ml-0.5">
                     Username or Email
                   </label>
                   <div className="relative rounded-xl border border-slate-200/80 bg-white/90 hover:bg-white focus-within:bg-white focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#6e6e73]">
                       <User size={16} />
                     </div>
-                    <input
+                    <input aria-label="admin or userdomain.com"
                       type="text"
                       placeholder="admin or user@domain.com"
                       value={username}
@@ -557,7 +557,7 @@ function Login() {
                 {/* Password Input */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between px-0.5">
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73]">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-[#6e6e73]">
                       Password
                     </label>
                     <button
@@ -569,10 +569,10 @@ function Login() {
                     </button>
                   </div>
                   <div className="relative rounded-xl border border-slate-200/80 bg-white/90 hover:bg-white focus-within:bg-white focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b]">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#6e6e73]">
                       <Lock size={16} />
                     </div>
-                    <input
+                    <input aria-label="Enter your password"
                       type={showPassword ? 'text' : 'password'}
                       placeholder="Enter your password"
                       value={password}
@@ -584,7 +584,7 @@ function Login() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#86868b] hover:text-[#1d1d1f] transition-colors cursor-pointer"
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#6e6e73] hover:text-[#1d1d1f] transition-colors cursor-pointer"
                       tabIndex={-1}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
@@ -629,7 +629,7 @@ function Login() {
 
               {/* Card Footer Micro-note */}
               <div className="pt-3 border-t border-black/[0.06] text-center">
-                <p className="text-[11px] text-[#86868b]">
+                <p className="text-xs text-[#6e6e73]">
                   Offline PWA Ready • Serialized Hardware Vault Encrypted
                 </p>
               </div>
@@ -641,7 +641,7 @@ function Login() {
       </main>
 
       {/* ── 4. LIGHT APPLE GLASS FOOTER ── */}
-      <footer className="relative z-10 px-6 py-3.5 bg-white/70 backdrop-blur-md border-t border-black/[0.06] text-xs text-[#86868b]">
+      <footer className="relative z-10 px-6 py-3.5 bg-white/70 backdrop-blur-md border-t border-black/[0.06] text-xs text-[#6e6e73]">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
           <div>
             &copy; {new Date().getFullYear()} {platformName}. All rights reserved.

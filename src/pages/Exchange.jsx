@@ -1067,7 +1067,7 @@ export default function Exchange() {
             <h1 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight truncate">
               Phone Trade-in & Exchange
             </h1>
-            <p className="text-[10px] text-gray-400 truncate">
+            <p className="text-xs text-gray-500 truncate">
               Customer Old Phone intake & New Phone sale in 1 step
             </p>
           </div>
@@ -1101,7 +1101,7 @@ export default function Exchange() {
         {activeTab === 'new' && branches.length > 1 && (
           <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-slate-800 p-1 px-2.5 rounded-lg border border-gray-200 dark:border-slate-700 text-xs">
             <Building2 size={13} className="text-purple-600 shrink-0" />
-            <span className="text-[10px] text-gray-500 font-bold uppercase">Branch:</span>
+            <span className="text-xs text-gray-500 font-bold uppercase">Branch:</span>
             <select
               value={selectedBranchId}
               onChange={e => setSelectedBranchId(e.target.value)}
@@ -1130,16 +1130,16 @@ export default function Exchange() {
                 <User size={15} />
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] font-black uppercase text-purple-950 dark:text-purple-300 tracking-wider flex items-center gap-1">
+                <div className="text-xs font-black uppercase text-purple-950 dark:text-purple-300 tracking-wider flex items-center gap-1">
                   Customer Details (گاہک کا نام و فون) <span className="text-red-500 font-bold">*</span>
                 </div>
-                <div className="text-[10px] text-gray-500 dark:text-gray-400">Select existing customer or type walk-in name</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Select existing customer or type walk-in name</div>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               {/* Existing Customer Selector */}
-              <select
+              <select aria-label="Walk-in / New Customer"
                 value={selectedCustomerId}
                 onChange={e => {
                   setSelectedCustomerId(e.target.value)
@@ -1161,14 +1161,14 @@ export default function Exchange() {
               {/* Walk-in Inputs (Visible when Walk-in is active) */}
               {!selectedCustomerId && (
                 <div className="flex items-center gap-1.5 w-full sm:w-auto">
-                  <input
+                  <input aria-label="Customer Name (گاہک کا نام)"
                     type="text"
                     placeholder="Customer Name * (گاہک کا نام)"
                     value={walkInName}
                     onChange={e => setWalkInName(e.target.value)}
                     className="flex-1 min-w-0 text-xs font-bold py-2 sm:py-1.5 px-2.5 sm:w-48 bg-white dark:bg-slate-800 border-2 border-purple-500 dark:border-purple-400 rounded-lg text-purple-950 dark:text-purple-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs"
                   />
-                  <input
+                  <input aria-label="Phone (فون نمبر)"
                     type="tel"
                     placeholder="Phone (فون نمبر)"
                     value={walkInPhone}
@@ -1204,7 +1204,7 @@ export default function Exchange() {
                     <h2 className="text-xs font-black uppercase text-gray-900 dark:text-white tracking-wider">
                       Customer's Old Phone (گاہک کا پرانا فون)
                     </h2>
-                    <p className="text-[10px] text-gray-400">Incoming device specs & value</p>
+                    <p className="text-xs text-gray-500">Incoming device specs & value</p>
                   </div>
                 </div>
 
@@ -1230,14 +1230,14 @@ export default function Exchange() {
                     >
                       {/* Top Row: Device Header + Remove */}
                       <div className="flex justify-between items-center">
-                        <span className="text-[11px] font-black text-red-700 dark:text-red-400 uppercase tracking-wide">
+                        <span className="text-xs font-black text-red-700 dark:text-red-400 uppercase tracking-wide">
                           Old Phone #{index + 1}
                         </span>
                         {incomingPhones.length > 1 && (
                           <button
                             type="button"
                             onClick={() => removeIncomingPhone(phone.id)}
-                            className="text-gray-400 hover:text-red-600 transition"
+                            className="text-gray-500 hover:text-red-600 transition"
                             title="Remove"
                           >
                             <Trash2 size={13} />
@@ -1248,10 +1248,10 @@ export default function Exchange() {
                       {/* Line 1: Brand & Model (with instant autocomplete) */}
                       <div className="grid grid-cols-12 gap-2">
                         <div className="col-span-4">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                          <label className="text-xs font-bold text-gray-500 uppercase block mb-0.5">
                             Brand
                           </label>
-                          <select
+                          <select aria-label=" Brand "
                             value={phone.brand}
                             onChange={e => updateIncomingPhone(phone.id, 'brand', e.target.value)}
                             className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-semibold"
@@ -1265,13 +1265,13 @@ export default function Exchange() {
                         </div>
 
                         <div className="col-span-8 relative">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between items-center mb-0.5">
+                          <label className="text-xs font-bold text-gray-500 uppercase flex justify-between items-center mb-0.5">
                             <span>Phone Name / Model *</span>
-                            <span className="text-[9px] text-purple-600 dark:text-purple-400 flex items-center gap-0.5 font-normal">
+                            <span className="text-xs text-purple-600 dark:text-purple-400 flex items-center gap-0.5 font-normal">
                               <Sparkles size={10} /> Type to autocomplete
                             </span>
                           </label>
-                          <input
+                          <input aria-label="Type phone name (e.g. 13 Pro, S23 Ultra, Note 13)"
                             type="text"
                             placeholder="Type phone name (e.g. 13 Pro, S23 Ultra, Note 13)..."
                             value={phone.model}
@@ -1299,11 +1299,11 @@ export default function Exchange() {
                                     <span className="font-black text-gray-900 dark:text-white mr-1.5">
                                       {sug.name}
                                     </span>
-                                    <span className="text-[10px] px-1.5 py-0.2 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 rounded font-bold">
+                                    <span className="text-xs px-1.5 py-0.2 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 rounded font-bold">
                                       {sug.brand}
                                     </span>
                                   </div>
-                                  <span className="text-[10px] text-gray-400 font-mono">
+                                  <span className="text-xs text-gray-500 font-mono">
                                     {sug.defaultStorage || ''}
                                   </span>
                                 </div>
@@ -1316,10 +1316,10 @@ export default function Exchange() {
                       {/* Line 2: Storage, Color, PTA Status */}
                       <div className="grid grid-cols-3 gap-2">
                         <div>
-                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                          <label className="text-xs font-bold text-gray-500 uppercase block mb-0.5">
                             Storage
                           </label>
-                          <select
+                          <select aria-label=" Storage "
                             value={phone.storage}
                             onChange={e => updateIncomingPhone(phone.id, 'storage', e.target.value)}
                             className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100"
@@ -1333,10 +1333,10 @@ export default function Exchange() {
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                          <label className="text-xs font-bold text-gray-500 uppercase block mb-0.5">
                             Color
                           </label>
-                          <input
+                          <input aria-label=" Color "
                             type="text"
                             placeholder="e.g. Black"
                             value={phone.color}
@@ -1346,10 +1346,10 @@ export default function Exchange() {
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                          <label className="text-xs font-bold text-gray-500 uppercase block mb-0.5">
                             PTA Status
                           </label>
-                          <select
+                          <select aria-label=" PTA Status "
                             value={phone.pta_status}
                             onChange={e => updateIncomingPhone(phone.id, 'pta_status', e.target.value)}
                             className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 font-semibold"
@@ -1366,10 +1366,10 @@ export default function Exchange() {
                       {/* Line 3: IMEI 1 & Old Phone Value */}
                       <div className="grid grid-cols-12 gap-2 items-center">
                         <div className="col-span-6">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">
+                          <label className="text-xs font-bold text-gray-500 uppercase block mb-0.5">
                             IMEI 1 (Required) *
                           </label>
-                          <input
+                          <input aria-label=" IMEI 1 (Required) "
                             type="text"
                             maxLength={16}
                             placeholder="15-digit IMEI"
@@ -1380,15 +1380,15 @@ export default function Exchange() {
                         </div>
 
                         <div className="col-span-6">
-                          <label className="text-[10px] font-black text-red-700 dark:text-red-400 uppercase flex justify-between items-center mb-0.5">
+                          <label className="text-xs font-black text-red-700 dark:text-red-400 uppercase flex justify-between items-center mb-0.5">
                             <span>Old Phone Value (PKR) *</span>
                             {phone.assessed_value && (
-                              <span className="font-mono text-[10px]">
+                              <span className="font-mono text-xs">
                                 Rs. {parseFloat(phone.assessed_value || 0).toLocaleString('en-PK')}
                               </span>
                             )}
                           </label>
-                          <input
+                          <input aria-label="0.00"
                             type="number"
                             placeholder="0.00"
                             value={phone.assessed_value}
@@ -1398,7 +1398,7 @@ export default function Exchange() {
                         </div>
 
                         <div className="col-span-12">
-                          <label htmlFor={`resale-${phone.id}`} className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase flex justify-between items-center mb-0.5">
+                          <label htmlFor={`resale-${phone.id}`} className="text-xs font-black text-emerald-700 dark:text-emerald-400 uppercase flex justify-between items-center mb-0.5">
                             <span>Resale Price (PKR)</span>
                             <span className="normal-case font-semibold text-gray-500 dark:text-gray-400">
                               {phone.sale_price ? `Rs. ${parseFloat(phone.sale_price || 0).toLocaleString('en-PK')}` : 'Price POS will offer; empty = trade-in value'}
@@ -1422,7 +1422,7 @@ export default function Exchange() {
                         <button
                           type="button"
                           onClick={() => updateIncomingPhone(phone.id, 'expanded', !phone.expanded)}
-                          className="text-[10px] font-bold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 flex items-center gap-1 cursor-pointer"
+                          className="text-xs font-bold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 flex items-center gap-1 cursor-pointer"
                         >
                           {phone.expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                           <span>{phone.expanded ? 'Hide Extra Details' : '+ Extra Details (Battery %, Screen, IMEI 2, Notes)'}</span>
@@ -1431,8 +1431,8 @@ export default function Exchange() {
                         {phone.expanded && (
                           <div className="mt-2 pt-2 border-t border-red-100 dark:border-red-900/30 grid grid-cols-2 gap-2 text-xs">
                             <div>
-                              <label className="text-[10px] text-gray-500 block">Battery Health %</label>
-                              <input
+                              <label className="text-xs text-gray-500 block">Battery Health %</label>
+                              <input aria-label="Battery Health %"
                                 type="number"
                                 placeholder="e.g. 88"
                                 value={phone.battery_health}
@@ -1441,8 +1441,8 @@ export default function Exchange() {
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] text-gray-500 block">Screen Condition</label>
-                              <select
+                              <label className="text-xs text-gray-500 block">Screen Condition</label>
+                              <select aria-label="Screen Condition"
                                 value={phone.screen_condition}
                                 onChange={e => updateIncomingPhone(phone.id, 'screen_condition', e.target.value)}
                                 className="w-full text-xs p-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800"
@@ -1455,8 +1455,8 @@ export default function Exchange() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-[10px] text-gray-500 block">IMEI 2 (Optional)</label>
-                              <input
+                              <label className="text-xs text-gray-500 block">IMEI 2 (Optional)</label>
+                              <input aria-label="IMEI 2 (Optional)"
                                 type="text"
                                 placeholder="Secondary IMEI"
                                 value={phone.imei_2}
@@ -1465,8 +1465,8 @@ export default function Exchange() {
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] text-gray-500 block">Defects / Notes</label>
-                              <input
+                              <label className="text-xs text-gray-500 block">Defects / Notes</label>
+                              <input aria-label="Defects / Notes"
                                 type="text"
                                 placeholder="e.g. minor dent on corner"
                                 value={phone.notes}
@@ -1505,7 +1505,7 @@ export default function Exchange() {
                     <h2 className="text-xs font-black uppercase text-gray-900 dark:text-white tracking-wider">
                       Phone / Item (دکان کا فون / سامان)
                     </h2>
-                    <p className="text-[10px] text-gray-400">Available shop phones & accessories</p>
+                    <p className="text-xs text-gray-500">Available shop phones & accessories</p>
                   </div>
                 </div>
 
@@ -1538,8 +1538,8 @@ export default function Exchange() {
               {/* Stock Search Input (shrink-0) */}
               <div className="p-2.5 pb-1 shrink-0">
                 <div className="relative">
-                  <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
-                  <input
+                  <Search size={13} className="absolute left-2.5 top-2.5 text-gray-500" />
+                  <input aria-label="Search shop stock by Model, Brand, or IMEI"
                     type="text"
                     placeholder="Search shop stock by Model, Brand, or IMEI..."
                     value={inventorySearch}
@@ -1570,10 +1570,10 @@ export default function Exchange() {
                               <span className="font-bold text-gray-900 dark:text-gray-100 truncate mr-1">
                                 {phone.brand} {phone.model}
                               </span>
-                              <span className="text-[10px] text-gray-400">
+                              <span className="text-xs text-gray-500">
                                 ({phone.storage || ''} {phone.color || ''})
                               </span>
-                              <span className="text-[9px] text-gray-500 font-mono ml-2">
+                              <span className="text-xs text-gray-500 font-mono ml-2">
                                 {phone.imei_1 ? phone.imei_1.slice(0, 6) + '...' : ''}
                               </span>
                             </div>
@@ -1582,8 +1582,8 @@ export default function Exchange() {
                                 Rs. {parseFloat(phone.sale_price || 0).toLocaleString('en-PK')}
                               </span>
                               <span
-                                className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                                  isAdded ? 'text-gray-400' : 'bg-blue-600 text-white'
+                                className={`text-xs font-bold px-1.5 py-0.2 rounded ${
+                                  isAdded ? 'text-gray-500' : 'bg-blue-600 text-white'
                                 }`}
                               >
                                 {isAdded ? 'Added' : '+ Add'}
@@ -1593,7 +1593,7 @@ export default function Exchange() {
                         )
                       })
                     ) : (
-                      <div className="p-3 text-center text-xs text-gray-400">No phones match search.</div>
+                      <div className="p-3 text-center text-xs text-gray-500">No phones match search.</div>
                     )
                   ) : (
                     filteredAvailableProducts.length > 0 ? (
@@ -1605,20 +1605,20 @@ export default function Exchange() {
                         >
                           <div>
                             <span className="font-bold text-gray-900 dark:text-gray-100 mr-1">{prod.name}</span>
-                            <span className="text-[10px] text-gray-400">Qty: {prod.stock_quantity ?? 0}</span>
+                            <span className="text-xs text-gray-500">Qty: {prod.stock_quantity ?? 0}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="font-black text-blue-600 dark:text-blue-400 font-mono text-xs">
                               Rs. {parseFloat(prod.price || prod.sale_price || 0).toLocaleString('en-PK')}
                             </span>
-                            <span className="text-[10px] font-bold px-1.5 py-0.2 bg-blue-600 text-white rounded">
+                            <span className="text-xs font-bold px-1.5 py-0.2 bg-blue-600 text-white rounded">
                               + Add
                             </span>
                           </div>
                         </div>
                       ))
                     ) : (
-                      <div className="p-3 text-center text-xs text-gray-400">No products found.</div>
+                      <div className="p-3 text-center text-xs text-gray-500">No products found.</div>
                     )
                   )}
                 </div>
@@ -1626,7 +1626,7 @@ export default function Exchange() {
 
               {/* Selected Items Basket (Takes remaining height, scrolls internally) */}
               <div className="flex-1 lg:min-h-0 lg:overflow-y-auto custom-scrollbar p-2.5 pt-0 space-y-1.5">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-1">
                   Selected Items ({outgoingItems.length})
                 </span>
 
@@ -1641,14 +1641,14 @@ export default function Exchange() {
                           {item.product_name}
                         </div>
                         {item.imei_1 && (
-                          <div className="text-[10px] text-gray-400 font-mono">IMEI: {item.imei_1}</div>
+                          <div className="text-xs text-gray-500 font-mono">IMEI: {item.imei_1}</div>
                         )}
                       </div>
 
                       {/* Price & Quantity Adjuster */}
                       <div className="flex items-center gap-1.5 shrink-0">
                         <div className="flex items-center gap-0.5">
-                          <span className="text-[10px] text-gray-400">Rs.</span>
+                          <span className="text-xs text-gray-500">Rs.</span>
                           <input
                             type="number"
                             value={item.price}
@@ -1670,7 +1670,7 @@ export default function Exchange() {
                         <button
                           type="button"
                           onClick={() => removeOutgoingItem(idx)}
-                          className="p-1 text-gray-400 hover:text-red-600 transition"
+                          className="p-1 text-gray-500 hover:text-red-600 transition"
                           title="Remove"
                         >
                           <Trash2 size={13} />
@@ -1679,7 +1679,7 @@ export default function Exchange() {
                     </div>
                   ))
                 ) : (
-                  <div className="p-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 dark:border-slate-800 rounded-lg">
+                  <div className="p-4 text-center text-xs text-gray-500 border border-dashed border-gray-200 dark:border-slate-800 rounded-lg">
                     Select phones or accessories from stock above.
                   </div>
                 )}
@@ -1729,7 +1729,7 @@ export default function Exchange() {
                     <div className="text-lg sm:text-xl font-black text-green-700 dark:text-green-400 font-mono mt-0.5">
                       + Rs. {absoluteSettlement.toLocaleString('en-PK')}
                     </div>
-                    <p className="text-[10px] text-gray-500">Collect this amount from customer</p>
+                    <p className="text-xs text-gray-500">Collect this amount from customer</p>
                   </div>
                 )}
 
@@ -1741,7 +1741,7 @@ export default function Exchange() {
                     <div className="text-lg sm:text-xl font-black text-red-600 dark:text-red-400 font-mono mt-0.5">
                       - Rs. {absoluteSettlement.toLocaleString('en-PK')}
                     </div>
-                    <p className="text-[10px] text-gray-500">Pay cash/bank to customer</p>
+                    <p className="text-xs text-gray-500">Pay cash/bank to customer</p>
                   </div>
                 )}
 
@@ -1753,7 +1753,7 @@ export default function Exchange() {
                     <div className="text-lg sm:text-xl font-black text-gray-700 dark:text-gray-300 font-mono mt-0.5">
                       Rs. 0
                     </div>
-                    <p className="text-[10px] text-gray-500">Old phone equals new phone price</p>
+                    <p className="text-xs text-gray-500">Old phone equals new phone price</p>
                   </div>
                 )}
               </div>
@@ -1763,7 +1763,7 @@ export default function Exchange() {
                 {/* Tender Selection Row */}
                 <div className="flex items-center gap-2">
                   {/* Primary Method Selector */}
-                  <select
+                  <select aria-label="Cash Vault"
                     value={paymentMethod}
                     onChange={e => {
                       const m = e.target.value
@@ -1818,13 +1818,13 @@ export default function Exchange() {
                           ? `Split (${splitAllocations.filter(a => Number(a.amount) > 0).length} methods)`
                           : 'Configure Split'}
                       </span>
-                      <span className="text-[10px] underline ml-1">Edit</span>
+                      <span className="text-xs underline ml-1">Edit</span>
                     </button>
                   )}
                 </div>
 
                 {/* Memo / Remarks Option inside the form */}
-                <input
+                <input aria-label="Memo / Remarks (اختیاری ریمارکس)"
                   type="text"
                   placeholder="Memo / Remarks (اختیاری ریمارکس)..."
                   value={generalNotes}
@@ -1857,8 +1857,8 @@ export default function Exchange() {
           {/* History Search & Filters */}
           <div className="flex justify-between items-center gap-3 mb-4 shrink-0">
             <div className="relative flex-1 max-w-sm">
-              <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
-              <input
+              <Search size={14} className="absolute left-2.5 top-2.5 text-gray-500" />
+              <input aria-label="Search exchange , customer, or phone"
                 type="text"
                 placeholder="Search exchange #, customer, or phone..."
                 value={historySearch}
@@ -1879,12 +1879,12 @@ export default function Exchange() {
           {/* Exchanges List */}
           <div className="flex-1 lg:overflow-y-auto custom-scrollbar lg:min-h-0">
             {historyLoading ? (
-              <div className="p-8 text-center text-sm text-gray-400">Loading exchange history...</div>
+              <div className="p-8 text-center text-sm text-gray-500">Loading exchange history...</div>
             ) : filteredHistory.length > 0 ? (
               <>
                 {/* Desktop Table (lg and up) */}
                 <table className="hidden lg:table w-full text-xs text-left border-collapse">
-                  <thead className="bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-300 sticky top-0 uppercase font-bold text-[10px]">
+                  <thead className="bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-300 sticky top-0 uppercase font-bold text-xs">
                     <tr>
                       <th className="p-2.5">Exchange #</th>
                       <th className="p-2.5">Date & Time</th>
@@ -1916,7 +1916,7 @@ export default function Exchange() {
                           <td className="p-2.5 font-semibold text-gray-900 dark:text-gray-100">
                             {ex.customer_name || 'Walk-in'}
                             {ex.customer_phone && (
-                              <span className="block text-[10px] text-gray-400 font-mono">
+                              <span className="block text-xs text-gray-500 font-mono">
                                 {ex.customer_phone}
                               </span>
                             )}
@@ -1939,7 +1939,7 @@ export default function Exchange() {
                             >
                               Rs. {parseFloat(ex.settlement_amount || 0).toLocaleString('en-PK')}
                             </span>
-                            <span className="block text-[9px] uppercase tracking-wider font-semibold text-gray-400">
+                            <span className="block text-xs uppercase tracking-wider font-semibold text-gray-500">
                               {ex.settlement_direction === 'customer_paid'
                                 ? 'Customer Paid'
                                 : ex.settlement_direction === 'shop_payout'
@@ -1949,7 +1949,7 @@ export default function Exchange() {
                           </td>
                           <td className="p-2.5 text-center">
                             <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${
                                 isVoid
                                   ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
                                   : 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
@@ -1992,7 +1992,7 @@ export default function Exchange() {
                                     setVoidReason('')
                                     setVoidError('')
                                   }}
-                                  className="p-1 text-gray-400 hover:text-red-600 transition cursor-pointer"
+                                  className="p-1 text-gray-500 hover:text-red-600 transition cursor-pointer"
                                   title="Void Exchange"
                                 >
                                   <XCircle size={15} />
@@ -2132,7 +2132,7 @@ export default function Exchange() {
                 </div>
               </>
             ) : (
-              <div className="p-8 text-center text-sm text-gray-400">
+              <div className="p-8 text-center text-sm text-gray-500">
                 {historyList.length > 0 ? 'No exchanges match your search.' : 'No exchange transactions recorded yet.'}
               </div>
             )}
@@ -2142,7 +2142,7 @@ export default function Exchange() {
 
       {/* ── MODAL: CONFIRM EXCHANGE COMMIT ── */}
       {showConfirmModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-5 border border-gray-200 dark:border-slate-800 shadow-2xl space-y-4">
             <div className="flex items-center gap-2 text-purple-600 pb-2 border-b border-gray-100 dark:border-slate-800">
               <RefreshCw size={20} />
@@ -2208,7 +2208,7 @@ export default function Exchange() {
 
       {/* ── MODAL: POST-SUBMISSION RECEIPT & WHATSAPP ── */}
       {showReceiptModal && completedExchange && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 border border-gray-200 dark:border-slate-800 shadow-2xl text-center space-y-4">
             <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 mx-auto flex items-center justify-center">
               <CheckCircle2 size={32} />
@@ -2227,12 +2227,12 @@ export default function Exchange() {
                   <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
                   <div>
                     <span className="font-bold">Added to WhatsApp Outbox</span>
-                    <span className="block text-[11px] text-emerald-700 dark:text-emerald-400">📱 +{completedExchange.customer_phone}</span>
+                    <span className="block text-xs text-emerald-700 dark:text-emerald-400">📱 +{completedExchange.customer_phone}</span>
                   </div>
                 </div>
                 <Link
                   to="/whatsapp-queue"
-                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shrink-0 transition"
+                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shrink-0 transition"
                 >
                   View Outbox 📲
                 </Link>
@@ -2243,7 +2243,7 @@ export default function Exchange() {
                   ⚠️ کسٹمر کا موبائل نمبر درج نہیں تھا۔ آؤٹ باکس میں شامل کرنے کے لیے نمبر درج کریں:
                 </p>
                 <div className="flex items-center gap-1.5">
-                  <input
+                  <input aria-label="03001234567"
                     type="tel"
                     placeholder="e.g. 03001234567"
                     value={outboxPromptPhone}
@@ -2302,7 +2302,7 @@ export default function Exchange() {
 
       {/* ── MODAL: VIEW EXCHANGE DETAILS ── */}
       {selectedExchangeForView && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-4 sm:p-5 border border-gray-200 dark:border-slate-800 shadow-2xl max-h-[90dvh] overflow-y-auto custom-scrollbar space-y-4">
             <div className="flex justify-between items-center border-b border-gray-100 dark:border-slate-800 pb-3">
               <div>
@@ -2316,7 +2316,7 @@ export default function Exchange() {
               <button
                 type="button"
                 onClick={() => setSelectedExchangeForView(null)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-bold"
+                className="text-gray-500 hover:text-gray-600 text-lg font-bold"
               >
                 ✕
               </button>
@@ -2324,7 +2324,7 @@ export default function Exchange() {
 
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl space-y-1">
-                <span className="font-bold text-gray-500 block uppercase text-[10px]">Customer Details</span>
+                <span className="font-bold text-gray-500 block uppercase text-xs">Customer Details</span>
                 <div className="font-bold text-sm text-gray-900 dark:text-white">
                   {selectedExchangeForView.customer_name || 'Walk-in'}
                 </div>
@@ -2334,7 +2334,7 @@ export default function Exchange() {
               </div>
 
               <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl space-y-1">
-                <span className="font-bold text-gray-500 block uppercase text-[10px]">Linked Invoices</span>
+                <span className="font-bold text-gray-500 block uppercase text-xs">Linked Invoices</span>
                 <div>Sale Invoice: <b>INV-{String(selectedExchangeForView.sale_id || '').slice(-8)}</b></div>
                 <div>Old Phone Intake: <b>PR-{String(selectedExchangeForView.purchase_id || '').slice(-8)}</b></div>
               </div>
@@ -2353,7 +2353,7 @@ export default function Exchange() {
                           <div className="font-bold">
                             {item.brand} {item.model || item.product_name}
                           </div>
-                          <div className="text-[10px] text-gray-500 font-mono">
+                          <div className="text-xs text-gray-500 font-mono">
                             IMEI: {item.imei_1} {item.imei_2 ? `· IMEI 2: ${item.imei_2}` : ''} · {item.condition}
                           </div>
                         </div>
@@ -2375,7 +2375,7 @@ export default function Exchange() {
                         <div>
                           <div className="font-bold">{item.product_name}</div>
                           {item.imei_1 && (
-                            <div className="text-[10px] text-gray-500 font-mono">IMEI: {item.imei_1}</div>
+                            <div className="text-xs text-gray-500 font-mono">IMEI: {item.imei_1}</div>
                           )}
                         </div>
                         <div className="font-mono font-bold text-green-600">
@@ -2438,7 +2438,7 @@ export default function Exchange() {
 
       {/* ── MODAL: VOID / REVERSAL DIALOG ── */}
       {exchangeToVoid && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-5 border border-red-200 dark:border-red-900 shadow-2xl space-y-4">
             <div className="flex items-center gap-2 text-red-600">
               <ShieldAlert size={22} />
@@ -2454,7 +2454,7 @@ export default function Exchange() {
               <label className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 block">
                 Reason for Reversal / Void *
               </label>
-              <input
+              <input aria-label=" Reason for Reversal / Void "
                 type="text"
                 placeholder="e.g. Customer changed mind, incorrect IMEI intake"
                 value={voidReason}
@@ -2492,7 +2492,7 @@ export default function Exchange() {
 
       {/* ── MODAL: QUICK ADD CUSTOMER ── */}
       {showAddCustomerModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-5 border border-gray-200 dark:border-slate-800 shadow-2xl space-y-4">
             <h3 className="font-black text-base text-gray-900 dark:text-white">Quick Add Customer</h3>
             <form onSubmit={handleQuickAddCustomer} className="space-y-3">
@@ -2500,7 +2500,7 @@ export default function Exchange() {
                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 block">
                   Customer Name *
                 </label>
-                <input
+                <input aria-label=" Customer Name "
                   type="text"
                   required
                   placeholder="e.g. Imran Ali"
@@ -2514,7 +2514,7 @@ export default function Exchange() {
                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 block">
                   Phone Number
                 </label>
-                <input
+                <input aria-label=" Phone Number "
                   type="text"
                   placeholder="03001234567"
                   value={newCustomerPhone}
@@ -2545,7 +2545,7 @@ export default function Exchange() {
 
       {/* ── MODAL: SPLIT PAYMENT SETTLEMENT ── */}
       {showSplitModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-4 sm:p-5 border border-purple-200 dark:border-purple-900 shadow-2xl space-y-4 max-h-[90dvh] flex flex-col">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
@@ -2556,7 +2556,7 @@ export default function Exchange() {
                   <h3 className="font-black text-sm text-gray-900 dark:text-white uppercase tracking-tight">
                     Split Payment Settlement
                   </h3>
-                  <p className="text-[10px] text-gray-500">
+                  <p className="text-xs text-gray-500">
                     Net Settlement: <b className="text-purple-600">Rs. {absoluteSettlement.toLocaleString('en-PK')}</b>
                   </p>
                 </div>
@@ -2564,7 +2564,7 @@ export default function Exchange() {
               <button
                 type="button"
                 onClick={() => setShowSplitModal(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm font-bold p-1 cursor-pointer"
+                className="text-gray-500 hover:text-gray-600 dark:hover:text-gray-200 text-sm font-bold p-1 cursor-pointer"
               >
                 ✕
               </button>
@@ -2592,7 +2592,7 @@ export default function Exchange() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <select
+                    <select aria-label="Cash Vault"
                       value={alloc.method}
                       onChange={e => updateSplitLine(idx, 'method', e.target.value)}
                       className="text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold text-gray-900 dark:text-white"
@@ -2602,8 +2602,8 @@ export default function Exchange() {
                     </select>
 
                     <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-400 font-bold">Rs.</span>
-                      <input
+                      <span className="text-xs text-gray-500 font-bold">Rs.</span>
+                      <input aria-label="Amount"
                         type="number"
                         min="0"
                         placeholder="Amount"
@@ -2616,8 +2616,8 @@ export default function Exchange() {
 
                   {alloc.method === 'bank' && (
                     <div>
-                      <label className="text-[10px] font-bold text-gray-400 block mb-0.5">Deposit Into Bank:</label>
-                      <select
+                      <label className="text-xs font-bold text-gray-500 block mb-0.5">Deposit Into Bank:</label>
+                      <select aria-label="Deposit Into Bank"
                         value={alloc.account_id}
                         onChange={e => updateSplitLine(idx, 'account_id', e.target.value)}
                         className="w-full text-xs p-1.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white font-medium"

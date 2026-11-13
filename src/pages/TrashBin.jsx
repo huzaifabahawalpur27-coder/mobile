@@ -333,32 +333,32 @@ function TrashBin() {
                     onClick={() => setShowGuide(g => !g)}
                     className="w-full flex items-center justify-between px-4 py-3 text-amber-800 font-bold text-sm text-left"
                 >
-                    <span>💡 Deletion Order Guide — Kya pehle delete karein?</span>
-                    <span className="text-xs">{showGuide ? '▲ Band karein' : '▼ Dekhein'}</span>
+                    <span>Which to delete first</span>
+                    <span className="text-xs">{showGuide ? '▲ Hide' : '▼ Show'}</span>
                 </button>
                 {showGuide && (
                     <div className="px-4 pb-4 text-sm text-amber-900 space-y-3">
-                        <p className="text-xs text-amber-700 italic">Agar deletion fail ho raha hai (Foreign Key error), neeche diya hua order follow karein:</p>
+                        <p className="text-xs text-amber-700 italic">If a delete fails because other records depend on it, delete in this order:</p>
                         <ol className="space-y-2">
                             <li className="flex items-start gap-2">
                                 <span className="bg-green-100 text-green-800 font-bold px-2 py-0.5 rounded text-xs min-w-fit">Step 1</span>
-                                <span><strong>📋 Sale Items & Purchase Items</strong> — Pehle yeh delete karein. Inke koi children nahi hote.</span>
+                                <span><strong>📋 Sale Items & Purchase Items</strong> — delete these first. Nothing depends on them.</span>
                             </li>
                             <li className="flex items-start gap-2">
                                 <span className="bg-yellow-100 text-yellow-800 font-bold px-2 py-0.5 rounded text-xs min-w-fit">Step 2</span>
-                                <span><strong>📜 Sales & 🛒 Purchases</strong> — Sale/Purchase Items delete hone ke baad yeh delete ho sakte hain.</span>
+                                <span><strong>📜 Sales & 🛒 Purchases</strong> — delete these after their items are gone.</span>
                             </li>
                             <li className="flex items-start gap-2">
                                 <span className="bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded text-xs min-w-fit">Step 3</span>
-                                <span><strong>📦 Products / 👥 Customers / 🚚 Suppliers</strong> — Sab sales/purchases clear hone ke baad in ko delete karein.</span>
+                                <span><strong>📦 Products / 👥 Customers / 🚚 Suppliers</strong> — delete these after all their sales and purchases are gone.</span>
                             </li>
                             <li className="flex items-start gap-2">
                                 <span className="bg-gray-100 text-gray-700 font-bold px-2 py-0.5 rounded text-xs min-w-fit">Any time</span>
-                                <span><strong>💸 Expenses</strong> — Kabhi bhi delete ho sakte hain, koi dependency nahi.</span>
+                                <span><strong>💸 Expenses</strong> — delete these at any time. Nothing depends on them.</span>
                             </li>
                         </ol>
                         <p className="text-xs text-amber-700 bg-amber-100 px-3 py-2 rounded-lg">
-                            💡 <strong>Shortcut:</strong> "<strong>🔄 Delete In Order</strong>" button use karein — yeh automatically sahi order mein delete karta hai.
+                            💡 <strong>Shortcut:</strong> "<strong>🔄 Delete In Order</strong>" does all of this in the right order for you.
                         </p>
                     </div>
                 )}
@@ -386,9 +386,9 @@ function TrashBin() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {loading ? (
-                                <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-400">Loading trash...</td></tr>
+                                <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500">Loading trash...</td></tr>
                             ) : filtered.length === 0 ? (
-                                <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-400 italic">
+                                <tr><td colSpan="6" className="px-6 py-12 text-center text-gray-500 italic">
                                     {trashItems.length === 0 ? '🎉 Trash is empty! No deleted items.' : 'No items match the filter.'}
                                 </td></tr>
                             ) : filtered.map(item => {
@@ -404,14 +404,14 @@ function TrashBin() {
                                             />
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-[10px] font-bold uppercase">
+                                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold uppercase">
                                                 {tableLabels[item.original_table] || item.original_table}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 font-medium text-gray-800">{getItemLabel(item)}</td>
                                         <td className="px-4 py-3 hidden sm:table-cell">
                                             {badge && (
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.color}`}>
+                                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${badge.color}`}>
                                                     {badge.label}
                                                 </span>
                                             )}

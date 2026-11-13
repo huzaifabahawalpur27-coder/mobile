@@ -260,7 +260,7 @@ function Layout({ children }) {
             {!sidebarCollapsed && (
               <div className="min-w-0">
                 <h1 className="text-sm font-black tracking-tight leading-none uppercase truncate w-28 text-[#1d1d1f] dark:text-[#f5f5f7]">{shopName}</h1>
-                <p className="text-[10px] text-[#86868b] dark:text-[#98989d] uppercase font-bold tracking-wider mt-0.5">Control Panel</p>
+                <p className="text-xs text-[#6e6e73] dark:text-[#98989d] uppercase font-bold tracking-wider mt-0.5">Control Panel</p>
               </div>
             )}
           </div>
@@ -379,7 +379,7 @@ function Layout({ children }) {
                 <span className="text-sm">📖</span>
                 <span>Help & Guides</span>
               </div>
-              <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded group-hover:translate-x-0.5 transition-transform">→</span>
+              <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded group-hover:translate-x-0.5 transition-transform">→</span>
             </Link>
           </div>
         ) : (
@@ -399,9 +399,9 @@ function Layout({ children }) {
         {!sidebarCollapsed && (
           <div className="p-3 border-t border-[#e5e5ea] dark:border-[#2c2c2e] bg-[#f5f5f7] dark:bg-[#1c1c1e] flex flex-col gap-2">
             <div className="text-center px-1">
-              <p className="text-[10px] text-[#86868b] dark:text-[#98989d] font-semibold uppercase tracking-wider mb-0.5">Developed with <span className="text-[#ff3b30]">❤︎</span> by</p>
+              <p className="text-xs text-[#6e6e73] dark:text-[#98989d] font-semibold uppercase tracking-wider mb-0.5">Developed with <span className="text-[#ff3b30]">❤︎</span> by</p>
               <p className="text-xs text-[#1d1d1f] dark:text-[#f5f5f7] font-semibold leading-tight">EdgeX Digital<br />& Babar Joya</p>
-              <p className="text-[10px] font-mono text-[#86868b] dark:text-[#98989d] mt-0.5">📞 0301-2616367</p>
+              <p className="text-xs font-mono text-[#6e6e73] dark:text-[#98989d] mt-0.5">📞 0301-2616367</p>
             </div>
           </div>
         )}
@@ -424,9 +424,9 @@ function Layout({ children }) {
             <div className="flex flex-col min-w-0">
               <span className="text-gray-900 font-black tracking-tight text-sm sm:text-lg leading-none truncate max-w-[140px] sm:max-w-[300px]">{shopName}</span>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-gray-400 font-bold tracking-tight text-[10px] uppercase">{pageTitle}</span>
-                <span className="text-gray-300 text-[10px]">•</span>
-                <span className="text-blue-600 font-semibold text-[10px] bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-1 truncate max-w-[110px] sm:max-w-[160px]">
+                <span className="text-gray-500 font-bold tracking-tight text-xs uppercase">{pageTitle}</span>
+                <span className="text-gray-300 text-xs">•</span>
+                <span className="text-blue-600 font-semibold text-xs bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-1 truncate max-w-[110px] sm:max-w-[160px]">
                   <span>🏪</span> <span className="truncate">{user?.branch_name || 'Main Branch'}</span>
                 </span>
               </div>
@@ -440,10 +440,10 @@ function Layout({ children }) {
               onClick={toggleSound}
               data-sound="toggle"
               aria-label={soundEnabled ? "Mute sound effects" : "Enable sound effects"}
-              className={`px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border text-[10px] sm:text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer select-none ${
+              className={`hidden sm:flex px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs sm:text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer select-none ${
                 soundEnabled
                   ? 'bg-blue-50 dark:bg-blue-950/40 text-[#0071e3] dark:text-[#2997ff] border-blue-200 dark:border-blue-900/60 shadow-xs'
-                  : 'bg-white dark:bg-[#2c2c2e] text-[#86868b] dark:text-[#98989d] border-[#e5e5ea] dark:border-[#38383a]'
+                  : 'bg-white dark:bg-[#2c2c2e] text-[#6e6e73] dark:text-[#98989d] border-[#e5e5ea] dark:border-[#38383a]'
               }`}
               title={soundEnabled ? "Sound Effects Enabled (Click to Mute)" : "Sound Effects Muted (Click to Enable)"}
             >
@@ -457,7 +457,7 @@ function Layout({ children }) {
               onClick={toggleTheme}
               data-sound="toggle"
               aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-              className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#e5e5ea] dark:border-[#38383a] bg-white dark:bg-[#2c2c2e] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.08] text-[10px] sm:text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer select-none shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#e5e5ea] dark:border-[#38383a] bg-white dark:bg-[#2c2c2e] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.08] text-xs sm:text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer select-none shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
               title={isDark ? "Switch to Apple Light Mode" : "Switch to Apple Dark Mode"}
             >
               {isDark ? (
@@ -479,7 +479,7 @@ function Layout({ children }) {
               onClick={() => setShowThemeModal(true)}
               data-sound="click"
               aria-label="Open theme customization menu"
-              className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#e5e5ea] dark:border-[#38383a] bg-white dark:bg-[#2c2c2e] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.08] text-[10px] sm:text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer select-none shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              className="hidden sm:flex px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#e5e5ea] dark:border-[#38383a] bg-white dark:bg-[#2c2c2e] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.08] text-xs sm:text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer select-none shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
               title="Select OS Design Theme (Apple, Glass, Pixel, OnePlus, Samsung)"
             >
               <Palette size={14} className="text-[#0071e3] dark:text-[#2997ff]" />
@@ -491,7 +491,8 @@ function Layout({ children }) {
             {/* Compact Mode Toggle */}
             <button
               onClick={toggleCompactMode}
-              className={`px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border text-[10px] sm:text-xs font-bold transition flex items-center gap-1.5 cursor-pointer select-none ${
+              aria-label={compactMode ? "Switch to normal view" : "Switch to compact view"}
+              className={`hidden sm:flex px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs sm:text-xs font-bold transition flex items-center gap-1.5 cursor-pointer select-none ${
                 compactMode
                   ? 'bg-blue-50 text-blue-600 border-blue-100 shadow-sm shadow-blue-50'
                   : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
@@ -505,7 +506,7 @@ function Layout({ children }) {
             {/* Status Indicator — dot only on mobile, full pill on sm+ */}
             <div className={`flex items-center gap-1.5 rounded-full font-black uppercase tracking-widest ${isOnline ? 'text-green-600' : 'text-orange-600 animate-pulse'}`}>
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-500' : 'bg-orange-500'}`}></span>
-              <span className={`hidden sm:inline text-[9px] px-2 py-1 rounded-full border ${isOnline ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+              <span className={`hidden sm:inline text-xs px-2 py-1 rounded-full border ${isOnline ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
                 {isOnline ? 'System Online' : 'Offline Mode'}
               </span>
             </div>
@@ -524,7 +525,7 @@ function Layout({ children }) {
                   </svg>
                 </div>
                 {bellCount > 0 && (
-                  <span className={`absolute top-1.5 right-1.5 min-w-4 h-4 px-0.5 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white ${shopUpdates.newCount > 0 ? 'bg-blue-600 ring-1 ring-blue-100' : 'bg-red-600 ring-1 ring-red-100'}`}>
+                  <span className={`absolute top-1.5 right-1.5 min-w-4 h-4 px-0.5 text-white text-xs font-black rounded-full flex items-center justify-center border-2 border-white ${shopUpdates.newCount > 0 ? 'bg-blue-600 ring-1 ring-blue-100' : 'bg-red-600 ring-1 ring-red-100'}`}>
                     {bellCount > 99 ? '99+' : bellCount}
                   </span>
                 )}
@@ -535,7 +536,7 @@ function Layout({ children }) {
                 <div className="fixed left-4 right-4 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-3 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50 origin-top-right">
                   <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
                     <h3 className="font-bold text-gray-800">Notifications</h3>
-                    <span className="text-[10px] font-black text-white bg-red-600 px-2 py-0.5 rounded-full uppercase tracking-wider">{lowStock.length} Low stock</span>
+                    <span className="text-xs font-black text-white bg-red-600 px-2 py-0.5 rounded-full uppercase tracking-wider">{lowStock.length} Low stock</span>
                   </div>
                   <div className="max-h-[70dvh] sm:max-h-[28rem] overflow-y-auto custom-scrollbar">
                     <ShopUpdatesSection
@@ -552,14 +553,14 @@ function Layout({ children }) {
                       </div>
                     ) : (
                       <div className="divide-y divide-gray-50">
-                        <p className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-red-50/50">Low Stock 🚩</p>
+                        <p className="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-widest bg-red-50/50">Low Stock 🚩</p>
                         {lowStock.map((p, i) => (
                           <div key={i} className="p-4 hover:bg-gray-50 transition flex justify-between items-center">
                             <div className="flex-1 pr-4">
                               <p className="text-sm font-bold text-gray-800 truncate">{p.name}</p>
                               <p className="text-xs text-red-500 font-medium">Only {p.stock_quantity} remaining</p>
                             </div>
-                            <Link to="/inventory" onClick={() => setShowNotifications(false)} className="px-3 py-1 bg-blue-50 text-blue-600 rounded text-[10px] font-black hover:bg-blue-600 hover:text-white transition uppercase">Restock</Link>
+                            <Link to="/inventory" onClick={() => setShowNotifications(false)} className="px-3 py-1 bg-blue-50 text-blue-600 rounded text-xs font-black hover:bg-blue-600 hover:text-white transition uppercase">Restock</Link>
                           </div>
                         ))}
                       </div>
@@ -567,7 +568,7 @@ function Layout({ children }) {
                   </div>
                   {lowStock.length > 0 && (
                     <div className="p-3 bg-gray-50 border-t text-center">
-                      <Link to="/inventory" onClick={() => setShowNotifications(false)} className="text-xs font-bold text-gray-400 hover:text-blue-600 transition">Go to Inventory Management →</Link>
+                      <Link to="/inventory" onClick={() => setShowNotifications(false)} className="text-xs font-bold text-gray-500 hover:text-blue-600 transition">Go to Inventory Management →</Link>
                     </div>
                   )}
                 </div>
@@ -579,7 +580,7 @@ function Layout({ children }) {
             <div className="flex items-center gap-2 sm:gap-3 relative" ref={userDropdownRef}>
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-black text-gray-800 leading-none">{user?.username}</p>
-                <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{user?.role}</p>
+                <p className="text-xs text-gray-500 font-bold uppercase mt-1">{user?.role}</p>
               </div>
               <button
                 onClick={() => setShowUserDropdown(!showUserDropdown)}
@@ -594,16 +595,33 @@ function Layout({ children }) {
                   <div className="p-3.5 border-b border-gray-50 bg-gray-50/50">
                     <p className="text-sm font-black text-gray-800 leading-none">{user?.username}</p>
                     <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-[10px] text-gray-500 font-bold uppercase">{user?.role}</span>
-                      <span className="text-gray-300 text-[10px]">•</span>
-                      <span className="text-[10px] text-blue-600 font-semibold">{user?.branch_name || 'Main Branch'}</span>
+                      <span className="text-xs text-gray-500 font-bold uppercase">{user?.role}</span>
+                      <span className="text-gray-300 text-xs">•</span>
+                      <span className="text-xs text-blue-600 font-semibold">{user?.branch_name || 'Main Branch'}</span>
                     </div>
+                  </div>
+
+                  {/* Display settings: here on phones, in the header on larger screens */}
+                  <div className="p-2 border-b border-gray-100 sm:hidden">
+                    <p className="px-2 py-1 text-xs font-bold text-gray-500">Display</p>
+                    <button type="button" onClick={toggleSound} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm font-semibold text-gray-800 hover:bg-gray-50">
+                      <span className="flex items-center gap-2">{soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />} Sound effects</span>
+                      <span className="text-xs font-bold text-gray-500">{soundEnabled ? 'On' : 'Off'}</span>
+                    </button>
+                    <button type="button" onClick={() => { setShowUserDropdown(false); setShowThemeModal(true) }} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm font-semibold text-gray-800 hover:bg-gray-50">
+                      <span className="flex items-center gap-2"><Palette size={16} /> Theme style</span>
+                      <span className="text-xs font-bold text-gray-500">{THEME_STYLES.find(t => t.id === themeStyle)?.badge || 'Choose'}</span>
+                    </button>
+                    <button type="button" onClick={toggleCompactMode} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm font-semibold text-gray-800 hover:bg-gray-50">
+                      <span className="flex items-center gap-2">Compact view</span>
+                      <span className="text-xs font-bold text-gray-500">{compactMode ? 'On' : 'Off'}</span>
+                    </button>
                   </div>
 
                   {/* Multi-Tenant Organization Switcher */}
                   {authorizedShops && authorizedShops.length > 1 && (
                     <div className="p-2 border-b border-gray-100">
-                      <p className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Switch Shop</p>
+                      <p className="px-2 py-1 text-xs font-bold text-gray-500 uppercase tracking-wider">Switch Shop</p>
                       <div className="space-y-0.5 max-h-36 overflow-y-auto">
                         {authorizedShops.map(s => (
                           <button
@@ -616,7 +634,7 @@ function Layout({ children }) {
                             }`}
                           >
                             <span className="truncate">{s.shop_name}</span>
-                            {String(s.shop_id) === String(user?.shop_id) && <span className="text-[10px] font-black text-blue-600">✓</span>}
+                            {String(s.shop_id) === String(user?.shop_id) && <span className="text-xs font-black text-blue-600">✓</span>}
                           </button>
                         ))}
                       </div>
@@ -626,7 +644,7 @@ function Layout({ children }) {
                   {/* Multi-Branch Switcher */}
                   {branches && branches.length > 1 && (
                     <div className="p-2 border-b border-gray-100">
-                      <p className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Switch Branch</p>
+                      <p className="px-2 py-1 text-xs font-bold text-gray-500 uppercase tracking-wider">Switch Branch</p>
                       <div className="space-y-0.5 max-h-36 overflow-y-auto">
                         {branches.map(b => (
                           <button
@@ -639,7 +657,7 @@ function Layout({ children }) {
                             }`}
                           >
                             <span className="truncate">{b.name}</span>
-                            {String(b.id) === String(user?.branch_id) && <span className="text-[10px] font-black text-indigo-600">✓</span>}
+                            {String(b.id) === String(user?.branch_id) && <span className="text-xs font-black text-indigo-600">✓</span>}
                           </button>
                         ))}
                       </div>
@@ -861,7 +879,7 @@ function Layout({ children }) {
       
       {/* OS Design Theme Selector Modal */}
       {showThemeModal && (
-        <div 
+        <div role="dialog" aria-modal="true" 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setShowThemeModal(false)}
         >
@@ -877,12 +895,12 @@ function Layout({ children }) {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#1d1d1f] dark:text-[#f5f5f7]">System Design Language</h3>
-                  <p className="text-xs text-[#86868b] dark:text-[#98989d]">Choose your preferred operating system visual identity</p>
+                  <p className="text-xs text-[#6e6e73] dark:text-[#98989d]">Choose your preferred operating system visual identity</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowThemeModal(false)}
-                className="w-8 h-8 rounded-full bg-[#f5f5f7] dark:bg-[#2c2c2e] hover:bg-[#e5e5ea] dark:hover:bg-[#3a3a3c] text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white flex items-center justify-center font-bold text-sm transition cursor-pointer"
+                className="w-8 h-8 rounded-full bg-[#f5f5f7] dark:bg-[#2c2c2e] hover:bg-[#e5e5ea] dark:hover:bg-[#3a3a3c] text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-white flex items-center justify-center font-bold text-sm transition cursor-pointer"
               >
                 ✕
               </button>
@@ -910,11 +928,11 @@ function Layout({ children }) {
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
                               <h4 className="font-bold text-sm text-[#1d1d1f] dark:text-white truncate">{style.name}</h4>
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-[#86868b] dark:text-[#98989d]">
+                              <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-[#6e6e73] dark:text-[#98989d]">
                                 {style.badge}
                               </span>
                             </div>
-                            <p className="text-[10px] text-[#86868b] dark:text-[#98989d] uppercase font-bold tracking-wider">{style.category}</p>
+                            <p className="text-xs text-[#6e6e73] dark:text-[#98989d] uppercase font-bold tracking-wider">{style.category}</p>
                           </div>
                         </div>
                         {isActive && (
@@ -923,14 +941,14 @@ function Layout({ children }) {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-[#86868b] dark:text-[#98989d] mb-3 leading-relaxed">
+                      <p className="text-xs text-[#6e6e73] dark:text-[#98989d] mb-3 leading-relaxed">
                         {style.description}
                       </p>
                       {/* Preview Chips */}
                       <div className="flex items-center gap-2 pt-2 border-t border-black/[0.05] dark:border-white/[0.06]">
                         <span className="w-3 h-3 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: style.accentColor }} />
-                        <span className="text-[10px] font-bold text-[#86868b] dark:text-[#98989d]">System Accent</span>
-                        <span className="ml-auto text-[10px] font-bold text-[#0071e3] dark:text-[#2997ff] transition">
+                        <span className="text-xs font-bold text-[#6e6e73] dark:text-[#98989d]">System Accent</span>
+                        <span className="ml-auto text-xs font-bold text-[#0071e3] dark:text-[#2997ff] transition">
                           {isActive ? 'Active ✓' : 'Tap to Apply →'}
                         </span>
                       </div>
@@ -942,7 +960,7 @@ function Layout({ children }) {
 
             {/* Modal Footer */}
             <div className="p-4 bg-[#f5f5f7] dark:bg-[#161618] border-t border-[#e5e5ea] dark:border-[#2c2c2e] flex items-center justify-between">
-              <span className="text-xs text-[#86868b] dark:text-[#98989d]">
+              <span className="text-xs text-[#6e6e73] dark:text-[#98989d]">
                 Live preview active. Settings persist automatically.
               </span>
               <button
@@ -964,7 +982,7 @@ function NavHeader({ label, collapsed }) {
   if (collapsed) return <li className="my-2 border-b border-[#e5e5ea] dark:border-[#2c2c2e]" />
   return (
     <li className="pt-4 pb-1 px-3">
-      <span className="text-[10px] font-black text-[#86868b] dark:text-[#98989d] uppercase tracking-[0.2em]">{label}</span>
+      <span className="text-xs font-black text-[#6e6e73] dark:text-[#98989d] uppercase tracking-[0.2em]">{label}</span>
     </li>
   )
 }
@@ -989,7 +1007,7 @@ function NavItem({ to, icon, label, active, onClick, locked, collapsed, badge })
         <span className={`flex-shrink-0 flex items-center justify-center ${active ? 'text-white' : 'text-[#636366] dark:text-[#98989d]'}`}>{icon}</span>
         {!collapsed && <span className="flex-1 truncate">{label}</span>}
         {!collapsed && badge && (
-          <span className="ml-auto px-1.5 py-0.5 bg-red-500 text-white rounded-full text-[10px] font-black leading-none animate-pulse">
+          <span className="ml-auto px-1.5 py-0.5 bg-red-500 text-white rounded-full text-xs font-black leading-none animate-pulse">
             {badge}
           </span>
         )}

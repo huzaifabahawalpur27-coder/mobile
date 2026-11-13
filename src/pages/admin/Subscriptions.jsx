@@ -409,8 +409,8 @@ export default function Subscriptions() {
                         Export Excel
                     </button>
                     <div className="relative flex-1 sm:w-72">
-                        <Search className="absolute left-3 top-2.5 text-slate-400" size={20} />
-                        <input
+                        <Search className="absolute left-3 top-2.5 text-slate-500" size={20} />
+                        <input aria-label="Search by shop name or ID"
                             type="text"
                             placeholder="Search by shop name or ID..."
                             value={search}
@@ -428,7 +428,7 @@ export default function Subscriptions() {
                         <CheckCircle2 size={24} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Active plans</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Active plans</p>
                         <h4 className="text-xl font-black text-slate-800">{stats.activeCount}</h4>
                     </div>
                 </div>
@@ -438,7 +438,7 @@ export default function Subscriptions() {
                         <Clock size={24} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Overdue (Grace)</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Overdue (Grace)</p>
                         <h4 className="text-xl font-black text-slate-800">{stats.overdueCount}</h4>
                     </div>
                 </div>
@@ -448,7 +448,7 @@ export default function Subscriptions() {
                         <AlertTriangle size={24} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Suspended</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Suspended</p>
                         <h4 className="text-xl font-black text-slate-800">{stats.suspendedCount}</h4>
                     </div>
                 </div>
@@ -458,7 +458,7 @@ export default function Subscriptions() {
                         <CreditCard size={24} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Monthly Revenue</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Monthly Revenue</p>
                         <h4 className="text-xl font-black text-slate-800 font-mono">Rs. {stats.projectedRevenue.toLocaleString()}</h4>
                     </div>
                 </div>
@@ -483,9 +483,9 @@ export default function Subscriptions() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {loading ? (
-                            <tr><td colSpan="5" className="p-8 text-center text-slate-400">Loading subscriptions...</td></tr>
+                            <tr><td colSpan="5" className="p-8 text-center text-slate-500">Loading subscriptions...</td></tr>
                         ) : filtered.length === 0 ? (
-                            <tr><td colSpan="5" className="p-8 text-center text-slate-400">No matching subscriptions found.</td></tr>
+                            <tr><td colSpan="5" className="p-8 text-center text-slate-500">No matching subscriptions found.</td></tr>
                         ) : (
                             filtered.map(shop => {
                                 const isOverdue = shop.next_billing_date && new Date(shop.next_billing_date) < new Date()
@@ -501,14 +501,14 @@ export default function Subscriptions() {
                                                 </div>
                                                 <div>
                                                     <p className="font-bold text-slate-800">{shop.name}</p>
-                                                    <p className="text-xs text-slate-400">ID: {shop.id} • {shop.phone || 'No Phone'}</p>
+                                                    <p className="text-xs text-slate-500">ID: {shop.id} • {shop.phone || 'No Phone'}</p>
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="p-4">
                                             {isEditing ? (
                                                 <div className="flex flex-col gap-2 max-w-[150px]">
-                                                    <select
+                                                    <select aria-label="Legacy / Manual"
                                                         className="border rounded p-1 text-xs font-bold"
                                                         value={planForm.planId}
                                                         onChange={e => {
@@ -522,7 +522,7 @@ export default function Subscriptions() {
                                                         ))}
                                                     </select>
 
-                                                    <input
+                                                    <input aria-label="Fee amount"
                                                         type="number"
                                                         className="border rounded p-1 text-xs"
                                                         value={planForm.fee}
@@ -545,7 +545,7 @@ export default function Subscriptions() {
                                                                 planId: shop.plan_id || '',
                                                                 fee: shop.subscription_fee || 0
                                                             })
-                                                        }} className="text-blue-500 text-[10px] hover:underline font-bold bg-blue-50 px-1 rounded">Edit</button>
+                                                        }} className="text-blue-500 text-xs hover:underline font-bold bg-blue-50 px-1 rounded">Edit</button>
                                                     </p>
                                                     <p className="text-slate-500 font-mono text-xs">Rs. {Number(shop.subscription_fee || 0).toLocaleString()}</p>
                                                 </div>
@@ -558,7 +558,7 @@ export default function Subscriptions() {
                                                     {new Date(shop.next_billing_date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                                 </div>
                                             ) : (
-                                                <span className="text-slate-400 text-xs italic">Not Set</span>
+                                                <span className="text-slate-500 text-xs italic">Not Set</span>
                                             )}
                                         </td>
                                         <td className="p-4">
@@ -618,7 +618,7 @@ export default function Subscriptions() {
 
             {/* Payment Modal */}
             {paymentModalOpen && selectedShop && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                         <div className="p-6 border-b border-gray-100 bg-slate-50 flex justify-between items-center">
                             <div>
@@ -629,7 +629,7 @@ export default function Subscriptions() {
                         <form onSubmit={handleRecordPayment} className="p-6 space-y-4">
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-1">Amount (Rs.)</label>
-                                <input
+                                <input aria-label="Amount (Rs.)"
                                     type="number"
                                     required
                                     value={paymentAmount}
@@ -639,7 +639,7 @@ export default function Subscriptions() {
                             </div>
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-1">Payment Method</label>
-                                <select
+                                <select aria-label="Payment Method"
                                     required
                                     value={paymentType}
                                     onChange={e => setPaymentType(e.target.value)}
@@ -654,7 +654,7 @@ export default function Subscriptions() {
                             </div>
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-1">Billing Extension Period</label>
-                                <select
+                                <select aria-label="Billing Extension Period"
                                     required
                                     value={extensionPeriod}
                                     onChange={e => setExtensionPeriod(e.target.value)}
@@ -672,7 +672,7 @@ export default function Subscriptions() {
                             {extensionPeriod === 'custom' && (
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Custom Extension Days</label>
-                                    <input
+                                    <input aria-label="Custom Extension Days"
                                         type="number"
                                         required
                                         min="1"
@@ -685,7 +685,7 @@ export default function Subscriptions() {
                             )}
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-1">Remarks / Note</label>
-                                <input
+                                <input aria-label="Remarks / Note"
                                     type="text"
                                     value={remarks}
                                     onChange={e => setRemarks(e.target.value)}
@@ -729,7 +729,7 @@ export default function Subscriptions() {
 
             {/* Ledger Modal */}
             {ledgerModalOpen && selectedShop && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
                         <div className="p-6 border-b border-gray-100 bg-slate-50 flex justify-between items-center shrink-0">
                             <div>
@@ -743,14 +743,14 @@ export default function Subscriptions() {
                                 >
                                     <FileText size={14} /> Export CSV
                                 </button>
-                                <button onClick={() => setLedgerModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl px-2">&times;</button>
+                                <button onClick={() => setLedgerModalOpen(false)} className="text-slate-500 hover:text-slate-600 font-bold text-xl px-2">&times;</button>
                             </div>
                         </div>
                         <div className="p-6 overflow-y-auto bg-slate-50/50">
                             {ledgerLoading ? (
-                                <p className="text-center text-slate-400 py-8">Loading records...</p>
+                                <p className="text-center text-slate-500 py-8">Loading records...</p>
                             ) : ledgerData.length === 0 ? (
-                                <p className="text-center text-slate-400 py-8">No payment records found for this client.</p>
+                                <p className="text-center text-slate-500 py-8">No payment records found for this client.</p>
                             ) : (
                                 <div className="space-y-3">
                                     {ledgerData.map(entry => (
@@ -768,7 +768,7 @@ export default function Subscriptions() {
                                                 <p className="text-sm font-medium text-slate-700">
                                                     {new Date(entry.payment_date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                                 </p>
-                                                <p className="text-xs text-slate-400">Ref: #{entry.id}</p>
+                                                <p className="text-xs text-slate-500">Ref: #{entry.id}</p>
                                             </div>
                                         </div>
                                     ))}
@@ -789,7 +789,7 @@ export default function Subscriptions() {
 
             {/* WhatsApp Reminder Modal */}
             {whatsAppModalOpen && whatsAppShop && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
                         <div className="p-6 border-b border-gray-100 bg-slate-50 flex justify-between items-center">
                             <div>
@@ -799,12 +799,12 @@ export default function Subscriptions() {
                                 </h3>
                                 <p className="text-xs text-gray-500">For {whatsAppShop.name} ({whatsAppShop.phone || 'No phone'})</p>
                             </div>
-                            <button onClick={() => setWhatsAppModalOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+                            <button onClick={() => setWhatsAppModalOpen(false)} className="text-gray-500 hover:text-gray-600">✕</button>
                         </div>
                         <div className="p-6 space-y-4 overflow-y-auto">
                             <div>
                                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Your Bank / JazzCash / EasyPaisa Details</label>
-                                <textarea
+                                <textarea aria-label="Your Bank / JazzCash / EasyPaisa Details"
                                     rows={3}
                                     value={bankDetails}
                                     onChange={e => {
@@ -814,7 +814,7 @@ export default function Subscriptions() {
                                     placeholder="Enter your payment accounts to include in the reminder..."
                                     className="w-full p-2.5 border border-gray-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-blue-500"
                                 />
-                                <p className="text-[10px] text-gray-400 mt-0.5">Saved automatically for future reminders.</p>
+                                <p className="text-xs text-gray-500 mt-0.5">Saved automatically for future reminders.</p>
                             </div>
 
                             {/* Message Preview */}

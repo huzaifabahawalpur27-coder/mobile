@@ -17,6 +17,7 @@ import {
   convertProductToBatchTracking,
   revertBatchConversion
 } from '../services/batchService'
+import { confirmDialog } from '../utils/dialog'
 
 export default function ProductConversionModal({
   isOpen,
@@ -146,7 +147,7 @@ export default function ProductConversionModal({
   }
 
   const handleRevert = async () => {
-    if (!window.confirm(`Are you sure you want to revert "${product.name}" back to standard non-batch mode? Opening balance batches will be safely removed.`)) {
+    if (!await confirmDialog(`Are you sure you want to revert "${product.name}" back to standard non-batch mode? Opening balance batches will be safely removed.`)) {
       return
     }
 
@@ -170,7 +171,7 @@ export default function ProductConversionModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[92dvh] animate-in fade-in zoom-in-95 duration-150">
         
         {/* Header */}
@@ -183,14 +184,14 @@ export default function ProductConversionModal({
               <h2 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
                 {isAlreadyBatchTracked ? 'FIFO Batch Tracking Active' : 'Convert to FIFO Batch Tracking'}
               </h2>
-              <p className="text-[11px] text-gray-500 dark:text-slate-400">
+              <p className="text-xs text-gray-500 dark:text-slate-400">
                 {product.name} {product.sku ? `• SKU: ${product.sku}` : ''}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition"
+            className="p-1.5 text-gray-500 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition"
           >
             <X size={18} />
           </button>
@@ -213,7 +214,7 @@ export default function ProductConversionModal({
           )}
 
           {loading ? (
-            <div className="py-12 text-center text-gray-400 space-y-2">
+            <div className="py-12 text-center text-gray-500 space-y-2">
               <div className="inline-block animate-spin rounded-full h-7 w-7 border-2 border-emerald-500 border-t-transparent"></div>
               <p className="text-xs font-semibold">Running dry-run preview & verifying lots...</p>
             </div>
@@ -231,7 +232,7 @@ export default function ProductConversionModal({
                   <span className="font-bold text-emerald-900 dark:text-emerald-200 text-sm">
                     Status: Actively Batch Tracked (FIFO)
                   </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-300">
+                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-300">
                     Active
                   </span>
                 </div>
@@ -261,7 +262,7 @@ export default function ProductConversionModal({
                   <RotateCcw size={14} />
                   <span>{reverting ? 'Reverting Mode...' : 'Revert to Standard (Non-Batch) Mode'}</span>
                 </button>
-                <p className="text-[10px] text-gray-400 text-center mt-1.5">
+                <p className="text-xs text-gray-500 text-center mt-1.5">
                   Safe rollback is only permitted if no sales have consumed from this product's batches.
                 </p>
               </div>
@@ -272,13 +273,13 @@ export default function ProductConversionModal({
               {/* Product Stock & Cost Overview */}
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="p-3 bg-gray-50 dark:bg-slate-800/60 rounded-xl border border-gray-200 dark:border-slate-700">
-                  <span className="text-gray-400 text-[10px] uppercase font-bold block mb-0.5">Current Stock</span>
+                  <span className="text-gray-500 text-xs uppercase font-bold block mb-0.5">Current Stock</span>
                   <span className="text-base font-black text-gray-900 dark:text-white font-mono">
                     {currentStock} <span className="text-xs font-normal text-gray-500">units</span>
                   </span>
                 </div>
                 <div className="p-3 bg-gray-50 dark:bg-slate-800/60 rounded-xl border border-gray-200 dark:border-slate-700">
-                  <span className="text-gray-400 text-[10px] uppercase font-bold block mb-0.5">
+                  <span className="text-gray-500 text-xs uppercase font-bold block mb-0.5">
                     {preview?.cost_source === 'last_purchase_cost' ? 'Last Purchase Cost' : 'Catalog Cost'}
                   </span>
                   <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
@@ -293,7 +294,7 @@ export default function ProductConversionModal({
                   <div className="font-bold flex items-center gap-1.5">
                     <AlertTriangle size={14} /> Attention Required Before Conversion
                   </div>
-                  <ul className="list-disc pl-4 text-[11px] space-y-0.5">
+                  <ul className="list-disc pl-4 text-xs space-y-0.5">
                     {preview.exceptions?.map((exc, idx) => (
                       <li key={idx}>{exc}</li>
                     ))}
@@ -311,7 +312,7 @@ export default function ProductConversionModal({
                     <button
                       type="button"
                       onClick={() => setIsSplitMode(!isSplitMode)}
-                      className="text-emerald-700 dark:text-emerald-400 hover:underline text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                      className="text-emerald-700 dark:text-emerald-400 hover:underline text-xs font-bold flex items-center gap-1 cursor-pointer"
                     >
                       <Layers size={12} />
                       <span>{isSplitMode ? 'Switch to Single Cost' : 'Split into Multiple Lots'}</span>
@@ -320,7 +321,7 @@ export default function ProductConversionModal({
 
                   {!isSplitMode ? (
                     <div>
-                      <input
+                      <input aria-label="350"
                         type="number"
                         min="0"
                         step="0.01"
@@ -330,20 +331,20 @@ export default function ProductConversionModal({
                         placeholder="e.g. 350"
                         className="w-full p-2.5 rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white font-mono font-bold text-sm"
                       />
-                      <p className="text-[10px] text-gray-500 dark:text-slate-400 mt-1">
+                      <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
                         One initial opening batch will be created with <strong>{currentStock} units</strong> at <strong>Rs. {customCost || 0}</strong>.
                       </p>
                     </div>
                   ) : (
                     /* Multiple Lot Breakdown */
                     <div className="space-y-2.5 pt-1">
-                      <p className="text-[11px] text-gray-500 dark:text-slate-400 leading-snug">
+                      <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
                         Specify exact historical lot quantities and purchase costs. Total allocated must equal <strong>{currentStock} units</strong>.
                       </p>
 
                       {splitBatches.map((batch, idx) => (
                         <div key={idx} className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-800 space-y-2">
-                          <div className="flex items-center justify-between text-[11px]">
+                          <div className="flex items-center justify-between text-xs">
                             <span className="font-bold text-gray-700 dark:text-gray-300">Lot #{idx + 1}</span>
                             {splitBatches.length > 1 && (
                               <button
@@ -357,8 +358,8 @@ export default function ProductConversionModal({
                           </div>
                           <div className="grid grid-cols-3 gap-2">
                             <div>
-                              <label className="text-[9px] text-gray-400 uppercase font-bold block mb-0.5">Quantity</label>
-                              <input
+                              <label className="text-xs text-gray-500 uppercase font-bold block mb-0.5">Quantity</label>
+                              <input aria-label="Quantity"
                                 type="number"
                                 min="1"
                                 placeholder="Qty"
@@ -368,8 +369,8 @@ export default function ProductConversionModal({
                               />
                             </div>
                             <div>
-                              <label className="text-[9px] text-gray-400 uppercase font-bold block mb-0.5">Unit Cost (Rs.)</label>
-                              <input
+                              <label className="text-xs text-gray-500 uppercase font-bold block mb-0.5">Unit Cost (Rs.)</label>
+                              <input aria-label="Unit Cost (Rs.)"
                                 type="number"
                                 min="0"
                                 placeholder="Cost"
@@ -379,12 +380,12 @@ export default function ProductConversionModal({
                               />
                             </div>
                             <div>
-                              <label className="text-[9px] text-gray-400 uppercase font-bold block mb-0.5">Date</label>
-                              <input
+                              <label className="text-xs text-gray-500 uppercase font-bold block mb-0.5">Date</label>
+                              <input aria-label="Date"
                                 type="date"
                                 value={batch.purchase_date}
                                 onChange={e => handleUpdateSplitLine(idx, 'purchase_date', e.target.value)}
-                                className="w-full p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white text-[11px]"
+                                className="w-full p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white text-xs"
                               />
                             </div>
                           </div>
@@ -399,7 +400,7 @@ export default function ProductConversionModal({
                         >
                           <Plus size={13} /> Add Another Lot
                         </button>
-                        <div className="text-[11px]">
+                        <div className="text-xs">
                           Allocated: <strong className="font-mono">{totalSplitQty}</strong> / {currentStock} units
                           <span className={`ml-1 font-bold ${splitRemainingQty === 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                             ({splitRemainingQty === 0 ? 'Balanced' : `${splitRemainingQty} remaining`})
@@ -414,10 +415,10 @@ export default function ProductConversionModal({
               {/* Conversion Explanation Card */}
               <div className="p-3 bg-gray-50 dark:bg-slate-800/40 rounded-xl border border-gray-200 dark:border-slate-800 space-y-1">
                 <span className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                  <HelpCircle size={13} className="text-gray-400" />
+                  <HelpCircle size={13} className="text-gray-500" />
                   How FIFO will apply to this product
                 </span>
-                <p className="text-[11px] text-gray-500 dark:text-slate-400 leading-relaxed">
+                <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed">
                   Existing sales stay 100% untouched. All new sales will deduct from this opening lot (and future purchases) strictly by invoice date.
                 </p>
               </div>

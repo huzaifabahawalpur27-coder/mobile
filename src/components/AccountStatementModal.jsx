@@ -107,7 +107,7 @@ export default function AccountStatementModal({ isOpen, onClose, shopId, account
       <div className="flex w-full max-w-4xl max-h-[92dvh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <h3 className="text-base font-extrabold text-gray-900">Statement &amp; Day Book</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-xl font-bold text-gray-400 hover:text-gray-600">✕</button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-xl font-bold text-gray-500 hover:text-gray-600">✕</button>
         </div>
 
         <div className="space-y-3 border-b border-gray-100 px-5 py-3">
@@ -120,19 +120,19 @@ export default function AccountStatementModal({ isOpen, onClose, shopId, account
           {tab !== 'check' && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div>
-                <label htmlFor={fromId} className="mb-1 block text-[10px] font-bold uppercase text-gray-500">From</label>
+                <label htmlFor={fromId} className="mb-1 block text-xs font-bold uppercase text-gray-500">From</label>
                 <input id={fromId} type="date" value={from} max={to} onChange={e => setFrom(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label htmlFor={toId} className="mb-1 block text-[10px] font-bold uppercase text-gray-500">To</label>
+                <label htmlFor={toId} className="mb-1 block text-xs font-bold uppercase text-gray-500">To</label>
                 <input id={toId} type="date" value={to} min={from} onChange={e => setTo(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               {tab === 'statement' && (
                 <>
                   <div>
-                    <label htmlFor={accountSelId} className="mb-1 block text-[10px] font-bold uppercase text-gray-500">Account</label>
+                    <label htmlFor={accountSelId} className="mb-1 block text-xs font-bold uppercase text-gray-500">Account</label>
                     <select id={accountSelId} value={accountId} onChange={e => setAccountId(e.target.value)}
                       className="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">All accounts</option>
@@ -140,7 +140,7 @@ export default function AccountStatementModal({ isOpen, onClose, shopId, account
                     </select>
                   </div>
                   <div>
-                    <label htmlFor={dirId} className="mb-1 block text-[10px] font-bold uppercase text-gray-500">Show</label>
+                    <label htmlFor={dirId} className="mb-1 block text-xs font-bold uppercase text-gray-500">Show</label>
                     <select id={dirId} value={direction} onChange={e => setDirection(e.target.value)}
                       className="w-full rounded-lg border border-gray-300 px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Money in and out</option>
@@ -173,9 +173,9 @@ export default function AccountStatementModal({ isOpen, onClose, shopId, account
                 : (
                   <>
                     <div className="mb-3 grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-lg bg-emerald-50 p-2"><p className="text-[10px] font-bold uppercase text-emerald-700">Money in</p><p className="font-black text-emerald-800">{rs(totals.in)}</p></div>
-                      <div className="rounded-lg bg-rose-50 p-2"><p className="text-[10px] font-bold uppercase text-rose-700">Money out</p><p className="font-black text-rose-800">{rs(totals.out)}</p></div>
-                      <div className="rounded-lg bg-gray-100 p-2"><p className="text-[10px] font-bold uppercase text-gray-600">Net</p><p className="font-black text-gray-900">{rs(totals.in - totals.out)}</p></div>
+                      <div className="rounded-lg bg-emerald-50 p-2"><p className="text-xs font-bold uppercase text-emerald-700">Money in</p><p className="font-black text-emerald-800">{rs(totals.in)}</p></div>
+                      <div className="rounded-lg bg-rose-50 p-2"><p className="text-xs font-bold uppercase text-rose-700">Money out</p><p className="font-black text-rose-800">{rs(totals.out)}</p></div>
+                      <div className="rounded-lg bg-gray-100 p-2"><p className="text-xs font-bold uppercase text-gray-600">Net</p><p className="font-black text-gray-900">{rs(totals.in - totals.out)}</p></div>
                     </div>
                     <ul className="divide-y divide-gray-100">
                       {rows.slice().reverse().map(tx => {
@@ -184,11 +184,11 @@ export default function AccountStatementModal({ isOpen, onClose, shopId, account
                           <li key={tx.id} className="flex items-start justify-between gap-3 py-2.5">
                             <div className="min-w-0">
                               <p className="font-bold text-gray-900 break-words">{tx.description || kindLabel(tx.reference_type)}</p>
-                              <p className="text-[11px] text-gray-500">{accountName(tx.account_id)} • {kindLabel(tx.reference_type)} • {new Date(tx.created_at).toLocaleString()}</p>
+                              <p className="text-xs text-gray-500">{accountName(tx.account_id)} • {kindLabel(tx.reference_type)} • {new Date(tx.created_at).toLocaleString()}</p>
                             </div>
                             <div className="shrink-0 text-right">
                               <p className={`font-black ${isIn ? 'text-emerald-700' : 'text-rose-700'}`}>{isIn ? '+' : '-'}{rs(tx.amount)}</p>
-                              <p className="text-[11px] text-gray-500">Balance {rs(tx.balance_after)}</p>
+                              <p className="text-xs text-gray-500">Balance {rs(tx.balance_after)}</p>
                             </div>
                           </li>
                         )
@@ -209,13 +209,13 @@ export default function AccountStatementModal({ isOpen, onClose, shopId, account
                         <div key={acc.account_id} className={`rounded-xl border p-3 ${acc.idle ? 'border-gray-100 bg-gray-50' : 'border-gray-200'}`}>
                           <div className="flex items-center justify-between gap-2">
                             <p className="font-extrabold text-gray-900">{acc.name}{acc.bank && acc.bank !== acc.name ? <span className="font-medium text-gray-500"> · {acc.bank}</span> : null}</p>
-                            <p className="text-[11px] text-gray-500">{acc.entries} {acc.entries === 1 ? 'entry' : 'entries'}</p>
+                            <p className="text-xs text-gray-500">{acc.entries} {acc.entries === 1 ? 'entry' : 'entries'}</p>
                           </div>
                           <div className="mt-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
-                            <div><p className="text-[10px] font-bold uppercase text-gray-500">Opening</p><p className="font-bold text-gray-900">{rs(acc.opening)}</p></div>
-                            <div><p className="text-[10px] font-bold uppercase text-emerald-700">Money in</p><p className="font-bold text-emerald-800">{rs(acc.moneyIn)}</p></div>
-                            <div><p className="text-[10px] font-bold uppercase text-rose-700">Money out</p><p className="font-bold text-rose-800">{rs(acc.moneyOut)}</p></div>
-                            <div><p className="text-[10px] font-bold uppercase text-gray-500">Closing</p><p className="font-black text-gray-900">{rs(acc.closing)}</p></div>
+                            <div><p className="text-xs font-bold uppercase text-gray-500">Opening</p><p className="font-bold text-gray-900">{rs(acc.opening)}</p></div>
+                            <div><p className="text-xs font-bold uppercase text-emerald-700">Money in</p><p className="font-bold text-emerald-800">{rs(acc.moneyIn)}</p></div>
+                            <div><p className="text-xs font-bold uppercase text-rose-700">Money out</p><p className="font-bold text-rose-800">{rs(acc.moneyOut)}</p></div>
+                            <div><p className="text-xs font-bold uppercase text-gray-500">Closing</p><p className="font-black text-gray-900">{rs(acc.closing)}</p></div>
                           </div>
                           {Object.keys(acc.kinds).length > 0 && (
                             <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2">
@@ -259,7 +259,7 @@ export default function AccountStatementModal({ isOpen, onClose, shopId, account
                       <li key={r.account_id} className="flex items-center justify-between gap-3 p-3">
                         <div className="min-w-0">
                           <p className="font-bold text-gray-900">{r.account_name}</p>
-                          <p className="text-[11px] text-gray-500">Balance {rs(r.stored_balance)} • Entries add up to {rs(r.statement_balance)}</p>
+                          <p className="text-xs text-gray-500">Balance {rs(r.stored_balance)} • Entries add up to {rs(r.statement_balance)}</p>
                         </div>
                         <span className={`shrink-0 rounded-full px-2.5 py-1 font-bold ${good ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
                           {good ? 'Matches' : `Off by ${rs(r.difference)}`}

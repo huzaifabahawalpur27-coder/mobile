@@ -205,16 +205,6 @@ export function unusualAmount(amount, history = []) {
   return value >= median * 10 && value > Math.max(...past) ? roundMoney(median) : null
 }
 
-/** Asks the user to confirm an amount that looks like a typing slip. True = go ahead. */
-export function confirmAmount(amount, history = [], label = 'This amount') {
-  const usual = unusualAmount(amount, history)
-  if (usual == null || typeof window === 'undefined') return true
-  return window.confirm(
-    `${label}: Rs. ${Math.abs(num(amount)).toLocaleString()}\n\n` +
-    `This is much larger than usual here (about Rs. ${usual.toLocaleString()}).\n` +
-    'Please check for an extra digit.\n\nSave it anyway?'
-  )
-}
 
 /**
  * Day book: per account, what it opened with, money in and out (grouped by the kind of

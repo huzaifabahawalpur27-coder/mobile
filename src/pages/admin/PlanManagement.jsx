@@ -206,8 +206,8 @@ export default function PlanManagement() {
                     <form onSubmit={handleSubmit} className="p-8">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase mb-2 tracking-widest text-[10px]">Plan Name</label>
-                                <input
+                                <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-widest text-xs">Plan Name</label>
+                                <input aria-label="Plan Name"
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700"
                                     value={form.name}
                                     onChange={e => setForm({ ...form, name: e.target.value })}
@@ -216,8 +216,8 @@ export default function PlanManagement() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase mb-2 tracking-widest text-[10px]">Price (Rs.)</label>
-                                <input
+                                <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-widest text-xs">Price (Rs.)</label>
+                                <input aria-label="Price (Rs.)"
                                     type="number"
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700"
                                     value={form.price}
@@ -226,8 +226,8 @@ export default function PlanManagement() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase mb-2 tracking-widest text-[10px]">Billing Cycle</label>
-                                <select
+                                <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-widest text-xs">Billing Cycle</label>
+                                <select aria-label="Billing Cycle"
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700"
                                     value={form.billing_cycle}
                                     onChange={e => setForm({ ...form, billing_cycle: e.target.value })}
@@ -237,30 +237,30 @@ export default function PlanManagement() {
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase mb-2 tracking-widest text-[10px]">Product Limit</label>
-                                <input
+                                <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-widest text-xs">Product Limit</label>
+                                <input aria-label="Product Limit"
                                     type="number"
                                     className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-900"
                                     value={form.product_limit}
                                     onChange={e => setForm({ ...form, product_limit: Number(e.target.value) })}
                                     required
                                 />
-                                <p className="text-[10px] text-slate-400 mt-1 font-bold">Max products allowed in inventory</p>
+                                <p className="text-xs text-slate-500 mt-1 font-bold">Max products allowed in inventory</p>
                             </div>
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase mb-2 tracking-widest text-[10px]">Staff Account Limit</label>
-                                <input
+                                <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-widest text-xs">Staff Account Limit</label>
+                                <input aria-label="Staff Account Limit"
                                     type="number"
                                     className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-900"
                                     value={form.user_limit}
                                     onChange={e => setForm({ ...form, user_limit: Number(e.target.value) })}
                                     required
                                 />
-                                <p className="text-[10px] text-slate-400 mt-1 font-bold">Max sub-users (Cashiers)</p>
+                                <p className="text-xs text-slate-500 mt-1 font-bold">Max sub-users (Cashiers)</p>
                             </div>
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase mb-2 tracking-widest text-[10px]">Print Templates</label>
-                                <select
+                                <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-widest text-xs">Print Templates</label>
+                                <select aria-label="Print Templates"
                                     className="w-full px-4 py-3 bg-emerald-50/50 border border-emerald-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-900"
                                     value={form.features?.print_templates || 1}
                                     onChange={e => setForm(f => ({ ...f, features: { ...f.features, print_templates: Number(e.target.value) } }))}
@@ -269,13 +269,13 @@ export default function PlanManagement() {
                                     <option value={2}>2 — Simple + Classic</option>
                                     <option value={3}>3 — All Templates</option>
                                 </select>
-                                <p className="text-[10px] text-slate-400 mt-1 font-bold">Billing template options available to shop</p>
+                                <p className="text-xs text-slate-500 mt-1 font-bold">Billing template options available to shop</p>
                             </div>
                         </div>
 
                         {/* Feature Toggles */}
                         <div className="mt-8 pt-6 border-t border-slate-100">
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Feature Access</h4>
+                            <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Feature Access</h4>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                 {Object.entries(FEATURE_LABELS).map(([key, label]) => (
                                     <label
@@ -283,7 +283,7 @@ export default function PlanManagement() {
                                         className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition select-none ${
                                             form.features?.[key]
                                                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                                                : 'bg-slate-50 border-slate-200 text-slate-400'
+                                                : 'bg-slate-50 border-slate-200 text-slate-500'
                                         }`}
                                     >
                                         <input
@@ -292,8 +292,8 @@ export default function PlanManagement() {
                                             checked={!!form.features?.[key]}
                                             onChange={() => toggleFeature(key)}
                                         />
-                                        <span className={`w-4 h-4 rounded flex items-center justify-center text-[10px] font-black flex-shrink-0 ${
-                                            form.features?.[key] ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'
+                                        <span className={`w-4 h-4 rounded flex items-center justify-center text-xs font-black flex-shrink-0 ${
+                                            form.features?.[key] ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'
                                         }`}>
                                             {form.features?.[key] ? '✓' : '✗'}
                                         </span>
@@ -320,7 +320,7 @@ export default function PlanManagement() {
                             <div className="flex justify-between items-start">
                                 <div>
                                     <h4 className="text-xl font-black text-slate-800 leading-tight">{plan.name}</h4>
-                                    <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">{plan.billing_cycle}</span>
+                                    <span className="text-xs font-black text-slate-500 tracking-widest uppercase">{plan.billing_cycle}</span>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-lg font-black text-blue-600">Rs. {plan.price.toLocaleString()}</p>
@@ -337,7 +337,7 @@ export default function PlanManagement() {
                                 <span className="text-xs font-bold text-emerald-800"><b>{plan.user_limit}</b> Staff Accounts</span>
                             </div>
                             <div className="flex items-center gap-3 p-3 bg-slate-50/50 rounded-xl">
-                                <ShieldCheck className="text-slate-400 shrink-0" size={18} />
+                                <ShieldCheck className="text-slate-500 shrink-0" size={18} />
                                 <span className="text-xs font-bold text-slate-500">Global POS Support</span>
                             </div>
                         </div>

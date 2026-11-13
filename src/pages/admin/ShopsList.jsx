@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext'
 import { logAction } from '../../services/auditService'
 import * as XLSX from 'xlsx'
 import { notify } from '../../utils/toast'
+import { confirmDialog } from '../../utils/dialog'
 
 export default function ShopsList() {
   const { impersonate, user } = useAuth()
@@ -133,7 +134,7 @@ export default function ShopsList() {
 
     // Unassign plan
     if (!newPlanId) {
-      if (!window.confirm(`Remove plan assignment from "${shop.name}"?`)) return
+      if (!await confirmDialog(`Remove plan assignment from "${shop.name}"?`)) return
       setSwitchingPlanShopId(shop.id)
       try {
         let updates = { plan_id: null, subscription_plan: 'none' }
@@ -166,7 +167,7 @@ export default function ShopsList() {
     const maxProds = newPlan.max_products || newPlan.product_limit || 'Unlimited'
     const maxUsers = newPlan.max_users || newPlan.user_limit || 'Unlimited'
     const confirmMsg = `Switch "${shop.name}" to "${newPlan.name}" plan?\n\nNew Fee: Rs. ${Number(newPlan.price || 0).toLocaleString()}\nLimits: ${maxProds} Products, ${maxUsers} Users`
-    if (!window.confirm(confirmMsg)) return
+    if (!await confirmDialog(confirmMsg)) return
 
     setSwitchingPlanShopId(shop.id)
     try {
@@ -233,7 +234,7 @@ export default function ShopsList() {
       suspensionReason = reason.trim() || 'No reason specified'
     }
 
-    if (!confirm(`Are you sure you want to ${newStatus} this shop?`)) return
+    if (!await confirmDialog(`Are you sure you want to ${newStatus} this shop?`)) return
 
     const updates = { status: newStatus }
     if (newStatus === 'suspended') {
@@ -305,7 +306,7 @@ export default function ShopsList() {
   }
 
   const handleImpersonate = async (shop) => {
-    if (confirm(`Login as ${shop.name}? You will be temporarily in shop view with an exit banner.`)) {
+    if (await confirmDialog(`Login as ${shop.name}? You will be temporarily in shop view with an exit banner.`)) {
       // Retrieve first active admin user of the shop to associate with the database session
       let targetUserId = null;
       try {
@@ -478,8 +479,8 @@ export default function ShopsList() {
       <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center flex-1">
           <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-2.5 text-slate-400" size={20} />
-            <input
+            <Search className="absolute left-3 top-2.5 text-slate-500" size={20} />
+            <input aria-label="Search shops by name or phone"
               type="text"
               placeholder="Search shops by name or phone..."
               value={search}
@@ -548,29 +549,29 @@ export default function ShopsList() {
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
               {loading ? (
-                <tr><td colSpan="8" className="p-8 text-center text-slate-400">Loading tenants...</td></tr>
+                <tr><td colSpan="8" className="p-8 text-center text-slate-500">Loading tenants...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan="8" className="p-8 text-center text-slate-400">No shops found.</td></tr>
+                <tr><td colSpan="8" className="p-8 text-center text-slate-500">No shops found.</td></tr>
               ) : (
                 filtered.map(shop => (
                   <tr key={shop.id} className="hover:bg-slate-50/50 transition">
-                    <td className="p-4 pl-6 font-mono text-xs text-slate-400">#{shop.id}</td>
+                    <td className="p-4 pl-6 font-mono text-xs text-slate-500">#{shop.id}</td>
                     <td className="p-4">
                       <p className="font-bold text-slate-800">{shop.name}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{shop.phone || 'No phone'}</p>
-                      <p className="text-[10px] text-blue-600 mt-0.5 font-mono truncate max-w-[150px]" title={shop.email}>{shop.email || 'No email'}</p>
-                      {shop.address && <p className="text-[10px] text-slate-400 mt-0.5 truncate" title={shop.address}>📍 {shop.address}</p>}
-                      {shop.notes && <p className="text-[10px] text-slate-400 mt-1 italic line-clamp-2" title={shop.notes}>📝 {shop.notes}</p>}
+                      <p className="text-xs text-blue-600 mt-0.5 font-mono truncate max-w-[150px]" title={shop.email}>{shop.email || 'No email'}</p>
+                      {shop.address && <p className="text-xs text-slate-500 mt-0.5 truncate" title={shop.address}>📍 {shop.address}</p>}
+                      {shop.notes && <p className="text-xs text-slate-500 mt-1 italic line-clamp-2" title={shop.notes}>📝 {shop.notes}</p>}
                     </td>
                     <td className="p-4">
                       <div className="space-y-1.5 min-w-[180px]">
                         {/* Plan Switcher Dropdown */}
                         <div className="flex items-center gap-1.5">
-                          <select
+                          <select aria-label="No Plan"
                             value={shop.plan_id ? String(shop.plan_id) : (shop.subscription_plans?.id ? String(shop.subscription_plans.id) : (allPlans.find(p => p.name?.toLowerCase() === shop.subscription_plan?.toLowerCase())?.id ? String(allPlans.find(p => p.name?.toLowerCase() === shop.subscription_plan?.toLowerCase()).id) : ''))}
                             disabled={switchingPlanShopId === shop.id}
                             onChange={(e) => handleQuickPlanChange(shop, e.target.value)}
-                            className="text-[11px] font-bold bg-amber-50/80 text-amber-900 border border-amber-200/90 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer disabled:opacity-50"
+                            className="text-xs font-bold bg-amber-50/80 text-amber-900 border border-amber-200/90 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer disabled:opacity-50"
                             title="Quick switch subscription plan"
                           >
                             <option value="">No Plan</option>
@@ -583,9 +584,9 @@ export default function ShopsList() {
                         </div>
 
                         {/* Quotas: Products & Users */}
-                        <div className="text-[10px] space-y-1 text-slate-500 font-mono">
+                        <div className="text-xs space-y-1 text-slate-500 font-mono">
                           <div>
-                            <div className="flex justify-between items-center text-[10px] mb-0.5">
+                            <div className="flex justify-between items-center text-xs mb-0.5">
                               <span>Products:</span>
                               <span className="font-bold text-slate-700">
                                 {shop.productCount || 0} / {shop.subscription_plans?.max_products || shop.subscription_plans?.product_limit || '∞'}
@@ -603,7 +604,7 @@ export default function ShopsList() {
                             )}
                           </div>
 
-                          <div className="flex justify-between items-center text-[10px]">
+                          <div className="flex justify-between items-center text-xs">
                             <span>Users:</span>
                             <span className="font-bold text-slate-700">
                               {shop.userCount || 0} / {shop.subscription_plans?.max_users || shop.subscription_plans?.user_limit || '∞'}
@@ -623,7 +624,7 @@ export default function ShopsList() {
                             <XCircle size={12} /> Suspended
                           </span>
                           {shop.suspension_reason && (
-                            <span className="text-[9px] text-red-400 font-medium italic max-w-[120px] truncate" title={shop.suspension_reason}>
+                            <span className="text-xs text-red-400 font-medium italic max-w-[120px] truncate" title={shop.suspension_reason}>
                               {shop.suspension_reason}
                             </span>
                           )}
@@ -638,7 +639,7 @@ export default function ShopsList() {
                             <span className="text-xs font-mono font-bold text-slate-700">
                               {new Date(shop.next_billing_date).toLocaleDateString()}
                             </span>
-                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 mt-0.5">
+                            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 mt-0.5">
                               {diff}d left
                             </span>
                           </div>
@@ -648,7 +649,7 @@ export default function ShopsList() {
                             <span className="text-xs font-mono font-bold text-amber-700">
                               {new Date(shop.next_billing_date).toLocaleDateString()}
                             </span>
-                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 mt-0.5 animate-pulse">
+                            <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 mt-0.5 animate-pulse">
                               {diff}d left
                             </span>
                           </div>
@@ -658,13 +659,13 @@ export default function ShopsList() {
                             <span className="text-xs font-mono font-bold text-red-600">
                               {new Date(shop.next_billing_date).toLocaleDateString()}
                             </span>
-                            <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 mt-0.5">
+                            <span className="text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 mt-0.5">
                               Expired ({Math.abs(diff)}d ago)
                             </span>
                           </div>
                         )
                       })() : (
-                        <span className="text-[11px] text-slate-400 italic">No expiry set</span>
+                        <span className="text-xs text-slate-500 italic">No expiry set</span>
                       )}
                     </td>
                     <td className="p-4 text-center text-slate-500 text-xs hidden lg:table-cell">
@@ -729,9 +730,9 @@ export default function ShopsList() {
       {/* Mobile Card View */}
       <div className="md:hidden space-y-3">
         {loading ? (
-          <div className="bg-white rounded-2xl p-6 text-center text-slate-400 shadow-sm border border-slate-200">Loading...</div>
+          <div className="bg-white rounded-2xl p-6 text-center text-slate-500 shadow-sm border border-slate-200">Loading...</div>
         ) : filtered.length === 0 ? (
-          <div className="bg-white rounded-2xl p-6 text-center text-slate-400 shadow-sm border border-slate-200">No shops found.</div>
+          <div className="bg-white rounded-2xl p-6 text-center text-slate-500 shadow-sm border border-slate-200">No shops found.</div>
         ) : (
           filtered.map(shop => {
             const planName = shop.subscription_plans?.name || shop.subscription_plan || null
@@ -752,8 +753,8 @@ export default function ShopsList() {
                   <div className="min-w-0">
                     <p className="font-black text-slate-800 text-base leading-tight truncate">{shop.name}</p>
                     <p className="text-xs text-slate-500 mt-0.5">{shop.phone || 'No phone'}</p>
-                    <p className="text-[10px] text-blue-600 font-mono truncate">{shop.email || 'No email'}</p>
-                    {shop.address && <p className="text-[10px] text-slate-400 mt-0.5 truncate">📍 {shop.address}</p>}
+                    <p className="text-xs text-blue-600 font-mono truncate">{shop.email || 'No email'}</p>
+                    {shop.address && <p className="text-xs text-slate-500 mt-0.5 truncate">📍 {shop.address}</p>}
                   </div>
                   <div className="flex flex-col items-end gap-1.5 shrink-0">
                     {isActive ? (
@@ -766,18 +767,18 @@ export default function ShopsList() {
                           <XCircle size={11} /> Suspended
                         </span>
                         {shop.suspension_reason && (
-                          <span className="text-[8px] text-red-400 font-medium italic max-w-[100px] truncate" title={shop.suspension_reason}>
+                          <span className="text-xs text-red-400 font-medium italic max-w-[100px] truncate" title={shop.suspension_reason}>
                             {shop.suspension_reason}
                           </span>
                         )}
                       </div>
                     )}
                     {planName ? (
-                      <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-black uppercase border border-amber-200">
+                      <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-black uppercase border border-amber-200">
                         {planName}
                       </span>
                     ) : (
-                      <span className="text-[9px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded font-black uppercase border border-red-200">
+                      <span className="text-xs bg-red-50 text-red-500 px-1.5 py-0.5 rounded font-black uppercase border border-red-200">
                         No Plan
                       </span>
                     )}
@@ -785,7 +786,7 @@ export default function ShopsList() {
                 </div>
 
                 {/* Meta row */}
-                <div className="flex items-center gap-2 text-[10px] text-slate-400 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100 flex-wrap">
+                <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100 flex-wrap">
                   <span className="font-mono font-bold text-slate-500">#{shop.id}</span>
                   <span>·</span>
                   <span><span className="font-bold text-slate-600">{shop.userCount || 0}</span> staff</span>
@@ -800,7 +801,7 @@ export default function ShopsList() {
                 </div>
 
                 {shop.notes && (
-                  <p className="text-[10px] text-slate-400 italic border-l-2 border-slate-200 pl-2 line-clamp-2">
+                  <p className="text-xs text-slate-500 italic border-l-2 border-slate-200 pl-2 line-clamp-2">
                     📝 {shop.notes}
                   </p>
                 )}
@@ -808,8 +809,8 @@ export default function ShopsList() {
                 {/* Quick Plan & Quota section */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Plan:</span>
-                    <select
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Plan:</span>
+                    <select aria-label="No Plan"
                       value={shop.plan_id ? String(shop.plan_id) : (shop.subscription_plans?.id ? String(shop.subscription_plans.id) : (allPlans.find(p => p.name?.toLowerCase() === shop.subscription_plan?.toLowerCase())?.id ? String(allPlans.find(p => p.name?.toLowerCase() === shop.subscription_plan?.toLowerCase()).id) : ''))}
                       disabled={switchingPlanShopId === shop.id}
                       onChange={(e) => handleQuickPlanChange(shop, e.target.value)}
@@ -823,7 +824,7 @@ export default function ShopsList() {
                       ))}
                     </select>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] font-mono border-t border-slate-200/70">
+                  <div className="grid grid-cols-2 gap-2 pt-1 text-xs font-mono border-t border-slate-200/70">
                     <div className="text-slate-600">
                       Products: <span className="font-bold text-slate-800">{shop.productCount || 0}/{shop.subscription_plans?.max_products || shop.subscription_plans?.product_limit || '∞'}</span>
                     </div>

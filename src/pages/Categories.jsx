@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import * as XLSX from 'xlsx'
 import { db, addToSyncQueue } from '../services/db'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 function Categories() {
   const { user } = useAuth()
@@ -178,7 +179,7 @@ function Categories() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure?')) return
+    if (!await confirmDialog('Delete this category?', { confirmLabel: 'Delete category', danger: true })) return
     try {
       if (!navigator.onLine) throw new TypeError('Failed to fetch')
       const { error } = await supabase.from('categories').delete().eq('id', id)
@@ -201,15 +202,15 @@ function Categories() {
   const handleApplyToProducts = async (cat) => {
     const threshold = cat.low_stock_threshold
     if (!threshold || threshold <= 0) {
-      notify('Pehle is category ka "Low Stock Alert" value set karein (Edit karein).')
+      notify('Set a Low Stock Alert value for this category first (use Edit).')
       return
     }
     const count = getProductCount(cat.id)
     if (count === 0) {
-      notify('Is category mein koi product nahi hai.')
+      notify('This category has no products.')
       return
     }
-    if (!confirm(`"${cat.name}" category ke ${count} products ka Low Stock Alert ≤${threshold} par set ho jayega.\n\nContinue?`)) return
+    if (!await confirmDialog(`Set the low stock alert to ${threshold} for ${count} products?\nThis applies to every product in "${cat.name}".`, { confirmLabel: 'Set alert' })) return
 
     setApplyingId(cat.id)
     try {
@@ -230,7 +231,7 @@ function Categories() {
         }
       }
       fetchProducts()
-      notify(`✅ ${count} products ka Low Stock Alert ≤${threshold} par set ho gaya!`)
+      notify(`Low stock alert set to ${threshold} for ${count} products.`, 'success')
     } catch (err) {
       notify('Error: ' + (err.message || String(err)))
     } finally {
@@ -341,7 +342,7 @@ function Categories() {
       {/* Low stock summary banner */}
       {lowStockSummary.length > 0 && (
         <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <p className="text-sm font-bold text-amber-800 mb-2">⚠️ Low Stock Alerts — {lowStockSummary.length} categor{lowStockSummary.length > 1 ? 'ies' : 'y'} mein stock kam hai:</p>
+          <p className="text-sm font-bold text-amber-800 mb-2">⚠️ Low Stock Alerts — {lowStockSummary.length} categor{lowStockSummary.length > 1 ? 'ies are' : 'y is'} low on stock:</p>
           <div className="flex flex-wrap gap-2">
             {lowStockSummary.map(({ cat, count }) => (
               <span key={cat.id} className="bg-white border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-1 rounded-full">
@@ -360,7 +361,7 @@ function Categories() {
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-gray-700 font-medium mb-1">Name *</label>
-              <input
+              <input aria-label="Name"
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -371,7 +372,7 @@ function Categories() {
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Description</label>
-              <input
+              <input aria-label="Description"
                 type="text"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -382,10 +383,10 @@ function Categories() {
             <div>
               <label className="block text-gray-700 font-medium mb-1">
                 ⚠️ Low Stock Alert Threshold
-                <span className="text-xs text-gray-400 font-normal ml-2">— is se kam hone par alert aayega</span>
+                <span className="text-xs text-gray-500 font-normal ml-2">— alert when stock falls below this</span>
               </label>
               <div className="flex items-center gap-2">
-                <input
+                <input aria-label="Low stock alert threshold"
                   type="number"
                   min="0"
                   value={form.low_stock_threshold}
@@ -393,7 +394,7 @@ function Categories() {
                   className="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
                   placeholder="e.g. 5"
                 />
-                <span className="text-sm text-gray-400">units (0 = disabled)</span>
+                <span className="text-sm text-gray-500">units (0 = disabled)</span>
               </div>
             </div>
             <div className="flex gap-3 pt-1">
@@ -418,7 +419,7 @@ function Categories() {
         <p className="text-gray-500">Loading...</p>
       ) : categories.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-400 text-lg">No categories yet</p>
+          <p className="text-gray-500 text-lg">No categories yet</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
