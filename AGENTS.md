@@ -35,6 +35,12 @@ Standalone admin: `cd superadmin`, then the same npm scripts.
 - Decide whether an account is the cash drawer with `isCashAccount` / `isCashName` from `moneyMath.js`, never `includes('cash')` (it matches "JazzCash").
 - Show messages with `notify()` from `src/utils/toast.js`, not `alert()`. Keep `alert()` only where the page reloads, signs out or prints straight after.
 
+## Quality Gates
+
+- `.github/workflows/ci.yml` runs on every push: `npm test`, lint, production build, and `scripts/db_test.sh` (builds the whole database from nothing in the order of `sql/MIGRATION_ORDER.txt`, then runs `sql/tests/*.test.sql`). Keep it green.
+- A new SQL script must be safe to re-run, go at the END of `sql/MIGRATION_ORDER.txt`, and get a check under `sql/tests/` (see `sql/README.md`). Never add a `USING (true)` policy on a table with `shop_id`.
+- `.github/workflows/backup.yml` makes an encrypted nightly backup and restores it into a throwaway database (`scripts/backup.sh`, `scripts/restore_check.sh`); it needs the `SUPABASE_DB_URL` and `BACKUP_PASSPHRASE` repository secrets.
+
 ## UI And Product Conventions
 
 - Keep the app shell full-screen; let `Layout` own available height and pages scroll inside `<main>`. Prefer flex + `min-h-0`/`h-full`, and `dvh` when viewport sizing is unavoidable. Avoid page-local `100vh` subtraction.

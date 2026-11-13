@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS shop_members (
     UNIQUE(shop_id, user_id)
 );
 
+-- A database built from COMPLETE_SUPABASE_SETUP.sql has default_branch_id only
+ALTER TABLE shop_members ADD COLUMN IF NOT EXISTS branch_id INTEGER;
+
 CREATE INDEX IF NOT EXISTS idx_shop_members_user ON shop_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_shop_members_shop ON shop_members(shop_id);
 

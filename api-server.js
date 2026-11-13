@@ -23,6 +23,12 @@ const adminTables = new Set([
   'shop_payments', 'shops', 'subscription_plans', 'suppliers', 'users', 'sessions',
   'system_configs', 'support_tickets'
 ])
+// Shop data the backup export reads. Read-only through the admin API: these hold money
+// and stock, which only change through the shop app's own checked functions.
+const adminReadOnlyTables = new Set([
+  'purchase_items', 'customer_payments', 'supplier_payments', 'bank_accounts',
+  'bank_account_transactions', 'phones', 'cash_sessions'
+])
 const adminRpcs = new Set([
   'get_global_growth_stats', 'get_top_performing_shops', 'get_inactive_shops',
   // Shop notifications (sql/shop_notifications.sql): service role only
@@ -153,7 +159,9 @@ app.post('/api/admin/session/validate', requireSuperadmin, (req, res) => res.jso
 
 app.post('/api/admin/query', requireSuperadmin, async (req, res) => {
   const { table, method = 'GET', select = '*', filters = [], orders = [], limit, body, onConflict, single } = req.body || {}
-  if (!adminTables.has(table)) return res.status(400).json({ error: 'Table is not available through the admin API' })
+  const readOnly = adminReadOnlyTables.has(table)
+  if (!adminTables.has(table) && !readOnly) return res.status(400).json({ error: 'Table is not available through the admin API' })
+  if (readOnly && method !== 'GET') return res.status(403).json({ error: 'This table is read-only through the admin API' })
   if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(method)) return res.status(400).json({ error: 'Unsupported query method' })
   try {
     let query = supabase.from(table)

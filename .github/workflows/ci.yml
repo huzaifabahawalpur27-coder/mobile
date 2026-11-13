@@ -1,0 +1,61 @@
+name: CI
+
+# Every push and pull request: money rules, lint, production build, and the database
+# built from scratch with its checks. A change that breaks any of these shows a red X
+# on the commit before it reaches the shops.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: App (tests, lint, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Money rules
+        run: npm test
+      - name: Lint (errors fail the build)
+        run: npm run lint
+      - name: Production build
+        run: npm run build
+
+  database:
+    name: Database (build from scratch + checks)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: edgex_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: edgex_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the database in order and run the checks
+        run: ./scripts/db_test.sh

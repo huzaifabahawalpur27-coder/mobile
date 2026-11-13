@@ -1403,7 +1403,15 @@ $$;
 GRANT EXECUTE ON FUNCTION secure_login(TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION switch_tenant_context(INTEGER, INTEGER) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION update_shop_settings TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION record_phone_purchase TO anon, authenticated;
+-- record_phone_purchase has more than one signature: grant each of them
+DO $$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN SELECT p.oid::regprocedure AS sig FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'public' AND p.proname = 'record_phone_purchase' LOOP
+        EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO anon, authenticated', r.sig);
+    END LOOP;
+END $$;
 GRANT EXECUTE ON FUNCTION process_phone_sale TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION issue_phone_custody TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION return_phone_custody TO anon, authenticated;

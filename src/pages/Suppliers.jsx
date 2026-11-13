@@ -820,7 +820,58 @@ function Suppliers() {
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Phones: one card per supplier, no sideways scrolling */}
+          <div className="md:hidden">
+            <label className="flex items-center gap-3 border-b border-gray-100 bg-gray-50 px-4 py-3 text-xs font-bold uppercase text-gray-500">
+              <input
+                type="checkbox"
+                checked={selected.length === suppliers.length && suppliers.length > 0}
+                onChange={toggleSelectAll}
+                className="w-5 h-5 rounded"
+              />
+              Select all ({suppliers.length})
+            </label>
+            <ul className="divide-y divide-gray-100">
+              {suppliers.map((sup) => {
+                const owed = Number(sup.outstanding_balance) > 0
+                return (
+                  <li key={sup.id} className={`p-4 ${selected.includes(sup.id) ? 'bg-blue-50' : ''}`}>
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${sup.name}`}
+                        checked={selected.includes(sup.id)}
+                        onChange={() => toggleSelect(sup.id)}
+                        className="mt-1 w-5 h-5 rounded shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-gray-900 break-words">{sup.name}</p>
+                        <p className="mt-0.5 text-sm text-gray-500">{sup.phone || 'No phone'}{sup.address ? ` · ${sup.address}` : ''}</p>
+                        <p className="mt-0.5 text-xs font-bold uppercase text-blue-600">{sup.brand || 'No Brand'} <span className="font-medium normal-case text-gray-500">· {sup.product_type || 'General'}</span></p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[10px] font-bold uppercase text-gray-400">Payable</p>
+                        <p className={`font-black ${owed ? 'text-red-600' : 'text-green-600'}`}>Rs. {Number(sup.outstanding_balance || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <Link to={`/suppliers/${sup.id}`} className="flex min-h-[44px] items-center justify-center rounded-lg bg-blue-600 px-2 text-sm font-bold text-white">
+                        Ledger
+                      </Link>
+                      <button onClick={() => openTxModal(sup)} className="min-h-[44px] rounded-lg bg-purple-50 px-2 text-sm font-bold text-purple-700">📋 Txns</button>
+                      <Link to={`/suppliers/${sup.id}?tab=phones`} className="flex min-h-[44px] items-center justify-center rounded-lg bg-indigo-50 px-2 text-sm font-bold text-indigo-700">
+                        📱 Phones
+                      </Link>
+                      <button onClick={() => handleEdit(sup)} className="min-h-[44px] rounded-lg bg-gray-100 px-2 text-sm font-bold text-gray-700">Edit</button>
+                      <button onClick={() => requestDelete([sup.id])} className="min-h-[44px] rounded-lg bg-red-50 px-2 text-sm font-bold text-red-600">Delete</button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>

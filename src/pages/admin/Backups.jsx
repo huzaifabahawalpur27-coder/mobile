@@ -19,8 +19,33 @@ const BACKUP_TABLES = [
   { name: 'purchases',          label: 'Purchases' },
   { name: 'purchase_items',     label: 'Purchase Items',     joinTable: 'purchases' },
   { name: 'customer_payments',  label: 'Customer Payments' },
+  { name: 'supplier_payments',  label: 'Supplier Payments' },
   { name: 'expenses',           label: 'Expenses' },
+  { name: 'phones',             label: 'Phones (IMEI)' },
+  { name: 'bank_accounts',      label: 'Bank & Cash Accounts' },
+  { name: 'bank_account_transactions', label: 'Account Statement' },
+  { name: 'cash_sessions',      label: 'Cash Sessions' },
 ]
+
+// The server returns at most 1,000 rows per request. Read a table page by page (by id)
+// so a large shop's backup is complete instead of silently stopping at 1,000 rows.
+// Throws when a table cannot be read, so a failed export is never taken for an empty one.
+async function fetchAllRows(table, applyFilter) {
+  const PAGE = 1000
+  const all = []
+  let lastId = null
+  for (let guard = 0; guard < 2000; guard++) {
+    let query = applyFilter(supabaseAdmin.from(table).select('*')).order('id', { ascending: true }).limit(PAGE)
+    if (lastId !== null) query = query.gt('id', lastId)
+    const { data, error } = await query
+    if (error) throw new Error(`${table}: ${error.message || error}`)
+    const rows = data || []
+    all.push(...rows)
+    if (rows.length < PAGE) break
+    lastId = rows[rows.length - 1].id
+  }
+  return all
+}
 
 function BackupStatusChip({ lastBackup }) {
   const [days] = useState(() => lastBackup ? Math.floor((Date.now() - new Date(lastBackup).getTime()) / 86400000) : null)
@@ -97,37 +122,30 @@ export default function Backups() {
       const wb = XLSX.utils.book_new()
       let totalRows = 0
 
+      const failedTables = []
       for (const tbl of BACKUP_TABLES) {
         let data = []
 
-        if (tbl.singleRow) {
-          // Shop info — single row
-          const { data: rows } = await supabaseAdmin
-            .from(tbl.name).select('*').eq('id', shop.id).limit(1)
-          data = rows || []
-        } else if (tbl.joinTable) {
-          // Tables joined via parent (e.g. sale_items via sales.shop_id)
-          // Fetch parent IDs first
-          const { data: parentRows } = await supabaseAdmin
-            .from(tbl.joinTable).select('id').eq('shop_id', shop.id)
-          const parentIds = (parentRows || []).map(r => r.id)
-          if (parentIds.length > 0) {
-            // Fetch in chunks of 500 to avoid URL length limits
-            const chunks = []
-            for (let i = 0; i < parentIds.length; i += 500) {
-              const chunk = parentIds.slice(i, i + 500)
-              const { data: rows } = await supabaseAdmin
-                .from(tbl.name).select('*')
-                .in(`${tbl.joinTable.slice(0, -1)}_id`, chunk) // sale_items.sale_id
-              if (rows) chunks.push(...rows)
+        try {
+          if (tbl.singleRow) {
+            // Shop info — single row
+            data = await fetchAllRows(tbl.name, q => q.eq('id', shop.id))
+          } else if (tbl.joinTable) {
+            // Lines belong to the shop through their bill (e.g. sale_items via sales)
+            const parents = await fetchAllRows(tbl.joinTable, q => q.eq('shop_id', shop.id))
+            const parentIds = parents.map(r => r.id)
+            const fk = `${tbl.joinTable.slice(0, -1)}_id` // sale_items.sale_id
+            for (let i = 0; i < parentIds.length; i += 200) {
+              const chunk = parentIds.slice(i, i + 200)
+              data.push(...await fetchAllRows(tbl.name, q => q.in(fk, chunk)))
             }
-            data = chunks
+          } else {
+            data = await fetchAllRows(tbl.name, q => q.eq('shop_id', shop.id))
           }
-        } else {
-          // Standard: filter by shop_id
-          let query = supabaseAdmin.from(tbl.name).select('*').eq('shop_id', shop.id)
-          const { data: rows } = await query
-          data = rows || []
+        } catch (tableErr) {
+          // Say which sheets are missing instead of handing over an incomplete backup quietly
+          failedTables.push(`${tbl.label} (${tableErr.message})`)
+          data = []
         }
 
         totalRows += data.length
@@ -145,6 +163,9 @@ export default function Backups() {
       // Download
       const filename = `${shop.name.replace(/\s+/g, '_')}_backup_${new Date().toISOString().split('T')[0]}.xlsx`
       XLSX.writeFile(wb, filename)
+      if (failedTables.length > 0) {
+        notify(`Backup downloaded, but these sheets could not be read and are EMPTY:\n${failedTables.join('\n')}`, 'error')
+      }
 
       // Refresh meta
       setBackupMeta(prev => ({

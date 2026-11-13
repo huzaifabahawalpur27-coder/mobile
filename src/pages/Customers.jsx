@@ -385,6 +385,23 @@ function Customers() {
     `)
   }
 
+  // WhatsApp reminder of the customer's outstanding balance (shop's own template)
+  const sendReminder = async (c) => {
+    const { data: shop } = await supabase.from('shops').select('*').eq('id', user.shop_id).maybeSingle()
+    const phone = c.phone.replace(/[^0-9]/g, '')
+    let formattedPhone = phone
+    if (phone.startsWith('03')) formattedPhone = '92' + phone.substring(1)
+    else if (phone.length === 10) formattedPhone = '92' + phone
+
+    const template = shop?.wa_reminder_template || "Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!"
+    const msg = template
+      .replace(/\[Name\]/g, c.name)
+      .replace(/\[Amount\]/g, (c.outstanding_balance || 0).toLocaleString())
+      .replace(/\[Shop Name\]/g, shop?.name || 'our shop')
+
+    window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(msg)}`, '_blank')
+  }
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -463,7 +480,63 @@ function Customers() {
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Phones: one card per customer, no sideways scrolling */}
+          <div className="md:hidden">
+            <label className="flex items-center gap-3 border-b border-gray-100 bg-gray-50 px-4 py-3 text-xs font-bold uppercase text-gray-500">
+              <input
+                type="checkbox"
+                checked={selected.length === customers.length && customers.length > 0}
+                onChange={toggleSelectAll}
+                className="w-5 h-5 rounded"
+              />
+              Select all ({customers.length})
+            </label>
+            <ul className="divide-y divide-gray-100">
+              {customers.map((c) => {
+                const seg = getSegment(c)
+                const owes = Number(c.outstanding_balance) > 0
+                return (
+                  <li key={c.id} className={`p-4 ${selected.includes(c.id) ? 'bg-blue-50' : ''}`}>
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${c.name}`}
+                        checked={selected.includes(c.id)}
+                        onChange={() => toggleSelect(c.id)}
+                        className="mt-1 w-5 h-5 rounded shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-gray-900 break-words">{c.name}</span>
+                          {seg && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${seg.bg}`}>{seg.label}</span>}
+                        </div>
+                        <p className="mt-0.5 text-sm text-gray-500">{c.phone || 'No phone'}{c.address ? ` · ${c.address}` : ''}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[10px] font-bold uppercase text-gray-400">Balance</p>
+                        <p className={`font-black ${owes ? 'text-red-600' : 'text-green-600'}`}>Rs. {Number(c.outstanding_balance || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link to={`/customers/${c.id}`} className="flex min-h-[44px] flex-1 items-center justify-center rounded-lg bg-blue-600 px-3 text-sm font-bold text-white">
+                        Ledger
+                      </Link>
+                      {c.phone && (
+                        <button onClick={() => sendReminder(c)} aria-label={`WhatsApp reminder to ${c.name}`}
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg bg-green-50 px-3 text-lg text-green-700">
+                          💬
+                        </button>
+                      )}
+                      <button onClick={() => handleEdit(c)} className="min-h-[44px] rounded-lg bg-gray-100 px-4 text-sm font-bold text-gray-700">Edit</button>
+                      <button onClick={() => requestDelete([c.id])} className="min-h-[44px] rounded-lg bg-red-50 px-4 text-sm font-bold text-red-600">Delete</button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
@@ -513,21 +586,7 @@ function Customers() {
                       {c.phone && (
                         <button
                           title="Send WhatsApp Reminder"
-                          onClick={async () => {
-                            const { data: shop } = await supabase.from('shops').select('*').eq('id', user.shop_id).maybeSingle()
-                            const phone = c.phone.replace(/[^0-9]/g, '')
-                            let formattedPhone = phone
-                            if (phone.startsWith('03')) formattedPhone = '92' + phone.substring(1)
-                            else if (phone.length === 10) formattedPhone = '92' + phone
-
-                            const template = shop?.wa_reminder_template || "Hello [Name], this is a reminder from [Shop Name] regarding your outstanding balance of Rs. [Amount]. Please clear your dues at your earliest convenience. Thank you!"
-                            const msg = template
-                              .replace(/\[Name\]/g, c.name)
-                              .replace(/\[Amount\]/g, (c.outstanding_balance || 0).toLocaleString())
-                              .replace(/\[Shop Name\]/g, shop?.name || 'our shop')
-
-                            window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(msg)}`, '_blank')
-                          }}
+                          onClick={() => sendReminder(c)}
                           className="text-green-600 hover:text-green-800 text-lg"
                         >
                           💬

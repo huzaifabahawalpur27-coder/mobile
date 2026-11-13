@@ -2559,7 +2559,7 @@ function POS() {
                           type="button"
                           onClick={() => updateQty(item.id, Math.max(1, (parseFloat(item.qty) || 1) - 1))}
                           aria-label="Decrease quantity"
-                          className="w-6 h-6 flex items-center justify-center text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-md active:scale-90 transition select-none"
+                          className="w-6 h-6 flex items-center justify-center text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-md active:scale-90 transition select-none [@media(pointer:coarse)]:w-10 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:text-lg"
                         >
                           −
                         </button>
@@ -2574,7 +2574,7 @@ function POS() {
                         />
                         <button
                           onClick={() => updateQty(item.id, (parseFloat(item.qty) || 0) + 1)}
-                          className="w-4 h-4 flex items-center justify-center text-xs font-bold text-slate-500 hover:bg-slate-100 rounded select-none"
+                          className="w-6 h-6 flex items-center justify-center text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-md select-none [@media(pointer:coarse)]:w-10 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:text-lg"
                         >
                           +
                         </button>
@@ -2589,7 +2589,7 @@ function POS() {
                       type="button"
                       onClick={() => removeFromCart(item.id)}
                       aria-label="Remove item from cart"
-                      className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md font-bold text-xs transition active:scale-90"
+                      className="w-6 h-6 [@media(pointer:coarse)]:w-10 [@media(pointer:coarse)]:h-10 flex items-center justify-center text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md font-bold text-xs transition active:scale-90"
                       title="Remove item"
                     >
                       ✕
@@ -2985,19 +2985,19 @@ function POS() {
 
                 <div className="grid grid-cols-4 gap-1">
                   <button onClick={() => { setPaymentType('cash'); setReceivedAmount(total.toString()) }}
-                    className={`py-1 rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'cash' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
+                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'cash' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
                     💵 Cash
                   </button>
                   <button onClick={() => { setPaymentType('online'); setReceivedAmount(total.toString()) }}
-                    className={`py-1 rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'online' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
+                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'online' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
                     📱 Online
                   </button>
                   <button onClick={() => { setPaymentType('credit'); setReceivedAmount('0') }}
-                    className={`py-1 rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'credit' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
+                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'credit' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
                     📒 Credit
                   </button>
                   <button onClick={() => { setPaymentType('split'); setShowPaymentModal(true); if (payments.length === 0) setPayments([{ method: 'cash', amount: total }]) }}
-                    className={`py-1 rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'split' ? 'bg-purple-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
+                    className={`py-1 [@media(pointer:coarse)]:py-3 [@media(pointer:coarse)]:text-xs rounded-lg font-bold text-[10px] uppercase transition flex items-center justify-center gap-1 ${paymentType === 'split' ? 'bg-purple-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}>
                     🔀 Split
                   </button>
                 </div>

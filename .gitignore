@@ -27,3 +27,7 @@ error-log.txt
 *.njsproj
 *.sln
 *.sw?
+
+# Local database backups (scripts/backup.sh)
+backups/
+restore-errors.log

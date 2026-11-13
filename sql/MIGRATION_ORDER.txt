@@ -1,0 +1,59 @@
+# Order in which the SQL scripts build a complete database from nothing.
+# scripts/db_build.sh applies this list to an empty Postgres and stops at the first
+# error; CI runs it on every push, so this order is known to work.
+#
+# One file per line, relative to the repository root. Lines starting with # are notes.
+# A NEW script goes at the END of this list (and must be safe to re-run).
+#
+# SQL files in the repository that are NOT listed here are older, one-off or superseded
+# scripts (see sql/README.md). Do not run them on a live database without reading them.
+
+# --- base schema, login, phone and POS functions
+COMPLETE_SUPABASE_SETUP.sql
+MASTER_SCHEMA_AND_COLUMN_FIXES.sql
+sql/phase_2_multitenant_foundation.sql
+sql/phase_3_imei_inventory_and_purchases.sql
+sql/phase_4_pos_and_sales_upgrade.sql
+sql/phase_5_custody_and_returns.sql
+sql/phase_6_cash_sessions_and_accounting.sql
+sql/phase_7_part1_tables_and_schema.sql
+sql/phase_7_part2_process_exchange_rpc.sql
+sql/phase_7_part3_void_exchange_rpc.sql
+sql/phase_8_part1_batch_costing_tables.sql
+sql/phase_8_part2_conversion_rpcs.sql
+sql/phase_8_part3_sale_fifo_and_returns.sql
+sql/phase_8_part4_cost_adjustments_and_void.sql
+
+# --- columns and small features
+sql/add_brand_categories.sql
+sql/add_units.sql
+sql/add_category_low_stock.sql
+sql/add_ledger_tx_fields.sql
+sql/fix_categories_and_suppliers_columns.sql
+sql/create_bank_accounts_schema.sql
+sql/public_invoice_rpc.sql
+sql/get_public_invoice.sql
+sql/phase0_invoice_link_and_outbox_fix.sql
+sql/phase0b_legacy_invoice_tokens.sql
+sql/fix_secure_login_and_payments.sql
+
+# --- security: every shop sees only its own rows. Nothing after this may re-open access.
+sql/production_security_hardening.sql
+sql/fix_secure_login_session.sql
+sql/fix_function_grants.sql
+
+# --- features that need the session-scoped security above
+sql/phase1_warranty_settings.sql
+sql/phase1b_bill_customer_backfill.sql
+sql/shop_notifications.sql
+sql/fix_phone_purchase_atomic.sql
+sql/fix_phone_repurchase_buyback.sql
+sql/fix_exchange_numbers_and_sale_type.sql
+sql/analytics_rpc.sql
+
+# --- money: amounts applied inside the database, one transaction per action
+sql/atomic_stock_and_balances.sql
+sql/atomic_sale_and_cost.sql
+sql/atomic_bank_balance.sql
+sql/edit_bank_transaction.sql
+sql/atomic_money_ops.sql

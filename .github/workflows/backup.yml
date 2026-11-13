@@ -1,0 +1,82 @@
+name: Nightly backup
+
+# Every night: a full, encrypted backup of the live database, restored into a throwaway
+# database to prove it works, then kept for 30 days.
+#
+# Needs two repository secrets (Settings > Secrets and variables > Actions):
+#   SUPABASE_DB_URL     the database connection string (Session pooler URI)
+#   BACKUP_PASSPHRASE   a long password; the backup cannot be opened without it
+# Until both exist the job does nothing and says so.
+#
+# The file is encrypted because anyone can download the artifacts of a public
+# repository. Keep the passphrase outside GitHub as well.
+
+on:
+  schedule:
+    - cron: '17 20 * * *'   # 01:17 in Pakistan (UTC+5)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: restore_check
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Check the two secrets exist
+        id: ready
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::warning::Backup skipped: add the SUPABASE_DB_URL and BACKUP_PASSPHRASE repository secrets."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.ok == 'true'
+      - name: Install the Postgres 17 tools
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Back up and encrypt
+        if: steps.ready.outputs.ok == 'true'
+        id: dump
+        run: echo "file=$(./scripts/backup.sh | tail -1)" >> "$GITHUB_OUTPUT"
+      - name: Restore into a throwaway database and check it
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: restore_check
+        run: ./scripts/restore_check.sh "${{ steps.dump.outputs.file }}"
+      - name: Keep the encrypted backup for 30 days
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: edgex-backup-${{ github.run_id }}
+          path: backups/*.dump.gpg
+          retention-days: 30
+          if-no-files-found: error
