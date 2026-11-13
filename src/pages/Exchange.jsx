@@ -518,6 +518,18 @@ export default function Exchange() {
     )
   }, [availableProducts, inventorySearch])
 
+  // Filtered exchange history (shared by desktop table + mobile cards)
+  const filteredHistory = useMemo(() => {
+    const q = historySearch.toLowerCase().trim()
+    if (!q) return historyList
+    return historyList.filter(
+      ex =>
+        ex.exchange_number?.toLowerCase().includes(q) ||
+        ex.customer_name?.toLowerCase().includes(q) ||
+        ex.customer_phone?.toLowerCase().includes(q)
+    )
+  }, [historyList, historySearch])
+
   // Quick Add Customer Handler
   const handleQuickAddCustomer = async (e) => {
     e.preventDefault()
@@ -1044,7 +1056,7 @@ export default function Exchange() {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-[#f5f5f7] dark:bg-black text-[#1d1d1f] dark:text-[#f5f5f7]">
+    <div className="flex flex-col min-h-full lg:h-full lg:min-h-0 lg:overflow-hidden bg-[#f5f5f7] dark:bg-black text-[#1d1d1f] dark:text-[#f5f5f7]">
       {/* ── TOP COMPACT HEADER BAR (SHRINK-0) ── */}
       <div className="shrink-0 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 p-2.5 px-4 flex flex-wrap items-center justify-between gap-3 shadow-2xs z-20">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -1061,10 +1073,10 @@ export default function Exchange() {
           </div>
 
           {/* Mode Switcher */}
-          <div className="flex items-center gap-1 bg-gray-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs ml-2">
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs sm:ml-2 w-full sm:w-auto">
             <button
               onClick={() => setActiveTab('new')}
-              className={`px-2.5 py-1 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+              className={`flex-1 sm:flex-none justify-center px-2.5 py-1.5 sm:py-1 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                 activeTab === 'new'
                   ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-2xs'
                   : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
@@ -1074,7 +1086,7 @@ export default function Exchange() {
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`px-2.5 py-1 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+              className={`flex-1 sm:flex-none justify-center px-2.5 py-1.5 sm:py-1 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                 activeTab === 'history'
                   ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-2xs'
                   : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
@@ -1106,8 +1118,8 @@ export default function Exchange() {
       </div>
 
       {activeTab === 'new' ? (
-        /* ── WORKSPACE AREA (NO SCROLL MAIN SCREEN) ── */
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        /* ── WORKSPACE AREA (fixed panes on desktop, natural scroll on mobile) ── */
+        <div className="flex-1 flex flex-col lg:min-h-0 lg:overflow-hidden">
           {/* ══════════════════════════════════════════════════════════
               PROMINENT CUSTOMER BAR AT TOP OF WORKSPACE
               Highlighted with glowing purple border so it is never overlooked!
@@ -1125,7 +1137,7 @@ export default function Exchange() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               {/* Existing Customer Selector */}
               <select
                 value={selectedCustomerId}
@@ -1136,7 +1148,7 @@ export default function Exchange() {
                     setWalkInPhone('')
                   }
                 }}
-                className="text-xs font-bold py-1.5 px-2 bg-white dark:bg-slate-800 border-2 border-purple-300 dark:border-purple-700 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full sm:w-auto text-xs font-bold py-2 sm:py-1.5 px-2 bg-white dark:bg-slate-800 border-2 border-purple-300 dark:border-purple-700 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="">-- Walk-in / New Customer --</option>
                 {customers.map(c => (
@@ -1148,20 +1160,20 @@ export default function Exchange() {
 
               {/* Walk-in Inputs (Visible when Walk-in is active) */}
               {!selectedCustomerId && (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 w-full sm:w-auto">
                   <input
                     type="text"
                     placeholder="Customer Name * (گاہک کا نام)"
                     value={walkInName}
                     onChange={e => setWalkInName(e.target.value)}
-                    className="text-xs font-bold py-1.5 px-2.5 w-48 bg-white dark:bg-slate-800 border-2 border-purple-500 dark:border-purple-400 rounded-lg text-purple-950 dark:text-purple-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs"
+                    className="flex-1 min-w-0 text-xs font-bold py-2 sm:py-1.5 px-2.5 sm:w-48 bg-white dark:bg-slate-800 border-2 border-purple-500 dark:border-purple-400 rounded-lg text-purple-950 dark:text-purple-200 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs"
                   />
                   <input
                     type="tel"
                     placeholder="Phone (فون نمبر)"
                     value={walkInPhone}
                     onChange={e => setWalkInPhone(e.target.value)}
-                    className="text-xs py-1.5 px-2 w-32 bg-white dark:bg-slate-800 border border-purple-300 dark:border-slate-700 rounded-lg text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    className="flex-1 min-w-0 text-xs py-2 sm:py-1.5 px-2 sm:w-32 sm:flex-none bg-white dark:bg-slate-800 border border-purple-300 dark:border-slate-700 rounded-lg text-gray-800 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
                   />
                 </div>
               )}
@@ -1169,7 +1181,7 @@ export default function Exchange() {
               <button
                 type="button"
                 onClick={() => setShowAddCustomerModal(true)}
-                className="text-xs font-bold px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                className="text-xs font-bold px-2.5 py-2 sm:py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-2xs transition flex items-center justify-center gap-1 cursor-pointer w-full sm:w-auto"
                 title="Add New Customer to Directory"
               >
                 <Plus size={12} /> Add
@@ -1177,11 +1189,11 @@ export default function Exchange() {
             </div>
           </div>
           {/* DUAL WORKSPACE PANELS (50/50 GRID) */}
-          <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3 p-3 overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 p-3 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
             {/* ══════════════════════════════════════════════════════════
                 PANEL A: CUSTOMER'S OLD PHONE (آنے والا پرانا فون)
             ══════════════════════════════════════════════════════════ */}
-            <div className="flex flex-col h-full min-h-0 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-2xs overflow-hidden">
+            <div className="flex flex-col lg:h-full lg:min-h-0 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-2xs lg:overflow-hidden">
               {/* Header */}
               <div className="p-2.5 px-3 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0 bg-gray-50/70 dark:bg-slate-800/40">
                 <div className="flex items-center gap-2">
@@ -1206,7 +1218,7 @@ export default function Exchange() {
               </div>
 
               {/* Scrollable list of Old Phones */}
-              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 space-y-2.5">
+              <div className="flex-1 lg:min-h-0 lg:overflow-y-auto custom-scrollbar p-3 space-y-2.5">
                 {incomingPhones.map((phone, index) => {
                   const suggestions = getFilteredSuggestions(phone.model, phone.brand)
                   const showDropdown = activeAutocompletePhoneId === phone.id && suggestions.length > 0
@@ -1482,7 +1494,7 @@ export default function Exchange() {
             {/* ══════════════════════════════════════════════════════════
                 PANEL B: PHONE / ITEM (دکان کا فون / سامان)
             ══════════════════════════════════════════════════════════ */}
-            <div className="flex flex-col h-full min-h-0 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-2xs overflow-hidden">
+            <div className="flex flex-col lg:h-full lg:min-h-0 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-2xs lg:overflow-hidden">
               {/* Header */}
               <div className="p-2.5 px-3 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0 bg-gray-50/70 dark:bg-slate-800/40">
                 <div className="flex items-center gap-2">
@@ -1539,7 +1551,7 @@ export default function Exchange() {
 
               {/* Quick Available Stock Selector (Compact height, scrolls internally) */}
               <div className="p-2.5 pt-0 shrink-0">
-                <div className="h-28 overflow-y-auto custom-scrollbar border border-gray-200 dark:border-slate-800 rounded-lg p-1 space-y-1 bg-gray-50/50 dark:bg-slate-950/20">
+                <div className="max-h-44 lg:h-28 overflow-y-auto custom-scrollbar border border-gray-200 dark:border-slate-800 rounded-lg p-1 space-y-1 bg-gray-50/50 dark:bg-slate-950/20">
                   {inventoryFilter === 'phones' ? (
                     filteredAvailablePhones.length > 0 ? (
                       filteredAvailablePhones.map(phone => {
@@ -1613,7 +1625,7 @@ export default function Exchange() {
               </div>
 
               {/* Selected Items Basket (Takes remaining height, scrolls internally) */}
-              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2.5 pt-0 space-y-1.5">
+              <div className="flex-1 lg:min-h-0 lg:overflow-y-auto custom-scrollbar p-2.5 pt-0 space-y-1.5">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">
                   Selected Items ({outgoingItems.length})
                 </span>
@@ -1687,10 +1699,10 @@ export default function Exchange() {
               BOTTOM PINNED RECONCILIATION & SETTLEMENT BAR (SHRINK-0)
               NEVER HIDDEN, ALWAYS VISIBLE WITHOUT SCROLLING!
           ══════════════════════════════════════════════════════════ */}
-          <div className="shrink-0 bg-white dark:bg-slate-900 border-t-2 border-purple-300 dark:border-purple-800 shadow-2xl p-2.5 px-4 z-30">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+          <div className="shrink-0 bg-white dark:bg-slate-900 border-t-2 border-purple-300 dark:border-purple-800 shadow-2xl p-2.5 px-3 sm:px-4 z-30">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3 items-center">
               {/* Column 1: Reconciliation Breakdown */}
-              <div className="text-xs space-y-0.5 border-b md:border-b-0 md:border-r border-gray-200 dark:border-slate-800 pb-2 md:pb-0 md:pr-3">
+              <div className="text-xs space-y-0.5 border-b md:border-b-0 md:border-r border-gray-200 dark:border-slate-800 pb-1.5 md:pb-0 md:pr-3">
                 <div className="flex justify-between text-gray-600 dark:text-gray-400">
                   <span>New Phone Price:</span>
                   <span className="font-bold font-mono">Rs. {totalSaleAmount.toLocaleString('en-PK')}</span>
@@ -1708,13 +1720,13 @@ export default function Exchange() {
               </div>
 
               {/* Column 2: Big Directional Indicator Badge */}
-              <div className="flex flex-col items-center justify-center p-2 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50">
+              <div className="flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50">
                 {settlementDirection === 'customer_paid' && (
                   <div className="text-center">
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400 text-xs font-black uppercase">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> CUSTOMER PAYS
                     </div>
-                    <div className="text-xl font-black text-green-700 dark:text-green-400 font-mono mt-0.5">
+                    <div className="text-lg sm:text-xl font-black text-green-700 dark:text-green-400 font-mono mt-0.5">
                       + Rs. {absoluteSettlement.toLocaleString('en-PK')}
                     </div>
                     <p className="text-[10px] text-gray-500">Collect this amount from customer</p>
@@ -1726,7 +1738,7 @@ export default function Exchange() {
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 text-xs font-black uppercase">
                       <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> SHOP PAYS CUSTOMER
                     </div>
-                    <div className="text-xl font-black text-red-600 dark:text-red-400 font-mono mt-0.5">
+                    <div className="text-lg sm:text-xl font-black text-red-600 dark:text-red-400 font-mono mt-0.5">
                       - Rs. {absoluteSettlement.toLocaleString('en-PK')}
                     </div>
                     <p className="text-[10px] text-gray-500">Pay cash/bank to customer</p>
@@ -1738,7 +1750,7 @@ export default function Exchange() {
                     <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 text-xs font-black uppercase">
                       ⚪ EQUAL EXCHANGE
                     </div>
-                    <div className="text-xl font-black text-gray-700 dark:text-gray-300 font-mono mt-0.5">
+                    <div className="text-lg sm:text-xl font-black text-gray-700 dark:text-gray-300 font-mono mt-0.5">
                       Rs. 0
                     </div>
                     <p className="text-[10px] text-gray-500">Old phone equals new phone price</p>
@@ -1841,7 +1853,7 @@ export default function Exchange() {
         </div>
       ) : (
         /* ── HISTORY WORKFLOW ── */
-        <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-4 m-3 min-h-0">
+        <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-3 sm:p-4 m-3 lg:min-h-0 lg:overflow-hidden">
           {/* History Search & Filters */}
           <div className="flex justify-between items-center gap-3 mb-4 shrink-0">
             <div className="relative flex-1 max-w-sm">
@@ -1864,36 +1876,28 @@ export default function Exchange() {
             </button>
           </div>
 
-          {/* Exchanges Table */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+          {/* Exchanges List */}
+          <div className="flex-1 lg:overflow-y-auto custom-scrollbar lg:min-h-0">
             {historyLoading ? (
               <div className="p-8 text-center text-sm text-gray-400">Loading exchange history...</div>
-            ) : historyList.length > 0 ? (
-              <table className="w-full text-xs text-left border-collapse">
-                <thead className="bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-300 sticky top-0 uppercase font-bold text-[10px]">
-                  <tr>
-                    <th className="p-2.5">Exchange #</th>
-                    <th className="p-2.5">Date & Time</th>
-                    <th className="p-2.5">Customer</th>
-                    <th className="p-2.5 text-right">New Phone Sale</th>
-                    <th className="p-2.5 text-right">Old Phone Value</th>
-                    <th className="p-2.5 text-right">Net Difference</th>
-                    <th className="p-2.5 text-center">Status</th>
-                    <th className="p-2.5 text-center">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-                  {historyList
-                    .filter(ex => {
-                      const q = historySearch.toLowerCase().trim()
-                      if (!q) return true
-                      return (
-                        ex.exchange_number?.toLowerCase().includes(q) ||
-                        ex.customer_name?.toLowerCase().includes(q) ||
-                        ex.customer_phone?.toLowerCase().includes(q)
-                      )
-                    })
-                    .map(ex => {
+            ) : filteredHistory.length > 0 ? (
+              <>
+                {/* Desktop Table (lg and up) */}
+                <table className="hidden lg:table w-full text-xs text-left border-collapse">
+                  <thead className="bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-300 sticky top-0 uppercase font-bold text-[10px]">
+                    <tr>
+                      <th className="p-2.5">Exchange #</th>
+                      <th className="p-2.5">Date & Time</th>
+                      <th className="p-2.5">Customer</th>
+                      <th className="p-2.5 text-right">New Phone Sale</th>
+                      <th className="p-2.5 text-right">Old Phone Value</th>
+                      <th className="p-2.5 text-right">Net Difference</th>
+                      <th className="p-2.5 text-center">Status</th>
+                      <th className="p-2.5 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
+                    {filteredHistory.map(ex => {
                       const isVoid = ex.status === 'voided'
                       return (
                         <tr
@@ -1999,10 +2003,138 @@ export default function Exchange() {
                         </tr>
                       )
                     })}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+
+                {/* Mobile Card List (below lg) */}
+                <div className="lg:hidden space-y-2.5">
+                  {filteredHistory.map(ex => {
+                    const isVoid = ex.status === 'voided'
+                    return (
+                      <div
+                        key={ex.id}
+                        className="rounded-xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-2xs"
+                      >
+                        {/* Card header: exchange # + status */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold font-mono text-sm text-purple-700 dark:text-purple-400 truncate">
+                              {ex.exchange_number}
+                            </div>
+                            <div className="text-[11px] text-gray-400">
+                              {new Date(ex.created_at).toLocaleString('en-PK', {
+                                dateStyle: 'medium',
+                                timeStyle: 'short'
+                              })}
+                            </div>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${
+                              isVoid
+                                ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+                                : 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
+                            }`}
+                          >
+                            {ex.status}
+                          </span>
+                        </div>
+
+                        {/* Customer */}
+                        <div className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                          {ex.customer_name || 'Walk-in'}
+                          {ex.customer_phone && (
+                            <span className="block text-[11px] text-gray-400 font-mono font-normal">
+                              {ex.customer_phone}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Amounts */}
+                        <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                          <div className="rounded-lg bg-green-50 dark:bg-green-950/30 py-1.5">
+                            <div className="text-[9px] uppercase font-bold text-gray-400">New Sale</div>
+                            <div className="text-xs font-mono font-bold text-green-600 dark:text-green-400">
+                              {parseFloat(ex.sale_amount || 0).toLocaleString('en-PK')}
+                            </div>
+                          </div>
+                          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 py-1.5">
+                            <div className="text-[9px] uppercase font-bold text-gray-400">Old Value</div>
+                            <div className="text-xs font-mono font-bold text-red-600 dark:text-red-400">
+                              {parseFloat(ex.trade_in_credit || 0).toLocaleString('en-PK')}
+                            </div>
+                          </div>
+                          <div className="rounded-lg bg-gray-50 dark:bg-slate-800 py-1.5">
+                            <div className="text-[9px] uppercase font-bold text-gray-400">
+                              {ex.settlement_direction === 'customer_paid'
+                                ? 'Cust. Paid'
+                                : ex.settlement_direction === 'shop_payout'
+                                ? 'Shop Paid'
+                                : 'Even'}
+                            </div>
+                            <div
+                              className={`text-xs font-mono font-bold ${
+                                ex.settlement_direction === 'customer_paid'
+                                  ? 'text-green-600'
+                                  : ex.settlement_direction === 'shop_payout'
+                                  ? 'text-red-600'
+                                  : 'text-gray-500'
+                              }`}
+                            >
+                              {parseFloat(ex.settlement_amount || 0).toLocaleString('en-PK')}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="mt-3 grid grid-cols-4 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedExchangeForView(ex)}
+                            className="flex items-center justify-center gap-1 py-2 rounded-lg bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 text-[11px] font-bold cursor-pointer active:scale-95 transition"
+                          >
+                            <Eye size={14} /> View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePrintReceipt(ex)}
+                            className="flex items-center justify-center gap-1 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 text-[11px] font-bold cursor-pointer active:scale-95 transition"
+                          >
+                            <Printer size={14} /> Print
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSendWhatsApp(ex)}
+                            className="flex items-center justify-center gap-1 py-2 rounded-lg bg-green-50 dark:bg-green-950/40 text-green-600 dark:text-green-400 text-[11px] font-bold cursor-pointer active:scale-95 transition"
+                          >
+                            <Send size={14} /> Send
+                          </button>
+                          {!isVoid ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExchangeToVoid(ex)
+                                setVoidReason('')
+                                setVoidError('')
+                              }}
+                              className="flex items-center justify-center gap-1 py-2 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-[11px] font-bold cursor-pointer active:scale-95 transition"
+                            >
+                              <XCircle size={14} /> Void
+                            </button>
+                          ) : (
+                            <span className="flex items-center justify-center py-2 rounded-lg bg-gray-50 dark:bg-slate-800/50 text-gray-300 dark:text-gray-600 text-[11px] font-bold">
+                              —
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
             ) : (
-              <div className="p-8 text-center text-sm text-gray-400">No exchange transactions recorded yet.</div>
+              <div className="p-8 text-center text-sm text-gray-400">
+                {historyList.length > 0 ? 'No exchanges match your search.' : 'No exchange transactions recorded yet.'}
+              </div>
             )}
           </div>
         </div>
@@ -2171,7 +2303,7 @@ export default function Exchange() {
       {/* ── MODAL: VIEW EXCHANGE DETAILS ── */}
       {selectedExchangeForView && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-5 border border-gray-200 dark:border-slate-800 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar space-y-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-4 sm:p-5 border border-gray-200 dark:border-slate-800 shadow-2xl max-h-[90dvh] overflow-y-auto custom-scrollbar space-y-4">
             <div className="flex justify-between items-center border-b border-gray-100 dark:border-slate-800 pb-3">
               <div>
                 <h3 className="font-black text-base text-gray-900 dark:text-white">
