@@ -14,15 +14,14 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Smartphone,
-  Receipt,
-  Users,
   ShieldCheck,
-  Sparkles,
   Wifi,
-  WifiOff
+  WifiOff,
+  Sun,
+  Moon
 } from 'lucide-react'
 import BroadcastBanner from '../components/BroadcastBanner'
+import { useTheme } from '../context/ThemeContext'
 
 function Login() {
   const [username, setUsername] = useState('')
@@ -67,6 +66,7 @@ function Login() {
   }
 
   const { login, impersonate } = useAuth()
+  const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -374,286 +374,226 @@ function Login() {
       setLoading(false)
     }
   }
-
   return (
-    <div className="min-h-screen relative flex flex-col justify-between overflow-hidden font-sans selection:bg-[#0071e3] selection:text-white">
+    <div className="min-h-[100dvh] relative flex flex-col overflow-hidden font-sans selection:bg-[#0071e3] selection:text-white text-[#1d1d1f] dark:text-[#f5f5f7]">
 
-      {/* ── 1. SEMI-TRANSPARENT POS BACKGROUND IMAGE & LIGHT APPLE FROST ── */}
+      {/* Full-bleed hero background */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
-        {/* Subtle pan/zoom background image */}
         <motion.div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: 'url("/mobile_shop_bg.jpg")' }}
+          style={{ backgroundImage: 'url("/login-bg.png")' }}
           initial={{ scale: 1 }}
-          animate={{ scale: [1, 1.04, 1] }}
-          transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
+          animate={{ scale: [1, 1.05, 1] }}
+          transition={{ duration: 26, repeat: Infinity, ease: 'easeInOut' }}
         />
-
-        {/* Apple Light Translucent Frosted Glass Veil */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-slate-50/75 to-white/85 backdrop-blur-[4px]" />
-
-        {/* Soft, delicate iOS atmospheric color bubbles */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-blue-400/15 blur-[90px]" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-indigo-300/20 blur-[100px]" />
+        {/* Theme-aware frosted veil */}
+        <div className="absolute inset-0 bg-gradient-to-b from-white/85 via-slate-50/80 to-white/90 dark:from-black/80 dark:via-slate-950/80 dark:to-black/85 backdrop-blur-[5px]" />
+        {/* Atmospheric color bubbles */}
+        <div className="absolute -top-32 -left-32 w-[28rem] h-[28rem] rounded-full bg-blue-400/15 dark:bg-blue-500/20 blur-[100px]" />
+        <div className="absolute -bottom-40 -right-32 w-[30rem] h-[30rem] rounded-full bg-indigo-300/20 dark:bg-indigo-600/20 blur-[110px]" />
       </div>
 
-      {/* ── 2. FROSTED TRANSLUCENT APPLE GLASS HEADER ── */}
-      <header className="relative z-20 px-6 sm:px-10 py-3.5 bg-white/70 backdrop-blur-xl border-b border-black/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.02)] flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-white shadow-sm border border-black/[0.06] p-1.5 flex items-center justify-center shrink-0">
+      {/* Glass header */}
+      <header className="relative z-20 px-4 sm:px-8 py-3 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 shadow-sm border border-black/[0.06] dark:border-white/[0.08] p-1.5 flex items-center justify-center shrink-0">
             <img src={logoUrl} alt={platformName} className="w-full h-full object-contain" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-base text-[#1d1d1f] tracking-tight">
+              <span className="font-bold text-base text-[#1d1d1f] dark:text-white tracking-tight truncate">
                 {platformName}
               </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-[#0071e3] border border-blue-500/20">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-[#0071e3] dark:text-[#2997ff] border border-blue-500/20">
                 POS
               </span>
             </div>
-            <p className="text-xs text-[#6e6e73] hidden sm:block">
+            <p className="text-xs text-[#6e6e73] dark:text-slate-400 hidden sm:block">
               Mobile Store Retail & Serialized Inventory
             </p>
           </div>
         </div>
 
-        {/* Apple Status Capsule */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 shrink-0">
           <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md transition-colors ${
             isOnline
-              ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/25'
-              : 'bg-amber-500/10 text-amber-700 border border-amber-500/25'
+              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25'
+              : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25'
           }`}>
             {isOnline ? (
               <>
-                <Wifi size={13} className="text-emerald-600" />
-                <span className="text-xs font-medium">Terminal Online</span>
+                <Wifi size={13} className="text-emerald-600 dark:text-emerald-400" />
+                <span className="text-xs font-medium hidden sm:inline">Terminal Online</span>
               </>
             ) : (
               <>
-                <WifiOff size={13} className="text-amber-600" />
-                <span className="text-xs font-medium">Offline Ready</span>
+                <WifiOff size={13} className="text-amber-600 dark:text-amber-400" />
+                <span className="text-xs font-medium hidden sm:inline">Offline Ready</span>
               </>
             )}
           </div>
+
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="w-9 h-9 rounded-full bg-white/70 dark:bg-slate-800 border border-black/[0.06] dark:border-white/[0.08] text-[#1d1d1f] dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 active:scale-95 flex items-center justify-center transition cursor-pointer shrink-0"
+          >
+            {isDark ? <Sun size={16} className="text-[#ff9f0a]" /> : <Moon size={16} className="text-[#5856d6]" />}
+          </button>
         </div>
       </header>
 
-      {/* Broadcast Announcement Banner */}
+      {/* Broadcast banner */}
       <div className="relative z-20">
         <BroadcastBanner isLogin />
       </div>
 
-      {/* ── 3. MAIN CONTENT: LIGHT APPLE SPLIT EXPERIENCE ── */}
-      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-12 flex items-center justify-center">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 w-full items-center">
+      {/* Floating glass login card over the hero */}
+      <main className="relative z-10 flex-1 w-full px-4 py-8 sm:py-12 flex flex-col items-center justify-center">
+        <div className="w-full max-w-md bg-white/80 dark:bg-slate-900/70 backdrop-blur-2xl border border-white/90 dark:border-white/10 rounded-3xl p-6 sm:p-9 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] space-y-6 text-left">
 
-          {/* Left Column: Apple Product Showcase Cards (Desktop) */}
-          <div className="hidden lg:block lg:col-span-7 space-y-6 text-left">
-            {/* Soft Capsule Tag */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 backdrop-blur-md border border-black/[0.06] shadow-sm text-xs font-semibold text-[#0071e3]">
-              <Sparkles size={14} className="text-[#0071e3]" />
-              <span>Tailored for Smartphone & Electronics Showrooms</span>
+          {/* Card header */}
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-white dark:bg-slate-800 p-2.5 shadow-md shadow-black/[0.04] border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center">
+              <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain" />
             </div>
-
-            {/* Hero Heading */}
-            <div className="space-y-3">
-              <h1 className="text-4xl lg:text-[42px] font-black text-[#1d1d1f] tracking-tight leading-[1.15]">
-                Complete Control Over Every{' '}
-                <span className="bg-gradient-to-r from-[#0071e3] to-[#5856d6] bg-clip-text text-transparent">
-                  IMEI & Sale.
-                </span>
-              </h1>
-              <p className="text-[#6e6e73] text-[15px] leading-relaxed max-w-xl">
-                Experience high-speed barcode checkout, automated bilingual WhatsApp receipts, instant customer credit ledgers, and multi-vault inventory protection.
+            <div>
+              <h2 className="text-2xl font-bold text-[#1d1d1f] dark:text-white tracking-tight">
+                Sign in to {platformName}
+              </h2>
+              <p className="text-xs sm:text-sm text-[#6e6e73] dark:text-slate-400 mt-0.5">
+                Enter your staff credentials to continue
               </p>
             </div>
-
-            {/* Apple Squircle Feature Cards */}
-            <div className="grid grid-cols-3 gap-3.5 pt-2">
-              <div className="p-4 rounded-2xl bg-white/75 hover:bg-white/90 backdrop-blur-xl border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_25px_rgba(0,0,0,0.06)] transition-all space-y-2.5">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-[#0071e3] border border-blue-500/20 flex items-center justify-center">
-                  <Smartphone size={20} />
-                </div>
-                <h3 className="text-xs font-bold text-[#1d1d1f]">Dual IMEI & PTA</h3>
-                <p className="text-xs text-[#6e6e73] leading-[15px]">
-                  Tracks box-pack, used, PTA approved, and warranty statuses seamlessly.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-white/75 hover:bg-white/90 backdrop-blur-xl border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_25px_rgba(0,0,0,0.06)] transition-all space-y-2.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center">
-                  <Receipt size={20} />
-                </div>
-                <h3 className="text-xs font-bold text-[#1d1d1f]">WhatsApp Slips</h3>
-                <p className="text-xs text-[#6e6e73] leading-[15px]">
-                  Dispatches branded customer invoices directly to phone with warranty notes.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-white/75 hover:bg-white/90 backdrop-blur-xl border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_25px_rgba(0,0,0,0.06)] transition-all space-y-2.5">
-                <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-[#af52de] border border-purple-500/20 flex items-center justify-center">
-                  <Users size={20} />
-                </div>
-                <h3 className="text-xs font-bold text-[#1d1d1f]">Khata & Ledgers</h3>
-                <p className="text-xs text-[#6e6e73] leading-[15px]">
-                  Dealer udhaar, supplier balance tracking, and daily cash drawer shifts.
-                </p>
-              </div>
-            </div>
-
-            {/* Apple Trust Pill */}
-            <div className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] pt-1">
-              <ShieldCheck size={16} className="text-emerald-500" />
-              <span>Offline-first PWA sync • Thermal ESC/POS ready • Bank transfer reconciliation</span>
-            </div>
           </div>
 
-          {/* Right Column: Apple Frosted Glass Login Card */}
-          <div className="lg:col-span-5 w-full flex justify-center">
-            <div className="w-full max-w-md bg-white/80 backdrop-blur-2xl border border-white/90 rounded-3xl p-7 sm:p-9 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] space-y-6 text-left relative overflow-hidden">
-              
-              {/* Card Header */}
-              <div className="text-center space-y-2">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-white p-2.5 shadow-md shadow-black/[0.04] border border-black/[0.06] flex items-center justify-center">
-                  <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain" />
+          {/* Login form */}
+          <form onSubmit={handleLogin} className="space-y-4">
+            {/* Username */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73] dark:text-slate-400 ml-0.5">
+                Username or Email
+              </label>
+              <div className="relative rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b] dark:text-slate-500">
+                  <User size={16} />
                 </div>
-
-                <div>
-                  <h2 className="text-2xl font-bold text-[#1d1d1f] tracking-tight">
-                    Sign in to EdgeX
-                  </h2>
-                  <p className="text-xs sm:text-sm text-[#6e6e73] mt-0.5">
-                    Enter your staff credentials to continue
-                  </p>
-                </div>
+                <input
+                  type="text"
+                  placeholder="admin or user@domain.com"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoComplete="username"
+                  className="w-full bg-transparent pl-10 pr-3 py-3 text-sm text-[#1d1d1f] dark:text-white placeholder:text-[#86868b]/70 dark:placeholder:text-slate-500 focus:outline-none font-medium"
+                />
               </div>
+            </div>
 
-              {/* Login Form */}
-              <form onSubmit={handleLogin} className="space-y-4">
-                
-                {/* Username Input */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6e6e73] ml-0.5">
-                    Username or Email
-                  </label>
-                  <div className="relative rounded-xl border border-slate-200/80 bg-white/90 hover:bg-white focus-within:bg-white focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#6e6e73]">
-                      <User size={16} />
-                    </div>
-                    <input aria-label="admin or userdomain.com"
-                      type="text"
-                      placeholder="admin or user@domain.com"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      required
-                      autoComplete="username"
-                      className="w-full bg-transparent pl-10 pr-3 py-3 text-sm text-[#1d1d1f] placeholder:text-[#86868b]/70 focus:outline-none font-medium"
-                    />
-                  </div>
-                </div>
-
-                {/* Password Input */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between px-0.5">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[#6e6e73]">
-                      Password
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleQuickDemoFill}
-                      className="text-xs font-semibold text-[#0071e3] hover:text-[#0077ed] bg-blue-500/10 hover:bg-blue-500/15 px-2.5 py-0.5 rounded-full transition cursor-pointer"
-                    >
-                      ⚡ Fill Demo
-                    </button>
-                  </div>
-                  <div className="relative rounded-xl border border-slate-200/80 bg-white/90 hover:bg-white focus-within:bg-white focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#6e6e73]">
-                      <Lock size={16} />
-                    </div>
-                    <input aria-label="Enter your password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      autoComplete="current-password"
-                      className="w-full bg-transparent pl-10 pr-11 py-3 text-sm text-[#1d1d1f] placeholder:text-[#86868b]/70 focus:outline-none font-medium"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#6e6e73] hover:text-[#1d1d1f] transition-colors cursor-pointer"
-                      tabIndex={-1}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Error Banner with Smooth AnimatePresence */}
-                <AnimatePresence>
-                  {error && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0, y: -4 }}
-                      animate={{ opacity: 1, height: 'auto', y: 0 }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="p-3 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-700 leading-relaxed font-semibold flex items-start gap-2">
-                        <span className="shrink-0 mt-0.5">⚠️</span>
-                        <span>{error}</span>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Apple Blue Primary Action Button */}
+            {/* Password */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between px-0.5">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73] dark:text-slate-400">
+                  Password
+                </label>
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3.5 px-5 bg-[#0071e3] hover:bg-[#0077ed] active:scale-[0.985] text-white font-semibold text-sm rounded-xl transition-all duration-150 shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+                  type="button"
+                  onClick={handleQuickDemoFill}
+                  className="text-xs font-semibold text-[#0071e3] dark:text-[#2997ff] hover:text-[#0077ed] bg-blue-500/10 hover:bg-blue-500/15 dark:bg-blue-500/15 dark:hover:bg-blue-500/25 px-2.5 py-0.5 rounded-full transition cursor-pointer"
                 >
-                  {loading ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <span>Sign In</span>
-                      <ArrowRight size={16} />
-                    </>
-                  )}
+                  &#9889; Fill Demo
                 </button>
-              </form>
-
-              {/* Card Footer Micro-note */}
-              <div className="pt-3 border-t border-black/[0.06] text-center">
-                <p className="text-xs text-[#6e6e73]">
-                  Offline PWA Ready • Serialized Hardware Vault Encrypted
-                </p>
               </div>
-
+              <div className="relative rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b] dark:text-slate-500">
+                  <Lock size={16} />
+                </div>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  className="w-full bg-transparent pl-10 pr-11 py-3 text-sm text-[#1d1d1f] dark:text-white placeholder:text-[#86868b]/70 dark:placeholder:text-slate-500 focus:outline-none font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#86868b] dark:text-slate-500 hover:text-[#1d1d1f] dark:hover:text-slate-200 transition-colors cursor-pointer"
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
-          </div>
 
+            {/* Error banner */}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, y: -4 }}
+                  animate={{ opacity: 1, height: 'auto', y: 0 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/60 rounded-xl text-xs text-rose-700 dark:text-rose-300 leading-relaxed font-semibold flex items-start gap-2">
+                    <span className="shrink-0 mt-0.5">&#9888;&#65039;</span>
+                    <span>{error}</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Primary action */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 px-5 bg-[#0071e3] hover:bg-[#0077ed] active:scale-[0.985] text-white font-semibold text-sm rounded-xl transition-all duration-150 shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+            >
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Micro-note */}
+          <div className="pt-3 border-t border-black/[0.06] dark:border-white/[0.08] text-center">
+            <p className="text-xs text-[#86868b] dark:text-slate-500">
+              Offline PWA Ready &bull; Serialized Hardware Vault Encrypted
+            </p>
+          </div>
+        </div>
+
+        {/* Concise trust strip (replaces the marketing column) */}
+        <div className="mt-6 max-w-md w-full flex items-center justify-center gap-2 text-xs font-medium text-[#6e6e73] dark:text-slate-400 text-center px-2">
+          <ShieldCheck size={16} className="text-emerald-500 dark:text-emerald-400 shrink-0" />
+          <span>Offline-first PWA &bull; Dual-IMEI &amp; PTA tracking &bull; WhatsApp receipts &bull; Bank reconciliation</span>
         </div>
       </main>
 
-      {/* ── 4. LIGHT APPLE GLASS FOOTER ── */}
-      <footer className="relative z-10 px-6 py-3.5 bg-white/70 backdrop-blur-md border-t border-black/[0.06] text-xs text-[#6e6e73]">
+      {/* Glass footer */}
+      <footer className="relative z-10 px-4 sm:px-6 py-3.5 bg-white/70 dark:bg-slate-900/60 backdrop-blur-md border-t border-black/[0.06] dark:border-white/[0.08] text-xs text-[#86868b] dark:text-slate-500">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
           <div>
             &copy; {new Date().getFullYear()} {platformName}. All rights reserved.
           </div>
           <div className="flex items-center gap-3">
             <span>Enterprise Mobile Retail POS</span>
-            <span>•</span>
+            <span>&bull;</span>
             <a
               href="https://wa.me/923012616367?text=Hi!%20I%20need%20support%20for%20EdgeX%20POS."
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#0071e3] hover:text-[#0077ed] hover:underline font-semibold transition"
+              className="text-[#0071e3] dark:text-[#2997ff] hover:text-[#0077ed] hover:underline font-semibold transition"
             >
               Direct Support: 0301-2616367
             </a>
