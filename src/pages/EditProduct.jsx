@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useNavigate, useParams } from 'react-router-dom'
 import { db, addToSyncQueue } from '../services/db'
 import { getShopPreset, getPricingConfig } from '../utils/businessPresets'
+import { notify } from '../utils/toast'
 
 function EditProduct() {
   const { id } = useParams()
@@ -232,9 +233,9 @@ function EditProduct() {
         await addToSyncQueue('brands', 'INSERT', brandData)
         setBrands([...brands, brandData])
         setForm({ ...form, brand: brandData.name })
-        alert('Offline mode: Brand added locally. Will sync when online! 🔄')
+        notify('Offline mode: Brand added locally. Will sync when online! 🔄')
       } else {
-        alert('Error adding brand: ' + errMsg)
+        notify('Error adding brand: ' + errMsg)
       }
     }
 
@@ -301,11 +302,11 @@ function EditProduct() {
         } else {
           await addToSyncQueue('phones', 'UPDATE', { id, ...phoneUpdates })
         }
-        alert('Phone price and details updated successfully!')
+        notify('Phone price and details updated successfully!')
         navigate('/products')
         return
       } catch (err) {
-        alert('Error updating phone: ' + (err.message || String(err)))
+        notify('Error updating phone: ' + (err.message || String(err)))
         return
       } finally {
         setLoading(false)
@@ -346,17 +347,17 @@ function EditProduct() {
         if (error) throw error
       }
 
-      alert('Product updated successfully!')
+      notify('Product updated successfully!')
       navigate('/products')
     } catch (error) {
       const errMsg = error?.message || String(error)
       if (errMsg.includes('Failed to fetch') || !navigator.onLine || error.name === 'TypeError') {
         // Offline: Queue Sync
         await addToSyncQueue('products', isLocalUuid ? 'INSERT' : 'UPDATE', { id, ...updatedProductData, shop_id: user.shop_id })
-        alert('Offline mode: Product updated locally! It will sync automatically when you are back online. 🔄')
+        notify('Offline mode: Product updated locally! It will sync automatically when you are back online. 🔄')
         navigate('/products')
       } else {
-        alert('Error: ' + error.message)
+        notify('Error: ' + error.message)
       }
     } finally {
       setLoading(false)

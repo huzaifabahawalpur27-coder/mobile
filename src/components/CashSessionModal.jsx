@@ -2,6 +2,7 @@ import { useState, useEffect, useId } from 'react'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
 import { cashPortion, isCountedSale, isCashExpenseInShift, isPurchaseBillPayment, isCashPartyPayment } from '../utils/moneyMath'
+import { notify } from '../utils/toast'
 
 export default function CashSessionModal({ isOpen, onClose, user, onSessionChange }) {
   const openingFloatId = useId()
@@ -253,13 +254,13 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
       } else if (rpcRes?.success) {
         await loadActiveSession()
       } else {
-        alert(rpcRes?.error || 'Failed to open session')
+        notify(rpcRes?.error || 'Failed to open session')
       }
 
       setOpeningCash('0')
       setOpeningNotes('')
     } catch (err) {
-      alert('Error opening shift: ' + (err.message || 'Unknown error'))
+      notify('Error opening shift: ' + (err.message || 'Unknown error'))
     } finally {
       setLoading(false)
     }
@@ -270,7 +271,7 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
     if (!currentSession) return
     const actualVal = parseFloat(actualCash)
     if (isNaN(actualVal) || actualVal < 0) {
-      alert('Please enter valid counted cash')
+      notify('Please enter valid counted cash')
       return
     }
 
@@ -303,14 +304,14 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
         await db.cash_sessions?.update(currentSession.id, updatePayload)
       }
 
-      alert(`Shift closed successfully!\nFinal Variance: Rs. ${variance.toLocaleString()}`)
+      notify(`Shift closed successfully!\nFinal Variance: Rs. ${variance.toLocaleString()}`)
       setCurrentSession(null)
       setActualCash('')
       setClosingNotes('')
       if (onSessionChange) onSessionChange(null)
       await loadSessionHistory()
     } catch (err) {
-      alert('Error closing shift: ' + (err.message || 'Unknown error'))
+      notify('Error closing shift: ' + (err.message || 'Unknown error'))
     } finally {
       setLoading(false)
     }

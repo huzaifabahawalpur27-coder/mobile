@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../services/db'
 import { hashPassword, verifyPassword } from '../utils/authUtils'
+import { notify } from '../utils/toast'
 
 function Users() {
   const { user } = useAuth()
@@ -102,27 +103,27 @@ function Users() {
       const { error } = await supabase.from('users').update(updateData).eq('id', editingId)
       if (error) {
         if (error.message?.toLowerCase().includes('row-level security') || error.message?.toLowerCase().includes('rls')) {
-          alert('⚠️ Session Expired: Meharbani karke app se Log Out karke dobara Log In karein taake server connection refresh ho sake.')
+          notify('⚠️ Session Expired: Meharbani karke app se Log Out karke dobara Log In karein taake server connection refresh ho sake.')
         } else {
-          alert('Error: ' + error.message)
+          notify('Error: ' + error.message)
         }
       }
       else { setEditingId(null); setForm({ username: '', email: '', password: '', role: 'cashier', is_active: true, permissions: [] }); setShowForm(false); fetchUsers() }
     } else {
       // Dynamic Limit Enforcement
       if (users.length >= (limits.user_limit || 2)) {
-        alert(`Limit Reached! Aapka ${limits.plan_name || 'TRIAL'} plan sirf ${limits.user_limit || 2} staff accounts ki ijazat deta hai. Meharbani karke Superadmin se plan upgrade karwayein.`)
+        notify(`Limit Reached! Aapka ${limits.plan_name || 'TRIAL'} plan sirf ${limits.user_limit || 2} staff accounts ki ijazat deta hai. Meharbani karke Superadmin se plan upgrade karwayein.`)
         setSaving(false)
         return
       }
-      if (!form.password) { alert('Password zaroori hai!'); setSaving(false); return }
+      if (!form.password) { notify('Password zaroori hai!'); setSaving(false); return }
       const hashedPassword = await hashPassword(form.password)
       const { error } = await supabase.from('users').insert([{ ...form, password: hashedPassword, shop_id: user.shop_id }])
       if (error) {
         if (error.message?.toLowerCase().includes('row-level security') || error.message?.toLowerCase().includes('rls')) {
-          alert('⚠️ Session Expired: Meharbani karke app se Log Out karke dobara Log In karein taake server connection refresh ho sake.')
+          notify('⚠️ Session Expired: Meharbani karke app se Log Out karke dobara Log In karein taake server connection refresh ho sake.')
         } else {
-          alert('Error: ' + error.message)
+          notify('Error: ' + error.message)
         }
       }
       else { setForm({ username: '', email: '', password: '', role: 'cashier', is_active: true, permissions: [] }); setShowForm(false); fetchUsers() }
@@ -136,7 +137,7 @@ function Users() {
   }
 
   const handleDelete = async (id) => {
-    if (id === user.id) { alert('Aap apna khud ka account delete nahi kar sakte!'); return }
+    if (id === user.id) { notify('Aap apna khud ka account delete nahi kar sakte!'); return }
     if (!confirm('Is user ko delete karo?')) return
     await supabase.from('users').delete().eq('id', id).eq('shop_id', user.shop_id)
     fetchUsers()
@@ -159,9 +160,9 @@ function Users() {
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
-    if (!currentPw || !newPw || !confirmPw) { alert('Tamam fields fill karo!'); return }
-    if (newPw.length < 4) { alert('Naya password kam az kam 4 characters ka hona chahiye!'); return }
-    if (newPw !== confirmPw) { alert('Naya password aur confirm password match nahi karte!'); return }
+    if (!currentPw || !newPw || !confirmPw) { notify('Tamam fields fill karo!'); return }
+    if (newPw.length < 4) { notify('Naya password kam az kam 4 characters ka hona chahiye!'); return }
+    if (newPw !== confirmPw) { notify('Naya password aur confirm password match nahi karte!'); return }
 
     setChangingPw(true)
     try {
@@ -171,15 +172,15 @@ function Users() {
         // Try to get from DB
         const localUser = await db.users.get(user.id)
         if (!localUser?.password) {
-          alert('Current password verify nahi ho saka. Please logout aur dobara login karein.')
+          notify('Current password verify nahi ho saka. Please logout aur dobara login karein.')
           setChangingPw(false)
           return
         }
         const isValid = await verifyPassword(currentPw, localUser.password)
-        if (!isValid) { alert('Current password ghalat hai!'); setChangingPw(false); return }
+        if (!isValid) { notify('Current password ghalat hai!'); setChangingPw(false); return }
       } else {
         const isValid = await verifyPassword(currentPw, storedHash)
-        if (!isValid) { alert('Current password ghalat hai!'); setChangingPw(false); return }
+        if (!isValid) { notify('Current password ghalat hai!'); setChangingPw(false); return }
       }
 
       // Hash new password and update
@@ -191,13 +192,13 @@ function Users() {
       localStorage.setItem('user_pw_hash', newHash)
       await db.users.update(user.id, { password: newHash })
 
-      alert('Password successfully change ho gaya! ✅')
+      notify('Password successfully change ho gaya! ✅')
       setCurrentPw('')
       setNewPw('')
       setConfirmPw('')
       setShowChangePw(false)
     } catch (err) {
-      alert('Error: ' + (err.message || err))
+      notify('Error: ' + (err.message || err))
     } finally {
       setChangingPw(false)
     }
@@ -224,7 +225,7 @@ function Users() {
           <button
             onClick={() => {
               if (!showForm && users.length >= (limits.user_limit || 2) && !editingId) {
-                alert(`Plan Limit! Aapka current plan max ${limits.user_limit || 2} users allow karta hai.`)
+                notify(`Plan Limit! Aapka current plan max ${limits.user_limit || 2} users allow karta hai.`)
                 return
               }
               setShowForm(!showForm)

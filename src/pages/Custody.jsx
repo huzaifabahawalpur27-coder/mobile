@@ -26,6 +26,7 @@ import {
   MapPin,
   ExternalLink
 } from 'lucide-react'
+import { isCashName } from '../utils/moneyMath'
 
 // Common Market Dealer Suggestions to ensure the dropdown always has options ready
 const DEFAULT_MARKET_DEALERS = [
@@ -488,8 +489,8 @@ export default function Custody() {
         try {
           const accounts = await getBankAccounts(user.shop_id)
           const cashAcc = accounts.find(a => 
-            a.bank_name?.toLowerCase().includes('cash') || 
-            a.account_name?.toLowerCase().includes('cash')
+            isCashName(a.bank_name) || 
+            isCashName(a.account_name)
           ) || accounts[0]
           if (cashAcc) {
             await creditBankBalance({
@@ -575,8 +576,8 @@ export default function Custody() {
         try {
           const accounts = await getBankAccounts(user.shop_id)
           const cashAcc = accounts.find(a => 
-            a.bank_name?.toLowerCase().includes('cash') || 
-            a.account_name?.toLowerCase().includes('cash')
+            isCashName(a.bank_name) || 
+            isCashName(a.account_name)
           ) || accounts[0]
           if (cashAcc) {
             await deductBankBalance({

@@ -25,6 +25,7 @@ import {
   Receipt,
   Wallet
 } from 'lucide-react'
+import { isCashName } from '../utils/moneyMath'
 
 // Apple HIG / Linear SaaS Widget Stat Card
 const AppleWidget = ({
@@ -145,8 +146,8 @@ function Dashboard() {
     const accounts = await getBankAccounts(user.shop_id)
     const balance = accounts
       .filter(account =>
-        String(account.bank_name || '').toLowerCase().includes('cash') ||
-        String(account.account_name || '').toLowerCase().includes('cash')
+        isCashName(account.bank_name) ||
+        isCashName(account.account_name)
       )
       .reduce((sum, account) => sum + Number(account.current_balance || 0), 0)
     setCashInHandBalance(balance)

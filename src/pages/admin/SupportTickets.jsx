@@ -1,5 +1,6 @@
 import { useEffect, useState, Fragment } from 'react'
 import { supabaseAdmin } from '../../services/supabaseAdmin'
+import { notify } from '../../utils/toast'
 
 function SupportTickets() {
     const [tickets, setTickets] = useState([])
@@ -40,7 +41,7 @@ function SupportTickets() {
             setExpandedReply(null)
             fetchTickets()
         } catch (err) {
-            alert('Failed to update ticket: ' + err.message)
+            notify('Failed to update ticket: ' + err.message)
         }
     }
 

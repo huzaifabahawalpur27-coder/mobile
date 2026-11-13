@@ -8,6 +8,8 @@ import { getShopPreset, getPricingConfig } from '../utils/businessPresets'
 import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
 import { adjustSupplierBalance } from '../services/atomicOps'
+import { notify } from '../utils/toast'
+import { isCashName } from '../utils/moneyMath'
 
 function AddProduct() {
   const { user } = useAuth()
@@ -40,13 +42,13 @@ function AddProduct() {
   const [skipInitialPurchase, setSkipInitialPurchase] = useState(false)
 
   const cashVaults = bankAccounts.filter(a =>
-    a.bank_name?.toLowerCase().includes('cash') ||
-    a.account_name?.toLowerCase().includes('cash') ||
+    isCashName(a.bank_name) ||
+    isCashName(a.account_name) ||
     a.account_number === 'CASH'
   )
   const bankOnlyAccounts = bankAccounts.filter(a =>
-    !a.bank_name?.toLowerCase().includes('cash') &&
-    !a.account_name?.toLowerCase().includes('cash') &&
+    !isCashName(a.bank_name) &&
+    !isCashName(a.account_name) &&
     a.account_number !== 'CASH'
   )
 
@@ -70,12 +72,12 @@ function AddProduct() {
     try {
       const list = await getBankAccounts(user.shop_id)
       setBankAccounts(list)
-      const defBank = list.find(a => a.is_default && !a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash') && a.account_number !== 'CASH')
-        || list.find(a => !a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash') && a.account_number !== 'CASH')
+      const defBank = list.find(a => a.is_default && !isCashName(a.bank_name) && !isCashName(a.account_name) && a.account_number !== 'CASH')
+        || list.find(a => !isCashName(a.bank_name) && !isCashName(a.account_name) && a.account_number !== 'CASH')
       if (defBank && !selectedBankAccountId) setSelectedBankAccountId(String(defBank.id))
 
-      const defCash = list.find(a => a.is_default && (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash') || a.account_number === 'CASH'))
-        || list.find(a => a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash') || a.account_number === 'CASH')
+      const defCash = list.find(a => a.is_default && (isCashName(a.bank_name) || isCashName(a.account_name) || a.account_number === 'CASH'))
+        || list.find(a => isCashName(a.bank_name) || isCashName(a.account_name) || a.account_number === 'CASH')
       if (defCash && !selectedCashVaultId) setSelectedCashVaultId(String(defCash.id))
     } catch (e) {
       console.warn('AddProduct fetchBankAccounts warning:', e)
@@ -189,9 +191,9 @@ function AddProduct() {
         await addToSyncQueue('brands', 'INSERT', localBrandData)
         setBrands([...brands, localBrandData])
         setForm({ ...form, brand: localBrandData.name })
-        alert('Offline mode: Brand added locally. Will sync when online! 🔄')
+        notify('Offline mode: Brand added locally. Will sync when online! 🔄')
       } else {
-        alert('Error adding brand: ' + errMsg)
+        notify('Error adding brand: ' + errMsg)
       }
     }
 
@@ -228,9 +230,9 @@ function AddProduct() {
     e.preventDefault()
 
     // Validation
-    if (!form.name.trim()) return alert('Product Name is required')
-    if (!form.brand) return alert('Brand is required')
-    if (!form.category_id) return alert('Category is required')
+    if (!form.name.trim()) return notify('Product Name is required')
+    if (!form.brand) return notify('Brand is required')
+    if (!form.category_id) return notify('Category is required')
 
     setLoading(true)
 
@@ -241,7 +243,7 @@ function AddProduct() {
       const currentCount = await db.products.where('shop_id').equals(user.shop_id).count()
 
       if (limits.product_limit && currentCount >= limits.product_limit) {
-        alert(`Limit Reached! Aapka ${limits.plan_name || 'TRIAL'} plan sirf ${limits.product_limit} products ki ijazat deta hai. Meharbani karke Superadmin se plan upgrade karwayein.`)
+        notify(`Limit Reached! Aapka ${limits.plan_name || 'TRIAL'} plan sirf ${limits.product_limit} products ki ijazat deta hai. Meharbani karke Superadmin se plan upgrade karwayein.`)
         setLoading(false)
         return
       }
@@ -262,7 +264,7 @@ function AddProduct() {
 
     if (!form.cost_price || costPriceNum <= 0) {
       setLoading(false)
-      return alert('Cost Price is compulsory and must be greater than 0!')
+      return notify('Cost Price is compulsory and must be greater than 0!')
     }
 
     const initialPurchaseTotal = stockQtyNum > 0 && costPriceNum > 0 ? (stockQtyNum * costPriceNum) : 0
@@ -271,11 +273,11 @@ function AddProduct() {
     if (isInitialPurchase) {
       if (paymentType === 'credit' && !form.supplier_id) {
         setLoading(false)
-        return alert('Please select a Supplier above to record this initial purchase on Credit!')
+        return notify('Please select a Supplier above to record this initial purchase on Credit!')
       }
       if (paymentType === 'bank' && !selectedBankAccountId) {
         setLoading(false)
-        return alert('Please select a Bank Account for Bank payment!')
+        return notify('Please select a Bank Account for Bank payment!')
       }
     }
 
@@ -428,7 +430,7 @@ function AddProduct() {
               const balRes = await adjustSupplierBalance(form.supplier_id, initialPurchaseTotal)
               if (!balRes.ok) {
                 console.error('Initial stock purchase: supplier balance not updated:', balRes.error)
-                alert(`Product saved, but the supplier's balance could not be increased by Rs. ${initialPurchaseTotal} (${balRes.error}). Please add it in the supplier ledger.`)
+                notify(`Product saved, but the supplier's balance could not be increased by Rs. ${initialPurchaseTotal} (${balRes.error}). Please add it in the supplier ledger.`)
               }
             }
 
@@ -463,7 +465,7 @@ function AddProduct() {
         user.shop_id
       )
 
-      alert('Product added successfully!')
+      notify('Product added successfully!')
       navigate('/products')
     } catch (error) {
       const errMsg = error?.message || String(error)
@@ -538,10 +540,10 @@ function AddProduct() {
           user.id,
           user.shop_id
         )
-        alert('Offline mode: Product saved locally! It will sync automatically when you are back online. 🔄')
+        notify('Offline mode: Product saved locally! It will sync automatically when you are back online. 🔄')
         navigate('/products')
       } else {
-        alert('Error: ' + error.message)
+        notify('Error: ' + error.message)
       }
     } finally {
       setLoading(false)

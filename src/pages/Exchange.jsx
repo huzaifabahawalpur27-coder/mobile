@@ -30,6 +30,8 @@ import {
   normalizeInvoiceToken
 } from '../services/whatsappQueueService'
 import { IPHONE_MODELS } from '../utils/iphonePresets'
+import { notify } from '../utils/toast'
+import { isCashName } from '../utils/moneyMath'
 
 const PHONE_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Oppo', 'Vivo', 'Realme', 'OnePlus', 'Google', 'Infinix', 'Tecno', 'Other']
 const PHONE_STORAGES = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB']
@@ -311,7 +313,7 @@ export default function Exchange() {
 
   const removeIncomingPhone = (id) => {
     if (incomingPhones.length === 1) {
-      alert('An exchange requires at least one customer phone')
+      notify('An exchange requires at least one customer phone')
       return
     }
     setIncomingPhones(prev => prev.filter(p => p.id !== id))
@@ -345,7 +347,7 @@ export default function Exchange() {
   // Outgoing Replacement Helpers
   const addPhoneToOutgoing = (phone) => {
     if (outgoingItems.some(i => i.phone_id === phone.id)) {
-      alert('This phone is already added to outgoing items')
+      notify('This phone is already added to outgoing items')
       return
     }
     setOutgoingItems(prev => [
@@ -435,11 +437,11 @@ export default function Exchange() {
 
   // Account classification helpers
   const cashAccount = useMemo(() => {
-    return bankAccounts.find(a => a.is_default || a.account_name?.toLowerCase().includes('cash') || a.bank_name?.toLowerCase().includes('cash')) || bankAccounts[0]
+    return bankAccounts.find(a => a.is_default || isCashName(a.account_name) || isCashName(a.bank_name)) || bankAccounts[0]
   }, [bankAccounts])
 
   const bankOnlyAccounts = useMemo(() => {
-    const list = bankAccounts.filter(a => a.id !== cashAccount?.id && !a.account_name?.toLowerCase().includes('cash'))
+    const list = bankAccounts.filter(a => a.id !== cashAccount?.id && !isCashName(a.account_name))
     return list.length > 0 ? list : bankAccounts
   }, [bankAccounts, cashAccount])
 
@@ -520,7 +522,7 @@ export default function Exchange() {
   const handleQuickAddCustomer = async (e) => {
     e.preventDefault()
     if (!newCustomerName.trim()) {
-      alert('Please enter a customer name')
+      notify('Please enter a customer name')
       return
     }
     try {
@@ -544,7 +546,7 @@ export default function Exchange() {
         setNewCustomerPhone('')
       }
     } catch (err) {
-      alert('Failed to add customer: ' + err.message)
+      notify('Failed to add customer: ' + err.message)
     }
   }
 
@@ -940,7 +942,7 @@ export default function Exchange() {
     const phone = outboxPromptPhone.trim()
     const cleaned = cleanPakistanPhone(phone)
     if (!cleaned) {
-      alert('Please enter a valid Pakistani mobile number (e.g. 03001234567)')
+      notify('Please enter a valid Pakistani mobile number (e.g. 03001234567)')
       return
     }
 
@@ -1004,11 +1006,11 @@ export default function Exchange() {
         setOutboxSuccessMsg('Added to WhatsApp Outbox! 📲')
         setTimeout(() => setOutboxSuccessMsg(''), 4000)
       } else {
-        alert(res?.reason || res?.error || 'Failed to add to outbox')
+        notify(res?.reason || res?.error || 'Failed to add to outbox')
       }
     } catch (err) {
       console.error('Manual enqueue error:', err)
-      alert('Error enqueuing message: ' + (err?.message || String(err)))
+      notify('Error enqueuing message: ' + (err?.message || String(err)))
     }
   }
 
@@ -1030,7 +1032,7 @@ export default function Exchange() {
         setVoidReason('')
         fetchExchangeHistory()
         loadInitialData()
-        alert('Exchange successfully voided and inventory/accounts restored!')
+        notify('Exchange successfully voided and inventory/accounts restored!')
       } else {
         throw new Error(res?.error || 'Voiding rejected')
       }
@@ -2538,7 +2540,7 @@ export default function Exchange() {
                 type="button"
                 onClick={() => {
                   if (splitRemaining !== 0) {
-                    alert(`Allocated amount (Rs. ${totalSplitAllocated.toLocaleString('en-PK')}) must equal net settlement (Rs. ${absoluteSettlement.toLocaleString('en-PK')}). Remaining: Rs. ${splitRemaining.toLocaleString('en-PK')}`)
+                    notify(`Allocated amount (Rs. ${totalSplitAllocated.toLocaleString('en-PK')}) must equal net settlement (Rs. ${absoluteSettlement.toLocaleString('en-PK')}). Remaining: Rs. ${splitRemaining.toLocaleString('en-PK')}`)
                     return
                   }
                   setShowSplitModal(false)

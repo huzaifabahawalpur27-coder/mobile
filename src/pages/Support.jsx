@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
+import { notify } from '../utils/toast'
 
 const STATUS_STEPS = ['open', 'in_progress', 'closed']
 const STATUS_LABEL = { open: 'Submitted', in_progress: 'Working...', closed: 'Resolved' }
@@ -96,7 +97,7 @@ function Support() {
       setMessage('')
       fetchMyTickets()
     } catch (err) {
-      alert('Failed to send ticket: ' + err.message)
+      notify('Failed to send ticket: ' + err.message)
     } finally {
       setSubmitting(false)
     }

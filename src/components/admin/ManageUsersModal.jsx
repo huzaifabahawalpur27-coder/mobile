@@ -8,6 +8,7 @@ import {
   X, Users, Plus, Edit2, Trash2, Save, XCircle,
   AlertTriangle, CheckCircle2, Eye, EyeOff, KeyRound, User, Copy, Check, MessageSquare
 } from 'lucide-react'
+import { notify } from '../../utils/toast'
 
 const EMPTY_FORM = { username: '', email: '', password: '', role: 'cashier', is_active: true }
 
@@ -208,7 +209,7 @@ export default function ManageUsersModal({ shop, onClose }) {
   const handleQuickReset = async (e) => {
     e.preventDefault()
     if (!resetModalUser || !newPasswordInput.trim()) return
-    if (newPasswordInput.length < 4) return alert('Password must be at least 4 characters')
+    if (newPasswordInput.length < 4) return notify('Password must be at least 4 characters')
 
     setResetting(true)
     try {
@@ -236,7 +237,7 @@ export default function ManageUsersModal({ shop, onClose }) {
       setNewPasswordInput('')
       fetchUsers()
     } catch (err) {
-      alert('Password reset failed: ' + err.message)
+      notify('Password reset failed: ' + err.message)
     } finally {
       setResetting(false)
     }

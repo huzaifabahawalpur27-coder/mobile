@@ -3,6 +3,8 @@ import { X, CreditCard, Landmark, Banknote, AlertCircle, CheckCircle2, ArrowRigh
 import { useAuth } from '../context/AuthContext'
 import { getBankAccounts } from '../services/bankService'
 import { updatePurchasePaymentMethod } from '../services/purchaseService'
+import { notify } from '../utils/toast'
+import { isCashName } from '../utils/moneyMath'
 
 export default function EditPurchasePaymentModal({
   isOpen,
@@ -25,13 +27,13 @@ export default function EditPurchasePaymentModal({
   const supplierName = purchase?.suppliers?.name || 'Supplier'
 
   const cashAccounts = allAccounts.filter(a =>
-    a.bank_name?.toLowerCase().includes('cash') ||
-    a.account_name?.toLowerCase().includes('cash') ||
+    isCashName(a.bank_name) ||
+    isCashName(a.account_name) ||
     a.account_number === 'CASH'
   )
   const bankAccounts = allAccounts.filter(a =>
-    !a.bank_name?.toLowerCase().includes('cash') &&
-    !a.account_name?.toLowerCase().includes('cash') &&
+    !isCashName(a.bank_name) &&
+    !isCashName(a.account_name) &&
     a.account_number !== 'CASH'
   )
 
@@ -42,13 +44,13 @@ export default function EditPurchasePaymentModal({
         setAllAccounts(accs)
 
         const banks = accs.filter(a =>
-          !a.bank_name?.toLowerCase().includes('cash') &&
-          !a.account_name?.toLowerCase().includes('cash') &&
+          !isCashName(a.bank_name) &&
+          !isCashName(a.account_name) &&
           a.account_number !== 'CASH'
         )
         const cashes = accs.filter(a =>
-          a.bank_name?.toLowerCase().includes('cash') ||
-          a.account_name?.toLowerCase().includes('cash') ||
+          isCashName(a.bank_name) ||
+          isCashName(a.account_name) ||
           a.account_number === 'CASH'
         )
 
@@ -113,7 +115,7 @@ export default function EditPurchasePaymentModal({
         notes: notes.trim(),
         user
       })
-      alert(`Payment method for PR-${String(purchase.id).slice(-6)} successfully updated to ${newMethod.toUpperCase()}!`)
+      notify(`Payment method for PR-${String(purchase.id).slice(-6)} successfully updated to ${newMethod.toUpperCase()}!`)
       if (onUpdated) onUpdated()
       onClose()
     } catch (err) {

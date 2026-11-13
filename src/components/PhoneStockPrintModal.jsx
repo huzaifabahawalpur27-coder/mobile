@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Printer, FileText, Share2, X, ShieldCheck, CheckCircle2 } from 'lucide-react'
 import { printHTML, getShopBranding, generatePhoneStockPrintHTML } from '../utils/printUtils'
 import { generatePhoneStockPDF, shareOrDownloadPDF } from '../utils/pdfShare'
+import { notify } from '../utils/toast'
 
 export default function PhoneStockPrintModal({
   isOpen,
@@ -63,7 +64,7 @@ export default function PhoneStockPrintModal({
       printHTML(html)
       onClose()
     } catch (err) {
-      alert('Print error: ' + (err.message || String(err)))
+      notify('Print error: ' + (err.message || String(err)))
     } finally {
       setLoadingAction(null)
     }
@@ -84,7 +85,7 @@ export default function PhoneStockPrintModal({
       await shareOrDownloadPDF(pdfBlob, filename)
       onClose()
     } catch (err) {
-      alert('PDF generation failed: ' + (err.message || String(err)))
+      notify('PDF generation failed: ' + (err.message || String(err)))
     } finally {
       setLoadingAction(null)
     }
@@ -111,7 +112,7 @@ export default function PhoneStockPrintModal({
       await shareOrDownloadPDF(pdfBlob, filename, phoneNum || null, msg)
       onClose()
     } catch (err) {
-      alert('WhatsApp share failed: ' + (err.message || String(err)))
+      notify('WhatsApp share failed: ' + (err.message || String(err)))
     } finally {
       setLoadingAction(null)
     }

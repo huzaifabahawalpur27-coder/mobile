@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, DollarSign, TrendingUp, AlertCircle, CheckCircle2, Smartphone, Package, Copy, Check } from 'lucide-react'
 import { supabase } from '../services/supabase'
 import { db, addToSyncQueue } from '../services/db'
+import { notify } from '../utils/toast'
 
 export default function EditPriceModal({
   isOpen,
@@ -293,7 +294,7 @@ export default function EditPriceModal({
 
         if (onSuccess) onSuccess({ ...item, ...updates })
         onClose()
-        alert('Offline mode: Changes saved locally and queued for cloud sync! 🔄')
+        notify('Offline mode: Changes saved locally and queued for cloud sync! 🔄')
       } else {
         setErrorMsg((/duplicate key|uq_shop_imei/i.test(errMsg) ? 'This IMEI is already used by another phone. ' : 'Failed to save changes: ') + errMsg)
       }

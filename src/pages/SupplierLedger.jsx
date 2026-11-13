@@ -6,7 +6,9 @@ import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue } from '../services/db'
 import { adjustSupplierBalance, adjustProductStock, releasePhoneFromPurchase } from '../services/atomicOps'
 import { getBankAccounts, creditBankBalance, deductBankBalance } from '../services/bankService'
-import { supplierLedgerEffect, netAmount, paidAmount } from '../utils/moneyMath'
+import { supplierLedgerEffect, netAmount, paidAmount, confirmAmount, isCashName } from '../utils/moneyMath'
+import { applyMoneyOp, accountForMode, deleteBillPayments } from '../services/moneyOps'
+import EditLedgerEntryModal from '../components/EditLedgerEntryModal'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
@@ -18,6 +20,7 @@ import {
     Layers, HardDrive, Sparkles, Tag,
     Printer, FileText, RotateCcw, CreditCard, ChevronDown, ChevronUp
 } from 'lucide-react'
+import { notify } from '../utils/toast'
 
 function SupplierLedger() {
     const { id } = useParams()
@@ -214,7 +217,7 @@ function SupplierLedger() {
         const res = await adjustSupplierBalance(id, d)
         if (!res.ok) {
             console.error('Supplier balance not updated:', res.error)
-            alert(`Saved, but the supplier's balance could not be changed by Rs. ${d.toLocaleString()} (${res.error}). Please check it.`)
+            notify(`Saved, but the supplier's balance could not be changed by Rs. ${d.toLocaleString()} (${res.error}). Please check it.`)
             return false
         }
         setSupplier(sup => sup ? { ...sup, outstanding_balance: (Number(sup.outstanding_balance) || 0) + d, balance: (Number(sup.outstanding_balance) || 0) + d } : sup)
@@ -252,6 +255,55 @@ function SupplierLedger() {
     // The computed "opening balance" row is not a stored entry
     const isOpeningRow = (item) => String(item?.id ?? '').startsWith('opening')
 
+    // ── Correct a manual entry (payment / debit) without deleting it ──────────
+    const [editEntry, setEditEntry] = useState(null)
+    const [savingEdit, setSavingEdit] = useState(false)
+    const canEditEntry = (item) =>
+        !isOpeningRow(item) && /^\d+$/.test(String(item.id)) &&
+        // a payment saved with a purchase bill is corrected from the bill (Edit Payment), not here
+        !/\[Paid via|\[Credit Purchase|Payment for Phone Purchase/i.test(item.note || '') &&
+        (item.type === 'debit' || (item.type === 'payment' && (item.payment_type === 'payment' || !item.payment_type)))
+
+    const handleSaveEntryEdit = async ({ amount, note, reason }) => {
+        const item = editEntry
+        if (!item) return
+        const oldAmount = Math.abs(Number(item.amount) || 0)
+        const diff = Math.round((amount - oldAmount) * 100) / 100
+        const isPayment = item.type === 'payment'
+        setSavingEdit(true)
+        try {
+            let account = null
+            if (isPayment && diff !== 0) {
+                try { account = accountForMode(await getBankAccounts(user.shop_id), item.payment_mode) } catch (_) { /* no accounts set up */ }
+            }
+            const stamp = new Date().toISOString().slice(0, 10)
+            const newNote = `${note || item.note || ''} [Corrected ${stamp}: was Rs. ${oldAmount.toLocaleString()}. Reason: ${reason}]`.trim()
+            // Entry, balance and account change together: all or nothing
+            const res = await applyMoneyOp({
+                shop_id: user.shop_id,
+                updates: [{ table: 'supplier_payments', id: item.id, set: { amount, note: newNote } }],
+                // a debit adds to the balance, a payment takes off it
+                supplier: { id, delta: isPayment ? -diff : diff },
+                accounts: account ? [{
+                    account_id: account.id,
+                    delta: -diff,
+                    reference_type: 'SUPPLIER_PAYMENT_EDIT',
+                    reference_id: String(item.id),
+                    description: `Corrected payment: ${supplier?.name || 'Supplier'} (was Rs. ${oldAmount.toLocaleString()}, now Rs. ${amount.toLocaleString()})`
+                }] : []
+            })
+            if (!res.ok) throw new Error(res.error || 'Could not save the correction')
+            setEditEntry(null)
+            fetchSupplierData()
+            if (res.queued) notify('Offline: correction saved on this device and will sync when online.')
+        } catch (err) {
+            notify('Correction not saved: ' + (err?.message || String(err)))
+        } finally {
+            setSavingEdit(false)
+        }
+    }
+
+
     // Balance effect of removing a ledger entry. Deleting a purchase gives the money paid
     // for it back to the shop's account (see refundPurchasePayment), so only the unpaid
     // part of the bill comes off what the shop owes.
@@ -269,8 +321,8 @@ function SupplierLedger() {
         const isBank = method === 'bank' || method === 'online'
         const targetAcc = accounts.find(a =>
             isBank
-                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                ? (!isCashName(a.bank_name) && !isCashName(a.account_name))
+                : (isCashName(a.bank_name) || isCashName(a.account_name))
         ) || accounts[0]
         if (targetAcc) {
             await creditBankBalance({
@@ -288,18 +340,19 @@ function SupplierLedger() {
     const handleSubmitTransaction = async (e) => {
         e.preventDefault()
         if (purchaseAmt === 0 && paidAmt === 0) {
-            alert('Purchase amount ya paid amount mein se koi ek lazmi hai.')
+            notify('Purchase amount ya paid amount mein se koi ek lazmi hai.')
             return
         }
 
+        // Catch an extra digit before it is saved
+        const pastAmounts = (kind) => ledger.filter(l => l.type === kind).map(l => l.amount)
+        if (!confirmAmount(purchaseAmt, pastAmounts('debit').concat(pastAmounts('purchase')), 'Purchase amount')) return
+        if (!confirmAmount(paidAmt, pastAmounts('payment'), 'Payment to supplier')) return
         setSaving(true)
         const now = txForm.date ? new Date(txForm.date + 'T12:00:00').toISOString() : new Date().toISOString()
 
         try {
-            const insertRows = []
-
             const commonFields = {
-                shop_id: user.shop_id,
                 supplier_id: id,
                 bill_number: txForm.bill_number.trim() || null,
                 details: txForm.details.trim() || null,
@@ -307,95 +360,48 @@ function SupplierLedger() {
                 transaction_ref: txForm.transaction_ref.trim() || null,
                 created_at: now
             }
+            const rows = []
+            if (purchaseAmt > 0) rows.push({ ...commonFields, amount: purchaseAmt, payment_type: 'debit', note: txForm.note.trim() || 'Purchase Entry' })
+            if (paidAmt > 0) rows.push({ ...commonFields, amount: paidAmt, payment_type: 'payment', note: txForm.note.trim() || 'Payment to Supplier' })
 
-            // Debit row (purchase)
-            if (purchaseAmt > 0) {
-                insertRows.push({ ...commonFields, amount: purchaseAmt, payment_type: 'debit', note: txForm.note.trim() || 'Purchase Entry' })
-            }
-
-            // Credit row (payment)
+            // Money paid leaves the cash / bank account for its payment mode
+            let account = null
             if (paidAmt > 0) {
-                insertRows.push({ ...commonFields, amount: paidAmt, payment_type: 'payment', note: txForm.note.trim() || 'Payment to Supplier' })
+                try { account = accountForMode(await getBankAccounts(user.shop_id), txForm.payment_mode) } catch (_) { /* no accounts set up */ }
             }
-
-            let { error: pErr } = await supabase.from('supplier_payments').insert(insertRows)
-            if (pErr && (pErr.message?.includes('column') || pErr.message?.includes('schema cache') || pErr.code === 'PGRST204' || pErr.code === '42703' || String(pErr.status) === '400')) {
-                // Try fallback with payment_type + note
-                const fallbackRows = insertRows.map(r => ({
-                    shop_id: r.shop_id,
-                    supplier_id: r.supplier_id,
-                    amount: r.amount,
-                    payment_type: r.payment_type,
-                    note: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.note].filter(Boolean).join(' '),
-                    created_at: r.created_at
-                }))
-                const retryRes = await supabase.from('supplier_payments').insert(fallbackRows)
-                pErr = retryRes.error
-
-                // If remote table only has basic description column (no payment_type/note)
-                if (pErr && (pErr.message?.includes('column') || pErr.message?.includes('schema cache') || pErr.code === 'PGRST204' || pErr.code === '42703' || String(pErr.status) === '400')) {
-                    const coreRows = insertRows.map(r => ({
-                        shop_id: r.shop_id,
+            // Entry, supplier balance and account are saved together: all or nothing
+            const res = await applyMoneyOp({
+                shop_id: user.shop_id,
+                inserts: rows.map(r => ({
+                    table: 'supplier_payments',
+                    row: r,
+                    // older databases keep only a description column
+                    fallbackRow: {
+                        shop_id: user.shop_id,
                         supplier_id: r.supplier_id,
                         amount: r.amount,
                         description: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.payment_type ? `[${r.payment_type}]` : '', r.note, r.details].filter(Boolean).join(' ') || 'Transaction',
                         created_at: r.created_at
-                    }))
-                    const coreRetry = await supabase.from('supplier_payments').insert(coreRows)
-                    pErr = coreRetry.error
-                }
-            }
-            if (pErr) throw pErr
-
-            await changeBalance(purchaseAmt - paidAmt)
-
-            if (paidAmt > 0) {
-                try {
-                    const accounts = await getBankAccounts(user.shop_id)
-                    const mode = String(txForm.payment_mode || 'cash').toLowerCase()
-                    const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
-                    const targetAcc = accounts.find(a =>
-                        isBank
-                            ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                            : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
-                    ) || accounts[0]
-                    if (targetAcc) {
-                        await deductBankBalance({
-                            shopId: user.shop_id,
-                            accountId: targetAcc.id,
-                            amount: paidAmt,
-                            description: `Supplier Payment: ${supplier?.name || 'Supplier'} (Bill: ${txForm.bill_number || 'Ledger'})`
-                        })
                     }
-                } catch (accErr) {
-                    console.warn('Could not deduct supplier payment from bank account:', accErr)
-                }
-            }
-            alert('Transaction save ho gaya! ✅')
+                })),
+                supplier: { id, delta: purchaseAmt - paidAmt },
+                accounts: account ? [{
+                    account_id: account.id,
+                    delta: -paidAmt,
+                    reference_type: 'SUPPLIER_PAYMENT',
+                    reference_id: String(id),
+                    description: `Supplier Payment: ${supplier?.name || 'Supplier'} (Bill: ${txForm.bill_number || 'Ledger'})`
+                }] : []
+            })
+            if (!res.ok) throw new Error(res.error || 'Could not save the transaction')
+            setSupplier(sup => sup ? { ...sup, outstanding_balance: (Number(sup.outstanding_balance) || 0) + purchaseAmt - paidAmt, balance: (Number(sup.outstanding_balance) || 0) + purchaseAmt - paidAmt } : sup)
+            if (res.queued) notify('Offline mode: Transaction locally save ho gaya. Online hone pr sync hoga! 🔄')
+            else if (res.problems?.length) notify(`Saved, but please check:\n${res.problems.join('\n')}`)
+            else notify('Transaction save ho gaya! ✅')
             resetForm()
             fetchSupplierData()
         } catch (error) {
-            const errMsg = error?.message || String(error)
-            if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
-                // Offline: save to local DB
-                const offlineCommon = { shop_id: user.shop_id, supplier_id: id, bill_number: txForm.bill_number.trim() || null, details: txForm.details.trim() || null, payment_mode: txForm.payment_mode || null, transaction_ref: txForm.transaction_ref.trim() || null, created_at: now }
-                if (purchaseAmt > 0) {
-                    const rec = { ...offlineCommon, id: crypto.randomUUID(), amount: purchaseAmt, payment_type: 'debit', note: txForm.note.trim() || 'Purchase Entry' }
-                    await db.supplier_payments.add(rec)
-                    await addToSyncQueue('supplier_payments', 'INSERT', rec)
-                }
-                if (paidAmt > 0) {
-                    const rec = { ...offlineCommon, id: crypto.randomUUID(), amount: paidAmt, payment_type: 'payment', note: txForm.note.trim() || 'Payment to Supplier' }
-                    await db.supplier_payments.add(rec)
-                    await addToSyncQueue('supplier_payments', 'INSERT', rec)
-                }
-                await changeBalance(purchaseAmt - paidAmt)
-                alert('Offline mode: Transaction locally save ho gaya. Online hone pr sync hoga! 🔄')
-                resetForm()
-                fetchSupplierData()
-            } else {
-                alert('Error: ' + errMsg)
-            }
+            notify('Error: ' + (error?.message || String(error)))
         } finally { setSaving(false) }
     }
 
@@ -407,7 +413,7 @@ function SupplierLedger() {
 
     // ── Delete Transaction ──────────────────────────────────────────────────────
     const handleDeleteTransaction = async (item) => {
-        if (isOpeningRow(item)) { alert('Opening balance entry directly delete nahi ho sakti.'); return }
+        if (isOpeningRow(item)) { notify('Opening balance entry directly delete nahi ho sakti.'); return }
         const typeLabel = item.type === 'purchase' ? 'Purchase Order'
             : item.type === 'debit' ? 'Debit Entry'
             : item.type === 'payment' ? 'Payment'
@@ -433,6 +439,8 @@ function SupplierLedger() {
                     await supabase.from('purchase_items').delete().eq('purchase_id', item.id)
                     const { error } = await supabase.from('purchases').delete().eq('id', item.id)
                     if (error) throw error
+                    // Payment / refund rows saved with this bill go with it
+                    await deleteBillPayments(item.id).catch(() => {})
                 } else {
                     const lItems = await db.purchase_items.toArray()
                     const toDelIds = lItems.filter(i => String(i.purchase_id) === String(item.id)).map(i => i.id)
@@ -451,8 +459,8 @@ function SupplierLedger() {
                             const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
                             const targetAcc = accounts.find(a =>
                                 isBank
-                                    ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                                    : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                                    ? (!isCashName(a.bank_name) && !isCashName(a.account_name))
+                                    : (isCashName(a.bank_name) || isCashName(a.account_name))
                             ) || accounts[0]
                             if (targetAcc) {
                                 await creditBankBalance({
@@ -482,7 +490,7 @@ function SupplierLedger() {
             await changeBalance(deletionDelta(item))
             fetchSupplierData()
         } catch (err) {
-            alert('Delete nahi hua: ' + err.message)
+            notify('Delete nahi hua: ' + err.message)
         }
     }
 
@@ -524,7 +532,7 @@ function SupplierLedger() {
             const ws = wb.Sheets[wb.SheetNames[0]]
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'yyyy-mm-dd' })
 
-            if (!rows.length) { alert('File mein koi data nahi mila.'); return }
+            if (!rows.length) { notify('File mein koi data nahi mila.'); return }
 
             const confirmed = window.confirm(`${rows.length} transactions import karein?`)
             if (!confirmed) return
@@ -562,7 +570,7 @@ function SupplierLedger() {
                 }
             }
 
-            if (!insertRows.length) { alert('Koi valid row nahi mili (Debit/Credit columns check karein).'); return }
+            if (!insertRows.length) { notify('Koi valid row nahi mili (Debit/Credit columns check karein).'); return }
 
             if (navigator.onLine) {
                 let { error } = await supabase.from('supplier_payments').insert(insertRows)
@@ -601,11 +609,11 @@ function SupplierLedger() {
                 await changeBalance(balanceDelta)
             }
 
-            alert(`${insertRows.length} entries import ho gayi! ✅`)
+            notify(`${insertRows.length} entries import ho gayi! ✅`)
             fetchSupplierData()
         } catch (err) {
             console.error('Import error:', err)
-            alert('Import failed: ' + err.message)
+            notify('Import failed: ' + err.message)
         }
     }
 
@@ -697,7 +705,7 @@ function SupplierLedger() {
         }
         await changeBalance(totalDelta)
         setSelectedIds(new Set())
-        if (errors.length) alert(`${errors.length} entries delete nahi huin:\n${errors.slice(0, 3).join('\n')}`)
+        if (errors.length) notify(`${errors.length} entries delete nahi huin:\n${errors.slice(0, 3).join('\n')}`)
         fetchSupplierData()
     }
 
@@ -718,9 +726,9 @@ function SupplierLedger() {
             }
             await db.suppliers.update(parseInt(id), fixed).catch(() => {})
             setSupplier(s => s ? { ...s, outstanding_balance: computedBalance, balance: computedBalance } : s)
-            alert(`✅ Balance reconciled successfully to Rs. ${computedBalance}`)
+            notify(`✅ Balance reconciled successfully to Rs. ${computedBalance}`)
         } catch (err) {
-            alert('Reconcile error: ' + err.message)
+            notify('Reconcile error: ' + err.message)
         }
     }
 
@@ -1182,6 +1190,10 @@ function SupplierLedger() {
                                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                                         <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)}
                                             className="w-4 h-4 rounded cursor-pointer" />
+                                        {canEditEntry(item) && (
+                                            <button onClick={() => setEditEntry(item)} title="Correct amount" aria-label="Correct amount"
+                                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
+                                        )}
                                         <button
                                             onClick={() => handleDeleteTransaction(item)}
                                             title="Delete transaction"
@@ -1318,6 +1330,10 @@ function SupplierLedger() {
                                             </span>
                                         </td>
                                         <td className="px-3 py-3 text-right">
+                                            {canEditEntry(item) && (
+                                                <button onClick={() => setEditEntry(item)} title="Correct amount" aria-label="Correct amount"
+                                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
+                                            )}
                                             <button onClick={() => handleDeleteTransaction(item)}
                                                 title="Delete transaction"
                                                 className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition text-xs">
@@ -1674,6 +1690,15 @@ function SupplierLedger() {
                     )}
                 </div>
             )}
+
+            <EditLedgerEntryModal
+                entry={editEntry}
+                title={editEntry?.type === 'payment' ? 'Correct payment' : 'Correct entry'}
+                saving={savingEdit}
+                onClose={() => setEditEntry(null)}
+                onSave={handleSaveEntryEdit}
+                preview={(diff) => `Balance will change by ${(editEntry?.type === 'payment' ? -diff : diff) >= 0 ? '+' : '-'}Rs. ${Math.abs(diff).toLocaleString()}${editEntry?.type === 'payment' ? '; the cash / bank account changes by the same amount' : ''}.`}
+            />
 
             {/* ── Add Transaction Modal ── */}
             {showModal && (

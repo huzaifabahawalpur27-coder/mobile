@@ -31,6 +31,10 @@ Standalone admin: `cd superadmin`, then the same npm scripts.
 - Shared money maths lives in `src/utils/moneyMath.js` (returns, tenders, ledger row effects, cash-drawer portions). POS, Sales, both ledgers, the cash session and Trash restore use it; change a rule there, not per screen. `npm test` runs `scripts/test_money_math.mjs`.
 - Cash / bank account balances change only through `creditBankBalance` / `deductBankBalance` in `src/services/bankService.js`, which send a signed amount to `adjust_bank_balance` (`sql/atomic_bank_balance.sql`) and queue the same call when offline. Never write `current_balance` as an absolute number from a screen.
 
+- A money action that touches more than one thing (an entry plus a balance, an account or stock) goes through `applyMoneyOp` in `src/services/moneyOps.js` (`apply_money_op`, `sql/atomic_money_ops.sql`): one transaction online, one queued call offline. Do not chain separate inserts and balance updates in a page.
+- Decide whether an account is the cash drawer with `isCashAccount` / `isCashName` from `moneyMath.js`, never `includes('cash')` (it matches "JazzCash").
+- Show messages with `notify()` from `src/utils/toast.js`, not `alert()`. Keep `alert()` only where the page reloads, signs out or prints straight after.
+
 ## UI And Product Conventions
 
 - Keep the app shell full-screen; let `Layout` own available height and pages scroll inside `<main>`. Prefer flex + `min-h-0`/`h-full`, and `dvh` when viewport sizing is unavoidable. Avoid page-local `100vh` subtraction.

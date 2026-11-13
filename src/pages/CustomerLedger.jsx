@@ -8,7 +8,10 @@ import { db, addToSyncQueue } from '../services/db'
 import { adjustCustomerBalance, adjustProductStock, releasePhoneFromSale } from '../services/atomicOps'
 import { generateOutstandingPDF, shareOrDownloadPDF } from '../utils/pdfShare'
 import { getBankAccounts, creditBankBalance, deductBankBalance, reverseSaleFromAccounts } from '../services/bankService'
-import { customerLedgerEffect, isCountedSale, netAmount, paidAmount } from '../utils/moneyMath'
+import { customerLedgerEffect, isCountedSale, netAmount, paidAmount, confirmAmount, isCashName } from '../utils/moneyMath'
+import { applyMoneyOp, accountForMode } from '../services/moneyOps'
+import EditLedgerEntryModal from '../components/EditLedgerEntryModal'
+import { notify } from '../utils/toast'
 
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
     let snap = null
@@ -254,7 +257,7 @@ function CustomerLedger() {
 
     // ── Excel Export ──────────────────────────────────────────────────────────
     const handleExport = () => {
-        if (!ledger.length) return alert('Koi transaction nahi hai export karne ke liye.')
+        if (!ledger.length) return notify('Koi transaction nahi hai export karne ke liye.')
         const rows = [...ledger].reverse().map((item, idx) => ({
             'Sr#': idx + 1,
             'Date': new Date(item.date).toLocaleDateString('en-PK'),
@@ -294,7 +297,7 @@ function CustomerLedger() {
             const ws = wb.Sheets[wb.SheetNames[0]]
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'yyyy-mm-dd' })
 
-            if (!rows.length) { alert('File mein koi data nahi mila.'); return }
+            if (!rows.length) { notify('File mein koi data nahi mila.'); return }
 
             const confirmed = window.confirm(`${rows.length} transactions import karein?\n\nNote: "Debit (Sale)" column se sale entries aur "Credit (Payment)" column se payment entries banegi.`)
             if (!confirmed) return
@@ -334,7 +337,7 @@ function CustomerLedger() {
                 }
             }
 
-            if (!insertRows.length) { alert('Koi valid row nahi mili (Debit/Credit columns check karein).'); return }
+            if (!insertRows.length) { notify('Koi valid row nahi mili (Debit/Credit columns check karein).'); return }
 
             if (navigator.onLine) {
                 let { error } = await supabase.from('customer_payments').insert(insertRows)
@@ -360,11 +363,11 @@ function CustomerLedger() {
                 await changeBalance(balanceDelta)
             }
 
-            alert(`${insertRows.length} entries import ho gayi! ✅`)
+            notify(`${insertRows.length} entries import ho gayi! ✅`)
             fetchCustomerData()
         } catch (err) {
             console.error('Import error:', err)
-            alert('Import failed: ' + err.message)
+            notify('Import failed: ' + err.message)
         }
     }
 
@@ -376,7 +379,7 @@ function CustomerLedger() {
         const res = await adjustCustomerBalance(id, d)
         if (!res.ok) {
             console.error('Customer balance not updated:', res.error)
-            alert(`Saved, but the customer's balance could not be changed by Rs. ${d.toLocaleString()} (${res.error}). Please check it.`)
+            notify(`Saved, but the customer's balance could not be changed by Rs. ${d.toLocaleString()} (${res.error}). Please check it.`)
             return false
         }
         setCustomer(c => c ? { ...c, outstanding_balance: (Number(c.outstanding_balance) || 0) + d, balance: (Number(c.outstanding_balance) || 0) + d } : c)
@@ -423,11 +426,14 @@ function CustomerLedger() {
         e.preventDefault()
         const saleAmt = parseFloat(txForm.sale_amount) || 0
         const payAmt = parseFloat(txForm.payment_amount) || 0
-        if (saleAmt === 0 && payAmt === 0) return alert('Sale amount ya payment amount mein se koi ek lazmi hai.')
+        if (saleAmt === 0 && payAmt === 0) return notify('Sale amount ya payment amount mein se koi ek lazmi hai.')
+        // Catch an extra digit before it is saved
+        const pastAmounts = (kind) => ledger.filter(l => l.type === kind).map(l => l.amount)
+        if (!confirmAmount(saleAmt, pastAmounts('debit'), 'Sale amount')) return
+        if (!confirmAmount(payAmt, pastAmounts('payment'), 'Payment received')) return
         setSaving(true)
         const now = txForm.date ? new Date(txForm.date + 'T12:00:00').toISOString() : new Date().toISOString()
         const commonFields = {
-            shop_id: user.shop_id,
             customer_id: id,
             bill_number: txForm.bill_number.trim() || null,
             details: txForm.details.trim() || null,
@@ -435,70 +441,49 @@ function CustomerLedger() {
             transaction_ref: txForm.transaction_ref.trim() || null,
             created_at: now
         }
-        const insertRows = []
-        if (saleAmt > 0) insertRows.push({ ...commonFields, amount: saleAmt, payment_type: 'debit', note: txForm.note.trim() || 'Manual Sale Entry' })
-        if (payAmt > 0) insertRows.push({ ...commonFields, amount: payAmt, payment_type: 'payment', note: txForm.note.trim() || 'Cash Received' })
+        const rows = []
+        if (saleAmt > 0) rows.push({ ...commonFields, amount: saleAmt, payment_type: 'debit', note: txForm.note.trim() || 'Manual Sale Entry' })
+        if (payAmt > 0) rows.push({ ...commonFields, amount: payAmt, payment_type: 'payment', note: txForm.note.trim() || 'Cash Received' })
 
         try {
-            if (!navigator.onLine) throw new TypeError('Failed to fetch')
-            let { error } = await supabase.from('customer_payments').insert(insertRows)
-            if (error && (error.message?.includes('column') || error.message?.includes('schema cache') || error.code === 'PGRST204' || error.code === '42703' || String(error.status) === '400')) {
-                const coreRows = insertRows.map(r => ({
-                    shop_id: r.shop_id,
-                    customer_id: r.customer_id,
-                    amount: r.amount,
-                    description: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.payment_type ? `[${r.payment_type}]` : '', r.note, r.details].filter(Boolean).join(' ') || 'Customer Transaction',
-                    created_at: r.created_at
-                }))
-                const retryRes = await supabase.from('customer_payments').insert(coreRows)
-                error = retryRes.error
-            }
-            if (error) throw error
-            await changeBalance(saleAmt - payAmt)
+            // Money received goes into the cash / bank account for its payment mode
+            let account = null
             if (payAmt > 0) {
-                setLastPayment({ amount: payAmt, note: txForm.note.trim() || 'Cash Received', date: now })
-                try {
-                    const accounts = await getBankAccounts(user.shop_id)
-                    const mode = String(txForm.payment_mode || 'cash').toLowerCase()
-                    const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
-                    const targetAcc = accounts.find(a =>
-                        isBank
-                            ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                            : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
-                    ) || accounts[0]
-                    if (targetAcc) {
-                        await creditBankBalance({
-                            shopId: user.shop_id,
-                            accountId: targetAcc.id,
-                            amount: payAmt,
-                            referenceType: 'CUSTOMER_PAYMENT',
-                            referenceId: String(id),
-                            description: `Customer Payment: ${customer?.name || 'Customer'} (Ref: ${txForm.transaction_ref || txForm.bill_number || 'Khata'})`
-                        })
-                    }
-                } catch (accErr) {
-                    console.warn('Could not credit customer payment to bank account:', accErr)
-                }
+                try { account = accountForMode(await getBankAccounts(user.shop_id), txForm.payment_mode) } catch (_) { /* no accounts set up */ }
             }
+            // Entry, customer balance and account are saved together: all or nothing
+            const res = await applyMoneyOp({
+                shop_id: user.shop_id,
+                inserts: rows.map(r => ({
+                    table: 'customer_payments',
+                    row: r,
+                    // older databases keep only a description column
+                    fallbackRow: {
+                        shop_id: user.shop_id,
+                        customer_id: r.customer_id,
+                        amount: r.amount,
+                        description: [r.bill_number ? `[Bill #${r.bill_number}]` : '', r.payment_type ? `[${r.payment_type}]` : '', r.note, r.details].filter(Boolean).join(' ') || 'Customer Transaction',
+                        created_at: r.created_at
+                    }
+                })),
+                customer: { id, delta: saleAmt - payAmt },
+                accounts: account ? [{
+                    account_id: account.id,
+                    delta: payAmt,
+                    reference_type: 'CUSTOMER_PAYMENT',
+                    reference_id: String(id),
+                    description: `Customer Payment: ${customer?.name || 'Customer'} (Ref: ${txForm.transaction_ref || txForm.bill_number || 'Khata'})`
+                }] : []
+            })
+            if (!res.ok) throw new Error(res.error || 'Could not save the transaction')
+            setCustomer(c => c ? { ...c, outstanding_balance: (Number(c.outstanding_balance) || 0) + saleAmt - payAmt, balance: (Number(c.outstanding_balance) || 0) + saleAmt - payAmt } : c)
+            if (payAmt > 0) setLastPayment({ amount: payAmt, note: txForm.note.trim() || 'Cash Received', date: now })
             resetTxForm()
             fetchCustomerData()
+            if (res.queued) notify('Offline mode: Transaction locally save ho gaya. Online hone par sync hoga! 🔄')
+            else if (res.problems?.length) notify(`Saved, but please check:\n${res.problems.join('\n')}`)
         } catch (error) {
-            const errMsg = error?.message || String(error)
-            if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
-                const ts = new Date().toISOString()
-                for (const row of insertRows) {
-                    const rec = { ...row, id: crypto.randomUUID() }
-                    await db.customer_payments.add(rec)
-                    await addToSyncQueue('customer_payments', 'INSERT', rec)
-                }
-                await changeBalance(saleAmt - payAmt)
-                if (payAmt > 0) setLastPayment({ amount: payAmt, note: txForm.note.trim() || 'Cash Received', date: ts })
-                resetTxForm()
-                fetchCustomerData()
-                alert('Offline mode: Transaction locally save ho gaya. Online hone par sync hoga! 🔄')
-            } else {
-                alert('Error: ' + errMsg)
-            }
+            notify('Error: ' + (error?.message || String(error)))
         } finally {
             setSaving(false)
         }
@@ -506,6 +491,53 @@ function CustomerLedger() {
 
     // The computed "opening balance" row is not a stored entry
     const isOpeningRow = (item) => String(item?.id ?? '').startsWith('opening')
+
+    // ── Correct a manual entry (payment / debit) without deleting it ──────────
+    const [editEntry, setEditEntry] = useState(null)
+    const [savingEdit, setSavingEdit] = useState(false)
+    const canEditEntry = (item) =>
+        !isOpeningRow(item) && /^\d+$/.test(String(item.id)) &&
+        (item.type === 'debit' || (item.type === 'payment' && (item.payment_type === 'payment' || !item.payment_type)))
+
+    const handleSaveEntryEdit = async ({ amount, note, reason }) => {
+        const item = editEntry
+        if (!item) return
+        const oldAmount = Math.abs(Number(item.amount) || 0)
+        const diff = Math.round((amount - oldAmount) * 100) / 100
+        const isPayment = item.type === 'payment'
+        setSavingEdit(true)
+        try {
+            let account = null
+            if (isPayment && diff !== 0) {
+                try { account = accountForMode(await getBankAccounts(user.shop_id), item.payment_mode) } catch (_) { /* no accounts set up */ }
+            }
+            const stamp = new Date().toISOString().slice(0, 10)
+            const newNote = `${note || item.note || ''} [Corrected ${stamp}: was Rs. ${oldAmount.toLocaleString()}. Reason: ${reason}]`.trim()
+            // Entry, balance and account change together: all or nothing
+            const res = await applyMoneyOp({
+                shop_id: user.shop_id,
+                updates: [{ table: 'customer_payments', id: item.id, set: { amount, note: newNote } }],
+                // a debit adds to the balance, a payment takes off it
+                customer: { id, delta: isPayment ? -diff : diff },
+                accounts: account ? [{
+                    account_id: account.id,
+                    delta: diff,
+                    reference_type: 'CUSTOMER_PAYMENT_EDIT',
+                    reference_id: String(item.id),
+                    description: `Corrected payment: ${customer?.name || 'Customer'} (was Rs. ${oldAmount.toLocaleString()}, now Rs. ${amount.toLocaleString()})`
+                }] : []
+            })
+            if (!res.ok) throw new Error(res.error || 'Could not save the correction')
+            setEditEntry(null)
+            fetchCustomerData()
+            if (res.queued) notify('Offline: correction saved on this device and will sync when online.')
+        } catch (err) {
+            notify('Correction not saved: ' + (err?.message || String(err)))
+        } finally {
+            setSavingEdit(false)
+        }
+    }
+
 
     // Removes one ledger entry: stock and phones back for a sale, the money back out of
     // (or into) the account it touched, then the record itself. Used by single and bulk delete.
@@ -557,8 +589,8 @@ function CustomerLedger() {
                     const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
                     const targetAcc = accounts.find(a =>
                         isBank
-                            ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                            : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                            ? (!isCashName(a.bank_name) && !isCashName(a.account_name))
+                            : (isCashName(a.bank_name) || isCashName(a.account_name))
                     ) || accounts[0]
 
                     if (targetAcc) {
@@ -598,7 +630,7 @@ function CustomerLedger() {
     }
 
     const handleDeleteTransaction = async (item) => {
-        if (isOpeningRow(item)) { alert('Opening balance entry directly delete nahi ho sakti.'); return }
+        if (isOpeningRow(item)) { notify('Opening balance entry directly delete nahi ho sakti.'); return }
         const label = item.type === 'sale' ? 'Sale/Invoice' : item.type === 'payment' ? 'Payment' : 'Return'
         if (!confirm(`Yeh transaction delete karein?\n\nType: ${label}\nAmount: Rs. ${Number(item.amount).toLocaleString()}\nNote: ${item.note}\n\nCustomer ka outstanding balance bhi adjust ho ga.`)) return
 
@@ -609,7 +641,7 @@ function CustomerLedger() {
             await changeBalance(deletionDelta(item))
             fetchCustomerData()
         } catch (err) {
-            alert('Delete nahi hua: ' + err.message)
+            notify('Delete nahi hua: ' + err.message)
         }
     }
 
@@ -645,7 +677,7 @@ function CustomerLedger() {
             await changeBalance(totalDelta)
             setSelectedIds(new Set())
         } catch (err) {
-            alert('Kuch entries delete nahi huin: ' + err.message)
+            notify('Kuch entries delete nahi huin: ' + err.message)
             fetchCustomerData()
         }
     }
@@ -667,9 +699,9 @@ function CustomerLedger() {
             }
             await db.customers.update(parseInt(id), fixed).catch(() => {})
             setCustomer(c => c ? { ...c, ...fixed } : c)
-            alert(`✅ Balance reconciled successfully to Rs. ${computedBalance}`)
+            notify(`✅ Balance reconciled successfully to Rs. ${computedBalance}`)
         } catch (err) {
-            alert('Reconcile error: ' + err.message)
+            notify('Reconcile error: ' + err.message)
         }
     }
 
@@ -810,6 +842,10 @@ function CustomerLedger() {
                                         {!isOpeningRow(item) && (
                                             <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)}
                                                 className="w-4 h-4 rounded cursor-pointer" />
+                                        )}
+                                        {canEditEntry(item) && (
+                                            <button onClick={() => setEditEntry(item)} title="Correct amount" aria-label="Correct amount"
+                                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
                                         )}
                                         {!isOpeningRow(item) && (
                                             <button
@@ -956,6 +992,10 @@ function CustomerLedger() {
                                         Rs. {item.balance.toFixed(0)}
                                     </td>
                                     <td className="px-4 py-4 text-right">
+                                        {canEditEntry(item) && (
+                                            <button onClick={() => setEditEntry(item)} title="Correct amount" aria-label="Correct amount"
+                                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
+                                        )}
                                         {!isOpeningRow(item) && (
                                             <button
                                                 onClick={() => handleDeleteTransaction(item)}
@@ -1032,6 +1072,15 @@ function CustomerLedger() {
                     <button onClick={() => setLastPayment(null)} className="text-white/70 hover:text-white text-lg leading-none ml-1">×</button>
                 </div>
             )}
+
+            <EditLedgerEntryModal
+                entry={editEntry}
+                title={editEntry?.type === 'payment' ? 'Correct payment' : 'Correct entry'}
+                saving={savingEdit}
+                onClose={() => setEditEntry(null)}
+                onSave={handleSaveEntryEdit}
+                preview={(diff) => `Balance will change by ${(editEntry?.type === 'payment' ? -diff : diff) >= 0 ? '+' : '-'}Rs. ${Math.abs(diff).toLocaleString()}${editEntry?.type === 'payment' ? '; the cash / bank account changes by the same amount' : ''}.`}
+            />
 
             {/* Add Transaction Modal */}
             {showTxModal && (() => {

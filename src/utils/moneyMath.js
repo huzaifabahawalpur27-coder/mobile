@@ -190,3 +190,81 @@ export function isCashPartyPayment(row) {
   const mode = String(row?.payment_mode || 'cash').toLowerCase()
   return type === 'payment' && mode === 'cash' && num(row?.amount) > 0
 }
+
+/**
+ * A likely typing slip: the amount is at least ten times the usual (median) amount of
+ * earlier entries of the same kind. Needs five earlier entries before it judges.
+ * Returns the usual amount when it looks wrong, otherwise null.
+ */
+export function unusualAmount(amount, history = []) {
+  const value = Math.abs(num(amount))
+  const past = history.map(v => Math.abs(num(v))).filter(v => v > 0).sort((a, b) => a - b)
+  if (value <= 0 || past.length < 5) return null
+  const mid = Math.floor(past.length / 2)
+  const median = past.length % 2 ? past[mid] : (past[mid - 1] + past[mid]) / 2
+  return value >= median * 10 && value > Math.max(...past) ? roundMoney(median) : null
+}
+
+/** Asks the user to confirm an amount that looks like a typing slip. True = go ahead. */
+export function confirmAmount(amount, history = [], label = 'This amount') {
+  const usual = unusualAmount(amount, history)
+  if (usual == null || typeof window === 'undefined') return true
+  return window.confirm(
+    `${label}: Rs. ${Math.abs(num(amount)).toLocaleString()}\n\n` +
+    `This is much larger than usual here (about Rs. ${usual.toLocaleString()}).\n` +
+    'Please check for an extra digit.\n\nSave it anyway?'
+  )
+}
+
+/**
+ * Day book: per account, what it opened with, money in and out (grouped by the kind of
+ * entry) and what it closed with, from statement rows (oldest first) of one period.
+ * Accounts with no entries in the period are listed with their current balance.
+ */
+export function buildDayBook(rows = [], accounts = []) {
+  const byAccount = new Map()
+  for (const tx of rows) {
+    const key = String(tx.account_id)
+    const isIn = tx.transaction_type === 'CREDIT' || ['deposit', 'credit'].includes(String(tx.transaction_type).toLowerCase())
+    const amount = Math.abs(num(tx.amount))
+    if (!byAccount.has(key)) {
+      byAccount.set(key, { account_id: tx.account_id, opening: num(tx.balance_before), closing: num(tx.balance_after), moneyIn: 0, moneyOut: 0, kinds: {}, entries: 0 })
+    }
+    const acc = byAccount.get(key)
+    acc.closing = num(tx.balance_after)
+    acc.entries += 1
+    if (isIn) acc.moneyIn = roundMoney(acc.moneyIn + amount)
+    else acc.moneyOut = roundMoney(acc.moneyOut + amount)
+    const kind = String(tx.reference_type || 'manual').toLowerCase()
+    const k = acc.kinds[kind] || (acc.kinds[kind] = { in: 0, out: 0 })
+    if (isIn) k.in = roundMoney(k.in + amount)
+    else k.out = roundMoney(k.out + amount)
+  }
+  const out = []
+  for (const a of accounts) {
+    const hit = byAccount.get(String(a.id))
+    if (hit) {
+      // The statement's own before/after can drift on old data; in/out are exact
+      out.push({ ...hit, name: a.account_name, bank: a.bank_name, expectedClosing: roundMoney(hit.opening + hit.moneyIn - hit.moneyOut) })
+      byAccount.delete(String(a.id))
+    } else {
+      const bal = num(a.current_balance)
+      out.push({ account_id: a.id, name: a.account_name, bank: a.bank_name, opening: bal, closing: bal, expectedClosing: bal, moneyIn: 0, moneyOut: 0, kinds: {}, entries: 0, idle: true })
+    }
+  }
+  for (const hit of byAccount.values()) {
+    out.push({ ...hit, name: `Account #${hit.account_id}`, bank: '', expectedClosing: roundMoney(hit.opening + hit.moneyIn - hit.moneyOut) })
+  }
+  return out
+}
+
+/**
+ * True when an account / bank name means physical cash ("Cash", "Cash in Hand",
+ * "Shop Cash"). A plain search for "cash" also matched "JazzCash", which made a
+ * JazzCash wallet count as the cash drawer and hid it from the bank lists.
+ */
+export const isCashName = (name) => /(^|[^a-z])cash/i.test(String(name || ''))
+
+/** A cash drawer / cash-in-hand account (not a bank or wallet). */
+export const isCashAccount = (acc) =>
+  acc?.account_number === 'CASH' || isCashName(acc?.bank_name) || isCashName(acc?.account_name)

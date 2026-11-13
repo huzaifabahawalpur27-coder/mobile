@@ -11,6 +11,9 @@ import {
   editBankTransaction
 } from '../services/bankService'
 import BankAccountModal from '../components/BankAccountModal'
+import AccountStatementModal from '../components/AccountStatementModal'
+import { confirmAmount } from '../utils/moneyMath'
+import { notify } from '../utils/toast'
 
 export default function Accounts() {
   const { user } = useAuth()
@@ -25,6 +28,7 @@ export default function Accounts() {
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [showStatement, setShowStatement] = useState(false)
   const [showSqlModal, setShowSqlModal] = useState(false)
   const [copiedSql, setCopiedSql] = useState(false)
 
@@ -115,7 +119,7 @@ export default function Accounts() {
   const handleDelete = async (acc) => {
     const bal = Number(acc.current_balance || 0)
     if (Math.abs(bal) > 0.01) {
-      alert(`⚠️ Account "${acc.account_name}" has an active balance of Rs. ${bal.toLocaleString()}.
+      notify(`⚠️ Account "${acc.account_name}" has an active balance of Rs. ${bal.toLocaleString()}.
 
 Financial Protection: You cannot delete an account with existing funds. Please transfer or adjust the remaining balance to Rs. 0 before deleting.`)
       return
@@ -146,6 +150,11 @@ Financial Protection: You cannot delete an account with existing funds. Please t
   // Submit Adjustment
   const handleAdjustSubmit = async (e) => {
     e.preventDefault()
+    // Catch an extra digit before it is saved
+    const pastManual = transactions
+      .filter(t => String(t.account_id) === String(selectedAccount?.id) && ['deposit', 'withdrawal'].includes(String(t.reference_type || '').toLowerCase()))
+      .map(t => t.amount)
+    if (!confirmAmount(adjustForm.amount, pastManual, adjustForm.type === 'DEPOSIT' ? 'Deposit' : 'Withdrawal')) return
     if (!selectedAccount) return
     setAdjusting(true)
     try {
@@ -163,7 +172,7 @@ Financial Protection: You cannot delete an account with existing funds. Please t
       })
       await loadData()
     } catch (err) {
-      alert(err.message || 'Error processing adjustment')
+      notify(err.message || 'Error processing adjustment')
     } finally {
       setAdjusting(false)
     }
@@ -187,11 +196,11 @@ Financial Protection: You cannot delete an account with existing funds. Please t
   const handleTransferSubmit = async (e) => {
     e.preventDefault()
     if (!transferForm.fromAccountId || !transferForm.toAccountId) {
-      alert('Please select both source and destination accounts.')
+      notify('Please select both source and destination accounts.')
       return
     }
     if (transferForm.fromAccountId === transferForm.toAccountId) {
-      alert('Source and destination accounts must be different.')
+      notify('Source and destination accounts must be different.')
       return
     }
     setTransferring(true)
@@ -210,7 +219,7 @@ Financial Protection: You cannot delete an account with existing funds. Please t
       })
       await loadData()
     } catch (err) {
-      alert(err.message || 'Transfer failed')
+      notify(err.message || 'Transfer failed')
     } finally {
       setTransferring(false)
     }
@@ -240,7 +249,7 @@ Financial Protection: You cannot delete an account with existing funds. Please t
 
   const openEditTx = (tx) => {
     const blocked = txEditBlock(tx)
-    if (blocked) { alert(blocked); return }
+    if (blocked) { notify(blocked); return }
     setEditTx(tx)
     setTxForm({
       amount: String(Number(tx.amount) || ''),
@@ -271,8 +280,8 @@ Financial Protection: You cannot delete an account with existing funds. Please t
     e.preventDefault()
     if (!editTx) return
     const amt = Number(txForm.amount)
-    if (!(amt > 0)) { alert('Please enter an amount greater than 0.'); return }
-    if (!txForm.reason.trim()) { alert('Please write why this entry is being corrected.'); return }
+    if (!(amt > 0)) { notify('Please enter an amount greater than 0.'); return }
+    if (!txForm.reason.trim()) { notify('Please write why this entry is being corrected.'); return }
     if (!confirm(`Correct this entry?\n\n${txEditPreview}\n\nThe original amount and your reason are kept in the entry's note.`)) return
     setSavingTx(true)
     try {
@@ -288,7 +297,7 @@ Financial Protection: You cannot delete an account with existing funds. Please t
       setMessage({ type: 'success', text: 'Transaction corrected and account balance updated.' })
       await loadData()
     } catch (err) {
-      alert('Could not correct the transaction: ' + (err?.message || err))
+      notify('Could not correct the transaction: ' + (err?.message || err))
     } finally {
       setSavingTx(false)
     }
@@ -310,7 +319,7 @@ Financial Protection: You cannot delete an account with existing funds. Please t
       setMessage({ type: 'success', text: 'Bank account updated successfully.' })
       await loadData()
     } catch (err) {
-      alert('Failed to update account: ' + err.message)
+      notify('Failed to update account: ' + err.message)
     } finally {
       setEditing(false)
     }
@@ -349,11 +358,22 @@ CREATE TABLE IF NOT EXISTS public.bank_account_transactions (
 ALTER TABLE public.bank_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bank_account_transactions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS bank_accounts_shop_access ON public.bank_accounts
-    FOR ALL USING (true) WITH CHECK (true);
+-- Each shop sees and changes only its own accounts (needs current_user_shop_id()
+-- from production_security_hardening.sql). An open USING (true) policy here would let
+-- any shop read and change every other shop's bank accounts.
+DROP POLICY IF EXISTS bank_accounts_shop_access ON public.bank_accounts;
+DROP POLICY IF EXISTS tenant_session_scope ON public.bank_accounts;
+CREATE POLICY tenant_session_scope ON public.bank_accounts
+    FOR ALL TO anon, authenticated
+    USING (shop_id = public.current_user_shop_id())
+    WITH CHECK (shop_id = public.current_user_shop_id());
 
-CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_transactions
-    FOR ALL USING (true) WITH CHECK (true);`
+DROP POLICY IF EXISTS bank_account_txs_shop_access ON public.bank_account_transactions;
+DROP POLICY IF EXISTS tenant_session_scope ON public.bank_account_transactions;
+CREATE POLICY tenant_session_scope ON public.bank_account_transactions
+    FOR ALL TO anon, authenticated
+    USING (shop_id = public.current_user_shop_id())
+    WITH CHECK (shop_id = public.current_user_shop_id());`
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlSetupScript)
@@ -492,12 +512,20 @@ CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_
             <span className="text-xs bg-gray-100 text-gray-600 font-black px-2 py-0.5 rounded-full">{accounts.length}</span>
           </h2>
           {accounts.length > 0 && (
-            <button
-              onClick={() => setShowHistoryModal(true)}
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
-            >
-              <History className="w-3.5 h-3.5" /> View All Transactions
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <button
+                onClick={() => setShowStatement(true)}
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                <FileText className="w-3.5 h-3.5" /> Statement &amp; Day Book
+              </button>
+              <button
+                onClick={() => setShowHistoryModal(true)}
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                <History className="w-3.5 h-3.5" /> View All Transactions
+              </button>
+            </div>
           )}
         </div>
 
@@ -1033,6 +1061,13 @@ CREATE POLICY IF NOT EXISTS bank_account_txs_shop_access ON public.bank_account_
           </form>
         </div>
       )}
+
+      <AccountStatementModal
+        isOpen={showStatement}
+        onClose={() => setShowStatement(false)}
+        shopId={user?.shop_id}
+        accounts={accounts}
+      />
 
       {/* Account Transactions History Modal */}
       {showHistoryModal && (

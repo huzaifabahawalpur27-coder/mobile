@@ -7,6 +7,7 @@ import { logAction } from '../../services/auditService'
 import { useAuth } from '../../context/AuthContext'
 import { buildWhatsAppUrl, formatRenewalMessage } from '../../utils/whatsappTemplates'
 import * as XLSX from 'xlsx'
+import { notify } from '../../utils/toast'
 
 export default function Subscriptions() {
     const { user } = useAuth()
@@ -195,7 +196,7 @@ export default function Subscriptions() {
                 if (updateError) throw updateError
             }
 
-            alert(isRefund ? 'Refund recorded successfully!' : 'Payment recorded successfully! Next billing date updated.')
+            notify(isRefund ? 'Refund recorded successfully!' : 'Payment recorded successfully! Next billing date updated.')
 
             await logAction({
                 actor_id: user?.id,
@@ -210,7 +211,7 @@ export default function Subscriptions() {
             fetchSubscriptions()
         } catch (err) {
             console.error(err)
-            alert('Error recording payment: ' + err.message)
+            notify('Error recording payment: ' + err.message)
         } finally {
             setProcessing(false)
         }
@@ -246,7 +247,7 @@ export default function Subscriptions() {
             setLedgerData(data)
         } catch (err) {
             console.error(err)
-            alert('Failed to load ledger: ' + err.message)
+            notify('Failed to load ledger: ' + err.message)
         } finally {
             setLedgerLoading(false)
         }
@@ -287,7 +288,7 @@ export default function Subscriptions() {
             fetchSubscriptions()
             setEditingPlanShopId(null)
         } catch (err) {
-            alert('Failed to update plan: ' + err.message)
+            notify('Failed to update plan: ' + err.message)
         }
     }
 

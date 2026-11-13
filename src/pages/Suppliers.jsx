@@ -9,6 +9,8 @@ import { db, addToSyncQueue, moveToTrash } from '../services/db'
 import { getBankAccounts, deductBankBalance } from '../services/bankService'
 import PasswordModal from '../components/PasswordModal'
 import { adjustSupplierBalance } from '../services/atomicOps'
+import { notify } from '../utils/toast'
+import { isCashName } from '../utils/moneyMath'
 
 function Suppliers() {
   const { user } = useAuth()
@@ -174,8 +176,8 @@ function Suppliers() {
         try {
           const accounts = await getBankAccounts(user.shop_id)
           const cashAcc = accounts.find(a =>
-            a.bank_name?.toLowerCase().includes('cash') ||
-            a.account_name?.toLowerCase().includes('cash')
+            isCashName(a.bank_name) ||
+            isCashName(a.account_name)
           ) || accounts[0]
           if (cashAcc) {
             await deductBankBalance({
@@ -192,7 +194,7 @@ function Suppliers() {
 
       // Balance change applied by the database (no cut-off at zero, so advances are kept)
       const balRes = await adjustSupplierBalance(txSup.id, isDebit ? amount : -amount)
-      if (!balRes.ok) alert(`Saved, but the supplier's balance could not be updated (${balRes.error}). Please check it.`)
+      if (!balRes.ok) notify(`Saved, but the supplier's balance could not be updated (${balRes.error}). Please check it.`)
       const newBal = (Number(txSup.outstanding_balance) || 0) + (isDebit ? amount : -amount)
       setTxSup({ ...txSup, outstanding_balance: newBal, balance: newBal })
       setSuppliers(prev => prev.map(s => s.id === txSup.id ? { ...s, outstanding_balance: newBal, balance: newBal } : s))
@@ -214,9 +216,9 @@ function Suppliers() {
         setTxForm({ date: new Date().toISOString().slice(0, 10), bill_number: '', type: 'debit', amount: '', note: '' })
         setShowAddTx(false)
         await openTxModal({ ...txSup, outstanding_balance: newBal, balance: newBal })
-        alert('Offline: Locally saved, will sync when online.')
+        notify('Offline: Locally saved, will sync when online.')
       } else {
-        alert('Error: ' + msg)
+        notify('Error: ' + msg)
       }
     } finally {
       setTxSaving(false)
@@ -255,12 +257,12 @@ function Suppliers() {
         const ws = wb.Sheets[wb.SheetNames[0]]
         const rows = XLSX.utils.sheet_to_json(ws)
 
-        if (rows.length === 0) { alert('File khali hai!'); return }
+        if (rows.length === 0) { notify('File khali hai!'); return }
 
         // Validate columns
         const sample = rows[0]
         if (!('Amount (Rs.)' in sample) && !('Amount' in sample)) {
-          alert('Column "Amount (Rs.)" nahi mili. Sahi format use karein:\nDate | Bill Number | Type | Amount (Rs.) | Description')
+          notify('Column "Amount (Rs.)" nahi mili. Sahi format use karein:\nDate | Bill Number | Type | Amount (Rs.) | Description')
           return
         }
 
@@ -332,9 +334,9 @@ function Suppliers() {
 
         // Recalculate balance from all transactions (re-fetch ledger)
         await openTxModal(txSup)
-        alert(`✅ ${inserted} transactions import ho gayi!${!navigator.onLine ? '\n(Offline: sync hogi jab online hon)' : ''}`)
+        notify(`✅ ${inserted} transactions import ho gayi!${!navigator.onLine ? '\n(Offline: sync hogi jab online hon)' : ''}`)
       } catch (err) {
-        alert('Import error: ' + (err.message || err))
+        notify('Import error: ' + (err.message || err))
       } finally {
         setTxImporting(false)
       }
@@ -459,7 +461,7 @@ function Suppliers() {
       const data = XLSX.utils.sheet_to_json(ws)
 
       if (data.length === 0) {
-        alert('Empty file!')
+        notify('Empty file!')
         return
       }
 
@@ -475,9 +477,9 @@ function Suppliers() {
       }))
 
       const { error } = await supabase.from('suppliers').insert(formatted)
-      if (error) alert(error.message)
+      if (error) notify(error.message)
       else {
-        alert('Suppliers imported successfully! ✅')
+        notify('Suppliers imported successfully! ✅')
         fetchSuppliers()
       }
       setLoading(false)
@@ -557,9 +559,9 @@ function Suppliers() {
         setForm({ name: '', phone: '', address: '', brand: '', product_type: '', other_details: '' })
         setShowForm(false)
         fetchSuppliers()
-        alert('Offline mode: Saved locally. Will sync automatically when online. 🔄')
+        notify('Offline mode: Saved locally. Will sync automatically when online. 🔄')
       } else {
-        alert('Error: ' + errMsg)
+        notify('Error: ' + errMsg)
       }
     } finally {
       setSaving(false)
@@ -647,9 +649,9 @@ function Suppliers() {
     setSelected([])
 
     if (failCount > 0) {
-      alert(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh suppliers ke purchase records abhi bhi database mein hain.\n\nSahi order:\n1. Purchase Items delete karein (Trash Bin)\n2. Purchases delete karein\n3. Phir yeh suppliers delete ho jayenge`)
+      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh suppliers ke purchase records abhi bhi database mein hain.\n\nSahi order:\n1. Purchase Items delete karein (Trash Bin)\n2. Purchases delete karein\n3. Phir yeh suppliers delete ho jayenge`)
     } else if (successCount > 0) {
-      alert(`🗑️ ${successCount} supplier(s) moved to Trash!`)
+      notify(`🗑️ ${successCount} supplier(s) moved to Trash!`)
     }
     fetchSuppliers()
   }

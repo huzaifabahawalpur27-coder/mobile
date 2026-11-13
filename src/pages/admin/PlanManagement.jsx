@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../services/supabaseAdmin'
 import { Plus, Zap, Check, AlertTriangle, Edit2, Trash2, ShieldCheck } from 'lucide-react'
 import { logAction } from '../../services/auditService'
 import { useAuth } from '../../context/AuthContext'
+import { notify } from '../../utils/toast'
 
 export default function PlanManagement() {
     const { user: adminUser } = useAuth()
@@ -148,7 +149,7 @@ export default function PlanManagement() {
             fetchPlans()
             resetForm()
         } catch (err) {
-            alert('Failed to save plan: ' + err.message)
+            notify('Failed to save plan: ' + err.message)
         }
     }
 

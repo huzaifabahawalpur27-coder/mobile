@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { X, Plus, Trash2, Landmark, Wallet, DollarSign, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react'
 import { PAKISTANI_PAYMENT_PROVIDERS } from '../utils/paymentMethods'
+import { isCashName } from '../utils/moneyMath'
 
 export default function PurchaseSplitPaymentModal({
   isOpen,
@@ -16,16 +17,16 @@ export default function PurchaseSplitPaymentModal({
 
   const cashAccounts = useMemo(() => {
     return bankAccounts.filter(a =>
-      a.bank_name?.toLowerCase().includes('cash') ||
-      a.account_name?.toLowerCase().includes('cash') ||
+      isCashName(a.bank_name) ||
+      isCashName(a.account_name) ||
       a.account_number === 'CASH'
     )
   }, [bankAccounts])
 
   const bankOnlyAccounts = useMemo(() => {
     return bankAccounts.filter(a =>
-      !a.bank_name?.toLowerCase().includes('cash') &&
-      !a.account_name?.toLowerCase().includes('cash') &&
+      !isCashName(a.bank_name) &&
+      !isCashName(a.account_name) &&
       a.account_number !== 'CASH'
     )
   }, [bankAccounts])

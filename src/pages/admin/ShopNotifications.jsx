@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../../services/supabaseAdmin'
 import { useAuth } from '../../context/AuthContext'
 import { logAction } from '../../services/auditService'
 import { NOTIFICATION_CATEGORIES } from '../../services/notificationService'
+import { notify } from '../../utils/toast'
 
 // Pages of the shop app a notification can open
 const MODULES = [
@@ -106,7 +107,7 @@ export default function ShopNotificationsAdmin() {
   const handlePush = async (e) => {
     e.preventDefault()
     if (!form.title.trim()) return
-    if (form.target === 'selected' && form.shopIds.length === 0) { alert('Choose at least one shop.'); return }
+    if (form.target === 'selected' && form.shopIds.length === 0) { notify('Choose at least one shop.'); return }
     const audience = form.target === 'all' ? 'all active shops' : `${form.shopIds.length} shop(s)`
     if (!confirm(`Push "${form.title.trim()}" to ${audience}?\n\nEach shop sees it once as a popup, then it stays in their bell until they delete it.`)) return
     setPushing(true)
@@ -143,7 +144,7 @@ export default function ShopNotificationsAdmin() {
   const handleWithdraw = async (c) => {
     if (!confirm(`Withdraw "${c.title}"?\n\nIt will be removed from every shop's notifications.`)) return
     const { error } = await supabaseAdmin.rpc('withdraw_notification_campaign', { p_campaign_id: c.id })
-    if (error) { alert('Withdraw failed: ' + error.message); return }
+    if (error) { notify('Withdraw failed: ' + error.message); return }
     setNotice({ type: 'success', text: `"${c.title}" withdrawn.` })
     loadCampaigns()
   }

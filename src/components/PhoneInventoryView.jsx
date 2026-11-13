@@ -12,6 +12,7 @@ import PhoneStockPrintModal from './PhoneStockPrintModal'
 import PhoneReturnModal from './PhoneReturnModal'
 import EditPurchasePaymentModal from './EditPurchasePaymentModal'
 import EditPriceModal from './EditPriceModal'
+import { notify } from '../utils/toast'
 
 // Normalize PTA statuses from various formats to standard keys
 export const normalizePtaStatus = (status) => {
@@ -119,7 +120,7 @@ export default function PhoneInventoryView() {
 
   const handleEditPhonePayment = async (phone) => {
     if (!phone.purchase_id) {
-      alert('This phone does not have an attached purchase invoice ID.')
+      notify('This phone does not have an attached purchase invoice ID.')
       return
     }
     try {
@@ -135,10 +136,10 @@ export default function PhoneInventoryView() {
       if (pData) {
         setPurchaseToEdit(pData)
       } else {
-        alert(`Purchase invoice PR-${phone.purchase_id} not found.`)
+        notify(`Purchase invoice PR-${phone.purchase_id} not found.`)
       }
     } catch (err) {
-      alert('Error fetching purchase: ' + (err.message || String(err)))
+      notify('Error fetching purchase: ' + (err.message || String(err)))
     }
   }
 
@@ -244,7 +245,7 @@ export default function PhoneInventoryView() {
   const handleIssueCustody = async (e) => {
     e.preventDefault()
     if (!custodyForm.recipient_name.trim()) {
-      alert('Recipient / Dealer ka naam darj karein!')
+      notify('Recipient / Dealer ka naam darj karein!')
       return
     }
     setSavingCustody(true)
@@ -307,7 +308,7 @@ export default function PhoneInventoryView() {
       }
       setSelectedPhoneForCustody(null)
     } catch (err) {
-      alert('Custody issue failed: ' + (err.message || String(err)))
+      notify('Custody issue failed: ' + (err.message || String(err)))
     } finally {
       setSavingCustody(false)
     }
@@ -357,7 +358,7 @@ export default function PhoneInventoryView() {
       setPhones(prev => prev.map(p => p.id === phone.id ? { ...p, status: 'in_stock' } : p))
       if (db.phones) await db.phones.update(phone.id, { status: 'in_stock' }).catch(() => {})
     } catch (err) {
-      alert('Return failed: ' + err.message)
+      notify('Return failed: ' + err.message)
     }
   }
 

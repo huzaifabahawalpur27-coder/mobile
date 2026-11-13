@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue } from '../services/db'
 import Categories from './Categories'
 import Brands from './Brands'
+import { notify } from '../utils/toast'
 
 // ── Default units for "Seed Defaults" button ──────────────────────────────────
 const DEFAULT_UNITS = [
@@ -96,9 +97,9 @@ function UnitsTab() {
         if (editingId) await db.units.update(editingId, offlineData)
         else await db.units.add(offlineData)
         handleCancel(); fetchUnits()
-        alert('Offline: Locally save ho gaya. Online hone par sync hoga.')
+        notify('Offline: Locally save ho gaya. Online hone par sync hoga.')
       } else {
-        alert('Error: ' + msg)
+        notify('Error: ' + msg)
       }
     } finally { setSaving(false) }
   }
@@ -117,7 +118,7 @@ function UnitsTab() {
         await db.units.delete(u.id)
         await addToSyncQueue('units', 'DELETE', { id: u.id })
         fetchUnits()
-      } else { alert('Error: ' + msg) }
+      } else { notify('Error: ' + msg) }
     }
   }
 
@@ -129,7 +130,7 @@ function UnitsTab() {
       const toInsert = DEFAULT_UNITS
         .filter(u => !existingNames.has(u.name.toLowerCase()))
         .map(u => ({ ...u, shop_id: user.shop_id }))
-      if (!toInsert.length) { alert('Tamam default units pehle se mojood hain.'); setSaving(false); return }
+      if (!toInsert.length) { notify('Tamam default units pehle se mojood hain.'); setSaving(false); return }
       if (navigator.onLine) {
         const { error } = await supabase.from('units').insert(toInsert)
         if (error) throw error
@@ -141,8 +142,8 @@ function UnitsTab() {
         }
       }
       fetchUnits()
-      alert(`${toInsert.length} units add ho gayi! ✅`)
-    } catch (err) { alert('Error: ' + err.message) }
+      notify(`${toInsert.length} units add ho gayi! ✅`)
+    } catch (err) { notify('Error: ' + err.message) }
     finally { setSaving(false) }
   }
 

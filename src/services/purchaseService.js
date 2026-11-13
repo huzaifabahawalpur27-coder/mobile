@@ -3,6 +3,7 @@ import { db, addToSyncQueue } from './db'
 import { recordAuditLog } from './auditService'
 import { deductBankBalance, creditBankBalance, getBankAccounts, findOrCreateAccountForPayment } from './bankService'
 import { adjustSupplierBalance } from './atomicOps'
+import { isCashName } from '../utils/moneyMath'
 
 /**
  * Updates the payment method of an existing purchase invoice.
@@ -115,8 +116,8 @@ export async function updatePurchasePaymentMethod({
       if (bankAccountId) {
         effectiveRefundBankId = bankAccountId
       } else {
-        const defBank = bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash') && !b.account_name?.toLowerCase().includes('cash') && b.is_default) ||
-          bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash') && !b.account_name?.toLowerCase().includes('cash'))
+        const defBank = bankAccounts.find(b => !isCashName(b.bank_name) && !isCashName(b.account_name) && b.is_default) ||
+          bankAccounts.find(b => !isCashName(b.bank_name) && !isCashName(b.account_name))
         if (defBank) effectiveRefundBankId = defBank.id
       }
     }
@@ -125,8 +126,8 @@ export async function updatePurchasePaymentMethod({
   // Resolve Target Bank Account if newMethod is bank
   let effectiveBankId = bankAccountId
   if (!effectiveBankId && newPaymentMethod === 'bank') {
-    const defBank = bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash') && !b.account_name?.toLowerCase().includes('cash') && b.is_default) ||
-      bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash') && !b.account_name?.toLowerCase().includes('cash'))
+    const defBank = bankAccounts.find(b => !isCashName(b.bank_name) && !isCashName(b.account_name) && b.is_default) ||
+      bankAccounts.find(b => !isCashName(b.bank_name) && !isCashName(b.account_name))
     if (defBank) effectiveBankId = defBank.id
   }
 
@@ -536,8 +537,8 @@ export async function returnPhoneToSupplier({
       try {
         const accounts = await getBankAccounts(shopId)
         const cashAcc = accounts.find(a =>
-          a.bank_name?.toLowerCase().includes('cash') ||
-          a.account_name?.toLowerCase().includes('cash') ||
+          isCashName(a.bank_name) ||
+          isCashName(a.account_name) ||
           a.account_number === 'CASH'
         )
         if (cashAcc) {

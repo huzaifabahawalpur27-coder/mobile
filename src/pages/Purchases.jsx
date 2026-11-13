@@ -11,6 +11,9 @@ import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment, reco
 import BankAccountModal from '../components/BankAccountModal'
 import { deduplicateProducts } from '../utils/productUtils'
 import { receivePurchaseStock, adjustSupplierBalance } from '../services/atomicOps'
+import { insertBillPayment } from '../services/moneyOps'
+import { notify } from '../utils/toast'
+import { isCashName } from '../utils/moneyMath'
 
 function Purchases() {
   const { user } = useAuth()
@@ -36,13 +39,13 @@ function Purchases() {
   const [showBankModal, setShowBankModal] = useState(false)
 
   const cashVaults = bankAccounts.filter(a =>
-    a.bank_name?.toLowerCase().includes('cash') ||
-    a.account_name?.toLowerCase().includes('cash') ||
+    isCashName(a.bank_name) ||
+    isCashName(a.account_name) ||
     a.account_number === 'CASH'
   )
   const bankOnlyAccounts = bankAccounts.filter(a =>
-    !a.bank_name?.toLowerCase().includes('cash') &&
-    !a.account_name?.toLowerCase().includes('cash') &&
+    !isCashName(a.bank_name) &&
+    !isCashName(a.account_name) &&
     a.account_number !== 'CASH'
   )
 
@@ -60,12 +63,12 @@ function Purchases() {
     try {
       const list = await getBankAccounts(user.shop_id)
       setBankAccounts(list)
-      const defBank = list.find(a => a.is_default && !a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash') && a.account_number !== 'CASH')
-        || list.find(a => !a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash') && a.account_number !== 'CASH')
+      const defBank = list.find(a => a.is_default && !isCashName(a.bank_name) && !isCashName(a.account_name) && a.account_number !== 'CASH')
+        || list.find(a => !isCashName(a.bank_name) && !isCashName(a.account_name) && a.account_number !== 'CASH')
       if (defBank && !selectedBankAccountId) setSelectedBankAccountId(String(defBank.id))
 
-      const defCash = list.find(a => a.is_default && (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash') || a.account_number === 'CASH'))
-        || list.find(a => a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash') || a.account_number === 'CASH')
+      const defCash = list.find(a => a.is_default && (isCashName(a.bank_name) || isCashName(a.account_name) || a.account_number === 'CASH'))
+        || list.find(a => isCashName(a.bank_name) || isCashName(a.account_name) || a.account_number === 'CASH')
       if (defCash && !selectedCashVaultId) setSelectedCashVaultId(String(defCash.id))
     } catch (e) {
       console.warn('Purchases fetchBankAccounts warning:', e)
@@ -253,9 +256,9 @@ function Purchases() {
       await db.held_purchases.add(heldData)
       await fetchHeldPurchases()
       clearCart()
-      alert('Purchase held successfully! ⏸️')
+      notify('Purchase held successfully! ⏸️')
     } catch (err) {
-      alert('Error holding purchase: ' + err.message)
+      notify('Error holding purchase: ' + err.message)
     }
   }
 
@@ -277,12 +280,12 @@ function Purchases() {
   }
 
   const handleCompletePurchase = async () => {
-    if (cart.length === 0) return alert('Please add products to cart before completing purchase!')
-    if (!supplierId) return alert('Please select a supplier first!')
+    if (cart.length === 0) return notify('Please add products to cart before completing purchase!')
+    if (!supplierId) return notify('Please select a supplier first!')
 
     const invalidCostItem = cart.find(i => !i.purchase_price || parseFloat(i.purchase_price) <= 0)
     if (invalidCostItem) {
-      return alert(`Cost Price is compulsory! "${invalidCostItem.name}" has an invalid cost price. Please enter a valid cost price greater than 0.`)
+      return notify(`Cost Price is compulsory! "${invalidCostItem.name}" has an invalid cost price. Please enter a valid cost price greater than 0.`)
     }
 
     setSaving(true)
@@ -320,7 +323,7 @@ function Purchases() {
       if (appliedSplitPayments.length === 0) {
         setSaving(false)
         setShowSplitModal(true)
-        return alert('Please configure at least one payment method with an amount in Split Payment!')
+        return notify('Please configure at least one payment method with an amount in Split Payment!')
       }
     }
 
@@ -498,7 +501,7 @@ function Purchases() {
       }
       if (purchaseProblems.length > 0) {
         console.error('Purchase saved with problems:', purchaseProblems)
-        alert(`Purchase saved, but some updates failed:\n${purchaseProblems.join('\n')}\n\nPlease correct these manually.`)
+        notify(`Purchase saved, but some updates failed:\n${purchaseProblems.join('\n')}\n\nPlease correct these manually.`)
       }
 
       // 5. Record Payment & Account Deductions if paid amount exists
@@ -512,15 +515,9 @@ function Purchases() {
           payment_method: effectivePaymentType,
           note: paymentNote
         }
-        const { error: payErr } = await supabase.from('supplier_payments').insert([paymentData])
-        if (payErr && (payErr.code === 'PGRST204' || payErr.code === '42703' || String(payErr.status) === '400' || payErr.message?.includes('column') || payErr.message?.includes('schema cache'))) {
-          await supabase.from('supplier_payments').insert([{
-            shop_id: user.shop_id,
-            supplier_id: supplierId,
-            amount: totalPaidAmount,
-            description: paymentNote
-          }])
-        }
+        // Linked to this bill, so deleting the bill later removes the payment with it
+        const payRes = await insertBillPayment(paymentData, purchase.id)
+        if (!payRes.ok) console.warn('Purchase payment row not saved:', payRes.error)
 
         // Deduct from Accounts
         if (isSplit) {
@@ -570,7 +567,7 @@ function Purchases() {
         }
       }
 
-      alert('Purchase complete! Stock, accounts, and supplier balance updated.')
+      notify('Purchase complete! Stock, accounts, and supplier balance updated.')
       clearCart()
       fetchData()
     } catch (err) {
@@ -659,11 +656,11 @@ function Purchases() {
           }
         }
 
-        alert('Offline mode: Purchase saved locally. Will sync automatically when online. 🔄')
+        notify('Offline mode: Purchase saved locally. Will sync automatically when online. 🔄')
         clearCart()
         fetchData()
       } else {
-        alert('Error: ' + err.message)
+        notify('Error: ' + err.message)
       }
     } finally {
       setSaving(false)
@@ -874,7 +871,7 @@ function Purchases() {
             onClick={() => {
               setPaymentType('bank')
               if (!selectedBankAccountId && bankAccounts.length > 0) {
-                const def = bankAccounts.find(b => b.is_default && !b.bank_name?.toLowerCase().includes('cash')) || bankAccounts.find(b => !b.bank_name?.toLowerCase().includes('cash'))
+                const def = bankAccounts.find(b => b.is_default && !isCashName(b.bank_name)) || bankAccounts.find(b => !isCashName(b.bank_name))
                 if (def) setSelectedBankAccountId(String(def.id))
               }
             }}

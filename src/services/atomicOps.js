@@ -87,6 +87,11 @@ export async function runLegacyOp(fn, args = {}) {
   if (fn === 'adjust_supplier_balance') return legacyPartyBalance('suppliers', args.p_supplier_id, Number(args.p_delta) || 0)
   if (fn === 'mark_phone_sold') return legacyMarkPhoneSold(args.p_phone_id, Number(args.p_sale_price) || 0)
   if (fn === 'receive_purchase_stock') return legacyReceiveStock(args.p_product_id, Number(args.p_qty) || 0, Number(args.p_unit_cost) || 0)
+  if (fn === 'apply_money_op') {
+    // Loaded on demand: moneyOps imports this module
+    const { runMoneyOpStepwise } = await import('./moneyOps')
+    return runMoneyOpStepwise(args.p_op || {})
+  }
   if (fn === 'adjust_bank_balance') {
     // Loaded on demand: bankService imports this module
     const { legacyBankDelta } = await import('./bankService')

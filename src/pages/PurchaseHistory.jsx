@@ -12,8 +12,10 @@ import { buildBillHTML } from '../utils/billTemplates'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
 import { getBankAccounts, creditBankBalance } from '../services/bankService'
 import { checkPurchaseBatchesBeforeVoid, voidPurchaseBatches } from '../services/batchService'
-import { netAmount, paidAmount } from '../utils/moneyMath'
+import { netAmount, paidAmount, isCashName } from '../utils/moneyMath'
+import { deleteBillPayments } from '../services/moneyOps'
 import { adjustProductStock, adjustSupplierBalance, releasePhoneFromPurchase } from '../services/atomicOps'
+import { notify } from '../utils/toast'
 
 const normalizePurchaseItem = (it, phonesPool = [], productsPool = []) => {
     const ph = it.phones || (phonesPool || []).find(p => p.id === it.phone_id || (it.purchase_id && p.purchase_id === it.purchase_id))
@@ -304,13 +306,13 @@ function PurchaseHistory() {
     // Handle purchase return (supplier return / stock out)
     const handleReturn = async () => {
         const itemsToReturn = purchaseItems.filter(i => returnQtys[i.id] > 0)
-        if (itemsToReturn.length === 0) { alert('Return karne ke liye qty enter karo!'); return }
+        if (itemsToReturn.length === 0) { notify('Return karne ke liye qty enter karo!'); return }
 
         for (const item of itemsToReturn) {
             const returnQty = parseInt(returnQtys[item.id]) || 0
             const alreadyReturned = item.returned_qty || 0
             const maxReturn = item.quantity - alreadyReturned
-            if (returnQty > maxReturn) { alert(`${item.product_name}: max ${maxReturn} return ho sakta hai`); return }
+            if (returnQty > maxReturn) { notify(`${item.product_name}: max ${maxReturn} return ho sakta hai`); return }
         }
 
         setReturning(true)
@@ -339,7 +341,7 @@ function PurchaseHistory() {
                     const stockRes = await adjustProductStock(item.product_id, -returnQty)
                     if (!stockRes.ok) {
                         console.error('Purchase return: stock not reduced for product', item.product_id, stockRes.error)
-                        alert(`Return saved, but stock for "${item.product_name || item.product_id}" could not be reduced (${stockRes.error}). Please correct it in Inventory.`)
+                        notify(`Return saved, but stock for "${item.product_name || item.product_id}" could not be reduced (${stockRes.error}). Please correct it in Inventory.`)
                     }
                 }
             }
@@ -391,7 +393,7 @@ function PurchaseHistory() {
                 const balRes = await adjustSupplierBalance(selectedPurchase.supplier_id, -creditRefundAmount)
                 if (!balRes.ok) {
                     console.error('Purchase return: supplier balance not updated:', balRes.error)
-                    alert(`Return saved, but the supplier's balance could not be reduced by Rs ${creditRefundAmount} (${balRes.error}). Please adjust it manually.`)
+                    notify(`Return saved, but the supplier's balance could not be reduced by Rs ${creditRefundAmount} (${balRes.error}). Please adjust it manually.`)
                 }
 
                 // Log credit return in supplier_payments
@@ -421,8 +423,8 @@ function PurchaseHistory() {
                     const isBank = method === 'bank' || method === 'online'
                     const targetAcc = accounts.find(a =>
                         isBank
-                            ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                            : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                            ? (!isCashName(a.bank_name) && !isCashName(a.account_name))
+                            : (isCashName(a.bank_name) || isCashName(a.account_name))
                     ) || accounts[0]
                     if (targetAcc) {
                         await creditBankBalance({
@@ -465,7 +467,7 @@ function PurchaseHistory() {
                 user.shop_id
             )
 
-            alert('Return successful! Purchase invoice updated.')
+            notify('Return successful! Purchase invoice updated.')
             setReturning(false)
             setReturnQtys({})
 
@@ -503,13 +505,13 @@ function PurchaseHistory() {
                 await db.purchases.update(selectedPurchase.id, { total_amount: newPurchaseTotal })
                 await addToSyncQueue('purchases', 'UPDATE', { id: selectedPurchase.id, total_amount: newPurchaseTotal })
 
-                alert('Offline mode: Return processed locally. Stock and Invoice updated! 🔄')
+                notify('Offline mode: Return processed locally. Stock and Invoice updated! 🔄')
                 setReturning(false)
                 setReturnQtys({})
                 setSelectedPurchase({ ...selectedPurchase, total_amount: newPurchaseTotal })
                 fetchPurchases()
             } else {
-                alert('Error processing return: ' + errMsg)
+                notify('Error processing return: ' + errMsg)
                 setReturning(false)
             }
         }
@@ -623,7 +625,7 @@ function PurchaseHistory() {
                 try {
                     const batchCheck = await checkPurchaseBatchesBeforeVoid(id)
                     if (batchCheck && batchCheck.can_void === false) {
-                        alert(batchCheck.error || `Purchase #${id} cannot be deleted because items have already been sold via FIFO batches.`)
+                        notify(batchCheck.error || `Purchase #${id} cannot be deleted because items have already been sold via FIFO batches.`)
                         failCount++
                         continue
                     }
@@ -660,7 +662,7 @@ function PurchaseHistory() {
                                 const tAmt = Number(tender.amount || 0)
                                 if (tAmt <= 0 || tender.method === 'credit') continue
                                 const tAcc = (tender.account_id ? accounts.find(a => String(a.id) === String(tender.account_id)) : null)
-                                    || (tender.method === 'cash' ? accounts.find(a => a.bank_name?.toLowerCase().includes('cash')) : accounts[0])
+                                    || (tender.method === 'cash' ? accounts.find(a => isCashName(a.bank_name)) : accounts[0])
                                 if (tAcc) {
                                     await creditBankBalance({
                                         shopId: user.shop_id,
@@ -676,8 +678,8 @@ function PurchaseHistory() {
                             const isBank = method === 'bank' || method === 'online'
                             const targetAcc = accounts.find(a =>
                                 isBank
-                                    ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                                    : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                                    ? (!isCashName(a.bank_name) && !isCashName(a.account_name))
+                                    : (isCashName(a.bank_name) || isCashName(a.account_name))
                             ) || accounts[0]
                             if (targetAcc) {
                                 await creditBankBalance({
@@ -714,6 +716,8 @@ function PurchaseHistory() {
                 }
 
                 await moveToTrash('purchases', id, item, user.id, user.shop_id)
+                // Payment / refund rows saved with this bill go with it
+                if (navigator.onLine) await deleteBillPayments(id).catch(() => {})
                 await db.purchases.delete(id)
 
                 if (item.supplier_id) {
@@ -738,9 +742,9 @@ function PurchaseHistory() {
         setSelected([])
 
         if (failCount > 0) {
-            alert(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh purchases mein ledger entries linked hain.\n\nSahi order:\n1. Pehle Purchase Items delete karein (Trash Bin > Purchase Items filter)\n2. Phir yeh purchases delete ho jayenge`)
+            notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh purchases mein ledger entries linked hain.\n\nSahi order:\n1. Pehle Purchase Items delete karein (Trash Bin > Purchase Items filter)\n2. Phir yeh purchases delete ho jayenge`)
         } else if (successCount > 0) {
-            alert(`🗑️ ${successCount} purchase(s) moved to Trash!`)
+            notify(`🗑️ ${successCount} purchase(s) moved to Trash!`)
         }
         fetchPurchases()
     }

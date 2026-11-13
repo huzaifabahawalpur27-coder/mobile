@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../../services/supabaseAdmin'
 import { Store, Users, Activity, TrendingUp, CreditCard, DollarSign, AlertCircle, Megaphone, Trash2, Plus, Clock, RefreshCw, CheckCircle, MessageSquare } from 'lucide-react'
 import { buildWhatsAppUrl, formatRenewalMessage } from '../../utils/whatsappTemplates'
 import BroadcastBannerModal from '../../components/admin/BroadcastBannerModal'
+import { notify } from '../../utils/toast'
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({ shops: 0, users: 0, activeShops: 0, mrr: 0, totalRevenue: 0, overdue: 0, onTrial: 0, gmv: 0, activeToday: 0 })
@@ -134,7 +135,7 @@ export default function AdminDashboard() {
       setNewAnnouncement({ message: '', type: 'info', shop_id: '' })
       fetchStats()
     } catch (err) {
-      alert('Error posting announcement: ' + err.message)
+      notify('Error posting announcement: ' + err.message)
     }
   }
 
@@ -144,12 +145,12 @@ export default function AdminDashboard() {
       await supabaseAdmin.from('announcements').delete().eq('id', id)
       fetchStats()
     } catch {
-      alert('Error deleting announcement')
+      notify('Error deleting announcement')
     }
   }
 
   const handlePushUpdate = async () => {
-    if (!supabaseAdmin) return alert('The administrator API is unavailable.')
+    if (!supabaseAdmin) return notify('The administrator API is unavailable.')
     if (!confirm('This will force ALL active POS clients to reload within 5 minutes. Continue?')) return
     setPushingUpdate(true)
     try {
@@ -161,9 +162,9 @@ export default function AdminDashboard() {
       const timeStr = new Date().toLocaleString('en-PK')
       localStorage.setItem('last_push_update_time', timeStr)
       setLastPushTime(timeStr)
-      alert('✅ Update signal sent! All POS clients will reload within 5 minutes.')
+      notify('✅ Update signal sent! All POS clients will reload within 5 minutes.')
     } catch (err) {
-      alert('Failed to push update: ' + err.message)
+      notify('Failed to push update: ' + err.message)
     } finally {
       setPushingUpdate(false)
     }

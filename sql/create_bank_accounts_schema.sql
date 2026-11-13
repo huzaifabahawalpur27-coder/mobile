@@ -40,11 +40,19 @@ CREATE INDEX IF NOT EXISTS idx_bank_account_txs_shop ON public.bank_account_tran
 ALTER TABLE public.bank_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bank_account_transactions ENABLE ROW LEVEL SECURITY;
 
--- Permissive policies for tenant access
+-- Each shop sees and changes only its own accounts (needs current_user_shop_id()
+-- from production_security_hardening.sql). An open USING (true) policy here would let
+-- any shop read and change every other shop's bank accounts.
 DROP POLICY IF EXISTS bank_accounts_shop_access ON public.bank_accounts;
-CREATE POLICY bank_accounts_shop_access ON public.bank_accounts
-    FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS tenant_session_scope ON public.bank_accounts;
+CREATE POLICY tenant_session_scope ON public.bank_accounts
+    FOR ALL TO anon, authenticated
+    USING (shop_id = public.current_user_shop_id())
+    WITH CHECK (shop_id = public.current_user_shop_id());
 
 DROP POLICY IF EXISTS bank_account_txs_shop_access ON public.bank_account_transactions;
-CREATE POLICY bank_account_txs_shop_access ON public.bank_account_transactions
-    FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS tenant_session_scope ON public.bank_account_transactions;
+CREATE POLICY tenant_session_scope ON public.bank_account_transactions
+    FOR ALL TO anon, authenticated
+    USING (shop_id = public.current_user_shop_id())
+    WITH CHECK (shop_id = public.current_user_shop_id());

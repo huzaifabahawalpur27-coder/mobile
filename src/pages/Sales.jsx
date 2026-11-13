@@ -8,10 +8,12 @@ import { recordAuditLog } from '../services/auditService'
 import PasswordModal from '../components/PasswordModal'
 import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
-import { getBankAccounts, deductBankBalance, reverseSaleFromAccounts } from '../services/bankService'
+import { getBankAccounts, reverseSaleFromAccounts } from '../services/bankService'
 import { computeReturn, isCountedSale, saleBalanceEffect } from '../utils/moneyMath'
+import { applyMoneyOp, accountForMode } from '../services/moneyOps'
 import { returnSaleItemBatches } from '../services/batchService'
 import { adjustProductStock, adjustCustomerBalance, releasePhoneFromSale } from '../services/atomicOps'
+import { notify } from '../utils/toast'
 
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
   let snap = null
@@ -378,111 +380,99 @@ function Sales() {
   // Handle return
   const handleReturn = async () => {
     const itemsToReturn = saleItems.filter(i => returnQtys[i.id] > 0)
-    if (itemsToReturn.length === 0) { alert('Return karne ke liye qty enter karo!'); return }
+    if (itemsToReturn.length === 0) { notify('Return karne ke liye qty enter karo!'); return }
 
     for (const item of itemsToReturn) {
       const returnQty = parseInt(returnQtys[item.id]) || 0
       const alreadyReturned = item.returned_qty || 0
       const maxReturn = item.quantity - alreadyReturned
-      if (returnQty > maxReturn) { alert(`${item.display_name || item.product_name || 'Item'}: max ${maxReturn} return ho sakta hai`); return }
+      if (returnQty > maxReturn) { notify(`${item.display_name || item.product_name || 'Item'}: max ${maxReturn} return ho sakta hai`); return }
     }
 
     setReturning(true)
-    let totalReturnAmount = 0
+    const online = navigator.onLine
+    const qtyOf = (item) => parseInt(returnQtys[item.id]) || 0
+    const totalReturnAmount = itemsToReturn.reduce((sum, item) => sum + Number(item.unit_price || 0) * qtyOf(item), 0)
 
     try {
+      // Discount given back in proportion; cash handed back never exceeds what was paid
+      // on this invoice, the rest comes off the customer's balance
+      const ret = computeReturn({ record: selectedSale, grossReturn: totalReturnAmount, toBalance: refundType === 'credit' })
+      const cashRefundAmount = ret.cashRefund
+      const creditRefundAmount = selectedSale.customer_id ? ret.balanceRefund : 0
+      const invoiceTag = String(selectedSale.id).slice(-6)
+
+      // Cash handed back leaves the cash account
+      let cashAcc = null
+      if (cashRefundAmount > 0) {
+        try { cashAcc = accountForMode(await getBankAccounts(user.shop_id), 'cash') } catch (_) { /* no accounts set up */ }
+      }
+
+      // Notes on the customer's ledger (they do not move the balance themselves)
+      const notes = []
+      if (selectedSale.customer_id && creditRefundAmount > 0) {
+        notes.push({
+          customer_id: selectedSale.customer_id,
+          sale_id: selectedSale.id,
+          amount: -creditRefundAmount,
+          payment_type: 'return',
+          note: `Return from Invoice #${invoiceTag} (Net: Rs. ${creditRefundAmount.toLocaleString()} Credited to Balance)`
+        })
+      }
+      if (selectedSale.customer_id && cashRefundAmount > 0) {
+        notes.push({
+          customer_id: selectedSale.customer_id,
+          sale_id: selectedSale.id,
+          amount: -cashRefundAmount,
+          payment_type: 'refund',
+          note: `Cash Refund from Invoice #${invoiceTag} (Net: Rs. ${cashRefundAmount.toLocaleString()})`
+        })
+      }
+
+      // Returned quantities, invoice totals, stock, customer balance and the cash refund
+      // are saved together: all of it, or none of it
+      const res = await applyMoneyOp({
+        shop_id: user.shop_id,
+        updates: [
+          ...itemsToReturn.map(item => ({ table: 'sale_items', id: item.id, set: { returned_qty: (Number(item.returned_qty) || 0) + qtyOf(item) } })),
+          { table: 'sales', id: selectedSale.id, set: ret.update }
+        ],
+        inserts: notes.map(n => ({ table: 'customer_payments', row: n })),
+        stock: itemsToReturn.filter(item => !item.phone_id && item.product_id).map(item => ({ product_id: item.product_id, delta: qtyOf(item) })),
+        customer: creditRefundAmount > 0 ? { id: selectedSale.customer_id, delta: -creditRefundAmount } : null,
+        accounts: cashAcc ? [{
+          account_id: cashAcc.id,
+          delta: -cashRefundAmount,
+          reference_type: 'SALE_RETURN',
+          reference_id: String(selectedSale.id),
+          description: `Sale Return Cash Refund (Invoice #${selectedSale.id})`
+        }] : []
+      })
+      if (!res.ok) throw new Error(res.error || 'Return was not saved')
+
+      // Phones back in stock and FIFO batches restored (each checks its own state)
       for (const item of itemsToReturn) {
-        const returnQty = parseInt(returnQtys[item.id]) || 0
-        const returnAmount = item.unit_price * returnQty
-        totalReturnAmount += returnAmount
-
-        // Update returned_qty on sale_item
-        await supabase.from('sale_items')
-          .update({ returned_qty: (item.returned_qty || 0) + returnQty })
-          .eq('id', item.id)
-
-        // Restore stock or phone status
         if (item.phone_id) {
-          // Only if the phone still belongs to this sale (not bought back / sold again since)
-          const phoneRes = await releasePhoneFromSale(item.phone_id, selectedSale)
-          if (phoneRes.skipped) console.warn('Return: phone left unchanged -', phoneRes.skipped)
+          if (online && !res.queued) {
+            // Only if the phone still belongs to this sale (not bought back / sold again since)
+            const phoneRes = await releasePhoneFromSale(item.phone_id, selectedSale)
+            if (phoneRes.skipped) console.warn('Return: phone left unchanged -', phoneRes.skipped)
             else if (!phoneRes.ok) console.error('Return: phone not updated -', phoneRes.error)
-        } else if (item.product_id) {
-          const stockRes = await adjustProductStock(item.product_id, returnQty)
-          if (!stockRes.ok) {
-            console.error('Return: stock not restored for product', item.product_id, stockRes.error)
-            alert(`Return saved, but stock for "${item.product_name || item.product_id}" could not be restored (${stockRes.error}). Please correct it in Inventory.`)
+          } else if (db.phones) {
+            const patch = { status: 'in_stock', sale_id: null, sold_at: null }
+            await db.phones.update(item.phone_id, patch).catch(() => {})
+            await addToSyncQueue('phones', 'UPDATE', { id: item.phone_id, ...patch })
           }
-
-          // FIFO Batch Reversal for batch_tracked items
+        } else if (item.product_id && online && !res.queued) {
           try {
             await returnSaleItemBatches({
               saleItemId: item.id,
-              returnQty,
+              returnQty: qtyOf(item),
               fallbackCost: item.cost_price || item.unit_price || 0
             })
           } catch (batchErr) {
             console.warn('[FIFO Return] Batch reversal error:', batchErr)
           }
-        }
-      }
-
-      // Discount given back in proportion; cash handed back never exceeds what was paid
-      // on this invoice, the rest comes off the customer's balance
-      const ret = computeReturn({ record: selectedSale, grossReturn: totalReturnAmount, toBalance: refundType === 'credit' })
-      const cashRefundAmount = ret.cashRefund
-      const creditRefundAmount = ret.balanceRefund
-
-      await supabase.from('sales').update(ret.update).eq('id', selectedSale.id)
-      await db.sales.update(selectedSale.id, ret.update)
-
-      // Process Credit Refund component if customer exists
-      if (creditRefundAmount > 0 && selectedSale.customer_id) {
-        const balRes = await adjustCustomerBalance(selectedSale.customer_id, -creditRefundAmount)
-        if (!balRes.ok) {
-          console.error('Return: customer balance not updated:', balRes.error)
-          alert(`Return saved, but the customer's balance could not be reduced by Rs ${creditRefundAmount} (${balRes.error}). Please adjust it manually.`)
-        }
-
-        await supabase.from('customer_payments').insert([{
-          shop_id: user.shop_id,
-          customer_id: selectedSale.customer_id,
-          amount: -creditRefundAmount,
-          payment_type: 'return',
-          note: `Return from Invoice #${String(selectedSale.id).slice(-6)} (Net: Rs. ${creditRefundAmount.toLocaleString()} Credited to Balance)`
-        }])
-      }
-
-      // Process Cash Refund component
-      if (cashRefundAmount > 0) {
-        if (selectedSale.customer_id) {
-          await supabase.from('customer_payments').insert([{
-            shop_id: user.shop_id,
-            customer_id: selectedSale.customer_id,
-            amount: -cashRefundAmount,
-            payment_type: 'refund',
-            note: `Cash Refund from Invoice #${String(selectedSale.id).slice(-6)} (Net: Rs. ${cashRefundAmount.toLocaleString()})`
-          }])
-        }
-
-        try {
-          const accounts = await getBankAccounts(user.shop_id)
-          const cashAcc = accounts.find(a =>
-            a.bank_name?.toLowerCase().includes('cash') ||
-            a.account_name?.toLowerCase().includes('cash')
-          ) || accounts[0]
-          if (cashAcc) {
-            await deductBankBalance({
-              shopId: user.shop_id,
-              accountId: cashAcc.id,
-              amount: cashRefundAmount,
-              referenceType: 'SALE_RETURN',
-              referenceId: String(selectedSale.id),
-              description: `Sale Return Cash Refund (Invoice #${selectedSale.id})`
-            })
-          }
-        } catch (accErr) {
-          console.warn('Could not deduct refund from cash account:', accErr)
         }
       }
 
@@ -498,98 +488,40 @@ function Sales() {
         },
         user.id,
         user.shop_id
-      )
+      ).catch?.(() => {})
 
-      alert('Return successful! Invoice updated.')
-      setReturning(false)
+      if (res.queued) notify('Offline mode: Return processed locally. Stock and Invoice updated! 🔄')
+      else if (res.problems?.length) notify(`Return saved, but please check:\n${res.problems.join('\n')}`)
+      else notify('Return successful! Invoice updated.')
       setReturnQtys({})
 
-      // Re-fetch updated sale + items to reflect new returned_qty in modal
-      const { data: updatedSale } = await supabase.from('sales').select('*, customers(name)').eq('id', selectedSale.id).maybeSingle()
-      if (updatedSale) setSelectedSale(updatedSale)
-      const { data: updatedItems } = await supabase.from('sale_items').select('*, products(name, stock_quantity), phones(*)').eq('sale_id', selectedSale.id)
-      if (updatedItems) {
-        const cleanItems = JSON.parse(JSON.stringify(updatedItems)).map(it => normalizeSaleItem(it))
-        await db.sale_items.bulkPut(cleanItems)
-        setSaleItems(cleanItems)
+      // Show the updated invoice and lines
+      let refreshed = false
+      if (online && !res.queued) {
+        const { data: updatedSale } = await supabase.from('sales').select('*, customers(name)').eq('id', selectedSale.id).maybeSingle()
+        if (updatedSale) setSelectedSale(updatedSale)
+        const { data: updatedItems } = await supabase.from('sale_items').select('*, products(name, stock_quantity), phones(*)').eq('sale_id', selectedSale.id)
+        if (updatedItems) {
+          const cleanItems = JSON.parse(JSON.stringify(updatedItems)).map(it => normalizeSaleItem(it))
+          await db.sale_items.bulkPut(cleanItems)
+          setSaleItems(cleanItems)
+          refreshed = true
+        }
       }
-      fetchSales()
-    } catch (err) {
-      const errMsg = err?.message || String(err)
-      if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
-        // OFFLINE RETURN LOGIC
-        totalReturnAmount = 0
-        for (const item of itemsToReturn) {
-          const returnQty = parseInt(returnQtys[item.id]) || 0
-          totalReturnAmount += item.unit_price * returnQty
-
-          // 1. Update local sale_item
-          const newRetQty = (item.returned_qty || 0) + returnQty
-          await db.sale_items.update(item.id, { returned_qty: newRetQty })
-
-          // 2. Queue the update
-          await addToSyncQueue('sale_items', 'UPDATE', { id: item.id, returned_qty: newRetQty })
-
-          // 3. Update local stock / phone
-          if (item.phone_id && db.phones) {
-            await db.phones.update(item.phone_id, { status: 'in_stock', sale_id: null, sold_at: null })
-            await addToSyncQueue('phones', 'UPDATE', { id: item.phone_id, status: 'in_stock', sale_id: null, sold_at: null })
-          } else if (item.product_id) {
-            await adjustProductStock(item.product_id, returnQty, { queueOnly: true })
-          }
-        }
-
-        // Update local Sale total (same figures as the online return)
-        const ret = computeReturn({ record: selectedSale, grossReturn: totalReturnAmount, toBalance: refundType === 'credit' })
-        const offlineSaleUpdate = ret.update
-        const newSaleTotal = ret.update.total_amount
-        const newDiscount = ret.update.discount
-        await db.sales.update(selectedSale.id, offlineSaleUpdate)
-        await addToSyncQueue('sales', 'UPDATE', { id: selectedSale.id, ...offlineSaleUpdate })
-
-        // The part that is not handed back in cash comes off the customer's balance
-        if (ret.balanceRefund > 0 && selectedSale.customer_id) {
-          await adjustCustomerBalance(selectedSale.customer_id, -ret.balanceRefund, { queueOnly: true }).catch(() => {})
-        }
-        // Cash handed back leaves the cash account
-        if (ret.cashRefund > 0) {
-          try {
-            const accounts = await getBankAccounts(user.shop_id)
-            const cashAcc = accounts.find(a =>
-              a.bank_name?.toLowerCase().includes('cash') ||
-              a.account_name?.toLowerCase().includes('cash')
-            ) || accounts[0]
-            if (cashAcc) {
-              await deductBankBalance({
-                shopId: user.shop_id,
-                accountId: cashAcc.id,
-                amount: ret.cashRefund,
-                referenceType: 'SALE_RETURN',
-                referenceId: String(selectedSale.id),
-                description: `Sale Return Cash Refund (Invoice #${selectedSale.id})`
-              })
-            }
-          } catch (accErr) {
-            console.warn('Could not deduct refund from cash account (offline):', accErr)
-          }
-        }
-
-        alert('Offline mode: Return processed locally. Stock and Invoice updated! 🔄')
-        setReturning(false)
-        setReturnQtys({})
-        setSelectedSale({ ...selectedSale, ...offlineSaleUpdate, total_amount: newSaleTotal, discount: newDiscount })
-        // Reflect updated returned_qty in modal items
+      if (!refreshed) {
+        setSelectedSale({ ...selectedSale, ...ret.update })
         const localUpdated = await db.sale_items.where({ sale_id: selectedSale.id }).toArray().catch(() => [])
         const [lPhones, lProducts] = await Promise.all([
           db.phones ? db.phones.toArray() : [],
           db.products ? db.products.toArray() : []
         ])
         if (localUpdated.length > 0) setSaleItems(localUpdated.map(it => normalizeSaleItem(it, lPhones, lProducts)))
-        fetchSales()
-      } else {
-        alert('Error processing return: ' + errMsg)
-        setReturning(false)
       }
+      fetchSales()
+    } catch (err) {
+      notify('Error processing return: ' + (err?.message || String(err)))
+    } finally {
+      setReturning(false)
     }
   }
 
@@ -674,7 +606,7 @@ function Sales() {
 
   const exportToExcel = () => {
     if (!filtered.length) {
-      alert('No sales to export')
+      notify('No sales to export')
       return
     }
     const data = filtered.map(s => {
@@ -825,9 +757,9 @@ function Sales() {
     setSelected([])
 
     if (failCount > 0) {
-      alert(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh sales mein payments ya ledger entries linked hain.\n\nSahi order:\n1. Pehle Sale Items delete karein (Trash Bin > Sale Items filter)\n2. Phir yeh sales delete ho jayengi`)
+      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh sales mein payments ya ledger entries linked hain.\n\nSahi order:\n1. Pehle Sale Items delete karein (Trash Bin > Sale Items filter)\n2. Phir yeh sales delete ho jayengi`)
     } else if (successCount > 0) {
-      alert(`🗑️ ${successCount} sale(s) moved to Trash!`)
+      notify(`🗑️ ${successCount} sale(s) moved to Trash!`)
     }
     fetchSales()
   }

@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import * as XLSX from 'xlsx'
 import { db, addToSyncQueue } from '../services/db'
+import { notify } from '../utils/toast'
 
 function Categories() {
   const { user } = useAuth()
@@ -167,9 +168,9 @@ function Categories() {
         setForm({ name: '', description: '', low_stock_threshold: '' })
         setShowForm(false)
         fetchCategories()
-        alert('Offline mode: Saved locally. Will sync automatically when online. 🔄')
+        notify('Offline mode: Saved locally. Will sync automatically when online. 🔄')
       } else {
-        alert('Error: ' + errMsg)
+        notify('Error: ' + errMsg)
       }
     } finally {
       setSaving(false)
@@ -190,9 +191,9 @@ function Categories() {
         await db.categories.delete(id)
         await addToSyncQueue('categories', 'DELETE', { id })
         fetchCategories()
-        alert('Offline mode: Category deleted locally. Will sync when online! 🔄')
+        notify('Offline mode: Category deleted locally. Will sync when online! 🔄')
       } else {
-        alert('Error: ' + errMsg)
+        notify('Error: ' + errMsg)
       }
     }
   }
@@ -200,12 +201,12 @@ function Categories() {
   const handleApplyToProducts = async (cat) => {
     const threshold = cat.low_stock_threshold
     if (!threshold || threshold <= 0) {
-      alert('Pehle is category ka "Low Stock Alert" value set karein (Edit karein).')
+      notify('Pehle is category ka "Low Stock Alert" value set karein (Edit karein).')
       return
     }
     const count = getProductCount(cat.id)
     if (count === 0) {
-      alert('Is category mein koi product nahi hai.')
+      notify('Is category mein koi product nahi hai.')
       return
     }
     if (!confirm(`"${cat.name}" category ke ${count} products ka Low Stock Alert ≤${threshold} par set ho jayega.\n\nContinue?`)) return
@@ -229,9 +230,9 @@ function Categories() {
         }
       }
       fetchProducts()
-      alert(`✅ ${count} products ka Low Stock Alert ≤${threshold} par set ho gaya!`)
+      notify(`✅ ${count} products ka Low Stock Alert ≤${threshold} par set ho gaya!`)
     } catch (err) {
-      alert('Error: ' + (err.message || String(err)))
+      notify('Error: ' + (err.message || String(err)))
     } finally {
       setApplyingId(null)
     }
@@ -244,7 +245,7 @@ function Categories() {
   }
 
   const handleExport = () => {
-    if (categories.length === 0) return alert('No data to export')
+    if (categories.length === 0) return notify('No data to export')
     const data = categories.map(c => ({
       'Category Name': c.name,
       'Description': c.description || '',
@@ -269,7 +270,7 @@ function Categories() {
       const ws = wb.Sheets[wsname]
       const data = XLSX.utils.sheet_to_json(ws)
 
-      if (data.length === 0) return alert('No data found in file')
+      if (data.length === 0) return notify('No data found in file')
 
       setLoading(true)
       let importedCount = 0
@@ -291,7 +292,7 @@ function Categories() {
         }
       }
       setLoading(false)
-      alert(`${importedCount} new categories imported!`)
+      notify(`${importedCount} new categories imported!`)
       fetchCategories()
     }
     reader.readAsBinaryString(file)

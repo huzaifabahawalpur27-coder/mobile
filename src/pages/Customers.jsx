@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx'
 import { printHTML, getShopBranding, brandedA4Header } from '../utils/printUtils'
 import { db, addToSyncQueue, moveToTrash } from '../services/db'
 import PasswordModal from '../components/PasswordModal'
+import { notify } from '../utils/toast'
 
 function Customers() {
   const { user } = useAuth()
@@ -107,7 +108,7 @@ function Customers() {
       const data = XLSX.utils.sheet_to_json(ws)
 
       if (data.length === 0) {
-        alert('Empty file!')
+        notify('Empty file!')
         return
       }
 
@@ -128,16 +129,16 @@ function Customers() {
       const skipped = formatted.length - unique.length
 
       if (unique.length === 0) {
-        alert('Tamam rows pehle se exist karti hain (phone number match). Kuch import nahi hua.')
+        notify('Tamam rows pehle se exist karti hain (phone number match). Kuch import nahi hua.')
         setLoading(false)
         if (fileInputRef.current) fileInputRef.current.value = ''
         return
       }
 
       const { error } = await supabase.from('customers').insert(unique)
-      if (error) alert(error.message)
+      if (error) notify(error.message)
       else {
-        alert(`Customers import ho gaye! ✅ ${unique.length} add${skipped ? `, ${skipped} skip (duplicate phone)` : ''}`)
+        notify(`Customers import ho gaye! ✅ ${unique.length} add${skipped ? `, ${skipped} skip (duplicate phone)` : ''}`)
         fetchCustomers()
       }
       setLoading(false)
@@ -193,9 +194,9 @@ function Customers() {
         setForm({ name: '', phone: '', address: '' })
         setShowForm(false)
         fetchCustomers()
-        alert('Offline mode: Saved locally. Will sync automatically when online. 🔄')
+        notify('Offline mode: Saved locally. Will sync automatically when online. 🔄')
       } else {
-        alert('Error: ' + error.message)
+        notify('Error: ' + error.message)
       }
     } finally {
       setSaving(false)
@@ -299,9 +300,9 @@ function Customers() {
     setSelected([])
 
     if (failCount > 0) {
-      alert(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh customers ke sales records abhi bhi database mein hain.\n\nSahi order:\n1. Sale Items delete karein (Trash Bin)\n2. Sales delete karein\n3. Phir yeh customers delete ho jayenge`)
+      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh customers ke sales records abhi bhi database mein hain.\n\nSahi order:\n1. Sale Items delete karein (Trash Bin)\n2. Sales delete karein\n3. Phir yeh customers delete ho jayenge`)
     } else if (successCount > 0) {
-      alert(`🗑️ ${successCount} customer(s) moved to Trash!`)
+      notify(`🗑️ ${successCount} customer(s) moved to Trash!`)
     }
     fetchCustomers()
   }
@@ -334,7 +335,7 @@ function Customers() {
   const handlePrintOutstanding = () => {
     const outstanding = customers.filter(c => c.outstanding_balance > 0)
     if (outstanding.length === 0) {
-      alert('Sab customers ka balance 0 hai!')
+      notify('Sab customers ka balance 0 hai!')
       return
     }
 

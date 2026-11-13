@@ -46,6 +46,8 @@ import {
   withWarrantyPlaceholder,
   upgradeDefaultTemplate
 } from '../services/whatsappQueueService'
+import { notify } from '../utils/toast'
+import { isCashName } from '../utils/moneyMath'
 
 // A template using the [Warranty Terms] placeholder already follows the saved terms;
 // pasting a fixed copy into it would freeze today's wording in the template.
@@ -456,7 +458,7 @@ function Settings() {
 
       await db.shops.put({ ...fullSettings, id: sid })
       window.dispatchEvent(new Event('storage'))
-      alert(
+      notify(
         'Settings saved successfully! ✅' +
         (outboxUpdated > 0 ? `\n\nوارنٹی شرائط ${outboxUpdated} پینڈنگ آؤٹ باکس میسجز میں بھی لاگو کر دی گئیں۔ (${outboxUpdated} pending outbox messages updated)` : '') +
         (!warrantyOnServer ? '\n\n⚠️ Warranty terms were saved on this device only (server database needs sql/phase1_warranty_settings.sql). Other devices and online bills will still show the old terms.' : '')
@@ -467,9 +469,9 @@ function Settings() {
         await db.shops.put({ ...fullSettings, id: sid })
         await addToSyncQueue('shops', 'UPDATE', { id: sid, ...supabasePayload })
         window.dispatchEvent(new Event('storage'))
-        alert('Offline mode: Settings saved to device. Will sync when online. 🔄')
+        notify('Offline mode: Settings saved to device. Will sync when online. 🔄')
       } else {
-        alert('Save failed: ' + errMsg)
+        notify('Save failed: ' + errMsg)
       }
     } finally {
       setSaving(false)
@@ -540,16 +542,16 @@ function Settings() {
         })
         if (error || (rpcResult && !rpcResult.success)) {
           const msg = error?.message || rpcResult?.error || 'Unknown error'
-          alert('Logo saved locally ✅\n⚠️ Server sync notice: ' + msg)
+          notify('Logo saved locally ✅\n⚠️ Server sync notice: ' + msg)
         } else {
-          alert('Logo uploaded & synced successfully! ✅')
+          notify('Logo uploaded & synced successfully! ✅')
         }
       } else {
-        alert('Logo saved on this device ✅ (Offline — will sync when connected)')
+        notify('Logo saved on this device ✅ (Offline — will sync when connected)')
       }
     } catch (err) {
       console.error('Logo upload error:', err)
-      alert('Logo upload failed: ' + (err?.message || String(err)))
+      notify('Logo upload failed: ' + (err?.message || String(err)))
     } finally {
       setSaving(false)
     }
@@ -563,7 +565,7 @@ function Settings() {
       wa_bill_template: updatedBill,
       wa_exchange_template: updatedExchange
     }))
-    alert('وارنٹی شرائط کو سیلز بل اور فون ایکسچینج ٹیمپلیٹس دونوں میں کامیابی سے شامل کر دیا گیا ہے! ✅\n\nWarranty terms have been synced to both invoice and exchange templates.')
+    notify('وارنٹی شرائط کو سیلز بل اور فون ایکسچینج ٹیمپلیٹس دونوں میں کامیابی سے شامل کر دیا گیا ہے! ✅\n\nWarranty terms have been synced to both invoice and exchange templates.')
   }
 
   const handleUpdateOutboxWarranty = async () => {
@@ -1446,7 +1448,7 @@ function Settings() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {bankAccounts.map((acc) => {
-                      const isCashInHand = acc.account_name?.toLowerCase().includes('cash') || acc.bank_name?.toLowerCase().includes('drawer')
+                      const isCashInHand = isCashName(acc.account_name) || acc.bank_name?.toLowerCase().includes('drawer')
                       return (
                         <div
                           key={acc.id}
@@ -1733,7 +1735,7 @@ function Settings() {
                         type="button"
                         onClick={async () => {
                           if (!navigator.onLine) {
-                            alert('Aap abhi offline hain! Pehle internet se connect karein.')
+                            notify('Aap abhi offline hain! Pehle internet se connect karein.')
                             return
                           }
                           setSaving(true)
@@ -1766,9 +1768,9 @@ function Settings() {
                             await safePut('expenses', ex.data)
                             await safePut('users', us.data)
 
-                            alert('Sari online data successfully local device mein save ho gayi hai! ✅')
+                            notify('Sari online data successfully local device mein save ho gayi hai! ✅')
                           } catch (e) {
-                            alert('Sync failed: ' + e.message)
+                            notify('Sync failed: ' + e.message)
                           } finally {
                             setSaving(false)
                           }
@@ -1785,7 +1787,7 @@ function Settings() {
                         type="button"
                         onClick={async () => {
                           await syncOfflineData()
-                          alert('Sync process triggered! Check status in header.')
+                          notify('Sync process triggered! Check status in header.')
                           fetchShop()
                         }}
                         className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold transition cursor-pointer"
@@ -1808,7 +1810,7 @@ function Settings() {
                           await db.purchase_items.clear()
                           await db.expenses.clear()
                           await db.users.clear()
-                          alert('All local cache cleared! Page refresh karein.')
+                          notify('All local cache cleared! Page refresh karein.')
                         }
                       }}
                       className="px-3 py-1.5 border border-gray-200 hover:bg-gray-100 text-gray-700 dark:text-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
@@ -1856,9 +1858,9 @@ function Settings() {
                               a.click()
                               document.body.removeChild(a)
                               URL.revokeObjectURL(url)
-                              alert('Full backup downloaded! 💾 Is file ko safe rakhein.')
+                              notify('Full backup downloaded! 💾 Is file ko safe rakhein.')
                             } catch (err) {
-                              alert('Backup failed: ' + err.message)
+                              notify('Backup failed: ' + err.message)
                             }
                           }}
                           className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-bold text-xs shadow-xs cursor-pointer"
@@ -1891,9 +1893,9 @@ function Settings() {
                               }
                               const fileName = `EdgeXPOS_ExcelReports_${new Date().toISOString().slice(0, 10)}.xlsx`
                               XLSX.writeFile(workbook, fileName)
-                              alert('Excel reports generated and downloaded successfully! 📊')
+                              notify('Excel reports generated and downloaded successfully! 📊')
                             } catch (err) {
-                              alert('Excel Export failed: ' + err.message)
+                              notify('Excel Export failed: ' + err.message)
                             }
                           }}
                           className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
@@ -1965,7 +1967,7 @@ function Settings() {
                               alert('Data restored successfully! ✅ Page refresh ho raha hai.')
                               window.location.reload()
                             } catch (err) {
-                              alert('Import failed: ' + err.message)
+                              notify('Import failed: ' + err.message)
                             }
                           }
                           reader.readAsText(file)
@@ -2084,7 +2086,7 @@ function Settings() {
             const shopName = form.name || 'My Shop'
             const typed = prompt(`Type "${shopName}" to confirm permanent deletion of ALL data:`)
             if (typed !== shopName) {
-              alert('Shop name does not match. Operation cancelled.')
+              notify('Shop name does not match. Operation cancelled.')
               return
             }
             setClearing(true)
@@ -2112,7 +2114,7 @@ function Settings() {
               alert('✅ All shop data has been cleared successfully!')
               window.location.reload()
             } catch (err) {
-              alert('Error clearing data: ' + err.message)
+              notify('Error clearing data: ' + err.message)
             } finally {
               setClearing(false)
             }
@@ -2199,7 +2201,7 @@ function Settings() {
                         }
                       }
                       setPreviewTemplateId(null)
-                      alert('Template applied successfully! ✅')
+                      notify('Template applied successfully! ✅')
                     }}
                     className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer"
                   >

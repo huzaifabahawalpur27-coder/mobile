@@ -5,9 +5,10 @@ import { db, restoreFromTrash, addToSyncQueue } from '../services/db'
 import PasswordModal from '../components/PasswordModal'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
-import { recordSaleToAccounts, recordPurchaseToAccounts } from '../services/bankService'
+import { recordSaleToAccounts, recordPurchaseToAccounts, deductBankBalance } from '../services/bankService'
 import { customerLedgerEffect, supplierLedgerEffect, isCountedSale, saleBalanceEffect, paidAmount } from '../utils/moneyMath'
 import { adjustProductStock, adjustCustomerBalance, adjustSupplierBalance, resellPhoneForRestoredSale, restockPhoneForRestoredPurchase } from '../services/atomicOps'
+import { notify } from '../utils/toast'
 
 // Deletion priority — lower number = delete first (no dependencies)
 const DELETION_ORDER = {
@@ -125,6 +126,22 @@ function TrashBin() {
                     if (pi.phone_id) note(`phone ${pi.phone_id}`, await restockPhoneForRestoredPurchase(pi.phone_id, data.id))
                     if (pi.product_id) note(`product ${pi.product_id} stock`, await adjustProductStock(pi.product_id, lineQty(pi)))
                 }
+            } else if (table === 'expenses') {
+                // Deleting the expense gave its money back to the account: take it out again
+                if (data?.account_id && Number(data.amount) > 0) {
+                    try {
+                        await deductBankBalance({
+                            shopId: data.shop_id || user.shop_id,
+                            accountId: data.account_id,
+                            amount: Number(data.amount),
+                            referenceType: 'EXPENSE',
+                            referenceId: String(data.id),
+                            description: `Restored Expense: ${data.category || ''}`
+                        })
+                    } catch (accErr) {
+                        problems.push(`accounts: ${accErr?.message || accErr}`)
+                    }
+                }
             } else if (table === 'supplier_payments' && data?.supplier_id) {
                 // Same rule the supplier ledger uses (a refund or cash-settled return is not a payment)
                 note('supplier balance', await adjustSupplierBalance(data.supplier_id, supplierLedgerEffect(data)))
@@ -168,7 +185,7 @@ function TrashBin() {
         }
         if (problems.length > 0) {
             console.error('Restore adjustments failed:', problems)
-            alert(`Restored, but some updates need checking:\n${problems.join('\n')}`)
+            notify(`Restored, but some updates need checking:\n${problems.join('\n')}`)
         }
     }
 
@@ -187,11 +204,11 @@ function TrashBin() {
                 }
                 await adjustBalanceOnRestore(item.original_table, item.data)
             }
-            alert(`✅ ${items.length} item(s) restored successfully!`)
+            notify(`✅ ${items.length} item(s) restored successfully!`)
             setSelected([])
             fetchTrash()
         } catch (err) {
-            alert('Restore failed: ' + err.message)
+            notify('Restore failed: ' + err.message)
         }
     }
 
@@ -200,11 +217,11 @@ function TrashBin() {
             for (const item of items) {
                 await db.trash.delete(item.id)
             }
-            alert(`🗑️ ${items.length} item(s) permanently deleted!`)
+            notify(`🗑️ ${items.length} item(s) permanently deleted!`)
             setSelected([])
             fetchTrash()
         } catch (err) {
-            alert('Delete failed: ' + err.message)
+            notify('Delete failed: ' + err.message)
         }
     }
 

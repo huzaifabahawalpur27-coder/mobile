@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../services/supabaseAdmin'
 import { useAuth } from '../../context/AuthContext'
 import { Download, DatabaseBackup, CheckCircle, AlertTriangle, Clock, RefreshCw, Search } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { notify } from '../../utils/toast'
 
 // Tables to export per shop (in order)
 const BACKUP_TABLES = [
@@ -151,7 +152,7 @@ export default function Backups() {
         [shop.id]: { backed_up_at: new Date().toISOString(), backup_rows: totalRows }
       }))
     } catch (err) {
-      alert(`Backup failed for ${shop.name}: ${err.message}`)
+      notify(`Backup failed for ${shop.name}: ${err.message}`)
     } finally {
       setExporting(prev => ({ ...prev, [shop.id]: false }))
     }

@@ -3,6 +3,7 @@ import { X, RotateCcw, AlertCircle, Landmark, Banknote, FileSpreadsheet, ShieldA
 import { useAuth } from '../context/AuthContext'
 import { getBankAccounts } from '../services/bankService'
 import { returnPhoneToSupplier } from '../services/purchaseService'
+import { notify } from '../utils/toast'
 
 export default function PhoneReturnModal({
   isOpen,
@@ -63,7 +64,7 @@ export default function PhoneReturnModal({
         notes: notes.trim(),
         user
       })
-      alert(`Phone ${phone.brand} ${phone.model} marked as RETURNED to supplier! Financial records adjusted. ✅`)
+      notify(`Phone ${phone.brand} ${phone.model} marked as RETURNED to supplier! Financial records adjusted. ✅`)
       if (onReturned) onReturned()
       onClose()
     } catch (err) {

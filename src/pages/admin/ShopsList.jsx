@@ -9,6 +9,7 @@ import ResetShopPasswordModal from '../../components/admin/ResetShopPasswordModa
 import { useAuth } from '../../context/AuthContext'
 import { logAction } from '../../services/auditService'
 import * as XLSX from 'xlsx'
+import { notify } from '../../utils/toast'
 
 export default function ShopsList() {
   const { impersonate, user } = useAuth()
@@ -149,7 +150,7 @@ export default function ShopsList() {
         if (error) throw error
         fetchShops()
       } catch (err) {
-        alert('Failed to remove plan: ' + err.message)
+        notify('Failed to remove plan: ' + err.message)
       } finally {
         setSwitchingPlanShopId(null)
       }
@@ -158,7 +159,7 @@ export default function ShopsList() {
 
     const newPlan = allPlans.find(p => String(p.id) === String(newPlanId))
     if (!newPlan) {
-      alert('Selected plan was not found in the plans list.')
+      notify('Selected plan was not found in the plans list.')
       return
     }
 
@@ -215,7 +216,7 @@ export default function ShopsList() {
 
       fetchShops()
     } catch (err) {
-      alert('Failed to switch plan: ' + err.message)
+      notify('Failed to switch plan: ' + err.message)
     } finally {
       setSwitchingPlanShopId(null)
     }
@@ -247,7 +248,7 @@ export default function ShopsList() {
       .eq('id', id)
 
     if (error) {
-      alert('Failed to update status')
+      notify('Failed to update status')
     } else {
       // Log the action
       await logAction({
@@ -269,7 +270,7 @@ export default function ShopsList() {
     )
     if (confirmed === null) return // cancelled
     if (confirmed.trim() !== shop.name.trim()) {
-      alert('Shop name did not match. Delete cancelled.')
+      notify('Shop name did not match. Delete cancelled.')
       return
     }
 
@@ -299,7 +300,7 @@ export default function ShopsList() {
 
       fetchShops()
     } catch (e) {
-      alert('Delete failed: ' + e.message)
+      notify('Delete failed: ' + e.message)
     }
   }
 
@@ -337,7 +338,7 @@ export default function ShopsList() {
       }
 
       if (!targetUserId) {
-        alert('Cannot impersonate: This shop has no registered users in the database.');
+        notify('Cannot impersonate: This shop has no registered users in the database.');
         return;
       }
 
@@ -365,7 +366,7 @@ export default function ShopsList() {
           }]);
         if (sessionErr) throw sessionErr;
       } catch (err) {
-        alert('Failed to establish secure database session: ' + err.message);
+        notify('Failed to establish secure database session: ' + err.message);
         return;
       }
 
@@ -391,7 +392,7 @@ export default function ShopsList() {
   }
 
   const handleQuickBackup = async (shop) => {
-    if (!supabaseAdmin) return alert('The administrator API is unavailable.')
+    if (!supabaseAdmin) return notify('The administrator API is unavailable.')
     setBackingUp(prev => ({ ...prev, [shop.id]: true }))
     try {
       const TABLES = [
@@ -435,7 +436,7 @@ export default function ShopsList() {
       await supabaseAdmin.from('shop_backups').insert([{ shop_id: shop.id, backup_rows: totalRows, backed_up_by: user?.email || 'superadmin' }])
       XLSX.writeFile(wb, `${shop.name.replace(/\s+/g, '_')}_backup_${new Date().toISOString().split('T')[0]}.xlsx`)
     } catch (err) {
-      alert('Backup failed: ' + err.message)
+      notify('Backup failed: ' + err.message)
     } finally {
       setBackingUp(prev => ({ ...prev, [shop.id]: false }))
     }

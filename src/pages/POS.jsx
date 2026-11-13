@@ -30,7 +30,8 @@ import {
   adjustProductStock, adjustCustomerBalance, markPhoneSold, queuePhoneSold,
   findPhonesNotInStock, applyLocalDelta, processPosSale
 } from '../services/atomicOps'
-import { buildSaleTenders, applyTenders } from '../utils/moneyMath'
+import { buildSaleTenders, applyTenders, isCashName } from '../utils/moneyMath'
+import { notify } from '../utils/toast'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
   { id: 'easypaisa', name: 'Easypaisa', icon: '🟢' },
@@ -86,13 +87,13 @@ function POS() {
   const [selectedCashVaultId, setSelectedCashVaultId] = useState('')
 
   const cashVaults = shopBankAccounts.filter(a =>
-    a.bank_name?.toLowerCase().includes('cash') ||
-    a.account_name?.toLowerCase().includes('cash') ||
+    isCashName(a.bank_name) ||
+    isCashName(a.account_name) ||
     a.account_number === 'CASH'
   )
   const bankOnlyAccounts = shopBankAccounts.filter(a =>
-    !a.bank_name?.toLowerCase().includes('cash') &&
-    !a.account_name?.toLowerCase().includes('cash') &&
+    !isCashName(a.bank_name) &&
+    !isCashName(a.account_name) &&
     a.account_number !== 'CASH'
   )
   const searchInputRef = useRef(null)
@@ -171,7 +172,7 @@ function POS() {
       return isNaN(p) || p <= 0
     })
     if (zeroPriceItem) {
-      alert(`⚠️ Selling price must be entered for "${zeroPriceItem.name || zeroPriceItem.model || 'Item'}"! Please enter a valid selling price greater than 0 before proceeding to payment.`)
+      notify(`⚠️ Selling price must be entered for "${zeroPriceItem.name || zeroPriceItem.model || 'Item'}"! Please enter a valid selling price greater than 0 before proceeding to payment.`)
       return
     }
     setShowTenderSheet(true)
@@ -314,7 +315,7 @@ function POS() {
       addToCart(product)
     } else {
       playError()
-      alert(`❌ Barcode / IMEI "${rawSku}" — neither phone nor product found.`)
+      notify(`❌ Barcode / IMEI "${rawSku}" — neither phone nor product found.`)
     }
     setBarcodeInput('')
     setTimeout(() => barcodeRef.current?.focus(), 50)
@@ -343,13 +344,13 @@ function POS() {
       const list = await getBankAccounts(user.shop_id)
       setShopBankAccounts(list || [])
       const cashes = (list || []).filter(a =>
-        a.bank_name?.toLowerCase().includes('cash') ||
-        a.account_name?.toLowerCase().includes('cash') ||
+        isCashName(a.bank_name) ||
+        isCashName(a.account_name) ||
         a.account_number === 'CASH'
       )
       const banks = (list || []).filter(a =>
-        !a.bank_name?.toLowerCase().includes('cash') &&
-        !a.account_name?.toLowerCase().includes('cash') &&
+        !isCashName(a.bank_name) &&
+        !isCashName(a.account_name) &&
         a.account_number !== 'CASH'
       )
       if (cashes.length > 0) {
@@ -781,7 +782,7 @@ function POS() {
 
   const addPhoneToCart = (phone) => {
     if (cart.some(i => i.phone_id === phone.id)) {
-      alert(`⚠️ Phone (IMEI: ${phone.imei_1}) pehle hi cart mein shamil hai!`)
+      notify(`⚠️ Phone (IMEI: ${phone.imei_1}) pehle hi cart mein shamil hai!`)
       return
     }
     const phoneItem = {
@@ -813,7 +814,7 @@ function POS() {
       const existing = prev.find(i => i.id === product.id)
       if (existing) {
         const newQty = Math.round((existing.qty + addQty) * 1000) / 1000
-        if (newQty > product.stock_quantity) { alert('Not enough stock!'); return prev }
+        if (newQty > product.stock_quantity) { notify('Not enough stock!'); return prev }
         return prev.map(i => i.id === product.id ? { ...i, qty: newQty } : i)
       }
       const clampedQty = Math.min(addQty, product.stock_quantity)
@@ -824,13 +825,13 @@ function POS() {
   const updateQty = (id, qty) => {
     const cartItem = cart.find(i => i.id === id)
     if (cartItem?.item_type === 'phone') {
-      alert('⚠️ Serialized mobile phones are strictly 1 item per IMEI.')
+      notify('⚠️ Serialized mobile phones are strictly 1 item per IMEI.')
       return
     }
     const num = parseFloat(qty)
     if (isNaN(num) || num <= 0) return
     const product = products.find(p => p.id === id)
-    if (product && num > product.stock_quantity) { alert('Not enough stock!'); return }
+    if (product && num > product.stock_quantity) { notify('Not enough stock!'); return }
     setCart(prev => prev.map(i => i.id === id ? { ...i, qty: num } : i))
   }
 
@@ -873,7 +874,7 @@ function POS() {
 
   const handleSaveCustomer = async () => {
     const name = saveCustomerForm.name.trim()
-    if (!name) return alert('Customer name is required')
+    if (!name) return notify('Customer name is required')
     setSavingCustomer(true)
     const newCustomer = {
       name,
@@ -916,9 +917,9 @@ function POS() {
         setWalkInName('')
         setShowSaveCustomer(false)
         setSaveCustomerForm({ name: '', mobile: '' })
-        alert('Offline: Customer saved locally. Will sync when online.')
+        notify('Offline: Customer saved locally. Will sync when online.')
       } else {
-        alert('Error: ' + errMsg)
+        notify('Error: ' + errMsg)
       }
     } finally {
       setSavingCustomer(false)
@@ -941,9 +942,9 @@ function POS() {
       await db.held_carts.add(heldData)
       await fetchHeldCarts()
       clearCart()
-      alert('Bill held successfully! ⏸️')
+      notify('Bill held successfully! ⏸️')
     } catch (err) {
-      alert('Error holding bill: ' + err.message)
+      notify('Error holding bill: ' + err.message)
     }
   }
 
@@ -980,11 +981,11 @@ function POS() {
     }
 
     if (removedItems.length > 0) {
-      alert(`⚠️ Notice: Some items in this held bill are no longer in stock and were removed or adjusted:\n- ${removedItems.join('\n- ')}`)
+      notify(`⚠️ Notice: Some items in this held bill are no longer in stock and were removed or adjusted:\n- ${removedItems.join('\n- ')}`)
     }
 
     if (validItems.length === 0) {
-      alert('⚠️ This held bill contains no items that are currently in stock.')
+      notify('⚠️ This held bill contains no items that are currently in stock.')
       return
     }
 
@@ -996,7 +997,7 @@ function POS() {
   }
 
   const applyBrandDiscount = () => {
-    if (!selectedBrand) { alert('Pehle brand select karo!'); return }
+    if (!selectedBrand) { notify('Pehle brand select karo!'); return }
     const brandProducts = products.filter(p => p.brand === selectedBrand)
     const val = parseFloat(brandDiscountValue) || 0
 
@@ -1106,7 +1107,7 @@ function POS() {
 
   const handleCompleteSale = async () => {
     if (cart.length === 0) {
-      alert('Cart khali hai! Pehle item add karein.')
+      notify('Cart khali hai! Pehle item add karein.')
       return
     }
 
@@ -1115,7 +1116,7 @@ function POS() {
       return isNaN(p) || p <= 0
     })
     if (zeroPriceItem) {
-      alert(`⚠️ Selling price must be entered for "${zeroPriceItem.name || zeroPriceItem.model || 'Item'}"! Please set the selling price greater than 0 before completing the sale.`)
+      notify(`⚠️ Selling price must be entered for "${zeroPriceItem.name || zeroPriceItem.model || 'Item'}"! Please set the selling price greater than 0 before completing the sale.`)
       return
     }
 
@@ -1141,7 +1142,7 @@ function POS() {
     const { applied: appliedPayments, tendered: tenderedTotal, paid: totalPaid } = applyTenders(finalPayments, total)
 
     if ((paymentType === 'credit' || totalPaid < total) && !customerId && !walkInName.trim()) {
-      alert('Balance amount (Credit) ke liye customer select karein ya Walk-in Name likhein!')
+      notify('Balance amount (Credit) ke liye customer select karein ya Walk-in Name likhein!')
       return
     }
 
@@ -1339,7 +1340,7 @@ function POS() {
         } else if (rpcRes && !rpcRes.success) {
           // The server checked the sale and refused it (already sold, not enough stock,
           // ...). Saving it another way would bypass that check, so stop here.
-          alert(`⚠️ Sale Nahi Ho Saki: ${rpcRes.error || 'Inventory lock conflict'}`)
+          notify(`⚠️ Sale Nahi Ho Saki: ${rpcRes.error || 'Inventory lock conflict'}`)
           setSaving(false)
           return
         } else if (rpcErr) {
@@ -1347,7 +1348,7 @@ function POS() {
           const functionMissing = rpcErr.code === 'PGRST202' || /could not find the function|schema cache/i.test(errText)
           const networkFailure = /fetch|network|load failed|timeout|connection/i.test(errText)
           if (!functionMissing && !networkFailure) {
-            alert(`⚠️ Sale Nahi Ho Saki: ${rpcErr.message || 'Phone sale was refused by the server'}`)
+            notify(`⚠️ Sale Nahi Ho Saki: ${rpcErr.message || 'Phone sale was refused by the server'}`)
             setSaving(false)
             return
           }
@@ -1365,7 +1366,7 @@ function POS() {
         if (notInStock.length > 0) {
           const names = cart.filter(i => notInStock.includes(String(i.phone_id)) || notInStock.includes(i.phone_id))
             .map(i => i.imei_1 || i.imei || i.name).join(', ')
-          alert(`⚠️ Sale Nahi Ho Saki: phone already sold or not in stock (${names}). Refresh and try again.`)
+          notify(`⚠️ Sale Nahi Ho Saki: phone already sold or not in stock (${names}). Refresh and try again.`)
           setSaving(false)
           return
         }
@@ -1410,7 +1411,7 @@ function POS() {
           throw new Error(atomic.error || 'Network error while saving the sale')
         } else if (!atomic.missing && /already sold|not in stock|not found in this shop/i.test(atomic.error || '')) {
           // Refused by the database (phone already sold, product removed): nothing was saved
-          alert(`⚠️ Sale Nahi Ho Saki: ${atomic.error}. Refresh and try again.`)
+          notify(`⚠️ Sale Nahi Ho Saki: ${atomic.error}. Refresh and try again.`)
           setSaving(false)
           return
         } else if (!atomic.missing) {
@@ -1595,7 +1596,7 @@ function POS() {
           }
           if (stockProblems.length > 0) {
             console.error('POS: stock not updated for', stockProblems)
-            alert(`Sale saved, but stock could not be updated for:\n${stockProblems.join('\n')}\n\nPlease correct these in Inventory.`)
+            notify(`Sale saved, but stock could not be updated for:\n${stockProblems.join('\n')}\n\nPlease correct these in Inventory.`)
           }
           setPhones(prev => prev.filter(p => !cart.some(c => c.phone_id === p.id)))
           setProducts(prev => prev.map(p => {
@@ -1613,7 +1614,7 @@ function POS() {
               const balRes = await adjustCustomerBalance(customerId, balanceIncrease)
               if (!balRes.ok) {
                 console.error('POS: customer balance not updated:', balRes.error)
-                alert(`Sale saved, but the customer's balance could not be updated (${balRes.error}). Please add Rs ${balanceIncrease} to their account manually.`)
+                notify(`Sale saved, but the customer's balance could not be updated (${balRes.error}). Please add Rs ${balanceIncrease} to their account manually.`)
               }
             }
           }
@@ -1628,19 +1629,19 @@ function POS() {
         try {
           const rollback = await supabase.from('sales').delete().eq('id', finalSale.id).select('id').maybeSingle()
           if (rollback.error || !rollback.data) {
-            alert('The sale could not be completed or safely rolled back. Check the sales list before retrying to avoid a duplicate.')
+            notify('The sale could not be completed or safely rolled back. Check the sales list before retrying to avoid a duplicate.')
             setSaving(false)
             return
           }
           finalSale = null
         } catch (_) {
-          alert('The sale could not be safely rolled back. Check the sales list before retrying to avoid a duplicate.')
+          notify('The sale could not be safely rolled back. Check the sales list before retrying to avoid a duplicate.')
           setSaving(false)
           return
         }
       }
       if (error?.inventoryConflict) {
-        alert(`⚠️ Sale Nahi Ho Saki: ${error.message}. Refresh and try again.`)
+        notify(`⚠️ Sale Nahi Ho Saki: ${error.message}. Refresh and try again.`)
         setSaving(false)
         return
       }
@@ -1888,7 +1889,7 @@ function POS() {
         window.open(url, '_blank')
         return
       }
-      alert('WhatsApp Outbox is for sold phones only.')
+      notify('WhatsApp Outbox is for sold phones only.')
       return
     }
 
@@ -1991,7 +1992,7 @@ function POS() {
       .single()
 
     if (error || !sale) {
-      alert('Quotation nahi mili! Sahi number check karein.')
+      notify('Quotation nahi mili! Sahi number check karein.')
       return
     }
 
@@ -2036,7 +2037,7 @@ function POS() {
       await shareOrDownloadPDF(pdfBlob, `quotation-${String(fakeSale.id).slice(-8)}.pdf`, formattedPhone || null, msg)
     } catch (err) {
       console.error('Quotation PDF failed:', err)
-      alert('Could not generate PDF quotation.')
+      notify('Could not generate PDF quotation.')
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = '💬' }
     }

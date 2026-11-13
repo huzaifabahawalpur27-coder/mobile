@@ -19,6 +19,7 @@ import { db, addToSyncQueue } from '../services/db'
 import { recordAuditLog } from '../services/auditService'
 import ProductConversionModal from './ProductConversionModal'
 import BatchManagementModal from './BatchManagementModal'
+import { notify } from '../utils/toast'
 
 const PHONE_STORAGES = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB']
 const PHONE_CONDITIONS = ['Brand New', 'Used - Like New', 'Used - Good', 'Used - Fair', 'Refurbished', 'Damaged']
@@ -168,7 +169,7 @@ export default function EditProductModal({
       setNewBrandName('')
       setShowAddBrand(false)
     } catch (err) {
-      alert('Failed to add brand: ' + (err.message || String(err)))
+      notify('Failed to add brand: ' + (err.message || String(err)))
     }
   }
 

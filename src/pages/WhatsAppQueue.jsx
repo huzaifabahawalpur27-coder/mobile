@@ -37,6 +37,7 @@ import {
   CheckCircle2,
   FileText
 } from 'lucide-react'
+import { notify } from '../utils/toast'
 
 export default function WhatsAppQueue() {
   const { user } = useAuth()
@@ -138,7 +139,7 @@ export default function WhatsAppQueue() {
   // Handle Send via Native WhatsApp
   const handleSendViaWhatsApp = async (item) => {
     if (!item.recipient_phone) {
-      alert('Phone number missing!')
+      notify('Phone number missing!')
       return
     }
 
@@ -226,7 +227,7 @@ export default function WhatsAppQueue() {
       setWarrantyStatusMsg('✅ میسج محفوظ کر دیا گیا ہے! (Message saved successfully)')
       setTimeout(() => setWarrantyStatusMsg(null), 3000)
     } catch (err) {
-      alert('Failed to save message: ' + (err?.message || String(err)))
+      notify('Failed to save message: ' + (err?.message || String(err)))
     }
   }
 
@@ -258,7 +259,7 @@ export default function WhatsAppQueue() {
       setWarrantyStatusMsg(`✅ وارنٹی شرائط شامل کر دی گئیں! (Warranty terms added for ${item.recipient_name})`)
       setTimeout(() => setWarrantyStatusMsg(null), 3500)
     } catch (err) {
-      alert('Failed to update warranty: ' + (err?.message || String(err)))
+      notify('Failed to update warranty: ' + (err?.message || String(err)))
     }
   }
 

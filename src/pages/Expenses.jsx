@@ -1,12 +1,15 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
-import { db, addToSyncQueue, moveToTrash } from '../services/db'
+import { db, moveToTrash } from '../services/db'
 import PasswordModal from '../components/PasswordModal'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import { Calendar, Search, Filter, Plus, X, Edit3, Trash2, Wallet, Tag } from 'lucide-react'
-import { getBankAccounts, deductBankBalance, creditBankBalance } from '../services/bankService'
+import { getBankAccounts } from '../services/bankService'
+import { applyMoneyOp } from '../services/moneyOps'
+import { confirmAmount, isCashName } from '../utils/moneyMath'
+import { notify } from '../utils/toast'
 
 export const getTodayDateStr = () => {
   const d = new Date()
@@ -159,8 +162,8 @@ function Expenses() {
       setSelectedAccountId(prev => {
         if (prev && list.some(a => String(a.id) === String(prev))) return prev
         const cash = list.find(a => 
-          a.bank_name?.toLowerCase().includes('cash') || 
-          a.account_name?.toLowerCase().includes('cash') ||
+          isCashName(a.bank_name) || 
+          isCashName(a.account_name) ||
           a.is_default
         ) || list[0]
         return cash ? String(cash.id) : ''
@@ -252,7 +255,7 @@ function Expenses() {
     if (!exp) return ''
     if (exp.account_id && bankAccounts.some(a => String(a.id) === String(exp.account_id))) return String(exp.account_id)
     const pm = String(exp.payment_method || 'cash').toLowerCase()
-    const isCash = (a) => a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash')
+    const isCash = (a) => isCashName(a.bank_name) || isCashName(a.account_name)
     const matched = bankAccounts.find(a =>
       (pm === 'cash' && isCash(a)) ||
       a.bank_name?.toLowerCase() === pm ||
@@ -304,8 +307,8 @@ function Expenses() {
     })
     // Reset to default cash drawer or first account
     const cash = bankAccounts.find(a => 
-      a.bank_name?.toLowerCase().includes('cash') || 
-      a.account_name?.toLowerCase().includes('cash') ||
+      isCashName(a.bank_name) || 
+      isCashName(a.account_name) ||
       a.is_default
     ) || bankAccounts[0]
     if (cash) setSelectedAccountId(String(cash.id))
@@ -325,8 +328,8 @@ function Expenses() {
 
     const selectedAcc = bankAccounts.find(a => String(a.id) === String(selectedAccountId))
     const isCashAcc = selectedAcc ? (
-      selectedAcc.bank_name?.toLowerCase().includes('cash') || 
-      selectedAcc.account_name?.toLowerCase().includes('cash')
+      isCashName(selectedAcc.bank_name) || 
+      isCashName(selectedAcc.account_name)
     ) : true
     const paymentMethodStr = selectedAcc ? (isCashAcc ? 'cash' : (selectedAcc.bank_name || selectedAcc.account_name || 'bank')) : 'cash'
 
@@ -341,117 +344,85 @@ function Expenses() {
       payment_method: paymentMethodStr
     }
 
+    // Catch an extra digit before it is saved
+    const sameCategory = expenses.filter(x => x.category === payload.category && x.id !== editingId).map(x => x.amount)
+    if (!confirmAmount(payload.amount, sameCategory, `${payload.category} expense`)) { setSaving(false); return }
+
+    // Older databases keep only these columns
+    const minimal = {
+      category: payload.category,
+      amount: payload.amount,
+      description: payload.description,
+      created_at: payload.created_at
+    }
+    const accDesc = selectedAcc ? (selectedAcc.bank_name ? `${selectedAcc.bank_name} - ${selectedAcc.account_name}` : selectedAcc.account_name) : 'Cash Drawer'
+    const row = { ...payload, account_id: selectedAccountId ? Number(selectedAccountId) || selectedAccountId : null }
+    delete row.shop_id
+
+    // What the accounts must change by
+    const accounts = []
+    if (!editingId) {
+      if (selectedAccountId && payload.amount > 0) {
+        accounts.push({
+          account_id: selectedAccountId,
+          delta: -payload.amount,
+          reference_type: 'EXPENSE',
+          description: `Shop Expense: ${payload.category} (${accDesc})${payload.note ? ` - ${payload.note}` : ''}`
+        })
+      }
+    } else {
+      const oldExpense = expenses.find(x => x.id === editingId)
+      const oldAmount = Number(oldExpense?.amount || 0)
+      // The account the expense was really paid from (worked out from the saved payment
+      // method when the id is not stored), so a change of account is not missed
+      const oldAccId = accountIdOfExpense(oldExpense) || selectedAccountId
+      if (selectedAccountId && String(oldAccId) === String(selectedAccountId)) {
+        // Same account: only the difference moves
+        const diff = Math.round((payload.amount - oldAmount) * 100) / 100
+        if (diff !== 0) {
+          accounts.push({
+            account_id: selectedAccountId,
+            delta: -diff,
+            reference_type: 'EXPENSE_EDIT',
+            reference_id: String(editingId),
+            description: `Expense ${diff > 0 ? 'Increase' : 'Reduction'}: ${payload.category} (${diff > 0 ? '+' : '-'}Rs. ${Math.abs(diff).toLocaleString()})`
+          })
+        }
+      } else if (selectedAccountId) {
+        // Account changed: the old account gets the whole amount back, the new one pays it
+        if (oldAccId && oldAmount > 0) {
+          accounts.push({
+            account_id: oldAccId,
+            delta: oldAmount,
+            reference_type: 'EXPENSE_ACCOUNT_SWITCH',
+            reference_id: String(editingId),
+            description: `Expense Account Switch Refund: ${payload.category}`
+          })
+        }
+        if (payload.amount > 0) {
+          accounts.push({
+            account_id: selectedAccountId,
+            delta: -payload.amount,
+            reference_type: 'EXPENSE',
+            reference_id: String(editingId),
+            description: `Shop Expense: ${payload.category} (${accDesc})${payload.note ? ` - ${payload.note}` : ''}`
+          })
+        }
+      }
+    }
+
     try {
-      let savedExpenseId = editingId
-      if (editingId) {
-        let { error } = await supabase.from('expenses').update(payload).eq('id', editingId)
-        if (error && (error.message?.includes('column') || error.code === 'PGRST204')) {
-          const minimal = {
-            category: payload.category,
-            amount: payload.amount,
-            description: payload.description,
-            shop_id: payload.shop_id,
-            created_at: payload.created_at
-          }
-          const retryRes = await supabase.from('expenses').update(minimal).eq('id', editingId)
-          error = retryRes.error
-        }
-        if (error) throw error
-      } else {
-        let { data, error } = await supabase.from('expenses').insert([payload]).select().maybeSingle()
-        if (error && (error.message?.includes('column') || error.code === 'PGRST204')) {
-          const minimal = {
-            category: payload.category,
-            amount: payload.amount,
-            description: payload.description,
-            shop_id: payload.shop_id,
-            created_at: payload.created_at
-          }
-          const retryRes = await supabase.from('expenses').insert([minimal]).select().maybeSingle()
-          data = retryRes.data
-          error = retryRes.error
-        }
-        if (error) throw error
-        if (data?.id) savedExpenseId = data.id
-      }
+      // The expense and its account change are saved together: all or nothing
+      const res = await applyMoneyOp({
+        shop_id: user.shop_id,
+        inserts: editingId ? [] : [{ table: 'expenses', row, fallbackRow: { ...minimal, shop_id: user.shop_id } }],
+        updates: editingId ? [{ table: 'expenses', id: editingId, set: row, fallbackSet: minimal }] : [],
+        accounts
+      })
+      if (!res.ok) throw new Error(res.error || 'Could not save the expense')
 
-      // Deduct or adjust expense in the selected Bank Account or Cash Drawer
-      try {
-        if (selectedAccountId && payload.amount > 0) {
-          const accDesc = selectedAcc ? (selectedAcc.bank_name ? `${selectedAcc.bank_name} - ${selectedAcc.account_name}` : selectedAcc.account_name) : 'Cash Drawer'
-
-          if (!editingId) {
-            // New expense: deduct full amount from the chosen bank account / cash drawer
-            await deductBankBalance({
-              shopId: user.shop_id,
-              accountId: selectedAccountId,
-              amount: payload.amount,
-              referenceType: 'EXPENSE',
-              referenceId: String(savedExpenseId || ''),
-              description: `Shop Expense: ${payload.category} (${accDesc})${payload.note ? ` - ${payload.note}` : ''}`
-            })
-          } else {
-            // Editing existing expense: handle amount and account differences
-            const oldExpense = expenses.find(e => e.id === editingId)
-            const oldAmount = Number(oldExpense?.amount || 0)
-            const newAmount = Number(payload.amount || 0)
-            // The account the expense was really paid from. The account id is kept on this
-            // device only, so after a reload it is worked out from the saved payment method
-            // (it used to fall back to the newly chosen account, hiding an account change).
-            const oldAccId = accountIdOfExpense(oldExpense) || selectedAccountId
-
-            if (String(oldAccId) === String(selectedAccountId)) {
-              // Same account: adjust net difference
-              const diff = newAmount - oldAmount
-              if (diff > 0) {
-                await deductBankBalance({
-                  shopId: user.shop_id,
-                  accountId: selectedAccountId,
-                  amount: diff,
-                  referenceType: 'EXPENSE_EDIT',
-                  referenceId: String(editingId),
-                  description: `Expense Increase: ${payload.category} (+Rs. ${diff.toLocaleString()})`
-                })
-              } else if (diff < 0) {
-                await creditBankBalance({
-                  shopId: user.shop_id,
-                  accountId: selectedAccountId,
-                  amount: Math.abs(diff),
-                  referenceType: 'EXPENSE_EDIT',
-                  referenceId: String(editingId),
-                  description: `Expense Reduction: ${payload.category} (-Rs. ${Math.abs(diff).toLocaleString()})`
-                })
-              }
-            } else {
-              // Account changed: refund old account completely, deduct new amount from new account
-              if (oldAmount > 0) {
-                await creditBankBalance({
-                  shopId: user.shop_id,
-                  accountId: oldAccId,
-                  amount: oldAmount,
-                  referenceType: 'EXPENSE_ACCOUNT_SWITCH',
-                  referenceId: String(editingId),
-                  description: `Expense Account Switch Refund: ${payload.category}`
-                })
-              }
-              if (newAmount > 0) {
-                await deductBankBalance({
-                  shopId: user.shop_id,
-                  accountId: selectedAccountId,
-                  amount: newAmount,
-                  referenceType: 'EXPENSE',
-                  referenceId: String(editingId),
-                  description: `Shop Expense: ${payload.category} (${accDesc})${payload.note ? ` - ${payload.note}` : ''}`
-                })
-              }
-            }
-          }
-        }
-      } catch (accErr) {
-        console.warn('Could not adjust bank balance on expense change:', accErr)
-      }
-
-      // Mirror account_id to local Dexie for seamless client caching
+      // Keep the account on this device's copy too (older databases do not store it)
+      const savedExpenseId = editingId || res.inserted?.[0]?.row?.id
       if (savedExpenseId) {
         await db.expenses.update(savedExpenseId, {
           account_id: selectedAccountId,
@@ -462,26 +433,10 @@ function Expenses() {
       resetForm()
       setShowForm(false)
       await Promise.all([fetchExpenses(), loadBankAccounts()])
+      if (res.queued) notify('Offline mode: Saved locally. Will sync automatically when online. 🔄')
+      else if (res.problems?.length) notify(`Saved, but please check:\n${res.problems.join('\n')}`)
     } catch (error) {
-      const errMsg = error?.message || String(error)
-      if (errMsg.includes('Failed to fetch') || !navigator.onLine) {
-        const offlineData = editingId
-          ? { ...payload, id: editingId, account_id: selectedAccountId }
-          : { ...payload, id: crypto.randomUUID(), created_at: payload.created_at, date: payload.date, account_id: selectedAccountId }
-        const action = editingId ? 'UPDATE' : 'INSERT'
-        await addToSyncQueue('expenses', action, offlineData)
-        if (editingId) {
-          await db.expenses.update(editingId, offlineData)
-        } else {
-          await db.expenses.add(offlineData)
-        }
-        resetForm()
-        setShowForm(false)
-        fetchExpenses()
-        alert('Offline mode: Saved locally. Will sync automatically when online. 🔄')
-      } else {
-        alert(error.message)
-      }
+      notify(error?.message || String(error))
     } finally {
       setSaving(false)
     }
@@ -503,7 +458,7 @@ function Expenses() {
     } else if (exp.payment_method) {
       const pm = String(exp.payment_method).toLowerCase()
       const matched = bankAccounts.find(a => 
-        (pm === 'cash' && (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))) ||
+        (pm === 'cash' && (isCashName(a.bank_name) || isCashName(a.account_name))) ||
         a.bank_name?.toLowerCase() === pm ||
         a.account_name?.toLowerCase() === pm
       )
@@ -539,39 +494,27 @@ function Expenses() {
       if (!item) continue
 
       try {
-        if (navigator.onLine) {
-          const { error } = await supabase.from('expenses').delete().eq('id', id)
-          if (error) {
-            console.error('Delete failed:', error)
-            failCount++
-            continue
-          }
-        } else {
-          await addToSyncQueue('expenses', 'DELETE', { id })
+        // The record goes and the money comes back to its account together: all or nothing
+        const targetAccountId = Number(item.amount) > 0 ? (accountIdOfExpense(item) || bankAccounts[0]?.id) : null
+        const res = await applyMoneyOp({
+          shop_id: user.shop_id,
+          deletes: [{ table: 'expenses', id }],
+          accounts: targetAccountId ? [{
+            account_id: targetAccountId,
+            delta: Number(item.amount),
+            reference_type: 'EXPENSE_REVERSAL',
+            reference_id: String(id),
+            description: `Expense Deletion Refund: ${item.category}`
+          }] : []
+        })
+        if (!res.ok) {
+          console.error('Delete failed:', res.error)
+          failCount++
+          continue
         }
 
-        await moveToTrash('expenses', id, item, user.id, user.shop_id)
-        await db.expenses.delete(id)
-
-        // Refund expense back to the selected Account / Cash Drawer
-        if (item.amount > 0) {
-          try {
-            const targetAccountId = accountIdOfExpense(item) || bankAccounts[0]?.id
-
-            if (targetAccountId) {
-              await creditBankBalance({
-                shopId: user.shop_id,
-                accountId: targetAccountId,
-                amount: item.amount,
-                referenceType: 'EXPENSE_REVERSAL',
-                referenceId: String(id),
-                description: `Expense Deletion Refund: ${item.category}`
-              })
-            }
-          } catch (accErr) {
-            console.warn('Could not refund account for deleted expense:', accErr)
-          }
-        }
+        await moveToTrash('expenses', id, { ...item, account_id: targetAccountId ?? item.account_id ?? null }, user.id, user.shop_id)
+        await db.expenses.delete(id).catch(() => {})
 
         successfulIds.push(id)
         successCount++
@@ -585,9 +528,9 @@ function Expenses() {
     setSelected([])
 
     if (failCount > 0) {
-      alert(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}`)
+      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}`)
     } else if (successCount > 0) {
-      alert(`🗑️ ${successCount} expense(s) moved to Trash!`)
+      notify(`🗑️ ${successCount} expense(s) moved to Trash!`)
     }
     await Promise.all([fetchExpenses(), loadBankAccounts()])
   }
@@ -1026,7 +969,7 @@ function Expenses() {
                     <option value="">Loading accounts...</option>
                   ) : (
                     bankAccounts.map(acc => {
-                      const isCash = acc.bank_name?.toLowerCase().includes('cash') || acc.account_name?.toLowerCase().includes('cash')
+                      const isCash = isCashName(acc.bank_name) || isCashName(acc.account_name)
                       return (
                         <option key={acc.id} value={acc.id}>
                           {isCash ? '💵 Cash in Hand / Drawer (گلہ)' : `🏦 ${acc.bank_name ? `${acc.bank_name} - ` : ''}${acc.account_name}`} (Bal: Rs. {Number(acc.current_balance).toLocaleString()})

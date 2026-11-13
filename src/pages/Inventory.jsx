@@ -11,6 +11,7 @@ import BarcodeLabelModal from '../components/BarcodeLabelModal'
 import BatchManagementModal from '../components/BatchManagementModal'
 import PhoneInventoryView from '../components/PhoneInventoryView'
 import { deduplicateProducts } from '../utils/productUtils'
+import { notify } from '../utils/toast'
 
 function Inventory() {
   const { user } = useAuth()
@@ -110,7 +111,7 @@ function Inventory() {
   const handleReorderWhatsApp = async (e) => {
     const btn = e?.currentTarget
     const lowItems = products.filter(p => p.stock_quantity <= (p.low_stock_threshold || 10))
-    if (lowItems.length === 0) { alert('Koi bhi product low stock mein nahi hai!'); return }
+    if (lowItems.length === 0) { notify('Koi bhi product low stock mein nahi hai!'); return }
 
     // Group by supplier
     const bySupplier = {}
@@ -400,9 +401,9 @@ function Inventory() {
         setSelectedProduct(null)
         setNewStock('')
         fetchInventory()
-        alert('Offline mode: Stock adjusted locally. Will sync when online! 🔄')
+        notify('Offline mode: Stock adjusted locally. Will sync when online! 🔄')
       } else {
-        alert('Error updating stock: ' + errMsg)
+        notify('Error updating stock: ' + errMsg)
       }
     }
     setSaving(false)
@@ -454,7 +455,7 @@ function Inventory() {
         user.shop_id
       )
 
-      alert(`Success! ${qty} units returned. New stock: ${newTotal}`)
+      notify(`Success! ${qty} units returned. New stock: ${newTotal}`)
       setReturnProduct(null)
       setReturnQty('')
       fetchInventory()
@@ -469,12 +470,12 @@ function Inventory() {
         await db.products.update(returnProduct.id, { stock_quantity: newTotal })
         await addToSyncQueue('products', 'UPDATE', { ...returnProduct, stock_quantity: newTotal })
 
-        alert(`Offline mode: ${qty} units returned locally. New stock: ${newTotal}. Will sync later! 🔄`)
+        notify(`Offline mode: ${qty} units returned locally. New stock: ${newTotal}. Will sync later! 🔄`)
         setReturnProduct(null)
         setReturnQty('')
         fetchInventory()
       } else {
-        alert('Error recording return: ' + errMsg)
+        notify('Error recording return: ' + errMsg)
       }
     } finally {
       setSaving(false)
@@ -551,11 +552,11 @@ function Inventory() {
         await db.products.update(p.id, { c_rate: p.c_rate, cost_price: p.cost_price, sale_price: p.sale_price });
       }
 
-      alert('Prices updated and logged!');
+      notify('Prices updated and logged!');
       setShowBulkEditor(false);
       fetchInventory();
     } catch (err) {
-      alert('Save failed: ' + err.message);
+      notify('Save failed: ' + err.message);
     } finally {
       setSaving(false)
     }
@@ -602,12 +603,12 @@ function Inventory() {
         await db.products.update(p.id, { cost_price: newCost, sale_price: newSale })
       }
 
-      alert(`Successfully updated ${affected.length} products of brand ${bulkBrand} by ${bulkPercent}%`)
+      notify(`Successfully updated ${affected.length} products of brand ${bulkBrand} by ${bulkPercent}%`)
       setShowBulkPriceModal(false)
       setBulkPercent('')
       fetchInventory()
     } catch (err) {
-      alert('Bulk update failed: ' + err.message)
+      notify('Bulk update failed: ' + err.message)
     } finally {
       setSaving(false)
     }
@@ -629,7 +630,7 @@ function Inventory() {
     const affected = products.filter(p =>
       p.brand === arBrand && (arCategory ? String(p.category_id) === String(arCategory) : true)
     )
-    if (affected.length === 0) { alert('Koi product nahi mila is filter ke sath.'); return }
+    if (affected.length === 0) { notify('Koi product nahi mila is filter ke sath.'); return }
     if (!confirm(`${arAction === 'increase' ? '+' : '-'}${arPercent}% apply karein ${affected.length} product(s) par?`)) return
     setSaving(true)
     try {
@@ -648,12 +649,12 @@ function Inventory() {
         }
         await db.products.update(p.id, updates)
       }
-      alert(`✅ ${affected.length} products update ho gaye.`)
+      notify(`✅ ${affected.length} products update ho gaye.`)
       setShowAdjustRatesModal(false)
       setArBrand(''); setArCategory(''); setArPercent('')
       fetchInventory()
     } catch (err) {
-      alert('Update failed: ' + err.message)
+      notify('Update failed: ' + err.message)
     } finally {
       setSaving(false)
     }
@@ -663,16 +664,16 @@ function Inventory() {
 
   const handleManualSync = async () => {
     if (!navigator.onLine) {
-      alert('Internet connection nahi hai. Cloud sync ke liye online hona zaroori hai.')
+      notify('Internet connection nahi hai. Cloud sync ke liye online hona zaroori hai.')
       return
     }
     setManualSyncing(true)
     try {
       const res = await reconcileOfflineProducts(user.shop_id)
       await fetchInventory()
-      alert(`Cloud sync mukammal! ${res?.synced || 0} product(s) sync ho gaye.`)
+      notify(`Cloud sync mukammal! ${res?.synced || 0} product(s) sync ho gaye.`)
     } catch (err) {
-      alert('Sync error: ' + (err?.message || err))
+      notify('Sync error: ' + (err?.message || err))
     } finally {
       setManualSyncing(false)
     }

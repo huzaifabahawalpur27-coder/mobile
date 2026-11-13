@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   roundMoney, isCountedSale, saleBalanceEffect, computeReturn, customerLedgerEffect,
   supplierLedgerEffect, cashPortion, buildSaleTenders, applyTenders,
-  isCashExpenseInShift, isPurchaseBillPayment, isCashPartyPayment
+  isCashExpenseInShift, isPurchaseBillPayment, isCashPartyPayment, unusualAmount, buildDayBook, isCashName, isCashAccount
 } from '../src/utils/moneyMath.js'
 
 let passed = 0
@@ -149,6 +149,43 @@ test('cash drawer: expenses and supplier payments', () => {
   assert.equal(isCashPartyPayment({ payment_type: 'payment', payment_mode: 'cash', amount: 100 }), true)
   assert.equal(isCashPartyPayment({ payment_type: 'payment', payment_mode: 'jazzcash', amount: 100 }), false)
   assert.equal(isCashPartyPayment({ payment_type: 'refund', amount: -100 }), false)
+})
+
+test('unusual amount: an extra digit is caught, normal amounts are not', () => {
+  const usual = [20000, 23000, 25000, 21000, 30000, 18000]
+  assert.equal(unusualAmount(230000, usual), 22000)
+  assert.equal(unusualAmount(23000, usual), null)
+  assert.equal(unusualAmount(60000, usual), null)
+  // too little history to judge
+  assert.equal(unusualAmount(230000, [20000, 23000]), null)
+  // large amounts that have happened before are not flagged
+  assert.equal(unusualAmount(230000, [...usual, 250000]), null)
+})
+
+test('day book: opening, in, out and closing per account', () => {
+  const rows = [
+    { account_id: 1, transaction_type: 'CREDIT', amount: 500, balance_before: 1000, balance_after: 1500, reference_type: 'sale' },
+    { account_id: 1, transaction_type: 'DEBIT', amount: 200, balance_before: 1500, balance_after: 1300, reference_type: 'expense' },
+    { account_id: 1, transaction_type: 'CREDIT', amount: 100, balance_before: 1300, balance_after: 1400, reference_type: 'sale' }
+  ]
+  const book = buildDayBook(rows, [{ id: 1, account_name: 'Cash', bank_name: 'Cash', current_balance: 1400 }, { id: 2, account_name: 'HBL', bank_name: 'HBL', current_balance: 70 }])
+  assert.equal(book.length, 2)
+  assert.deepEqual([book[0].opening, book[0].moneyIn, book[0].moneyOut, book[0].closing, book[0].expectedClosing], [1000, 600, 200, 1400, 1400])
+  assert.deepEqual(book[0].kinds, { sale: { in: 600, out: 0 }, expense: { in: 0, out: 200 } })
+  assert.equal(book[1].idle, true)
+  assert.equal(book[1].closing, 70)
+})
+
+test('cash account: JazzCash is a wallet, not the cash drawer', () => {
+  assert.equal(isCashName('Cash'), true)
+  assert.equal(isCashName('Cash in Hand'), true)
+  assert.equal(isCashName('Shop Cash'), true)
+  assert.equal(isCashName('petty-cash'), true)
+  assert.equal(isCashName('JazzCash'), false)
+  assert.equal(isCashName('JazzCash Wallet'), false)
+  assert.equal(isCashName('Meezan Bank'), false)
+  assert.equal(isCashAccount({ account_name: 'JazzCash Wallet', bank_name: 'JazzCash' }), false)
+  assert.equal(isCashAccount({ account_name: 'Drawer', bank_name: 'Till', account_number: 'CASH' }), true)
 })
 
 console.log(`\n${passed} checks passed`)

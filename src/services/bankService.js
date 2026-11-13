@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { db, addToSyncQueue } from './db';
 import { newOpId, isMissingFunction } from './atomicOps';
-import { roundMoney, isCountedSale, netAmount, paidAmount } from '../utils/moneyMath';
+import { roundMoney, isCountedSale, netAmount, paidAmount, isCashName, isCashAccount } from '../utils/moneyMath';
 
 const getClient = () => {
   return supabase;
@@ -791,8 +791,8 @@ export const findOrCreateAccountForPayment = async ({
   // 1. CASH
   if (cleanMethod === 'cash' || targetKey === 'cash') {
     const existingCash = list.find(a => 
-      a.bank_name?.toLowerCase().includes('cash') || 
-      a.account_name?.toLowerCase().includes('cash')
+      isCashName(a.bank_name) || 
+      isCashName(a.account_name)
     );
     if (existingCash) return existingCash;
 
@@ -843,8 +843,8 @@ export const findOrCreateAccountForPayment = async ({
 
   // If no direct keyword match, check if there's a non-cash default or single bank account
   const nonCashAccounts = list.filter(a => 
-    !a.bank_name?.toLowerCase().includes('cash') && 
-    !a.account_name?.toLowerCase().includes('cash')
+    !isCashName(a.bank_name) && 
+    !isCashName(a.account_name)
   );
 
   // If only one non-cash bank account exists and payment method is generic 'bank' or 'online', use it
@@ -1074,10 +1074,6 @@ export const recordPurchaseToAccounts = async ({
 
 
 
-const isCashAccount = (a) =>
-  String(a?.bank_name || '').toLowerCase().includes('cash') ||
-  String(a?.account_name || '').toLowerCase().includes('cash') ||
-  a?.account_number === 'CASH';
 
 /**
  * Takes a deleted sale's money back out of the accounts it went into.
@@ -1171,4 +1167,72 @@ export const reverseSaleFromAccounts = async ({ shopId, sale, description = '' }
     reversed.push({ accountId: accId, amount: take });
   }
   return reversed;
+};
+
+/**
+ * Statement entries for a date range (inclusive, local dates 'YYYY-MM-DD'), optionally
+ * for one account and one direction ('in' | 'out'). Oldest first.
+ */
+export const getBankStatement = async ({ shopId, accountId = null, from = null, to = null, direction = null, limit = 2000 }) => {
+  if (!shopId) return [];
+  const startIso = from ? new Date(`${from}T00:00:00`).toISOString() : null;
+  const endIso = to ? new Date(`${to}T23:59:59.999`).toISOString() : null;
+  const wantIn = direction === 'in';
+  const matchesDirection = (tx) => !direction || (tx.transaction_type === 'CREDIT') === wantIn;
+
+  if (navigator.onLine) {
+    try {
+      let query = getClient()
+        .from('bank_account_transactions')
+        .select('*')
+        .eq('shop_id', Number(shopId) || shopId)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(limit);
+      if (accountId) query = query.eq('account_id', Number(accountId) || accountId);
+      if (startIso) query = query.gte('created_at', startIso);
+      if (endIso) query = query.lte('created_at', endIso);
+      const { data, error } = await query;
+      if (!error && data) return data.map(normalizeTransaction).filter(matchesDirection);
+    } catch (err) {
+      console.warn('getBankStatement Supabase warning:', err);
+    }
+  }
+
+  try {
+    const all = await db.bank_account_transactions.toArray();
+    return all
+      .filter(tx => String(tx.shop_id) === String(shopId))
+      .filter(tx => !accountId || String(tx.account_id) === String(accountId))
+      .filter(tx => (!startIso || tx.created_at >= startIso) && (!endIso || tx.created_at <= endIso))
+      .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+      .slice(0, limit)
+      .map(normalizeTransaction)
+      .filter(matchesDirection);
+  } catch (err) {
+    console.error('getBankStatement Dexie error:', err);
+    return [];
+  }
+};
+
+/**
+ * Compares each account's balance with what its statement adds up to
+ * (sql/atomic_money_ops.sql). Returns { ok, rows } or { ok: false, missing | error }.
+ */
+export const checkBankBalances = async () => {
+  if (!navigator.onLine) return { ok: false, error: 'Connect to the internet to check balances.' };
+  const { data, error } = await getClient().rpc('check_bank_balances');
+  if (error) {
+    if (isMissingFunction(error)) return { ok: false, missing: true, error: 'Run sql/atomic_money_ops.sql in Supabase to enable the balance check.' };
+    return { ok: false, error: error.message || 'Could not check balances' };
+  }
+  return {
+    ok: true,
+    rows: (data || []).map(r => ({
+      ...r,
+      stored_balance: Number(r.stored_balance || 0),
+      statement_balance: Number(r.statement_balance || 0),
+      difference: Number(r.difference || 0)
+    }))
+  };
 };

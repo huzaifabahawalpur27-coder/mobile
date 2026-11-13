@@ -26,6 +26,7 @@ import {
   Copy,
   Check
 } from 'lucide-react'
+import { notify } from '../utils/toast'
 
 const CAMPAIGN_PRESETS = [
   {
@@ -240,7 +241,7 @@ function WhatsAppMessaging() {
   const handleStartBroadcast = () => {
     const recipients = broadcastList.filter(c => selectedCustomerIds.has(c.id))
     if (recipients.length === 0) {
-      alert('Please select at least one customer to send messages.')
+      notify('Please select at least one customer to send messages.')
       return
     }
     setDispatchQueue(recipients)
@@ -266,7 +267,7 @@ function WhatsAppMessaging() {
       setCurrentIndex(prev => prev + 1)
     } else {
       setIsDispatchModalOpen(false)
-      alert(`🎉 Broadcast queue completed! ${dispatchedIds.size} messages dispatched.`)
+      notify(`🎉 Broadcast queue completed! ${dispatchedIds.size} messages dispatched.`)
     }
   }
 

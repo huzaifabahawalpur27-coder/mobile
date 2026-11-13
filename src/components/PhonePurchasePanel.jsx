@@ -7,8 +7,10 @@ import { Plus, Trash2, Smartphone, DollarSign, Shield, CheckCircle, AlertCircle,
 import { searchIphoneModels, getIphoneColorsForModel, ALL_IPHONE_COLORS, IPHONE_MODELS } from '../utils/iphonePresets'
 import { getBankAccounts, deductBankBalance, findOrCreateAccountForPayment, recordPurchaseToAccounts } from '../services/bankService'
 import { adjustSupplierBalance } from '../services/atomicOps'
+import { insertBillPayment } from '../services/moneyOps'
 import BankAccountModal from './BankAccountModal'
 import PurchaseSplitPaymentModal from './PurchaseSplitPaymentModal'
+import { notify } from '../utils/toast'
 
 const COMMON_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Vivo', 'Oppo', 'Realme', 'Google', 'OnePlus', 'Infinix', 'Tecno', 'Other']
 const STORAGE_OPTIONS = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB']
@@ -546,7 +548,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         setNewSupplierPhone('')
       }
     } catch (err) {
-      alert('Error creating supplier: ' + err.message)
+      notify('Error creating supplier: ' + err.message)
     } finally {
       setSavingSupplier(false)
     }
@@ -923,7 +925,8 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
         // 4. Record Supplier Payment if paid > 0
         if (effectivePaid > 0) {
           try {
-            await supabase.from('supplier_payments').insert([{
+            // Linked to this bill, so deleting the bill later removes the payment with it
+            await insertBillPayment({
               shop_id: user.shop_id,
               branch_id: user.branch_id || null,
               supplier_id: parseInt(supplierId),
@@ -931,7 +934,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
               payment_method: effectivePaymentType,
               payment_type: 'payment',
               description: `Payment for Phone Purchase PR-${purchaseId} (${effectivePaymentType})`
-            }])
+            }, purchaseId)
           } catch (_) {}
         }
 

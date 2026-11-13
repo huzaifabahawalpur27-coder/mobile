@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import ReactQuill from 'react-quill-new'
 import 'react-quill-new/dist/quill.snow.css'
 import { FileText } from 'lucide-react'
+import { notify } from '../../utils/toast'
 
 export default function EmailBroadcast() {
     const [searchParams] = useSearchParams()
@@ -161,7 +162,7 @@ export default function EmailBroadcast() {
 
     const handleSaveTemplate = async () => {
         if (!templateName.trim() || !subject.trim() || !body.trim()) {
-            alert('Please provide template name, subject and body.')
+            notify('Please provide template name, subject and body.')
             return
         }
 
@@ -176,11 +177,11 @@ export default function EmailBroadcast() {
                 }, { onConflict: 'name' })
 
             if (error) throw error
-            alert('Template saved successfully!')
+            notify('Template saved successfully!')
             fetchTemplates()
             setIsManagingTemplates(false)
         } catch (err) {
-            alert('Error saving template: ' + err.message)
+            notify('Error saving template: ' + err.message)
         }
     }
 
@@ -191,7 +192,7 @@ export default function EmailBroadcast() {
             if (error) throw error
             fetchTemplates()
         } catch (err) {
-            alert('Error deleting template: ' + err.message)
+            notify('Error deleting template: ' + err.message)
         }
     }
 

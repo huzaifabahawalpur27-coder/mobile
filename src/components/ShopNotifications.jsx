@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Megaphone, X, ArrowRight } from 'lucide-react'
 import { NOTIFICATION_CATEGORIES } from '../services/notificationService'
+import { notify } from '../utils/toast'
 
 const when = (iso) => {
   const d = new Date(iso)
@@ -34,7 +35,7 @@ export function ShopUpdatesSection({ items, newIds, canDelete, onNavigate, onDel
     try {
       await onDelete(n.id)
     } catch (err) {
-      alert(err?.message || 'Could not delete the notification')
+      notify(err?.message || 'Could not delete the notification')
     } finally {
       setDeleting(null)
     }

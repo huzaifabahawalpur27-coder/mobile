@@ -16,6 +16,7 @@ import BatchManagementModal from '../components/BatchManagementModal'
 import { Boxes } from 'lucide-react'
 import { hasFeature } from '../utils/featureGate'
 import { deduplicateProducts, deduplicatePhones } from '../utils/productUtils'
+import { notify } from '../utils/toast'
 
 function Products() {
   const [products, setProducts] = useState([])
@@ -384,7 +385,7 @@ function Products() {
       const wb = XLSX.read(bstr, { type: 'binary' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const data = XLSX.utils.sheet_to_json(ws)
-      if (data.length === 0) { alert('Empty file!'); return }
+      if (data.length === 0) { notify('Empty file!'); return }
 
       const previewRows = []
       for (const row of data) {
@@ -416,7 +417,7 @@ function Products() {
         })
       }
 
-      if (previewRows.length === 0) { alert('No valid rows (Product Name + Brand required)'); return }
+      if (previewRows.length === 0) { notify('No valid rows (Product Name + Brand required)'); return }
       setImportPreviewRows(previewRows)
       setAutoCreateCategories(false)
       setShowImportPreview(true)
@@ -549,7 +550,7 @@ function Products() {
     }
 
     if (formatted.length === 0) {
-      alert(`⚠️ Koi naya product nahi mila.\n${skipped.length} products pehle se mojood hain (duplicate skip kiye).`)
+      notify(`⚠️ Koi naya product nahi mila.\n${skipped.length} products pehle se mojood hain (duplicate skip kiye).`)
       setLoading(false)
       setImportPreviewRows([])
       return
@@ -557,11 +558,11 @@ function Products() {
 
     const { error } = await supabase.from('products').insert(formatted)
     if (error) {
-      alert('Import error: ' + error.message)
+      notify('Import error: ' + error.message)
     } else {
       await recordAuditLog('BULK_IMPORT_PRODUCTS', 'products', 'multiple', { count: formatted.length }, user.id, user.shop_id)
       const skipMsg = skipped.length > 0 ? `\n⏭️ ${skipped.length} duplicate(s) skip kiye.` : ''
-      alert(`Import successful! ✅ ${formatted.length} products added.${skipMsg}`)
+      notify(`Import successful! ✅ ${formatted.length} products added.${skipMsg}`)
       fetchProducts()
     }
     setLoading(false)
@@ -569,7 +570,7 @@ function Products() {
   }
 
   const handleInlineSave = async () => {
-    if (!inlineForm.name?.trim()) return alert('Product Name is required')
+    if (!inlineForm.name?.trim()) return notify('Product Name is required')
     setInlineSaving(true)
     const toIntOrNull = (v) => { const n = parseInt(v); return isNaN(n) ? null : n }
     const updates = {
@@ -595,9 +596,9 @@ function Products() {
         await addToSyncQueue('products', 'UPDATE', { id: inlineEditId, ...updates })
         setInlineEditId(null)
         fetchProducts()
-        alert('Offline mode: Updated locally! Will sync when online. 🔄')
+        notify('Offline mode: Updated locally! Will sync when online. 🔄')
       } else {
-        alert('Error: ' + errMsg)
+        notify('Error: ' + errMsg)
       }
     } finally {
       setInlineSaving(false)
@@ -653,9 +654,9 @@ function Products() {
     }
 
     if (failCount > 0) {
-      alert(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Items linked to sales or purchases cannot be deleted directly.`)
+      notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Items linked to sales or purchases cannot be deleted directly.`)
     } else if (successCount > 0) {
-      alert(`🗑️ ${successCount} item(s) moved to Trash!`)
+      notify(`🗑️ ${successCount} item(s) moved to Trash!`)
     }
 
     fetchProducts()
@@ -676,7 +677,7 @@ function Products() {
 
   const handleBulkEdit = async () => {
     if (!bulkCategory && !bulkBrand && !bulkUnit) {
-      alert('Category, Brand ya Unit mein se kuch toh select karo!')
+      notify('Category, Brand ya Unit mein se kuch toh select karo!')
       return
     }
     if (!confirm(`${selected.length} product(s) update honge. Continue?`)) return
@@ -725,9 +726,9 @@ function Products() {
     setBulkSaving(false)
 
     if (failCount > 0) {
-      alert(`⚠️ Partially completed.\n✅ Updated: ${successCount}\n❌ Failed: ${failCount}`)
+      notify(`⚠️ Partially completed.\n✅ Updated: ${successCount}\n❌ Failed: ${failCount}`)
     } else {
-      alert(`✅ ${successCount} product(s) updated successfully!`)
+      notify(`✅ ${successCount} product(s) updated successfully!`)
     }
   }
 
@@ -741,16 +742,16 @@ function Products() {
 
   const handleManualSync = async () => {
     if (!navigator.onLine) {
-      alert('Internet connection nahi hai. Cloud sync ke liye online hona zaroori hai.')
+      notify('Internet connection nahi hai. Cloud sync ke liye online hona zaroori hai.')
       return
     }
     setManualSyncing(true)
     try {
       const res = await reconcileOfflineProducts(user.shop_id)
       await fetchProducts()
-      alert(`Cloud sync mukammal! ${res?.synced || 0} product(s) sync ho gaye.`)
+      notify(`Cloud sync mukammal! ${res?.synced || 0} product(s) sync ho gaye.`)
     } catch (err) {
-      alert('Sync error: ' + (err?.message || err))
+      notify('Sync error: ' + (err?.message || err))
     } finally {
       setManualSyncing(false)
     }

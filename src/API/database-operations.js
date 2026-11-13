@@ -323,7 +323,7 @@ const BrandsPage = () => {
   const handleAddBrand = async (name) => {
     const { data, error } = await brandsAPI.create(name)
     if (error) {
-      alert('Failed to add brand')
+      notify('Failed to add brand')
       return
     }
     loadBrands() // Refresh list
@@ -353,17 +353,18 @@ const ProductsPage = () => {
 
 // Sales Example
 import { salesAPI } from '../api/database-operations'
+import { notify } from '../utils/toast'
 
 const SalesPage = () => {
   const handleCreateSale = async (saleData, items) => {
     const { data, error } = await salesAPI.create(saleData, items)
     
     if (error) {
-      alert('Sale failed: ' + error.message)
+      notify('Sale failed: ' + error.message)
       return
     }
     
-    alert('Sale completed successfully!')
+    notify('Sale completed successfully!')
   }
 }
 */
