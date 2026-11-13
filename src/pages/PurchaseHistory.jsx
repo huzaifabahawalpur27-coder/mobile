@@ -306,13 +306,13 @@ function PurchaseHistory() {
     // Handle purchase return (supplier return / stock out)
     const handleReturn = async () => {
         const itemsToReturn = purchaseItems.filter(i => returnQtys[i.id] > 0)
-        if (itemsToReturn.length === 0) { notify('Return karne ke liye qty enter karo!'); return }
+        if (itemsToReturn.length === 0) { notify('Enter the quantity to return.'); return }
 
         for (const item of itemsToReturn) {
             const returnQty = parseInt(returnQtys[item.id]) || 0
             const alreadyReturned = item.returned_qty || 0
             const maxReturn = item.quantity - alreadyReturned
-            if (returnQty > maxReturn) { notify(`${item.product_name}: max ${maxReturn} return ho sakta hai`); return }
+            if (returnQty > maxReturn) { notify(`${item.product_name}: only ${maxReturn} can be returned`); return }
         }
 
         setReturning(true)
@@ -742,7 +742,7 @@ function PurchaseHistory() {
         setSelected([])
 
         if (failCount > 0) {
-            notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\n👉 Yeh purchases mein ledger entries linked hain.\n\nSahi order:\n1. Pehle Purchase Items delete karein (Trash Bin > Purchase Items filter)\n2. Phir yeh purchases delete ho jayenge`)
+            notify(`⚠️ Partially completed.\n✅ Deleted: ${successCount}\n❌ Failed: ${failCount}\n\nThese purchases still have ledger entries linked to them.\n\nDelete in this order:\n1. Purchase items (Trash Bin > Purchase Items filter)\n2. Then these purchases`)
         } else if (successCount > 0) {
             notify(`🗑️ ${successCount} purchase(s) moved to Trash!`)
         }
@@ -795,23 +795,23 @@ function PurchaseHistory() {
                     <div className="flex gap-3 items-center overflow-x-auto pb-1 max-w-full">
                         {/* Summary cards */}
                         <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[100px]">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Total</p>
+                            <p className="text-xs text-gray-500 font-bold uppercase">Total</p>
                             <p className="text-sm font-bold text-blue-600">Rs. {totalPurchaseValue.toLocaleString()}</p>
                         </div>
                         <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[90px]">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Cash</p>
+                            <p className="text-xs text-gray-500 font-bold uppercase">Cash</p>
                             <p className="text-sm font-bold text-green-600">{cashCount}</p>
                         </div>
                         <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[90px]">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Bank</p>
+                            <p className="text-xs text-gray-500 font-bold uppercase">Bank</p>
                             <p className="text-sm font-bold text-blue-600">{bankCount}</p>
                         </div>
                         <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[90px]">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Credit</p>
+                            <p className="text-xs text-gray-500 font-bold uppercase">Credit</p>
                             <p className="text-sm font-bold text-orange-600">{creditCount}</p>
                         </div>
                         <div className="bg-white px-3 py-2 rounded-xl shadow-sm border border-gray-100 text-center min-w-[90px]">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Split</p>
+                            <p className="text-xs text-gray-500 font-bold uppercase">Split</p>
                             <p className="text-sm font-bold text-purple-600">{splitCount}</p>
                         </div>
                     </div>
@@ -822,7 +822,7 @@ function PurchaseHistory() {
                     )}
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-4 items-start sm:items-center flex-wrap">
-                    <input
+                    <input aria-label="Search PR- ID or Supplier"
                         type="text"
                         placeholder="Search PR- ID or Supplier..."
                         className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-auto"
@@ -830,7 +830,7 @@ function PurchaseHistory() {
                         onChange={e => setSearch(e.target.value)}
                     />
                     <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 items-center">
-                        <select
+                        <select aria-label="Payments filter"
                             className="px-4 py-2 border rounded-lg outline-none flex-shrink-0"
                             value={paymentFilter}
                             onChange={e => setPaymentFilter(e.target.value)}
@@ -855,7 +855,7 @@ function PurchaseHistory() {
                         </button>
                         <button
                             onClick={fetchPurchases}
-                            className="p-2 text-gray-400 hover:text-blue-600 transition flex-shrink-0"
+                            className="p-2 text-gray-500 hover:text-blue-600 transition flex-shrink-0"
                             title="Refresh Data"
                         >
                             🔄
@@ -866,7 +866,7 @@ function PurchaseHistory() {
                 {loading ? (
                     <p className="text-gray-500 italic">Loading purchase records...</p>
                 ) : filtered.length === 0 ? (
-                    <div className="text-center py-12"><p className="text-gray-400 text-lg">No purchases found.</p></div>
+                    <div className="text-center py-12"><p className="text-gray-500 text-lg">No purchases found.</p></div>
                 ) : (
                     <div className="bg-white rounded-xl shadow overflow-hidden">
                         <div className="divide-y divide-gray-100 md:hidden">
@@ -895,14 +895,14 @@ function PurchaseHistory() {
                                                         <button
                                                             type="button"
                                                             onClick={() => toggleExpand(p.id)}
-                                                            className="text-[11px] text-blue-600 font-bold hover:underline inline-flex items-center gap-0.5 cursor-pointer"
+                                                            className="text-xs text-blue-600 font-bold hover:underline inline-flex items-center gap-0.5 cursor-pointer"
                                                         >
                                                             <span>{isExpanded ? 'Hide' : 'Details'}</span>
-                                                            <span className={`text-[9px] transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                                                            <span className={`text-xs transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
                                                         </button>
                                                     </div>
                                                 )}
-                                                <p className="mt-1 text-xs text-gray-400">{new Date(p.created_at).toLocaleDateString('en-PK')}</p>
+                                                <p className="mt-1 text-xs text-gray-500">{new Date(p.created_at).toLocaleDateString('en-PK')}</p>
                                             </div>
                                             <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} className="mt-1 h-4 w-4 rounded cursor-pointer" />
                                         </div>
@@ -924,12 +924,12 @@ function PurchaseHistory() {
                                                         {p.payment_type === 'cash' ? '💵 Cash' : p.payment_type === 'bank' ? '🏦 Bank' : p.payment_type === 'split' ? '🔀 Split' : '📒 Credit'}
                                                     </span>
                                                     {p.payment_type === 'bank' && (p.payment_details?.bank_name || p.remarks?.includes('[Paid via')) && (
-                                                        <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                                                        <span className="text-xs font-bold text-blue-800 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
                                                             {p.payment_details?.bank_name || p.remarks?.match(/\[Paid via ([^\]]+)\]/)?.[1] || 'Bank Transfer'}
                                                         </span>
                                                     )}
                                                     {p.paid_amount != null && Number(p.paid_amount) < Number(p.total_amount) && (
-                                                        <span className="bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded text-[10px] font-bold">
+                                                        <span className="bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded text-xs font-bold">
                                                             Paid: {Number(p.paid_amount).toLocaleString()}
                                                         </span>
                                                     )}
@@ -946,7 +946,7 @@ function PurchaseHistory() {
                                             <div className="mt-3 bg-blue-50/70 p-3 rounded-xl border border-blue-100 flex flex-col gap-2">
                                                 <div className="flex items-center justify-between text-xs font-bold text-blue-900 border-b border-blue-200/60 pb-1.5">
                                                     <span>📱 Phone List ({items.length})</span>
-                                                    <span className="uppercase text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-blue-200 text-blue-800">
+                                                    <span className="uppercase text-xs font-bold px-2 py-0.5 rounded-full bg-white border border-blue-200 text-blue-800">
                                                         {p.payment_type === 'bank' ? `🏦 Bank${p.payment_details?.bank_name ? ` (${p.payment_details.bank_name})` : ''}` : p.payment_type}
                                                     </span>
                                                 </div>
@@ -966,45 +966,45 @@ function PurchaseHistory() {
                                                                 <div className="flex items-start justify-between gap-1">
                                                                     <p className="font-bold text-gray-900">{name}</p>
                                                                     {status && (
-                                                                        <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 ${
+                                                                        <span className={`text-xs px-1.5 py-0.2 rounded-full font-bold uppercase shrink-0 ${
                                                                             status === 'in_stock' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
                                                                         }`}>
                                                                             {status.replace('_', ' ')}
                                                                         </span>
                                                                     )}
                                                                 </div>
-                                                                {specs && <p className="text-[11px] text-gray-500">{specs}</p>}
+                                                                {specs && <p className="text-xs text-gray-500">{specs}</p>}
                                                                 {(imei || imei2) && (
                                                                     <div className="flex flex-wrap items-center gap-1">
                                                                         {imei && (
-                                                                            <span className="font-mono text-[10px] bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded">
+                                                                            <span className="font-mono text-xs bg-blue-50 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded">
                                                                                 IMEI: {imei}
                                                                             </span>
                                                                         )}
                                                                         {imei2 && (
-                                                                            <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
+                                                                            <span className="font-mono text-xs bg-gray-50 text-gray-600 border border-gray-200 px-1 py-0.2 rounded">
                                                                                 IMEI 2: {imei2}
                                                                             </span>
                                                                         )}
                                                                     </div>
                                                                 )}
-                                                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-[11px]">
+                                                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-xs">
                                                                     <div>
-                                                                        <span className="text-gray-400 block text-[10px]">Purchase Price</span>
+                                                                        <span className="text-gray-500 block text-xs">Purchase Price</span>
                                                                         <span className="font-semibold text-gray-700">Rs. {Number(it.base_cost || 0).toLocaleString()}</span>
                                                                     </div>
                                                                     <div>
-                                                                        <span className="text-gray-400 block text-[10px]">Direct Cost (Courier)</span>
+                                                                        <span className="text-gray-500 block text-xs">Direct Cost (Courier)</span>
                                                                         <span className={`font-semibold ${Number(it.direct_cost) > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'}`}>
                                                                             Rs. {Number(it.direct_cost || 0).toLocaleString()}
                                                                         </span>
                                                                     </div>
                                                                     <div>
-                                                                        <span className="text-gray-400 block text-[10px]">Total Cost</span>
+                                                                        <span className="text-gray-500 block text-xs">Total Cost</span>
                                                                         <span className="font-bold text-gray-900">Rs. {Number(it.total_cost || 0).toLocaleString()}</span>
                                                                     </div>
                                                                     <div>
-                                                                        <span className="text-gray-400 block text-[10px]">Target Sale Price</span>
+                                                                        <span className="text-gray-500 block text-xs">Target Sale Price</span>
                                                                         <span className="font-semibold text-blue-700">
                                                                             {it.sale_price > 0 ? `Rs. ${Number(it.sale_price).toLocaleString()}` : '—'}
                                                                         </span>
@@ -1046,7 +1046,7 @@ function PurchaseHistory() {
                                                 <tr className={`hover:bg-gray-50 transition ${selected.includes(p.id) ? 'bg-blue-50/60' : ''}`}>
                                                     <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)} className="w-4 h-4 rounded cursor-pointer" /></td>
                                                     <td className="px-5 py-3 font-mono text-xs text-blue-600 font-bold whitespace-nowrap">PR-{String(p.id).slice(-6)}</td>
-                                                    <td className="px-5 py-3 text-gray-800 font-medium whitespace-nowrap">{p.suppliers?.name || <span className="text-gray-400 italic">Unknown</span>}</td>
+                                                    <td className="px-5 py-3 text-gray-800 font-medium whitespace-nowrap">{p.suppliers?.name || <span className="text-gray-500 italic">Unknown</span>}</td>
                                                     <td className="px-5 py-3">
                                                         {items.length > 0 ? (
                                                             <div className="flex flex-col gap-1 max-w-xs">
@@ -1055,7 +1055,7 @@ function PurchaseHistory() {
                                                                         {firstPhoneName}
                                                                     </span>
                                                                     {items.length > 1 && (
-                                                                        <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full shrink-0">
+                                                                        <span className="text-xs bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full shrink-0">
                                                                             +{items.length - 1} more
                                                                         </span>
                                                                     )}
@@ -1063,17 +1063,17 @@ function PurchaseHistory() {
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => toggleExpand(p.id)}
-                                                                    className={`inline-flex items-center gap-1 text-[11px] font-bold transition w-fit cursor-pointer ${
+                                                                    className={`inline-flex items-center gap-1 text-xs font-bold transition w-fit cursor-pointer ${
                                                                         isExpanded ? 'text-blue-700 underline' : 'text-blue-600 hover:text-blue-800'
                                                                     }`}
                                                                     title="Click to view full phone details, specs, and IMEI"
                                                                 >
                                                                     <span>{isExpanded ? 'Hide Details' : 'Details'}</span>
-                                                                    <span className={`text-[9px] transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                                                                    <span className={`text-xs transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
                                                                 </button>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-gray-400 text-xs italic">Direct Purchase</span>
+                                                            <span className="text-gray-500 text-xs italic">Direct Purchase</span>
                                                         )}
                                                     </td>
                                                     <td className="px-5 py-3 font-medium text-gray-800 whitespace-nowrap">
@@ -1116,7 +1116,7 @@ function PurchaseHistory() {
                                                                     </div>
                                                                     <div className="flex items-center gap-2 text-xs">
                                                                         <span className="text-gray-500 font-medium">Payment:</span>
-                                                                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase ${
+                                                                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${
                                                                             p.payment_type === 'cash' ? 'bg-green-100 text-green-700' : p.payment_type === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
                                                                         }`}>
                                                                             {p.payment_type === 'bank' ? `🏦 Bank${p.payment_details?.bank_name ? ` (${p.payment_details.bank_name})` : ''}` : p.payment_type}
@@ -1146,7 +1146,7 @@ function PurchaseHistory() {
                                                                                     <div className="flex items-start justify-between gap-2">
                                                                                         <h4 className="font-bold text-gray-900 text-xs sm:text-sm">{name}</h4>
                                                                                         {status && (
-                                                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${
+                                                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase shrink-0 ${
                                                                                                 status === 'in_stock'
                                                                                                     ? 'bg-green-100 text-green-700'
                                                                                                     : status === 'sold'
@@ -1158,17 +1158,17 @@ function PurchaseHistory() {
                                                                                         )}
                                                                                     </div>
                                                                                     {specs && (
-                                                                                        <p className="text-[11px] text-gray-500 mt-1 font-medium">{specs}</p>
+                                                                                        <p className="text-xs text-gray-500 mt-1 font-medium">{specs}</p>
                                                                                     )}
                                                                                     {(imei || imei2) && (
                                                                                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                                                                                             {imei && (
-                                                                                                <span className="font-mono text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200/80 px-2 py-0.5 rounded">
+                                                                                                <span className="font-mono text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200/80 px-2 py-0.5 rounded">
                                                                                                     IMEI: {imei}
                                                                                                 </span>
                                                                                             )}
                                                                                             {imei2 && (
-                                                                                                <span className="font-mono text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-1.5 py-0.5 rounded">
+                                                                                                <span className="font-mono text-xs bg-gray-50 text-gray-600 border border-gray-200 px-1.5 py-0.5 rounded">
                                                                                                     IMEI 2: {imei2}
                                                                                                 </span>
                                                                                             )}
@@ -1177,21 +1177,21 @@ function PurchaseHistory() {
                                                                                 </div>
                                                                                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 text-xs">
                                                                                     <div>
-                                                                                        <span className="text-gray-400 block text-[10px]">Purchase Price</span>
+                                                                                        <span className="text-gray-500 block text-xs">Purchase Price</span>
                                                                                         <span className="font-semibold text-gray-700">Rs. {Number(it.base_cost || 0).toLocaleString()}</span>
                                                                                     </div>
                                                                                     <div>
-                                                                                        <span className="text-gray-400 block text-[10px]">Direct Cost (Courier)</span>
+                                                                                        <span className="text-gray-500 block text-xs">Direct Cost (Courier)</span>
                                                                                         <span className={`font-semibold ${Number(it.direct_cost) > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'}`}>
                                                                                             Rs. {Number(it.direct_cost || 0).toLocaleString()}
                                                                                         </span>
                                                                                     </div>
                                                                                     <div>
-                                                                                        <span className="text-gray-400 block text-[10px]">Total Cost</span>
+                                                                                        <span className="text-gray-500 block text-xs">Total Cost</span>
                                                                                         <span className="font-bold text-gray-900">Rs. {Number(it.total_cost || 0).toLocaleString()}</span>
                                                                                     </div>
                                                                                     <div>
-                                                                                        <span className="text-gray-400 block text-[10px]">Target Sale Price</span>
+                                                                                        <span className="text-gray-500 block text-xs">Target Sale Price</span>
                                                                                         <span className="font-semibold text-blue-700">
                                                                                             {it.sale_price > 0 ? `Rs. ${Number(it.sale_price).toLocaleString()}` : '—'}
                                                                                         </span>
@@ -1216,7 +1216,7 @@ function PurchaseHistory() {
 
                 {/* Detail Modal */}
                 {selectedPurchase && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+                    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
                         <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-2xl rounded-[26px] shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-black/[0.08] dark:border-white/[0.12] w-full max-w-3xl max-h-[92dvh] overflow-y-auto flex flex-col p-4 sm:p-6 text-gray-900 dark:text-gray-100">
                             <div className="flex justify-between items-start mb-4 pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
                                 <div className="flex items-center gap-3">
@@ -1228,11 +1228,11 @@ function PurchaseHistory() {
                                             <h2 className="text-base sm:text-lg font-black text-[#1d1d1f] dark:text-[#f5f5f7] tracking-tight">
                                                 Purchase Invoice PR-{String(selectedPurchase.id).slice(-8)}
                                             </h2>
-                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                                            <span className="px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
                                                 Inward Stock
                                             </span>
                                         </div>
-                                        <p className="text-xs text-[#86868b] dark:text-[#98989d] mt-0.5 flex items-center gap-2 flex-wrap">
+                                        <p className="text-xs text-[#6e6e73] dark:text-[#98989d] mt-0.5 flex items-center gap-2 flex-wrap">
                                             <span>{new Date(selectedPurchase.created_at).toLocaleString("en-PK")}</span>
                                             <span>•</span>
                                             <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedPurchase.suppliers?.name || "Direct / Walk-in Supplier"}</span>
@@ -1245,7 +1245,7 @@ function PurchaseHistory() {
                                 </div>
                                 <button
                                     onClick={() => setSelectedPurchase(null)}
-                                    className="w-8 h-8 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.1] dark:hover:bg-white/[0.15] text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white flex items-center justify-center transition cursor-pointer text-lg font-bold shrink-0"
+                                    className="w-8 h-8 rounded-full bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.1] dark:hover:bg-white/[0.15] text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-white flex items-center justify-center transition cursor-pointer text-lg font-bold shrink-0"
                                 >
                                     ×
                                 </button>
@@ -1254,37 +1254,37 @@ function PurchaseHistory() {
                             {/* Info Grid */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4 p-3.5 rounded-[18px] bg-slate-50/80 dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08] text-xs">
                                 <div>
-                                    <span className="text-[#86868b] dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider block">Supplier Info</span>
+                                    <span className="text-[#6e6e73] dark:text-gray-400 font-bold uppercase text-xs tracking-wider block">Supplier Info</span>
                                     <b className="text-gray-900 dark:text-white block mt-0.5">{selectedPurchase.suppliers?.name || "Direct / Walk-in Supplier"}</b>
                                     {selectedPurchase.suppliers?.phone && (
-                                        <span className="text-[11px] text-[#0071e3] dark:text-[#3894ff] block font-medium mt-0.5">📞 {selectedPurchase.suppliers.phone}</span>
+                                        <span className="text-xs text-[#0071e3] dark:text-[#3894ff] block font-medium mt-0.5">📞 {selectedPurchase.suppliers.phone}</span>
                                     )}
                                     {selectedPurchase.suppliers?.address && (
-                                        <span className="text-[10px] text-[#86868b] block truncate mt-0.5">📍 {selectedPurchase.suppliers.address}</span>
+                                        <span className="text-xs text-[#6e6e73] block truncate mt-0.5">📍 {selectedPurchase.suppliers.address}</span>
                                     )}
                                 </div>
                                 <div>
-                                    <span className="text-[#86868b] dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider block">Purchase Date</span>
+                                    <span className="text-[#6e6e73] dark:text-gray-400 font-bold uppercase text-xs tracking-wider block">Purchase Date</span>
                                     <b className="text-gray-800 dark:text-gray-200 block mt-0.5">{new Date(selectedPurchase.created_at).toLocaleString("en-PK")}</b>
                                     {selectedPurchase.remarks && (
-                                        <p className="text-[10px] text-[#86868b] italic mt-0.5 truncate" title={selectedPurchase.remarks}>
+                                        <p className="text-xs text-[#6e6e73] italic mt-0.5 truncate" title={selectedPurchase.remarks}>
                                             Note: {selectedPurchase.remarks}
                                         </p>
                                     )}
                                 </div>
                                 <div>
-                                    <span className="text-[#86868b] dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider block">Total Amount</span>
+                                    <span className="text-[#6e6e73] dark:text-gray-400 font-bold uppercase text-xs tracking-wider block">Total Amount</span>
                                     <b className="text-sm font-black text-gray-900 dark:text-white block mt-0.5">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b>
                                     {selectedPurchase.paid_amount != null && (
-                                        <span className="text-[11px] text-[#86868b] block mt-0.5">
+                                        <span className="text-xs text-[#6e6e73] block mt-0.5">
                                             Paid: Rs. {Number(selectedPurchase.paid_amount).toLocaleString()}
                                         </span>
                                     )}
                                 </div>
                                 <div>
-                                    <span className="text-[#86868b] dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider block">Payment Method</span>
+                                    <span className="text-[#6e6e73] dark:text-gray-400 font-bold uppercase text-xs tracking-wider block">Payment Method</span>
                                     <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                        <span className={"uppercase px-2 py-0.5 rounded-full text-[10px] font-bold " + (
+                                        <span className={"uppercase px-2 py-0.5 rounded-full text-xs font-bold " + (
                                             selectedPurchase.payment_type === "cash"
                                                 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300"
                                                 : selectedPurchase.payment_type === "bank"
@@ -1298,14 +1298,14 @@ function PurchaseHistory() {
                                         <button
                                             type="button"
                                             onClick={() => setPurchaseToEditPayment(selectedPurchase)}
-                                            className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-[10px] font-bold hover:bg-purple-200 transition cursor-pointer"
+                                            className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs font-bold hover:bg-purple-200 transition cursor-pointer"
                                         >
                                             ✏️ Edit
                                         </button>
                                     </div>
                                     {selectedPurchase.payment_type === 'split' && Array.isArray(selectedPurchase.payment_details) && (
                                         <div className="mt-2.5 p-2 rounded-xl bg-purple-50/80 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40 space-y-1">
-                                            <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider block">
+                                            <span className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider block">
                                                 🔀 Split Tenders Breakdown
                                             </span>
                                             <div className="space-y-1">
@@ -1328,13 +1328,13 @@ function PurchaseHistory() {
                             {loadingItems ? (
                                 <div className="text-center py-12 flex flex-col items-center justify-center gap-2">
                                     <div className="w-8 h-8 border-2 border-[#ff9500] border-t-transparent rounded-full animate-spin" />
-                                    <p className="text-xs text-[#86868b] font-medium">Loading purchase items...</p>
+                                    <p className="text-xs text-[#6e6e73] font-medium">Loading purchase items...</p>
                                 </div>
                             ) : (
                                 <>
                                     <div className="overflow-x-auto rounded-[16px] border border-black/[0.06] dark:border-white/[0.08] mb-4">
                                         <table className="w-full text-xs">
-                                            <thead className="bg-[#f5f5f7] dark:bg-white/[0.04] text-[#86868b] dark:text-gray-400 font-bold uppercase tracking-wider text-[10px]">
+                                            <thead className="bg-[#f5f5f7] dark:bg-white/[0.04] text-[#6e6e73] dark:text-gray-400 font-bold uppercase tracking-wider text-xs">
                                                 <tr>
                                                     <th className="px-3.5 py-2.5 text-left whitespace-nowrap">Product / Item</th>
                                                     <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Purchase Price</th>
@@ -1355,14 +1355,14 @@ function PurchaseHistory() {
                                                                 <p className="font-bold text-gray-900 dark:text-gray-100">
                                                                     {item.display_name || item.product_name || (item.phones ? ((item.phones.brand && item.phones.brand !== "Unknown" ? item.phones.brand + " " : "") + (item.phones.model || "Phone")) : "Item")}
                                                                 </p>
-                                                                {item.specs && <p className="text-[11px] text-[#86868b] mt-0.5">{item.specs}</p>}
+                                                                {item.specs && <p className="text-xs text-[#6e6e73] mt-0.5">{item.specs}</p>}
                                                                 {(item.imei || item.phones?.imei_1) && (
                                                                     <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                                                        <span className="font-mono text-[10px] bg-[#0071e3]/10 text-[#0071e3] dark:text-[#3894ff] border border-[#0071e3]/20 px-1.5 py-0.2 rounded-md font-semibold">
+                                                                        <span className="font-mono text-xs bg-[#0071e3]/10 text-[#0071e3] dark:text-[#3894ff] border border-[#0071e3]/20 px-1.5 py-0.2 rounded-md font-semibold">
                                                                             IMEI: {item.imei || item.phones?.imei_1}
                                                                         </span>
                                                                         {(item.imei2 || item.phones?.imei_2) && (
-                                                                            <span className="font-mono text-[10px] bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-black/[0.08] dark:border-white/[0.1] px-1 py-0.2 rounded-md">
+                                                                            <span className="font-mono text-xs bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-black/[0.08] dark:border-white/[0.1] px-1 py-0.2 rounded-md">
                                                                                 IMEI 2: {item.imei2 || item.phones?.imei_2}
                                                                             </span>
                                                                         )}
@@ -1379,7 +1379,7 @@ function PurchaseHistory() {
                                                             </td>
                                                             <td className="px-3.5 py-2.5 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
                                                                 {item.quantity}
-                                                                {item.returned_qty > 0 && <span className="text-[10px] text-red-500 block">(-{item.returned_qty} ret)</span>}
+                                                                {item.returned_qty > 0 && <span className="text-xs text-red-500 block">(-{item.returned_qty} ret)</span>}
                                                             </td>
                                                             <td className="px-3.5 py-2.5 text-right font-extrabold text-gray-900 dark:text-white whitespace-nowrap">Rs. {Number(item.total_price || item.line_total || ((item.total_cost || item.unit_price || 0) * item.quantity)).toFixed(0)}</td>
                                                             <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
@@ -1394,7 +1394,7 @@ function PurchaseHistory() {
                                                                         placeholder="0"
                                                                     />
                                                                 ) : (
-                                                                    <span className="text-xs text-gray-400 italic">Fully Ret</span>
+                                                                    <span className="text-xs text-gray-500 italic">Fully Ret</span>
                                                                 )}
                                                             </td>
                                                         </tr>
@@ -1405,11 +1405,11 @@ function PurchaseHistory() {
                                     </div>
                                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-t border-black/[0.06] dark:border-white/[0.08] pt-3 mt-2 gap-3">
                                         <div className="text-xs">
-                                            <p className="text-[#86868b] dark:text-gray-400">
+                                            <p className="text-[#6e6e73] dark:text-gray-400">
                                                 Total Amount: <b className="text-sm font-black text-gray-900 dark:text-white ml-1">Rs. {Number(selectedPurchase.total_amount).toLocaleString()}</b>
                                             </p>
                                             {selectedPurchase.paid_amount != null && (
-                                                <p className="text-[11px] text-[#86868b] dark:text-gray-400">
+                                                <p className="text-xs text-[#6e6e73] dark:text-gray-400">
                                                     Paid Amount: <b className="text-gray-800 dark:text-gray-200">Rs. {Number(selectedPurchase.paid_amount).toLocaleString()}</b>
                                                 </p>
                                             )}

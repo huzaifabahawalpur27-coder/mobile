@@ -38,6 +38,7 @@ import {
   FileText
 } from 'lucide-react'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 export default function WhatsAppQueue() {
   const { user } = useAuth()
@@ -183,7 +184,7 @@ export default function WhatsAppQueue() {
   // Handle Delete
   const handleDelete = async (e, id) => {
     e.stopPropagation()
-    if (!window.confirm('Are you sure you want to delete this message from queue?')) return
+    if (!await confirmDialog('Are you sure you want to delete this message from queue?')) return
     try {
       await deleteWhatsAppMessage(id)
       setMessages(prev => prev.filter(m => m.id !== id))
@@ -265,7 +266,7 @@ export default function WhatsAppQueue() {
 
   // Bulk update all pending with warranty terms
   const handleUpdateAllPendingWarranty = async () => {
-    if (!window.confirm('کیا آپ آؤٹ باکس کے تمام پینڈنگ میسجز میں وارنٹی شرائط شامل کرنا چاہتے ہیں؟\n\nUpdate all pending outbox messages with current warranty terms?')) {
+    if (!await confirmDialog('کیا آپ آؤٹ باکس کے تمام پینڈنگ میسجز میں وارنٹی شرائط شامل کرنا چاہتے ہیں؟\n\nUpdate all pending outbox messages with current warranty terms?')) {
       return
     }
     setUpdatingWarranty(true)
@@ -287,7 +288,7 @@ export default function WhatsAppQueue() {
   const handleMarkAllPendingSent = async () => {
     const pendingList = messages.filter(m => m.status === 'pending')
     if (pendingList.length === 0) return
-    if (!window.confirm(`Mark all ${pendingList.length} pending messages as sent?`)) return
+    if (!await confirmDialog(`Mark all ${pendingList.length} pending messages as sent?`)) return
 
     for (const item of pendingList) {
       await markWhatsAppMessageSent(item.id)
@@ -305,7 +306,7 @@ export default function WhatsAppQueue() {
 
     if (isExchange) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200/50">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-50 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200/50">
           <RefreshCw size={12} />
           <span>Exchange Phone Receipt</span>
         </span>
@@ -313,7 +314,7 @@ export default function WhatsAppQueue() {
     }
 
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200/50">
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200/50">
         <Smartphone size={12} />
         <span>Sold Phone Receipt</span>
       </span>
@@ -340,7 +341,7 @@ export default function WhatsAppQueue() {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-[#86868b] dark:text-[#98989d]">
+              <p className="text-xs text-[#6e6e73] dark:text-[#98989d]">
                 1-tap mobile dispatch for customer sold phone receipts & exchange memos
               </p>
             </div>
@@ -363,13 +364,13 @@ export default function WhatsAppQueue() {
             className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
               filterTab === 'pending'
                 ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-white shadow-sm'
-                : 'text-[#86868b] dark:text-[#98989d]'
+                : 'text-[#6e6e73] dark:text-[#98989d]'
             }`}
           >
             <Clock size={13} className={filterTab === 'pending' ? 'text-amber-500' : ''} />
             <span>Pending</span>
             {pendingCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 bg-amber-500 text-white rounded-full text-[10px]">
+              <span className="ml-1 px-1.5 py-0.2 bg-amber-500 text-white rounded-full text-xs">
                 {pendingCount}
               </span>
             )}
@@ -380,13 +381,13 @@ export default function WhatsAppQueue() {
             className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
               filterTab === 'sent'
                 ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-white shadow-sm'
-                : 'text-[#86868b] dark:text-[#98989d]'
+                : 'text-[#6e6e73] dark:text-[#98989d]'
             }`}
           >
             <CheckCircle size={13} className={filterTab === 'sent' ? 'text-emerald-500' : ''} />
             <span>Sent</span>
             {sentCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-[10px]">
+              <span className="ml-1 px-1.5 py-0.2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-xs">
                 {sentCount}
               </span>
             )}
@@ -397,7 +398,7 @@ export default function WhatsAppQueue() {
             className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
               filterTab === 'all'
                 ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-white shadow-sm'
-                : 'text-[#86868b] dark:text-[#98989d]'
+                : 'text-[#6e6e73] dark:text-[#98989d]'
             }`}
           >
             <span>All ({messages.length})</span>
@@ -406,8 +407,8 @@ export default function WhatsAppQueue() {
 
         {/* Search Bar */}
         <div className="mt-3 relative">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input aria-label="Search by customer name, phone, or invoice"
             type="text"
             placeholder="Search by customer name, phone, or invoice..."
             value={searchQuery}
@@ -450,8 +451,8 @@ export default function WhatsAppQueue() {
           )}
 
           <button
-            onClick={() => {
-              if (window.confirm('کیا آپ تمام پیجز کا کیشے صاف کر کے تازہ ترین اپڈیٹ لوڈ کرنا چاہتے ہیں؟\n\nForce refresh and purge device cache to load the latest app update?')) {
+            onClick={async () => {
+              if (await confirmDialog('کیا آپ تمام پیجز کا کیشے صاف کر کے تازہ ترین اپڈیٹ لوڈ کرنا چاہتے ہیں؟\n\nForce refresh and purge device cache to load the latest app update?')) {
                 if ('caches' in window) {
                   caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
                 }
@@ -461,7 +462,7 @@ export default function WhatsAppQueue() {
                 window.location.reload()
               }
             }}
-            className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-2.5 py-1.5 rounded-xl transition flex items-center gap-1 cursor-pointer"
+            className="text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-2.5 py-1.5 rounded-xl transition flex items-center gap-1 cursor-pointer"
             title="Clear device cache and update app"
           >
             <span>⚡ اپڈیٹ چیک کریں (Update App)</span>
@@ -471,7 +472,7 @@ export default function WhatsAppQueue() {
 
       {/* Loading State */}
       {loading && messages.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+        <div className="flex flex-col items-center justify-center py-12 text-gray-500">
           <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin mb-3" />
           <p className="text-xs">Loading WhatsApp outbox...</p>
         </div>
@@ -545,18 +546,18 @@ export default function WhatsAppQueue() {
                   <div className="text-right shrink-0">
                     <div className="flex items-center justify-end gap-1">
                       {isPending ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full">
                           <Clock size={11} />
                           <span>Pending</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
                           <CheckCircle size={11} />
                           <span>Sent</span>
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-gray-400 mt-1">
+                    <div className="text-xs text-gray-500 mt-1">
                       {formattedDate}
                     </div>
                   </div>
@@ -574,7 +575,7 @@ export default function WhatsAppQueue() {
                         <button
                           type="button"
                           onClick={handleAppendWarrantyToEdit}
-                          className="px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/50 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                          className="px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/50 rounded-lg transition flex items-center gap-1 cursor-pointer"
                           title="Append or refresh shop warranty terms"
                         >
                           <span>🛡️ + وارنٹی شامل کریں</span>
@@ -582,14 +583,14 @@ export default function WhatsAppQueue() {
                         <button
                           type="button"
                           onClick={(e) => handleResetToUrduInEdit(e, item)}
-                          className="px-2 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/40 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/40 rounded-lg transition flex items-center gap-1 cursor-pointer"
                           title="Reset to professional Urdu template with warranty"
                         >
                           <span>✨ ری سیٹ رسید</span>
                         </button>
                       </div>
                     </div>
-                    <textarea
+                    <textarea aria-label="Enter WhatsApp invoice text and warranty terms"
                       dir="auto"
                       value={editingText}
                       onChange={(e) => setEditingText(e.target.value)}
@@ -617,7 +618,7 @@ export default function WhatsAppQueue() {
                 ) : (
                   <div className="bg-[#f8f9fa] dark:bg-[#252528] rounded-xl p-3 border border-black/[0.04] dark:border-white/[0.04]">
                     <div className="flex items-center justify-between pb-1.5 border-b border-gray-200/60 dark:border-gray-700/60 mb-2 gap-1 flex-wrap">
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 flex items-center gap-1">
+                      <span className="text-xs uppercase font-bold tracking-wider text-gray-500 flex items-center gap-1">
                         <span>📄</span>
                         <span>Message Content (رسید و وارنٹی)</span>
                       </span>
@@ -625,7 +626,7 @@ export default function WhatsAppQueue() {
                         {/* Direct Edit Button */}
                         <button
                           onClick={(e) => handleStartEdit(e, item)}
-                          className="px-2 py-0.5 text-[11px] font-bold rounded-lg bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 transition flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-0.5 text-xs font-bold rounded-lg bg-emerald-100/80 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 transition flex items-center gap-1 cursor-pointer"
                           title="Edit message text and warranty terms"
                         >
                           <Pencil size={11} />
@@ -635,7 +636,7 @@ export default function WhatsAppQueue() {
                         {/* Direct Add Warranty Button */}
                         <button
                           onClick={(e) => handleDirectAddWarranty(e, item)}
-                          className="px-2 py-0.5 text-[11px] font-bold rounded-lg bg-amber-100/80 hover:bg-amber-200 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 transition flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-0.5 text-xs font-bold rounded-lg bg-amber-100/80 hover:bg-amber-200 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 transition flex items-center gap-1 cursor-pointer"
                           title="Directly append or refresh shop warranty terms"
                         >
                           <span>🛡️ + وارنٹی</span>
@@ -643,7 +644,7 @@ export default function WhatsAppQueue() {
 
                         <button
                           onClick={(e) => handleCopyText(e, item)}
-                          className="px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:text-emerald-600 flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-0.5 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-emerald-600 flex items-center gap-1 cursor-pointer"
                           title="Copy text"
                         >
                           {copiedId === item.id ? (
@@ -672,7 +673,7 @@ export default function WhatsAppQueue() {
                     {item.message_text && item.message_text.split('\n').length > 3 && (
                       <button
                         onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                        className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline mt-1.5 block cursor-pointer"
+                        className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline mt-1.5 block cursor-pointer"
                       >
                         {isExpanded ? '▲ Show less (کم تفصیل)' : '▼ Read full invoice details & warranty (مکمل تفصیل دیکھیں)...'}
                       </button>
@@ -759,7 +760,7 @@ export default function WhatsAppQueue() {
                     <button
                       onClick={(e) => handleDelete(e, item.id)}
                       title="Delete from queue"
-                      className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition cursor-pointer"
+                      className="p-2.5 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition cursor-pointer"
                     >
                       <Trash2 size={16} />
                     </button>

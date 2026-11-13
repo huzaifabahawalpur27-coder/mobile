@@ -31,7 +31,7 @@ function TicketTimeline({ status }) {
                     : 'bg-gray-100 border-gray-200 text-gray-300'}`}>
                 {done ? (isActive && step !== 'closed' ? '●' : '✓') : i + 1}
               </div>
-              <span className={`text-[9px] mt-1 font-bold uppercase tracking-wide whitespace-nowrap
+              <span className={`text-xs mt-1 font-bold uppercase tracking-wide whitespace-nowrap
                 ${isActive ? 'text-blue-600' : done ? 'text-green-600' : 'text-gray-300'}`}>
                 {STATUS_LABEL[step]}
               </span>
@@ -117,7 +117,7 @@ function Support() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">🆘 Help & Support</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Ticket submit karein ya apna status check karein.</p>
+          <p className="text-gray-500 text-sm mt-0.5">Send a support ticket or check the status of one.</p>
         </div>
         {!showForm && (
           <button
@@ -135,7 +135,7 @@ function Support() {
           <div className="flex items-start gap-3">
             <span className="text-3xl shrink-0 mt-0.5">📦</span>
             <div>
-              <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/20 text-purple-100 uppercase tracking-wider mb-1">
+              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-purple-100 uppercase tracking-wider mb-1">
                 نئی خصوصیت اور مکمل گائیڈ
               </span>
               <h3 className="font-bold text-base sm:text-lg font-nastaliq" dir="rtl">
@@ -161,10 +161,10 @@ function Support() {
           <span className="text-2xl animate-bounce">🔧</span>
           <div>
             <p className="font-bold">
-              {inProgressCount} ticket{inProgressCount > 1 ? 's' : ''} par kaam ho raha hai!
+              {inProgressCount} ticket{inProgressCount > 1 ? 's' : ''} in progress
             </p>
             <p className="text-blue-100 text-xs mt-0.5">
-              Hamari team neeche active ticket{inProgressCount > 1 ? 's' : ''} par kaam kar rahi hai. Jald hal hoga.
+              Our team is working on the active ticket{inProgressCount > 1 ? 's' : ''} below.
             </p>
           </div>
         </div>
@@ -177,7 +177,7 @@ function Support() {
             <div className="text-center py-6">
               <div className="text-5xl mb-3">✅</div>
               <h2 className="text-xl font-bold text-green-800 mb-1">Ticket Submit Ho Gaya!</h2>
-              <p className="text-green-600 text-sm mb-6">Hamari team jald hi kaam shuru karegi. Neeche apna status track kar saktay hain.</p>
+              <p className="text-green-600 text-sm mb-6">Our team will start on it soon. Track its status below.</p>
               <button
                 onClick={() => { setSubmitted(false); setShowForm(false) }}
                 className="px-6 py-2 bg-green-600 text-white rounded-xl font-bold text-sm"
@@ -189,11 +189,11 @@ function Support() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-bold text-gray-800">New Support Ticket</h2>
-                <button type="button" onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-sm">✕ Cancel</button>
+                <button type="button" onClick={() => setShowForm(false)} className="text-gray-500 hover:text-gray-600 text-sm">✕ Cancel</button>
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Unwan (Subject) *</label>
-                <input
+                <input aria-label="Unwan (Subject)"
                   type="text"
                   required
                   value={subject}
@@ -204,19 +204,19 @@ function Support() {
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Message *</label>
-                <textarea
+                <textarea aria-label="Message"
                   required
                   rows="4"
                   value={message}
                   onChange={e => setMessage(e.target.value)}
-                  placeholder="Apni mushkil tafseel se bayan karein..."
+                  placeholder="Describe the problem in detail"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                 />
               </div>
               <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 flex items-center gap-3">
                 <span className="text-lg">📞</span>
                 <div>
-                  <p className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Urgent Support?</p>
+                  <p className="text-xs font-bold text-blue-800 uppercase tracking-wider">Urgent Support?</p>
                   <p className="text-blue-600 font-bold text-sm">Babar Joya: 0301-2616367</p>
                 </div>
               </div>
@@ -225,7 +225,7 @@ function Support() {
                 disabled={submitting}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-100 transition disabled:opacity-50"
               >
-                {submitting ? 'Bheja ja raha hai...' : 'Ticket Submit Karein'}
+                {submitting ? 'Sending…' : 'Send ticket'}
               </button>
             </form>
           )}
@@ -245,15 +245,15 @@ function Support() {
         </div>
 
         {loadingTickets ? (
-          <div className="text-center text-gray-400 py-10">
+          <div className="text-center text-gray-500 py-10">
             <div className="text-3xl mb-2 animate-pulse">🔄</div>
-            <p>Tickets load ho rahi hain...</p>
+            <p>Loading tickets…</p>
           </div>
         ) : tickets.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center shadow-sm">
             <div className="text-4xl mb-3">🎉</div>
-            <p className="font-bold text-gray-700">Koi ticket nahi hai!</p>
-            <p className="text-gray-400 text-sm mt-1">Koi masla ho to upar "+ New Ticket" press karein.</p>
+            <p className="font-bold text-gray-700">No tickets yet</p>
+            <p className="text-gray-500 text-sm mt-1">If something is wrong, press "+ New Ticket" above.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -269,11 +269,11 @@ function Support() {
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-gray-800 leading-tight">{t.subject}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5 font-mono">
+                    <p className="text-xs text-gray-500 mt-0.5 font-mono">
                       #{String(t.id).slice(-6).toUpperCase()} · {new Date(t.created_at).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })}
                     </p>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-[11px] font-bold border flex-shrink-0 ${STATUS_BADGE[t.status]}`}>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold border flex-shrink-0 ${STATUS_BADGE[t.status]}`}>
                     {STATUS_ICON[t.status]} {STATUS_LABEL[t.status]}
                   </span>
                 </div>
@@ -291,11 +291,11 @@ function Support() {
                   <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-start gap-3">
                     <span className="text-xl animate-pulse mt-0.5">🔧</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-blue-700 text-sm font-bold">Hamari team kaam kar rahi hai!</p>
-                      <p className="text-blue-500 text-xs mt-0.5">Is ticket par actively kaam ho raha hai. Thodi dair mein hal ho jayega.</p>
+                      <p className="text-blue-700 text-sm font-bold">Our team is working on it</p>
+                      <p className="text-blue-500 text-xs mt-0.5">This ticket is being worked on now.</p>
                       {t.admin_reply && (
                         <div className="mt-2 bg-white border border-blue-200 rounded-lg px-3 py-2">
-                          <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-1">💬 Support Team:</p>
+                          <p className="text-xs font-bold text-blue-500 uppercase tracking-wider mb-1">💬 Support Team:</p>
                           <p className="text-sm text-gray-700">{t.admin_reply}</p>
                         </div>
                       )}
@@ -306,11 +306,11 @@ function Support() {
                   <div className="mt-4 bg-green-50 border border-green-100 rounded-xl px-4 py-3 flex items-start gap-3">
                     <span className="text-xl mt-0.5">✅</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-green-700 text-sm font-bold">Ticket hal ho gaya!</p>
-                      <p className="text-green-500 text-xs mt-0.5">Agar masla dobara aaye to naya ticket submit karein.</p>
+                      <p className="text-green-700 text-sm font-bold">Ticket resolved</p>
+                      <p className="text-green-500 text-xs mt-0.5">If the problem comes back, send a new ticket.</p>
                       {t.admin_reply && (
                         <div className="mt-2 bg-white border border-green-200 rounded-lg px-3 py-2">
-                          <p className="text-[10px] font-bold text-green-600 uppercase tracking-wider mb-1">💬 Support Team:</p>
+                          <p className="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">💬 Support Team:</p>
                           <p className="text-sm text-gray-700">{t.admin_reply}</p>
                         </div>
                       )}
@@ -321,8 +321,8 @@ function Support() {
                   <div className="mt-4 bg-yellow-50 border border-yellow-100 rounded-xl px-4 py-3 flex items-center gap-3">
                     <span className="text-xl">⏳</span>
                     <div>
-                      <p className="text-yellow-700 text-sm font-bold">Queue mein hai</p>
-                      <p className="text-yellow-500 text-xs mt-0.5">Hamari team ne ticket receive kar li hai. Jald kaam shuru hoga.</p>
+                      <p className="text-yellow-700 text-sm font-bold">In the queue</p>
+                      <p className="text-yellow-500 text-xs mt-0.5">Our team has received the ticket and will start soon.</p>
                     </div>
                   </div>
                 )}
@@ -339,7 +339,7 @@ function Support() {
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-blue-100">Urgent / Direct Support</p>
             <p className="text-lg font-black">Babar Joya: 0301-2616367</p>
-            <p className="text-blue-200 text-xs mt-0.5">Zabardast mushkil ho to seedha call karein.</p>
+            <p className="text-blue-200 text-xs mt-0.5">For an urgent problem, call us directly.</p>
           </div>
         </div>
       )}

@@ -119,7 +119,7 @@ export default function PhoneStockPrintModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-100 flex flex-col max-h-[92dvh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-900 to-indigo-900 text-white">
@@ -208,7 +208,7 @@ export default function PhoneStockPrintModal({
             <label className="block text-xs font-bold text-gray-700 mb-1">
               Document Header Title
             </label>
-            <input
+            <input aria-label=" Document Header Title "
               type="text"
               value={customTitle}
               onChange={e => setCustomTitle(e.target.value)}
@@ -296,7 +296,7 @@ export default function PhoneStockPrintModal({
                 Supplier / Customer WhatsApp Number (Optional)
               </label>
               <div className="flex gap-2">
-                <input
+                <input aria-label=" Supplier / Customer WhatsApp Number (Optional) "
                   type="text"
                   value={waPhone}
                   onChange={e => setWaPhone(e.target.value)}

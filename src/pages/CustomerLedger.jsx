@@ -8,10 +8,11 @@ import { db, addToSyncQueue } from '../services/db'
 import { adjustCustomerBalance, adjustProductStock, releasePhoneFromSale } from '../services/atomicOps'
 import { generateOutstandingPDF, shareOrDownloadPDF } from '../utils/pdfShare'
 import { getBankAccounts, creditBankBalance, deductBankBalance, reverseSaleFromAccounts } from '../services/bankService'
-import { customerLedgerEffect, isCountedSale, netAmount, paidAmount, confirmAmount, isCashName } from '../utils/moneyMath'
+import { customerLedgerEffect, isCountedSale, netAmount, paidAmount, unusualAmount, isCashName } from '../utils/moneyMath'
 import { applyMoneyOp, accountForMode } from '../services/moneyOps'
 import EditLedgerEntryModal from '../components/EditLedgerEntryModal'
 import { notify } from '../utils/toast'
+import { confirmDialog, confirmUnusualAmount } from '../utils/dialog'
 
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
     let snap = null
@@ -257,7 +258,7 @@ function CustomerLedger() {
 
     // ── Excel Export ──────────────────────────────────────────────────────────
     const handleExport = () => {
-        if (!ledger.length) return notify('Koi transaction nahi hai export karne ke liye.')
+        if (!ledger.length) return notify('There are no transactions to export.')
         const rows = [...ledger].reverse().map((item, idx) => ({
             'Sr#': idx + 1,
             'Date': new Date(item.date).toLocaleDateString('en-PK'),
@@ -297,9 +298,9 @@ function CustomerLedger() {
             const ws = wb.Sheets[wb.SheetNames[0]]
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'yyyy-mm-dd' })
 
-            if (!rows.length) { notify('File mein koi data nahi mila.'); return }
+            if (!rows.length) { notify('The file has no rows.'); return }
 
-            const confirmed = window.confirm(`${rows.length} transactions import karein?\n\nNote: "Debit (Sale)" column se sale entries aur "Credit (Payment)" column se payment entries banegi.`)
+            const confirmed = await confirmDialog(`Import ${rows.length} transactions?\nThe "Debit (Sale)" column becomes sale entries and "Credit (Payment)" becomes payments.`, { confirmLabel: 'Import transactions' })
             if (!confirmed) return
 
             const insertRows = []
@@ -337,7 +338,7 @@ function CustomerLedger() {
                 }
             }
 
-            if (!insertRows.length) { notify('Koi valid row nahi mili (Debit/Credit columns check karein).'); return }
+            if (!insertRows.length) { notify('No usable rows found. Check the Debit and Credit columns.', 'error'); return }
 
             if (navigator.onLine) {
                 let { error } = await supabase.from('customer_payments').insert(insertRows)
@@ -363,7 +364,7 @@ function CustomerLedger() {
                 await changeBalance(balanceDelta)
             }
 
-            notify(`${insertRows.length} entries import ho gayi! ✅`)
+            notify(`${insertRows.length} entries imported.`, 'success')
             fetchCustomerData()
         } catch (err) {
             console.error('Import error:', err)
@@ -426,11 +427,11 @@ function CustomerLedger() {
         e.preventDefault()
         const saleAmt = parseFloat(txForm.sale_amount) || 0
         const payAmt = parseFloat(txForm.payment_amount) || 0
-        if (saleAmt === 0 && payAmt === 0) return notify('Sale amount ya payment amount mein se koi ek lazmi hai.')
+        if (saleAmt === 0 && payAmt === 0) return notify('Enter a sale amount, a payment amount, or both.')
         // Catch an extra digit before it is saved
         const pastAmounts = (kind) => ledger.filter(l => l.type === kind).map(l => l.amount)
-        if (!confirmAmount(saleAmt, pastAmounts('debit'), 'Sale amount')) return
-        if (!confirmAmount(payAmt, pastAmounts('payment'), 'Payment received')) return
+        if (!await confirmUnusualAmount(saleAmt, unusualAmount(saleAmt, pastAmounts('debit')), 'Sale amount')) return
+        if (!await confirmUnusualAmount(payAmt, unusualAmount(payAmt, pastAmounts('payment')), 'Payment received')) return
         setSaving(true)
         const now = txForm.date ? new Date(txForm.date + 'T12:00:00').toISOString() : new Date().toISOString()
         const commonFields = {
@@ -480,7 +481,7 @@ function CustomerLedger() {
             if (payAmt > 0) setLastPayment({ amount: payAmt, note: txForm.note.trim() || 'Cash Received', date: now })
             resetTxForm()
             fetchCustomerData()
-            if (res.queued) notify('Offline mode: Transaction locally save ho gaya. Online hone par sync hoga! 🔄')
+            if (res.queued) notify('Saved on this device. It syncs when you are back online.', 'info')
             else if (res.problems?.length) notify(`Saved, but please check:\n${res.problems.join('\n')}`)
         } catch (error) {
             notify('Error: ' + (error?.message || String(error)))
@@ -630,9 +631,9 @@ function CustomerLedger() {
     }
 
     const handleDeleteTransaction = async (item) => {
-        if (isOpeningRow(item)) { notify('Opening balance entry directly delete nahi ho sakti.'); return }
+        if (isOpeningRow(item)) { notify('The opening balance row cannot be deleted. Use Reconcile to change it.'); return }
         const label = item.type === 'sale' ? 'Sale/Invoice' : item.type === 'payment' ? 'Payment' : 'Return'
-        if (!confirm(`Yeh transaction delete karein?\n\nType: ${label}\nAmount: Rs. ${Number(item.amount).toLocaleString()}\nNote: ${item.note}\n\nCustomer ka outstanding balance bhi adjust ho ga.`)) return
+        if (!await confirmDialog(`Delete this ${label.toLowerCase()}?\nAmount: Rs. ${Number(item.amount).toLocaleString()}\nNote: ${item.note}\n\nThe customer balance is adjusted to match.`, { confirmLabel: 'Delete entry', danger: true })) return
 
         try {
             await removeLedgerEntry(item)
@@ -641,7 +642,7 @@ function CustomerLedger() {
             await changeBalance(deletionDelta(item))
             fetchCustomerData()
         } catch (err) {
-            notify('Delete nahi hua: ' + err.message)
+            notify('Not deleted: ' + err.message, 'error')
         }
     }
 
@@ -666,7 +667,7 @@ function CustomerLedger() {
     const handleBulkDelete = async () => {
         const toDelete = ledger.filter(item => selectedIds.has(item.id) && !isOpeningRow(item))
         if (!toDelete.length) return
-        if (!confirm(`${toDelete.length} transactions delete karein?\n\nCustomer ka outstanding balance bhi adjust ho ga.`)) return
+        if (!await confirmDialog(`Delete ${toDelete.length} transactions?\nThe customer balance is adjusted to match.`, { confirmLabel: 'Delete transactions', danger: true })) return
 
         let totalDelta = 0
         try {
@@ -677,7 +678,7 @@ function CustomerLedger() {
             await changeBalance(totalDelta)
             setSelectedIds(new Set())
         } catch (err) {
-            notify('Kuch entries delete nahi huin: ' + err.message)
+            notify('Some entries were not deleted: ' + err.message, 'error')
             fetchCustomerData()
         }
     }
@@ -685,7 +686,7 @@ function CustomerLedger() {
     const handleReconcileBalance = async () => {
         if (!ledger.length && customer?.outstanding_balance === 0) return
         const computedBalance = ledger.length > 0 ? ledger[0].balance : 0
-        const confirmed = confirm(`Balance Reconcile Karein?\n\nPresent Stored Balance: Rs. ${customer?.outstanding_balance || 0}\nCalculated Ledger Sum: Rs. ${computedBalance}\n\nCustomer balance transaction ledger ke mutabiq sync ho jayega.`)
+        const confirmed = await confirmDialog(`Set the balance to match the ledger?\nSaved balance: Rs. ${customer?.outstanding_balance || 0}\nLedger adds up to: Rs. ${computedBalance}`, { confirmLabel: 'Set balance' })
         if (!confirmed) return
 
         try {
@@ -797,44 +798,44 @@ function CustomerLedger() {
             <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
                 <div className="divide-y divide-gray-100 md:hidden">
                     {ledger.length === 0 ? (
-                        <p className="p-6 text-center text-gray-400 text-sm">No transactions found for this customer.</p>
+                        <p className="p-6 text-center text-gray-500 text-sm">No transactions found for this customer.</p>
                     ) : (
                         ledger.map((item, idx) => (
                             <div key={idx} className={`p-4 ${selectedIds.has(item.id) ? 'bg-red-50/40' : ''}`}>
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="text-xs text-gray-400">{new Date(item.date).toLocaleDateString('en-PK')}</p>
+                                        <p className="text-xs text-gray-500">{new Date(item.date).toLocaleDateString('en-PK')}</p>
                                         <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                                             <span className="font-semibold text-gray-800">{item.note}</span>
                                             {item.bill_number && (
-                                                <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-[10px] font-bold">Bill #{item.bill_number}</span>
+                                                <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-xs font-bold">Bill #{item.bill_number}</span>
                                             )}
                                         </div>
                                         {item.details && <p className="mt-1 text-xs text-gray-500">{item.details}</p>}
 
                                         <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                                             {item.payment_mode && (
-                                                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold capitalize">{item.payment_mode}</span>
+                                                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-semibold capitalize">{item.payment_mode}</span>
                                             )}
                                             {item.transaction_ref && (
-                                                <span className="text-[10px] text-gray-400">Ref: {item.transaction_ref}</span>
+                                                <span className="text-xs text-gray-500">Ref: {item.transaction_ref}</span>
                                             )}
                                             {item.type === 'payment' && (
                                                 <button
                                                     onClick={() => printPaymentVoucher(item.amount, item.note, item.date)}
-                                                    className="text-[10px] text-blue-600 hover:underline font-bold uppercase tracking-tighter"
+                                                    className="text-xs text-blue-600 hover:underline font-bold uppercase tracking-tighter"
                                                 >🖨️ Print</button>
                                             )}
                                             {item.type === 'sale' && (
                                                 <button
                                                     onClick={() => setExpandedSale(expandedSale === item.id ? null : item.id)}
-                                                    className="text-[10px] text-blue-600 hover:underline font-bold uppercase tracking-tighter"
+                                                    className="text-xs text-blue-600 hover:underline font-bold uppercase tracking-tighter"
                                                 >
                                                     {expandedSale === item.id ? 'Collapse ▲' : 'Details ▼'}
                                                 </button>
                                             )}
-                                            {item.type === 'return' && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] uppercase font-bold">Return</span>}
-                                            {item.type === 'debit' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] uppercase font-bold">Manual Sale</span>}
+                                            {item.type === 'return' && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs uppercase font-bold">Return</span>}
+                                            {item.type === 'debit' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs uppercase font-bold">Manual Sale</span>}
                                         </div>
                                     </div>
 
@@ -845,13 +846,13 @@ function CustomerLedger() {
                                         )}
                                         {canEditEntry(item) && (
                                             <button onClick={() => setEditEntry(item)} title="Correct amount" aria-label="Correct amount"
-                                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
+                                                className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
                                         )}
                                         {!isOpeningRow(item) && (
                                             <button
                                                 onClick={() => handleDeleteTransaction(item)}
                                                 title="Delete transaction"
-                                                className="p-1 text-gray-400 hover:text-red-500 rounded transition text-xs"
+                                                className="p-1 text-gray-500 hover:text-red-500 rounded transition text-xs"
                                             >🗑️</button>
                                         )}
                                     </div>
@@ -859,15 +860,15 @@ function CustomerLedger() {
 
                                 <div className="mt-3 grid grid-cols-3 gap-2 text-right text-xs">
                                     <div>
-                                        <p className="text-[10px] font-bold uppercase text-gray-400 text-left">Debit (+)</p>
+                                        <p className="text-xs font-bold uppercase text-gray-500 text-left">Debit (+)</p>
                                         <p className="font-bold text-red-600">{(item.type === 'sale' || item.type === 'debit') ? `+ Rs. ${Number(item.amount).toFixed(0)}` : '—'}</p>
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-bold uppercase text-gray-400 text-left">Credit (-)</p>
+                                        <p className="text-xs font-bold uppercase text-gray-500 text-left">Credit (-)</p>
                                         <p className="font-bold text-green-600">{(item.type === 'payment' || item.type === 'return') ? `- Rs. ${Math.abs(item.amount).toFixed(0)}` : '—'}</p>
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-bold uppercase text-gray-400 text-left">Balance</p>
+                                        <p className="text-xs font-bold uppercase text-gray-500 text-left">Balance</p>
                                         <p className="font-black text-gray-900">Rs. {item.balance.toFixed(0)}</p>
                                     </div>
                                 </div>
@@ -875,8 +876,8 @@ function CustomerLedger() {
                                 {item.type === 'sale' && expandedSale === item.id && (
                                     <div className="mt-3 bg-blue-50/50 p-3 rounded-lg border border-blue-100/50">
                                         <div className="flex items-center gap-2 mb-2">
-                                            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Payment:</span>
-                                            <span className={`px-3 py-0.5 rounded-full text-[10px] font-bold uppercase ${item.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                            <span className="text-xs text-gray-500 uppercase font-bold tracking-widest">Payment:</span>
+                                            <span className={`px-3 py-0.5 rounded-full text-xs font-bold uppercase ${item.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
                                                 {item.payment_type}
                                             </span>
                                         </div>
@@ -893,10 +894,10 @@ function CustomerLedger() {
                                                     <div key={iidx} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs bg-white/90 p-2.5 rounded-xl border border-blue-100/80 shadow-2xs gap-1.5">
                                                         <div className="space-y-0.5">
                                                             <p className="text-gray-900 font-bold text-xs">{name}</p>
-                                                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                                                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                                                                 {specs && <span>{specs}</span>}
                                                                 {imei && (
-                                                                    <span className="font-mono bg-blue-50/80 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded text-[10px]">
+                                                                    <span className="font-mono bg-blue-50/80 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded text-xs">
                                                                         IMEI: {imei}
                                                                     </span>
                                                                 )}
@@ -904,7 +905,7 @@ function CustomerLedger() {
                                                         </div>
                                                         <div className="text-right shrink-0">
                                                             <span className="text-gray-900 font-bold">Rs. {Number(price).toLocaleString()}</span>
-                                                            <span className="text-gray-500 text-[11px]"> × {qty}</span>
+                                                            <span className="text-gray-500 text-xs"> × {qty}</span>
                                                         </div>
                                                     </div>
                                                 )
@@ -934,7 +935,7 @@ function CustomerLedger() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                         {ledger.length === 0 && (
-                            <tr><td colSpan="7" className="px-6 py-12 text-center text-gray-400 text-sm">No transactions found for this customer.</td></tr>
+                            <tr><td colSpan="7" className="px-6 py-12 text-center text-gray-500 text-sm">No transactions found for this customer.</td></tr>
                         )}
                         {ledger.map((item, idx) => (
                             <React.Fragment key={idx}>
@@ -951,12 +952,12 @@ function CustomerLedger() {
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="font-medium text-gray-800">{item.note}</span>
                                                 {item.bill_number && (
-                                                    <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-[10px] font-bold">Bill #{item.bill_number}</span>
+                                                    <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-xs font-bold">Bill #{item.bill_number}</span>
                                                 )}
                                                 {item.type === 'sale' && (
                                                     <button
                                                         onClick={() => setExpandedSale(expandedSale === item.id ? null : item.id)}
-                                                        className="text-[10px] text-blue-600 hover:text-blue-800 font-bold uppercase tracking-tighter"
+                                                        className="text-xs text-blue-600 hover:text-blue-800 font-bold uppercase tracking-tighter"
                                                     >
                                                         {expandedSale === item.id ? 'Collapse ▲' : 'Details ▼'}
                                                     </button>
@@ -965,20 +966,20 @@ function CustomerLedger() {
                                             {item.details && <span className="text-xs text-gray-500 truncate max-w-xs">{item.details}</span>}
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                 {item.payment_mode && (
-                                                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold capitalize">{item.payment_mode}</span>
+                                                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-semibold capitalize">{item.payment_mode}</span>
                                                 )}
                                                 {item.transaction_ref && (
-                                                    <span className="text-[10px] text-gray-400">Ref: {item.transaction_ref}</span>
+                                                    <span className="text-xs text-gray-500">Ref: {item.transaction_ref}</span>
                                                 )}
                                                 {item.type === 'payment' && (
                                                     <button
                                                         onClick={() => printPaymentVoucher(item.amount, item.note, item.date)}
-                                                        className="text-[10px] text-gray-400 hover:text-green-600 font-medium transition"
+                                                        className="text-xs text-gray-500 hover:text-green-600 font-medium transition"
                                                         title="Print Payment Voucher"
                                                     >🖨️ Print</button>
                                                 )}
-                                                {item.type === 'return' && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] uppercase font-bold">Return</span>}
-                                                {item.type === 'debit' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] uppercase font-bold">Manual Sale</span>}
+                                                {item.type === 'return' && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs uppercase font-bold">Return</span>}
+                                                {item.type === 'debit' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs uppercase font-bold">Manual Sale</span>}
                                             </div>
                                         </div>
                                     </td>
@@ -994,7 +995,7 @@ function CustomerLedger() {
                                     <td className="px-4 py-4 text-right">
                                         {canEditEntry(item) && (
                                             <button onClick={() => setEditEntry(item)} title="Correct amount" aria-label="Correct amount"
-                                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
+                                                className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
                                         )}
                                         {!isOpeningRow(item) && (
                                             <button
@@ -1010,8 +1011,8 @@ function CustomerLedger() {
                                         <td colSpan="7" className="px-6 py-3">
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Payment:</span>
-                                                    <span className={`px-3 py-0.5 rounded-full text-[10px] font-bold uppercase ${item.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                    <span className="text-xs text-gray-500 uppercase font-bold tracking-widest">Payment:</span>
+                                                    <span className={`px-3 py-0.5 rounded-full text-xs font-bold uppercase ${item.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
                                                         {item.payment_type}
                                                     </span>
                                                 </div>
@@ -1028,17 +1029,17 @@ function CustomerLedger() {
                                                             <div key={iidx} className="flex flex-col justify-between text-xs bg-white/90 p-2.5 rounded-xl border border-blue-100/80 shadow-2xs gap-1.5">
                                                                 <div className="space-y-0.5">
                                                                     <p className="text-gray-900 font-bold text-xs">{name}</p>
-                                                                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                                                                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                                                                         {specs && <span>{specs}</span>}
                                                                         {imei && (
-                                                                            <span className="font-mono bg-blue-50/80 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded text-[10px]">
+                                                                            <span className="font-mono bg-blue-50/80 text-blue-800 border border-blue-200/60 px-1.5 py-0.2 rounded text-xs">
                                                                                 IMEI: {imei}
                                                                             </span>
                                                                         )}
                                                                     </div>
                                                                 </div>
                                                                 <div className="text-right pt-1 border-t border-gray-100/80 flex justify-between items-center">
-                                                                    <span className="text-gray-400 text-[10px]">Qty: {qty}</span>
+                                                                    <span className="text-gray-500 text-xs">Qty: {qty}</span>
                                                                     <span className="text-gray-900 font-bold">Rs. {Number(price).toLocaleString()}</span>
                                                                 </div>
                                                             </div>
@@ -1089,23 +1090,23 @@ function CustomerLedger() {
                 const payAmt = parseFloat(txForm.payment_amount) || 0
                 const newBalance = prevBalance + saleAmt - payAmt
                 return (
-                    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+                    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
                         <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
                             <h2 className="text-xl font-bold text-gray-800 mb-1">➕ Add Transaction</h2>
-                            <p className="text-xs text-gray-400 mb-4">Sale aur payment ek saath ya alag alag darj karein</p>
+                            <p className="text-xs text-gray-500 mb-4">Enter a sale, a payment, or both together</p>
                             <form onSubmit={handleAddTransaction} className="space-y-4">
 
                                 {/* Date + Bill # */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
                                         <label className="block text-gray-700 font-medium mb-1 text-sm">Date</label>
-                                        <input type="date" value={txForm.date}
+                                        <input aria-label="Date" type="date" value={txForm.date}
                                             onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                                     </div>
                                     <div>
                                         <label className="block text-gray-700 font-medium mb-1 text-sm">Bill # (Optional)</label>
-                                        <input type="text" value={txForm.bill_number}
+                                        <input aria-label="Bill (Optional)" type="text" value={txForm.bill_number}
                                             onChange={e => setTxForm(f => ({ ...f, bill_number: e.target.value }))}
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                             placeholder="e.g. INV-001" />
@@ -1115,21 +1116,21 @@ function CustomerLedger() {
                                 {/* Sale Amount (Debit) */}
                                 <div>
                                     <label className="block font-semibold mb-1 text-sm text-orange-600">🛒 Sale Amount / Debit</label>
-                                    <input type="number" min="0" step="any" value={txForm.sale_amount}
+                                    <input aria-label="Sale Amount / Debit" type="number" min="0" step="any" value={txForm.sale_amount}
                                         onChange={e => setTxForm(f => ({ ...f, sale_amount: e.target.value }))}
                                         className="w-full px-4 py-2.5 border border-orange-200 bg-orange-50 rounded-lg focus:ring-2 focus:ring-orange-400 outline-none text-sm"
                                         placeholder="0  — kitna maal becha (Rs.)" />
-                                    <p className="text-xs text-gray-400 mt-0.5">Customer ko jo maal diya uski value</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">Customer ko jo maal diya uski value</p>
                                 </div>
 
                                 {/* Payment Received (Credit) */}
                                 <div>
                                     <label className="block font-semibold mb-1 text-sm text-green-600">💵 Payment Received / Credit</label>
-                                    <input type="number" min="0" step="any" value={txForm.payment_amount}
+                                    <input aria-label="Payment Received / Credit" type="number" min="0" step="any" value={txForm.payment_amount}
                                         onChange={e => setTxForm(f => ({ ...f, payment_amount: e.target.value }))}
                                         className="w-full px-4 py-2.5 border border-green-200 bg-green-50 rounded-lg focus:ring-2 focus:ring-green-400 outline-none text-sm"
                                         placeholder="0  — kitni payment ayi (Rs.)" />
-                                    <p className="text-xs text-gray-400 mt-0.5">Customer sy jo payment mili</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">Customer sy jo payment mili</p>
                                 </div>
 
                                 {/* Balance Preview */}
@@ -1162,7 +1163,7 @@ function CustomerLedger() {
                                 {/* Details */}
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-1 text-sm">Details (Optional)</label>
-                                    <textarea rows="2" value={txForm.details}
+                                    <textarea aria-label="Details (Optional)" rows="2" value={txForm.details}
                                         onChange={e => setTxForm(f => ({ ...f, details: e.target.value }))}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
                                         placeholder="Saman ki tafseel ya bill link..." />
@@ -1172,7 +1173,7 @@ function CustomerLedger() {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
                                         <label className="block text-gray-700 font-medium mb-1 text-sm">Payment Mode</label>
-                                        <select value={txForm.payment_mode}
+                                        <select aria-label="Payment Mode" value={txForm.payment_mode}
                                             onChange={e => setTxForm(f => ({ ...f, payment_mode: e.target.value }))}
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
                                             <option value="cash">Cash</option>
@@ -1184,7 +1185,7 @@ function CustomerLedger() {
                                     </div>
                                     <div>
                                         <label className="block text-gray-700 font-medium mb-1 text-sm">Transaction Ref</label>
-                                        <input type="text" value={txForm.transaction_ref}
+                                        <input aria-label="Transaction Ref" type="text" value={txForm.transaction_ref}
                                             onChange={e => setTxForm(f => ({ ...f, transaction_ref: e.target.value }))}
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                             placeholder="Cheque # / Txn ID" />
@@ -1194,7 +1195,7 @@ function CustomerLedger() {
                                 {/* Note */}
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-1 text-sm">Note (Optional)</label>
-                                    <textarea rows="2" value={txForm.note}
+                                    <textarea aria-label="Note (Optional)" rows="2" value={txForm.note}
                                         onChange={e => setTxForm(f => ({ ...f, note: e.target.value }))}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
                                         placeholder="e.g. Advance payment / Credit sale..." />

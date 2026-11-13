@@ -392,7 +392,7 @@ export default function Custody() {
       setNewDealerForm({ name: '', contact_person: '', phone: '', address: '' })
     } catch (err) {
       console.error('Failed to save dealer:', err)
-      showNotification('Dealer save karte waqt masla pesh aya.', true)
+      showNotification('Could not save the dealer. Try again.', true)
     } finally {
       setSavingDealer(false)
     }
@@ -402,12 +402,12 @@ export default function Custody() {
   const handleIssueCustody = async (e) => {
     e.preventDefault()
     if (!selectedPhone) {
-      showNotification('Meharbani karke pehle phone select karein', true)
+      showNotification('Select a phone first.', true)
       setIssueStep(1)
       return
     }
     if (!issueForm.recipient_name.trim()) {
-      showNotification('Recipient ka naam darj karna lazmi hai', true)
+      showNotification('Enter the recipient name.', true)
       return
     }
 
@@ -512,7 +512,7 @@ export default function Custody() {
       loadData()
     } catch (err) {
       console.error('Failed to issue phone custody:', err)
-      showNotification(`Custody issue karte waqt masla pesh aya: ${err.message || 'Error'}`, true)
+      showNotification(`Could not issue custody: ${err.message || 'unknown error'}`, true)
     } finally {
       setIssueSubmitting(false)
     }
@@ -597,7 +597,7 @@ export default function Custody() {
       loadData()
     } catch (err) {
       console.error('Failed to return custody phone:', err)
-      showNotification('Phone return karte waqt masla pesh aya.', true)
+      showNotification('Could not return the phone. Try again.', true)
     } finally {
       setReturnSubmitting(false)
     }
@@ -606,7 +606,7 @@ export default function Custody() {
   // Direct WhatsApp Reminder Message
   const handleWhatsAppReminder = (custody) => {
     if (!custody.recipient_phone) {
-      showNotification('Is recipient ka phone number darj nahi hai', true)
+      showNotification('This recipient has no phone number saved.', true)
       return
     }
 
@@ -742,7 +742,7 @@ export default function Custody() {
               <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
                 Phone Custody & Hold
               </h1>
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">
                 IMEI Lock
               </span>
             </div>
@@ -790,9 +790,9 @@ export default function Custody() {
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
           </div>
           <div className="text-2xl font-black text-gray-900">
-            {activeCustodies.length} <span className="text-xs text-gray-400 font-medium">units</span>
+            {activeCustodies.length} <span className="text-xs text-gray-500 font-medium">units</span>
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">Currently outside vault</p>
+          <p className="text-xs text-gray-500 mt-1">Currently outside vault</p>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-xs">
@@ -802,7 +802,7 @@ export default function Custody() {
           <div className="text-2xl font-black text-emerald-600">
             Rs. {totalDepositHeld.toLocaleString()}
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">Total security cash received</p>
+          <p className="text-xs text-gray-500 mt-1">Total security cash received</p>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-xs">
@@ -810,9 +810,9 @@ export default function Custody() {
             Overdue Returns
           </div>
           <div className={`text-2xl font-black ${overdueCount > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-            {overdueCount} <span className="text-xs text-gray-400 font-medium">units</span>
+            {overdueCount} <span className="text-xs text-gray-500 font-medium">units</span>
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">Passed expected return date</p>
+          <p className="text-xs text-gray-500 mt-1">Passed expected return date</p>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-xs">
@@ -820,9 +820,9 @@ export default function Custody() {
             Available In-Stock
           </div>
           <div className="text-2xl font-black text-blue-600">
-            {inStockPhones.length} <span className="text-xs text-gray-400 font-medium">units</span>
+            {inStockPhones.length} <span className="text-xs text-gray-500 font-medium">units</span>
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">Ready for sale or custody</p>
+          <p className="text-xs text-gray-500 mt-1">Ready for sale or custody</p>
         </div>
       </div>
 
@@ -837,7 +837,7 @@ export default function Custody() {
             }`}
           >
             <span>Active Custodies</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 text-blue-700 font-bold">
+            <span className="px-1.5 py-0.2 rounded-full text-xs bg-blue-100 text-blue-700 font-bold">
               {activeCustodies.length}
             </span>
           </button>
@@ -850,7 +850,7 @@ export default function Custody() {
           >
             <Store size={13} className="text-blue-600" />
             <span>Market Dealers & Shops</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-100 text-purple-700 font-bold">
+            <span className="px-1.5 py-0.2 rounded-full text-xs bg-purple-100 text-purple-700 font-bold">
               {allAvailableDealers.length}
             </span>
           </button>
@@ -862,7 +862,7 @@ export default function Custody() {
             }`}
           >
             <span>Return History</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-gray-200 text-gray-700 font-bold">
+            <span className="px-1.5 py-0.2 rounded-full text-xs bg-gray-200 text-gray-700 font-bold">
               {returnedCustodies.length}
             </span>
           </button>
@@ -874,7 +874,7 @@ export default function Custody() {
             }`}
           >
             <span>In-Stock Phones</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-700 font-bold">
+            <span className="px-1.5 py-0.2 rounded-full text-xs bg-emerald-100 text-emerald-700 font-bold">
               {inStockPhones.length}
             </span>
           </button>
@@ -884,8 +884,8 @@ export default function Custody() {
         {activeTab === 'active' && (
           <div className="flex items-center gap-2">
             <div className="relative flex-1 sm:w-64">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-              <input
+              <Search className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
+              <input aria-label="Search recipient, model, IMEI"
                 type="text"
                 placeholder="Search recipient, model, IMEI..."
                 value={search}
@@ -894,7 +894,7 @@ export default function Custody() {
               />
             </div>
 
-            <select
+            <select aria-label="Reasons filter"
               value={typeFilter}
               onChange={e => setTypeFilter(e.target.value)}
               className="px-2.5 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
@@ -913,7 +913,7 @@ export default function Custody() {
       {activeTab === 'active' && (
         <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center text-gray-400 text-sm">Loading custody records...</div>
+            <div className="p-12 text-center text-gray-500 text-sm">Loading custody records...</div>
           ) : filteredActiveCustodies.length === 0 ? (
             <div className="p-12 text-center space-y-3">
               <div className="w-12 h-12 mx-auto rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -956,24 +956,24 @@ export default function Custody() {
                           <div className="font-extrabold text-sm text-gray-900">
                             {phone.model || 'Unknown Phone'}
                           </div>
-                          <div className="flex items-center gap-1.5 text-gray-500 font-mono text-[11px] mt-0.5">
+                          <div className="flex items-center gap-1.5 text-gray-500 font-mono text-xs mt-0.5">
                             <span className="font-bold text-gray-800">IMEI:</span>
                             <span className="font-bold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200">
                               {imeiDisplay}
                             </span>
-                            {phone.color && <span className="text-gray-400">• {phone.color}</span>}
-                            {phone.storage && <span className="text-gray-400">• {phone.storage}</span>}
+                            {phone.color && <span className="text-gray-500">• {phone.color}</span>}
+                            {phone.storage && <span className="text-gray-500">• {phone.storage}</span>}
                           </div>
                         </td>
 
                         <td className="p-3.5">
                           <div className="font-bold text-gray-900 flex items-center gap-1.5">
-                            <User size={13} className="text-gray-400" />
+                            <User size={13} className="text-gray-500" />
                             <span>{c.recipient_name}</span>
                           </div>
                           {c.recipient_phone ? (
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-gray-500 font-mono text-[11px]">{c.recipient_phone}</span>
+                              <span className="text-gray-500 font-mono text-xs">{c.recipient_phone}</span>
                               <button
                                 onClick={() => handleWhatsAppReminder(c)}
                                 className="p-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
@@ -983,35 +983,35 @@ export default function Custody() {
                               </button>
                             </div>
                           ) : (
-                            <span className="text-gray-400 text-[11px]">No phone listed</span>
+                            <span className="text-gray-500 text-xs">No phone listed</span>
                           )}
                         </td>
 
                         <td className="p-3.5">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${typeBadge.color}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${typeBadge.color}`}>
                             {typeBadge.label}
                           </span>
                           {c.notes && (
-                            <p className="text-[11px] text-gray-500 mt-1 max-w-xs truncate" title={c.notes}>
+                            <p className="text-xs text-gray-500 mt-1 max-w-xs truncate" title={c.notes}>
                               {c.notes}
                             </p>
                           )}
                         </td>
 
                         <td className="p-3.5">
-                          <div className="text-gray-600 text-[11px]">
+                          <div className="text-gray-600 text-xs">
                             Issued: {new Date(c.created_at || Date.now()).toLocaleDateString()}
                           </div>
                           {c.expected_return_date ? (
-                            <div className={`flex items-center gap-1 text-[11px] font-bold mt-0.5 ${
+                            <div className={`flex items-center gap-1 text-xs font-bold mt-0.5 ${
                               isOverdue ? 'text-red-600' : 'text-gray-700'
                             }`}>
                               <Calendar size={11} />
                               <span>Due: {c.expected_return_date}</span>
-                              {isOverdue && <span className="text-[9px] bg-red-100 text-red-700 px-1 rounded font-bold">OVERDUE</span>}
+                              {isOverdue && <span className="text-xs bg-red-100 text-red-700 px-1 rounded font-bold">OVERDUE</span>}
                             </div>
                           ) : (
-                            <span className="text-gray-400 text-[11px]">No deadline</span>
+                            <span className="text-gray-500 text-xs">No deadline</span>
                           )}
                         </td>
 
@@ -1019,7 +1019,7 @@ export default function Custody() {
                           <div className="font-bold text-gray-900">
                             Rs. {(parseFloat(c.deposit_amount) || 0).toLocaleString()}
                           </div>
-                          <span className="text-[10px] text-gray-400">Security Deposit</span>
+                          <span className="text-xs text-gray-500">Security Deposit</span>
                         </td>
 
                         <td className="p-3.5 pr-5 text-right">
@@ -1087,7 +1087,7 @@ export default function Custody() {
                         <Store size={15} className="text-blue-600 shrink-0" />
                         <span>{d.name}</span>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
                         activeCount > 0 ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-gray-100 text-gray-600'
                       }`}>
                         {activeCount} on hold
@@ -1096,14 +1096,14 @@ export default function Custody() {
 
                     {d.phone && (
                       <div className="text-xs text-gray-600 font-mono flex items-center gap-1.5">
-                        <Phone size={12} className="text-gray-400" />
+                        <Phone size={12} className="text-gray-500" />
                         <span>{d.phone}</span>
                       </div>
                     )}
 
                     {d.address || d.company ? (
                       <div className="text-xs text-gray-500 flex items-center gap-1.5">
-                        <MapPin size={12} className="text-gray-400 shrink-0" />
+                        <MapPin size={12} className="text-gray-500 shrink-0" />
                         <span className="truncate">{d.address || d.company}</span>
                       </div>
                     ) : null}
@@ -1115,7 +1115,7 @@ export default function Custody() {
                         href={`https://wa.me/${d.phone.replace(/[^0-9]/g, '')}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-[11px] font-bold flex items-center gap-1 transition"
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-bold flex items-center gap-1 transition"
                       >
                         <MessageSquare size={11} />
                         <span>WhatsApp</span>
@@ -1141,8 +1141,8 @@ export default function Custody() {
       {activeTab === 'history' && (
         <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
           {returnedCustodies.length === 0 ? (
-            <div className="p-12 text-center text-gray-400 text-sm">
-              Abhi tak koi returned custody record nahi mila.
+            <div className="p-12 text-center text-gray-500 text-sm">
+              No returned custody records yet.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -1164,14 +1164,14 @@ export default function Custody() {
                       <tr key={c.id} className="hover:bg-gray-50/60 transition">
                         <td className="p-3.5 pl-5">
                           <div className="font-bold text-gray-900">{phone.model || 'Phone'}</div>
-                          <div className="text-[11px] font-mono text-gray-500">{phone.imei1 || phone.imei || '-'}</div>
+                          <div className="text-xs font-mono text-gray-500">{phone.imei1 || phone.imei || '-'}</div>
                         </td>
                         <td className="p-3.5">
                           <div className="font-semibold text-gray-900">{c.recipient_name}</div>
-                          <div className="text-[11px] text-gray-500">{c.recipient_phone || 'N/A'}</div>
+                          <div className="text-xs text-gray-500">{c.recipient_phone || 'N/A'}</div>
                         </td>
                         <td className="p-3.5">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-700">
                             {getCustodyTypeBadge(c.issue_type).label}
                           </span>
                         </td>
@@ -1227,7 +1227,7 @@ export default function Custody() {
                 <div className="flex items-center gap-3 self-end sm:self-auto">
                   <div className="text-right">
                     <div className="text-xs font-bold text-gray-900">Rs. {(phone.sale_price || 0).toLocaleString()}</div>
-                    <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">In Stock</span>
+                    <span className="text-xs text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">In Stock</span>
                   </div>
                   <button
                     onClick={() => handleOpenIssueModal(phone)}
@@ -1247,7 +1247,7 @@ export default function Custody() {
           INSTANT 2-STEP ISSUE PHONE CUSTODY / HANDOVER MODAL
           ═════════════════════════════════════════════════════════════════════════ */}
       {showIssueModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl border border-gray-100 overflow-hidden animate-scaleIn flex flex-col max-h-[92vh]">
             
             {/* Modal Header */}
@@ -1285,7 +1285,7 @@ export default function Custody() {
                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px]">1</span>
+                  <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-xs">1</span>
                   <span>Select Phone (ماڈل یا IMEI)</span>
                 </button>
 
@@ -1295,7 +1295,7 @@ export default function Custody() {
                   type="button"
                   onClick={() => {
                     if (selectedPhone) setIssueStep(2)
-                    else showNotification('Pehle Step 1 mein phone select karein', true)
+                    else showNotification('Select a phone in step 1 first.', true)
                   }}
                   className={`flex items-center gap-1.5 font-bold px-3 py-1.5 rounded-full transition cursor-pointer ${
                     issueStep === 2
@@ -1303,13 +1303,13 @@ export default function Custody() {
                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px]">2</span>
+                  <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-xs">2</span>
                   <span>Assign Recipient (کس کو دینا ہے)</span>
                 </button>
               </div>
 
               {selectedPhone && (
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 hidden sm:inline">
+                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 hidden sm:inline">
                   Phone Ready ✓
                 </span>
               )}
@@ -1329,10 +1329,10 @@ export default function Custody() {
                       Step 1: Search In-Stock Phone by Model or IMEI *
                     </label>
                     <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
                         <Search size={16} />
                       </div>
-                      <input
+                      <input aria-label="Search Model (e.g. 15 Pro, S24) or 15-digit IMEI number"
                         type="text"
                         autoFocus
                         placeholder="Search Model (e.g. 15 Pro, S24) or 15-digit IMEI number..."
@@ -1340,11 +1340,11 @@ export default function Custody() {
                         onChange={e => setPhoneSearchQuery(e.target.value)}
                         className="w-full pl-10 pr-10 py-3 bg-gray-50 border-2 border-blue-200 focus:border-blue-600 rounded-2xl text-sm font-semibold text-gray-900 placeholder:text-gray-400 focus:bg-white outline-none transition"
                       />
-                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-400">
+                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-500">
                         <Barcode size={18} />
                       </div>
                     </div>
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-xs text-gray-500">
                       بارکوڈ اسکینر یا کی بورڈ سے ماڈل یا IMEI ٹائپ کریں اور مطلوبہ فون پر کلک کریں۔
                     </p>
                   </div>
@@ -1359,7 +1359,7 @@ export default function Custody() {
                     {searchedInStockPhones.length === 0 ? (
                       <div className="p-8 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-300 space-y-2">
                         <p className="text-sm font-bold text-gray-700">No in-stock phone matched "{phoneSearchQuery}"</p>
-                        <p className="text-xs text-gray-400">Please check the model name or IMEI spelling, or clear the search.</p>
+                        <p className="text-xs text-gray-500">Please check the model name or IMEI spelling, or clear the search.</p>
                       </div>
                     ) : (
                       <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
@@ -1388,7 +1388,7 @@ export default function Custody() {
                                   <div className="text-sm font-extrabold text-gray-900 flex items-center gap-2">
                                     <span>{p.model}</span>
                                     {p.pta_status && (
-                                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                                      <span className="text-xs font-bold px-2 py-0.2 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
                                         {p.pta_status}
                                       </span>
                                     )}
@@ -1408,7 +1408,7 @@ export default function Custody() {
                                   <div className="text-xs font-bold text-gray-900">
                                     Rs. {(p.sale_price || 0).toLocaleString()}
                                   </div>
-                                  <span className="text-[10px] text-emerald-600 font-bold">Available</span>
+                                  <span className="text-xs text-emerald-600 font-bold">Available</span>
                                 </div>
                                 <button
                                   type="button"
@@ -1531,7 +1531,7 @@ export default function Custody() {
                       <button
                         type="button"
                         onClick={() => setShowAddDealerModal(true)}
-                        className="text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
+                        className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
                       >
                         <Plus size={12} />
                         <span>Add New Dealer</span>
@@ -1539,7 +1539,7 @@ export default function Custody() {
                     </div>
 
                     <div className="relative">
-                      <select
+                      <select aria-label="Dealer, Neighbour Shop, or Customer from list..."
                         onChange={(e) => {
                           const val = e.target.value
                           if (!val) return
@@ -1587,10 +1587,10 @@ export default function Custody() {
                     <div className="space-y-1">
                       <label className="block text-xs font-bold text-gray-700">Recipient Name *</label>
                       <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
                           <User size={14} />
                         </div>
-                        <input
+                        <input aria-label="Asif Mobile Dealer, Hamza, or Myself"
                           type="text"
                           placeholder="e.g. Asif Mobile Dealer, Hamza, or Myself"
                           value={issueForm.recipient_name}
@@ -1604,10 +1604,10 @@ export default function Custody() {
                     <div className="space-y-1">
                       <label className="block text-xs font-bold text-gray-700">Recipient Phone</label>
                       <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
                           <Phone size={14} />
                         </div>
-                        <input
+                        <input aria-label="03001234567"
                           type="text"
                           placeholder="e.g. 03001234567"
                           value={issueForm.recipient_phone}
@@ -1623,8 +1623,8 @@ export default function Custody() {
                     <div className="space-y-1">
                       <label className="block text-xs font-bold text-gray-700">Token Deposit Held (سیکیورٹی رقم)</label>
                       <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-xs font-bold text-gray-400">Rs.</span>
-                        <input
+                        <span className="absolute left-3 top-2.5 text-xs font-bold text-gray-500">Rs.</span>
+                        <input aria-label="Token Deposit Held (سیکیورٹی رقم)"
                           type="number"
                           placeholder="0"
                           value={issueForm.deposit_amount}
@@ -1641,7 +1641,7 @@ export default function Custody() {
                           <button
                             type="button"
                             onClick={() => handleSetQuickDate(0)}
-                            className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                            className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
                           >
                             Today
                           </button>
@@ -1649,7 +1649,7 @@ export default function Custody() {
                           <button
                             type="button"
                             onClick={() => handleSetQuickDate(1)}
-                            className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                            className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
                           >
                             Tomorrow
                           </button>
@@ -1657,7 +1657,7 @@ export default function Custody() {
                           <button
                             type="button"
                             onClick={() => handleSetQuickDate(3)}
-                            className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                            className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
                           >
                             3 Days
                           </button>
@@ -1675,7 +1675,7 @@ export default function Custody() {
                   {/* Notes / Remarks */}
                   <div className="space-y-1">
                     <label className="block text-xs font-bold text-gray-700">Notes / Remarks</label>
-                    <textarea
+                    <textarea aria-label="Notes / Remarks"
                       rows={2}
                       placeholder="e.g. Checking for 2 hours, accessories kept in shop"
                       value={issueForm.notes}
@@ -1742,7 +1742,7 @@ export default function Custody() {
           ONE-TIME DEALER / NEIGHBOURING SHOPKEEPER ENTRY MODAL
           ═════════════════════════════════════════════════════════════════════════ */}
       {showAddDealerModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-gray-100 overflow-hidden animate-scaleIn space-y-4">
             <div className="p-4 sm:p-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -1763,7 +1763,7 @@ export default function Custody() {
             <form onSubmit={handleSaveNewDealer} className="p-5 space-y-3.5">
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-gray-700">Shop / Dealer Name *</label>
-                <input
+                <input aria-label="Shop / Dealer Name"
                   type="text"
                   placeholder="e.g. Al-Madina Mobiles, Hafeez Center"
                   value={newDealerForm.name}
@@ -1776,7 +1776,7 @@ export default function Custody() {
 
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-gray-700">Contact Person / Owner Name</label>
-                <input
+                <input aria-label="Contact Person / Owner Name"
                   type="text"
                   placeholder="e.g. Kashif Bhai, Usman"
                   value={newDealerForm.contact_person}
@@ -1787,7 +1787,7 @@ export default function Custody() {
 
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-gray-700">Phone Number (WhatsApp)</label>
-                <input
+                <input aria-label="Phone Number (WhatsApp)"
                   type="text"
                   placeholder="e.g. 03001234567"
                   value={newDealerForm.phone}
@@ -1798,7 +1798,7 @@ export default function Custody() {
 
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-gray-700">Shop Location / Floor / City</label>
-                <input
+                <input aria-label="Shop Location / Floor / City"
                   type="text"
                   placeholder="e.g. Shop # 24, 1st Floor, Market Plaza"
                   value={newDealerForm.address}
@@ -1830,7 +1830,7 @@ export default function Custody() {
 
       {/* ── MODAL: CONFIRM RETURN TO IN-STOCK ── */}
       {custodyToReturn && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-gray-100 overflow-hidden animate-scaleIn p-5 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
@@ -1855,7 +1855,7 @@ export default function Custody() {
 
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-gray-700">Return Notes / Device Condition</label>
-              <input
+              <input aria-label="Return Notes / Device Condition"
                 type="text"
                 placeholder="e.g. Phone returned in 100% fine condition"
                 value={returnNotes}

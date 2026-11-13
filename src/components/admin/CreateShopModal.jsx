@@ -178,7 +178,7 @@ export default function CreateShopModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50 shrink-0">
           <div>
@@ -189,7 +189,7 @@ export default function CreateShopModal({ onClose, onCreated }) {
               {createdData ? 'Shop created! Dispatch login credentials to owner.' : 'Create a shop and its owner account instantly.'}
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-600 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
             <X size={20} />
           </button>
         </div>
@@ -280,7 +280,7 @@ export default function CreateShopModal({ onClose, onCreated }) {
                 <Zap size={18} className="text-amber-500" /> Subscription Plan <span className="text-red-500 text-xs font-bold ml-1">Required</span>
               </h3>
               {plansLoading ? (
-                <div className="text-xs text-slate-400 py-2">Loading plans...</div>
+                <div className="text-xs text-slate-500 py-2">Loading plans...</div>
               ) : plans.length === 0 ? (
                 <div className="p-3 bg-amber-50 text-amber-700 rounded-lg text-xs border border-amber-200 font-medium">
                   No plans found. Please create a plan in <strong>Subscription Plans</strong> first.
@@ -318,7 +318,7 @@ export default function CreateShopModal({ onClose, onCreated }) {
             {/* Business Domain / Store Type */}
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Store Type / Industry Vertical</label>
-              <select
+              <select aria-label="Store Type / Industry Vertical"
                 value={businessType}
                 onChange={e => setBusinessType(e.target.value)}
                 className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-slate-800"
@@ -327,7 +327,7 @@ export default function CreateShopModal({ onClose, onCreated }) {
                   <option key={st.id} value={st.id}>{st.name}</option>
                 ))}
               </select>
-              <p className="text-[10px] text-slate-400 mt-1">Configures default units, product placeholders, and pricing modes.</p>
+              <p className="text-xs text-slate-500 mt-1">Configures default units, product placeholders, and pricing modes.</p>
             </div>
 
             {/* Shop Details */}
@@ -338,20 +338,20 @@ export default function CreateShopModal({ onClose, onCreated }) {
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Shop / Business Name *</label>
-                  <input required type="text" value={shopName} onChange={e => setShopName(e.target.value)}
+                  <input aria-label="Shop / Business Name" required type="text" value={shopName} onChange={e => setShopName(e.target.value)}
                     placeholder="e.g. Al-Madina Super Mart"
                     className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">WhatsApp Phone *</label>
-                    <input required type="text" value={phone} onChange={e => setPhone(e.target.value)}
+                    <input aria-label="WhatsApp Phone" required type="text" value={phone} onChange={e => setPhone(e.target.value)}
                       placeholder="03001234567"
                       className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono" />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">City / Address</label>
-                    <input type="text" value={address} onChange={e => setAddress(e.target.value)}
+                    <input aria-label="City / Address" type="text" value={address} onChange={e => setAddress(e.target.value)}
                       placeholder="e.g. Lahore"
                       className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                   </div>
@@ -369,8 +369,8 @@ export default function CreateShopModal({ onClose, onCreated }) {
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Owner Email *</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                      <input required type="email" value={ownerEmail}
+                      <Mail className="absolute left-3 top-2.5 text-slate-500" size={16} />
+                      <input aria-label="ownergmail.com" required type="email" value={ownerEmail}
                         onChange={e => {
                           setOwnerEmail(e.target.value)
                           if (!ownerUsername) setOwnerUsername(e.target.value.split('@')[0])
@@ -381,7 +381,7 @@ export default function CreateShopModal({ onClose, onCreated }) {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Login Username *</label>
-                    <input required type="text" value={ownerUsername} onChange={e => setOwnerUsername(e.target.value)}
+                    <input aria-label="Login Username" required type="text" value={ownerUsername} onChange={e => setOwnerUsername(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
                       placeholder="e.g. madina_admin" />
                   </div>
@@ -389,12 +389,12 @@ export default function CreateShopModal({ onClose, onCreated }) {
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password *</label>
                   <div className="relative">
-                    <Key className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                    <input required type="text" value={ownerPassword} onChange={e => setOwnerPassword(e.target.value)}
+                    <Key className="absolute left-3 top-2.5 text-slate-500" size={16} />
+                    <input aria-label="Enter a secure password (e.g. Shop123)" required type="text" value={ownerPassword} onChange={e => setOwnerPassword(e.target.value)}
                       placeholder="Enter a secure password (e.g. Shop@123)"
                       className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono" />
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">This password will be securely stored and readable for Superadmin support.</p>
+                  <p className="text-xs text-slate-500 mt-1">This password will be securely stored and readable for Superadmin support.</p>
                 </div>
               </div>
             </div>

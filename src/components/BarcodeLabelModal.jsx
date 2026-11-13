@@ -209,7 +209,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products = [], defa
   const labelList = Array.from({ length: Math.max(1, parseInt(quantity) || 1) }, (_, i) => i)
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
@@ -240,7 +240,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products = [], defa
             {/* Product Picker */}
             <div>
               <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Select Product</label>
-              <select
+              <select aria-label="Select Product"
                 value={selectedProduct?.id || ''}
                 onChange={(e) => {
                   const p = products.find(prod => String(prod.id) === e.target.value)
@@ -260,7 +260,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products = [], defa
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Sticker Count</label>
-                <input
+                <input aria-label="Sticker Count"
                   type="number"
                   min="1"
                   max="500"
@@ -271,7 +271,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products = [], defa
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Price (Rs.)</label>
-                <input
+                <input aria-label="Price (Rs.)"
                   type="number"
                   placeholder={selectedProduct?.sale_price || '0'}
                   value={customPrice}
@@ -284,7 +284,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products = [], defa
             {/* Paper / Roll Format */}
             <div>
               <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">Print Sheet / Roll Format</label>
-              <select
+              <select aria-label="Print Sheet / Roll Format"
                 value={labelFormat}
                 onChange={e => setLabelFormat(e.target.value)}
                 className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 bg-white focus:ring-2 focus:ring-blue-500 outline-none transition"

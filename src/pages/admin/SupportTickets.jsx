@@ -71,15 +71,15 @@ function SupportTickets() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {loading ? (
-                            <tr><td colSpan="4" className="px-6 py-10 text-center text-slate-400">Loading tickets...</td></tr>
+                            <tr><td colSpan="4" className="px-6 py-10 text-center text-slate-500">Loading tickets...</td></tr>
                         ) : tickets.length === 0 ? (
-                            <tr><td colSpan="4" className="px-6 py-10 text-center text-slate-400 font-medium">No tickets found. Good job! ✅</td></tr>
+                            <tr><td colSpan="4" className="px-6 py-10 text-center text-slate-500 font-medium">No tickets found. Good job! ✅</td></tr>
                         ) : tickets.map(t => (
                             <Fragment key={t.id}>
                                 <tr className={`hover:bg-slate-50 transition ${t.status === 'in_progress' ? 'bg-blue-50/40' : ''}`}>
                                     <td className="px-6 py-4">
                                         <p className="font-bold text-slate-800">{t.shops?.name}</p>
-                                        <p className="text-[10px] text-slate-400 font-mono italic">{new Date(t.created_at).toLocaleString()}</p>
+                                        <p className="text-xs text-slate-500 font-mono italic">{new Date(t.created_at).toLocaleString()}</p>
                                     </td>
                                     <td className="px-6 py-4">
                                         <p className="font-bold text-slate-700">{t.subject}</p>
@@ -91,7 +91,7 @@ function SupportTickets() {
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${
+                                        <span className={`px-2 py-1 rounded text-xs font-black uppercase tracking-widest ${
                                             t.status === 'open' ? 'bg-red-100 text-red-600' :
                                             t.status === 'in_progress' ? 'bg-blue-100 text-blue-600' :
                                             'bg-green-100 text-green-600'
@@ -103,7 +103,7 @@ function SupportTickets() {
                                         {t.status === 'open' && (
                                             <button
                                                 onClick={() => openReplyBox(t.id, t.admin_reply)}
-                                                className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-[10px] font-bold uppercase hover:bg-blue-600 hover:text-white transition"
+                                                className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold uppercase hover:bg-blue-600 hover:text-white transition"
                                             >
                                                 Start Work
                                             </button>
@@ -111,7 +111,7 @@ function SupportTickets() {
                                         {t.status === 'in_progress' && (
                                             <button
                                                 onClick={() => openReplyBox(t.id, t.admin_reply)}
-                                                className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-[10px] font-bold uppercase hover:bg-blue-600 hover:text-white transition"
+                                                className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold uppercase hover:bg-blue-600 hover:text-white transition"
                                             >
                                                 ✏️ Edit Reply
                                             </button>
@@ -119,7 +119,7 @@ function SupportTickets() {
                                         {t.status !== 'closed' && (
                                             <button
                                                 onClick={() => updateStatusAndReply(t.id, 'closed', t.admin_reply)}
-                                                className="px-2 py-1 bg-green-50 text-green-600 rounded text-[10px] font-bold uppercase hover:bg-green-600 hover:text-white transition"
+                                                className="px-2 py-1 bg-green-50 text-green-600 rounded text-xs font-bold uppercase hover:bg-green-600 hover:text-white transition"
                                             >
                                                 Close
                                             </button>
@@ -133,7 +133,7 @@ function SupportTickets() {
                                                 <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">
                                                     💬 Reply to shop owner (optional — visible to them in Help & Support)
                                                 </p>
-                                                <textarea
+                                                <textarea aria-label="We are looking into this. Please check your internet co"
                                                     rows={2}
                                                     value={replyDraft[t.id] || ''}
                                                     onChange={e => setReplyDraft(prev => ({ ...prev, [t.id]: e.target.value }))}

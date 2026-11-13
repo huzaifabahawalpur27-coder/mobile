@@ -139,7 +139,7 @@ export default function ResetPassword() {
             <ShieldAlert className="text-white" size={24} />
           </div>
           <h1 className="text-xl font-bold text-white">Set New Password</h1>
-          <p className="text-slate-400 text-xs mt-1">{session?.user?.email}</p>
+          <p className="text-slate-500 text-xs mt-1">{session?.user?.email}</p>
         </div>
 
         {/* Form */}
@@ -154,8 +154,8 @@ export default function ResetPassword() {
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-500 uppercase">New Password</label>
             <div className="relative">
-              <KeyRound className="absolute left-3 top-2.5 text-slate-400" size={16} />
-              <input
+              <KeyRound className="absolute left-3 top-2.5 text-slate-500" size={16} />
+              <input aria-label="Min. 6 characters"
                 type={showPass ? 'text' : 'password'}
                 required
                 value={newPassword}
@@ -164,7 +164,7 @@ export default function ResetPassword() {
                 className="w-full pl-10 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
               <button type="button" onClick={() => setShowPass(!showPass)}
-                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">
+                className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-600">
                 {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
@@ -173,8 +173,8 @@ export default function ResetPassword() {
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-500 uppercase">Confirm Password</label>
             <div className="relative">
-              <KeyRound className="absolute left-3 top-2.5 text-slate-400" size={16} />
-              <input
+              <KeyRound className="absolute left-3 top-2.5 text-slate-500" size={16} />
+              <input aria-label="Repeat new password"
                 type={showPass ? 'text' : 'password'}
                 required
                 value={confirm}
@@ -197,7 +197,7 @@ export default function ResetPassword() {
           </button>
 
           <button type="button" onClick={() => navigate('/login')}
-            className="w-full text-slate-400 text-xs hover:text-slate-600 transition py-1">
+            className="w-full text-slate-500 text-xs hover:text-slate-600 transition py-1">
             ← Back to Login
           </button>
         </form>

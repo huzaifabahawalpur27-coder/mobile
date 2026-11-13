@@ -85,7 +85,7 @@ export default function PWAInstallPrompt() {
             </p>
           )}
         </div>
-        <button onClick={handleDismiss} className="text-gray-400 hover:text-gray-600 flex-shrink-0 text-lg leading-none mt-0.5">×</button>
+        <button onClick={handleDismiss} className="text-gray-500 hover:text-gray-600 flex-shrink-0 text-lg leading-none mt-0.5">×</button>
       </div>
       {!isIOS && installPrompt && (
         <button

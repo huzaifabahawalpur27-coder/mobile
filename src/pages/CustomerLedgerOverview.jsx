@@ -78,7 +78,7 @@ function CustomerLedgerOverview() {
 
             {/* Search */}
             <div className="mb-4">
-                <input
+                <input aria-label="Search by name or phone"
                     type="text"
                     placeholder="Search by name or phone..."
                     value={search}
@@ -102,7 +102,7 @@ function CustomerLedgerOverview() {
                         <tbody className="divide-y divide-gray-100">
                             {filtered.length === 0 && (
                                 <tr>
-                                    <td colSpan="4" className="px-6 py-12 text-center text-gray-400">
+                                    <td colSpan="4" className="px-6 py-12 text-center text-gray-500">
                                         {search ? 'No customers match your search.' : 'No customers found.'}
                                     </td>
                                 </tr>
@@ -111,7 +111,7 @@ function CustomerLedgerOverview() {
                                 <tr key={c.id} className="hover:bg-gray-50 transition">
                                     <td className="px-4 sm:px-6 py-4">
                                         <div className="font-medium text-gray-800">{c.name}</div>
-                                        <div className="text-xs text-gray-400 sm:hidden">{c.phone || '-'}</div>
+                                        <div className="text-xs text-gray-500 sm:hidden">{c.phone || '-'}</div>
                                     </td>
                                     <td className="px-4 sm:px-6 py-4 text-gray-500 hidden sm:table-cell">{c.phone || '-'}</td>
                                     <td className="px-4 sm:px-6 py-4 text-right">

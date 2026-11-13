@@ -4,6 +4,10 @@ import './index.css'
 import App from './App.jsx'
 import './services/syncService'
 import { registerSW } from 'virtual:pwa-register'
+import { installDialogBehavior } from './utils/dialog'
+
+// Every pop-up closes with Esc, keeps focus inside and gives it back afterwards
+installDialogBehavior()
 
 // ── PWA Instant Auto-Update on all mobile & desktop devices ────────────────
 const updateSW = registerSW({

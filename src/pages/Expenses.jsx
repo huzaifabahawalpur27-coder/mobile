@@ -8,8 +8,9 @@ import UpgradeWall from '../components/UpgradeWall'
 import { Calendar, Search, Filter, Plus, X, Edit3, Trash2, Wallet, Tag } from 'lucide-react'
 import { getBankAccounts } from '../services/bankService'
 import { applyMoneyOp } from '../services/moneyOps'
-import { confirmAmount, isCashName } from '../utils/moneyMath'
+import { unusualAmount, isCashName } from '../utils/moneyMath'
 import { notify } from '../utils/toast'
+import { confirmUnusualAmount } from '../utils/dialog'
 
 export const getTodayDateStr = () => {
   const d = new Date()
@@ -346,7 +347,7 @@ function Expenses() {
 
     // Catch an extra digit before it is saved
     const sameCategory = expenses.filter(x => x.category === payload.category && x.id !== editingId).map(x => x.amount)
-    if (!confirmAmount(payload.amount, sameCategory, `${payload.category} expense`)) { setSaving(false); return }
+    if (!await confirmUnusualAmount(payload.amount, unusualAmount(payload.amount, sameCategory), `${payload.category} expense`)) { setSaving(false); return }
 
     // Older databases keep only these columns
     const minimal = {
@@ -629,29 +630,29 @@ function Expenses() {
     if (rawDateStr === todayStr) {
       return (
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+          <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
             Today
           </span>
           <span className="font-extrabold text-gray-900 dark:text-white tabular-nums tracking-wide">{ddMmYyyy}</span>
-          <span className="text-xs text-gray-400 font-medium">({monthText})</span>
+          <span className="text-xs text-gray-500 font-medium">({monthText})</span>
         </div>
       )
     }
     if (rawDateStr === yesterdayStr) {
       return (
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+          <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
             Yesterday
           </span>
           <span className="font-extrabold text-gray-900 dark:text-white tabular-nums tracking-wide">{ddMmYyyy}</span>
-          <span className="text-xs text-gray-400 font-medium">({monthText})</span>
+          <span className="text-xs text-gray-500 font-medium">({monthText})</span>
         </div>
       )
     }
     return (
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className="font-extrabold text-gray-900 dark:text-white tabular-nums tracking-wide">{ddMmYyyy}</span>
-        <span className="text-xs text-gray-400 font-medium">({monthText})</span>
+        <span className="text-xs text-gray-500 font-medium">({monthText})</span>
       </div>
     )
   }
@@ -677,7 +678,7 @@ function Expenses() {
         <div className="flex gap-3 w-full sm:w-auto overflow-x-auto pb-1 items-center flex-wrap">
           {/* Today's Expense Card */}
           <div className="bg-white dark:bg-[#1c1c1e] p-3.5 sm:p-4 rounded-2xl shadow-2xs border border-gray-200/80 dark:border-white/10 text-center min-w-[125px]">
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Today (آج)</p>
+            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Today (آج)</p>
             <p className="text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums">
               Rs. {Math.round(summary.today).toLocaleString()}
             </p>
@@ -685,7 +686,7 @@ function Expenses() {
 
           {/* This Month's Expense Card */}
           <div className="bg-white dark:bg-[#1c1c1e] p-3.5 sm:p-4 rounded-2xl shadow-2xs border border-gray-200/80 dark:border-white/10 text-center min-w-[125px]">
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">This Month (اس مہینے)</p>
+            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">This Month (اس مہینے)</p>
             <p className="text-xl font-black text-gray-900 dark:text-white tabular-nums">
               Rs. {Math.round(summary.monthly).toLocaleString()}
             </p>
@@ -699,10 +700,10 @@ function Expenses() {
             return (
               <div className="bg-white dark:bg-[#1c1c1e] p-3.5 sm:p-4 rounded-2xl shadow-2xs border border-gray-200/80 dark:border-white/10 min-w-[170px]">
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Monthly Budget</p>
+                  <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Monthly Budget</p>
                   <button
                     onClick={() => { setBudgetInput(monthlyBudget); setEditingBudget(true) }}
-                    className="text-[10px] text-blue-500 hover:text-blue-700 font-bold cursor-pointer"
+                    className="text-xs text-blue-500 hover:text-blue-700 font-bold cursor-pointer"
                     title="Edit budget"
                   >
                     ✏️
@@ -710,7 +711,7 @@ function Expenses() {
                 </div>
                 {editingBudget ? (
                   <div className="flex gap-1 mt-1">
-                    <input
+                    <input aria-label="Budget"
                       type="number"
                       value={budgetInput}
                       onChange={e => setBudgetInput(e.target.value)}
@@ -724,15 +725,15 @@ function Expenses() {
                 ) : monthlyBudget > 0 ? (
                   <>
                     <p className={`text-base sm:text-lg font-black ${textColor} tabular-nums`}>
-                      Rs. {Math.round(summary.monthly).toLocaleString()} <span className="text-xs text-gray-400 font-normal">/ {monthlyBudget.toLocaleString()}</span>
+                      Rs. {Math.round(summary.monthly).toLocaleString()} <span className="text-xs text-gray-500 font-normal">/ {monthlyBudget.toLocaleString()}</span>
                     </p>
                     <div className="w-full bg-gray-100 dark:bg-white/10 rounded-full h-1.5 mt-1.5">
                       <div className={`${barColor} h-1.5 rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
                     </div>
-                    <p className={`text-[10px] font-bold mt-1 ${textColor}`}>${pct.toFixed(0)}% used</p>
+                    <p className={`text-xs font-bold mt-1 ${textColor}`}>${pct.toFixed(0)}% used</p>
                   </>
                 ) : (
-                  <p className="text-xs text-gray-400 italic mt-1">Set a budget ✏️</p>
+                  <p className="text-xs text-gray-500 italic mt-1">Set a budget ✏️</p>
                 )}
               </div>
             )
@@ -789,7 +790,7 @@ function Expenses() {
                   <Calendar size={14} className="text-blue-600 dark:text-blue-400" />
                   <span>Expense Date (خرچے کی تاریخ)</span>
                   {form.date !== getTodayDateStr() && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
                       Previous Date (پرانی تاریخ)
                     </span>
                   )}
@@ -862,7 +863,7 @@ function Expenses() {
                 </div>
               </div>
 
-              <p className="text-[11px] text-blue-900/90 dark:text-blue-300/90 mt-2 flex items-center gap-1.5 flex-wrap">
+              <p className="text-xs text-blue-900/90 dark:text-blue-300/90 mt-2 flex items-center gap-1.5 flex-wrap">
                 <span>💡 Displayed as:</span>
                 <span className="font-extrabold text-blue-800 dark:text-blue-200 underline">DD-MM-YYYY</span>
                 <span>({formatDateDDMMYYYY(form.date)} = {formatDateFullHuman(form.date)})</span>
@@ -880,14 +881,14 @@ function Expenses() {
                   <button
                     type="button"
                     onClick={() => setShowAddCategoryModal(true)}
-                    className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition active:scale-95"
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition active:scale-95"
                   >
                     <Plus size={13} />
                     <span>Add Custom</span>
                   </button>
                 </div>
                 <div className="flex gap-2">
-                  <select
+                  <select aria-label=" + Add Custom Expense Type... "
                     value={form.category}
                     onChange={e => {
                       if (e.target.value === '__ADD_NEW__') {
@@ -920,8 +921,8 @@ function Expenses() {
                   Amount (Rs.) (رقم)
                 </label>
                 <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Rs.</span>
-                  <input
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xs">Rs.</span>
+                  <input aria-label=" Amount (Rs.) (رقم) "
                     type="number"
                     required
                     min="1"
@@ -940,7 +941,7 @@ function Expenses() {
                   <label className="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider flex items-center gap-1.5">
                     <Wallet size={15} className="text-blue-600 dark:text-blue-400" />
                     <span>Deduct From (Account / Cash Drawer)</span>
-                    <span className="text-[10px] text-gray-400 font-normal">(رقم کی کٹوتی)</span>
+                    <span className="text-xs text-gray-500 font-normal">(رقم کی کٹوتی)</span>
                   </label>
                   {(() => {
                     const selectedAcc = bankAccounts.find(a => String(a.id) === String(selectedAccountId))
@@ -959,7 +960,7 @@ function Expenses() {
                   })()}
                 </div>
 
-                <select
+                <select aria-label="Loading accounts..."
                   value={selectedAccountId}
                   onChange={e => setSelectedAccountId(e.target.value)}
                   required
@@ -983,7 +984,7 @@ function Expenses() {
                   const selectedAcc = bankAccounts.find(a => String(a.id) === String(selectedAccountId))
                   if (selectedAcc && Number(form.amount || 0) > selectedAcc.current_balance) {
                     return (
-                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 font-semibold flex items-center gap-1">
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 font-semibold flex items-center gap-1">
                         <span>⚠️ Note:</span>
                         <span>Expense amount (Rs. {Number(form.amount || 0).toLocaleString()}) exceeds balance in {selectedAcc.account_name}. Balance will become negative after deduction.</span>
                       </p>
@@ -998,7 +999,7 @@ function Expenses() {
                 <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider mb-1.5">
                   Note / Description (تفصیل)
                 </label>
-                <input
+                <input aria-label=" Note / Description (تفصیل) "
                   type="text"
                   value={form.note}
                   onChange={e => setForm({ ...form, note: e.target.value })}
@@ -1036,7 +1037,7 @@ function Expenses() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Quick Date Tabs */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider mr-1 flex items-center gap-1">
               <Filter size={13} />
               <span>Date:</span>
             </span>
@@ -1063,8 +1064,8 @@ function Expenses() {
 
           {/* Search Box */}
           <div className="relative min-w-[220px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input aria-label="Search category, account or note"
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
@@ -1097,7 +1098,7 @@ function Expenses() {
                 className="px-3.5 py-1.5 border-2 border-blue-300 dark:border-blue-700 rounded-xl text-xs font-extrabold bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 flex items-center gap-2 hover:border-blue-500 transition cursor-pointer"
               >
                 <span className="tabular-nums tracking-wide">{formatDateDDMMYYYY(customDate)}</span>
-                <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">({formatDateFullHuman(customDate)})</span>
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">({formatDateFullHuman(customDate)})</span>
                 <Calendar size={14} className="text-blue-600 dark:text-blue-400" />
               </button>
             </div>
@@ -1136,9 +1137,9 @@ function Expenses() {
         {/* Mobile View: Cards */}
         <div className="divide-y divide-gray-100 dark:divide-white/5 md:hidden">
           {loading ? (
-            <p className="px-6 py-12 text-center text-gray-400">Loading expenses...</p>
+            <p className="px-6 py-12 text-center text-gray-500">Loading expenses...</p>
           ) : filteredExpenses.length === 0 ? (
-            <p className="px-6 py-12 text-center text-gray-400 italic">No expenses match your filter.</p>
+            <p className="px-6 py-12 text-center text-gray-500 italic">No expenses match your filter.</p>
           ) : filteredExpenses.map(exp => {
             const pm = (exp.payment_method || 'cash').toLowerCase()
             const isCash = pm === 'cash'
@@ -1147,11 +1148,11 @@ function Expenses() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2.5 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-md text-[10px] font-black uppercase tracking-wider">
+                      <span className="px-2.5 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-md text-xs font-black uppercase tracking-wider">
                         {exp.category}
                       </span>
                       {/* Paid From Pill */}
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold border ${
                         isCash
                           ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
                           : 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800'
@@ -1224,11 +1225,11 @@ function Expenses() {
             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-gray-400">Loading expenses...</td>
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">Loading expenses...</td>
                 </tr>
               ) : filteredExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-gray-400 italic">No expenses match your selected filter.</td>
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500 italic">No expenses match your selected filter.</td>
                 </tr>
               ) : filteredExpenses.map(exp => {
                 const pm = (exp.payment_method || 'cash').toLowerCase()
@@ -1267,7 +1268,7 @@ function Expenses() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300 font-medium">
-                      {exp.note || exp.description || <span className="text-gray-400 italic">-</span>}
+                      {exp.note || exp.description || <span className="text-gray-500 italic">-</span>}
                     </td>
                     <td className="px-6 py-4 text-right font-black text-rose-600 dark:text-rose-400 text-base tabular-nums">
                       Rs. {Number(exp.amount || 0).toLocaleString()}
@@ -1300,7 +1301,7 @@ function Expenses() {
 
       {/* Add Custom Category Modal */}
       {showAddCategoryModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-md rounded-3xl p-6 shadow-2xl border border-gray-200 dark:border-white/10 animate-in fade-in duration-150">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -1329,7 +1330,7 @@ function Expenses() {
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
                   Expense Type Name (خرچے کا نام)
                 </label>
-                <input
+                <input aria-label=" Expense Type Name (خرچے کا نام) "
                   type="text"
                   required
                   autoFocus
@@ -1343,7 +1344,7 @@ function Expenses() {
               {/* Existing Custom Categories List */}
               {customCategories.length > 0 && (
                 <div>
-                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
                     Your Custom Categories:
                   </p>
                   <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 bg-gray-50 dark:bg-[#2c2c2e] rounded-xl border border-gray-200/60 dark:border-white/5">
@@ -1356,7 +1357,7 @@ function Expenses() {
                         <button
                           type="button"
                           onClick={() => handleDeleteCustomCategory(cat)}
-                          className="text-gray-400 hover:text-red-500 cursor-pointer text-xs"
+                          className="text-gray-500 hover:text-red-500 cursor-pointer text-xs"
                           title={`Delete ${cat}`}
                         >
                           ✕

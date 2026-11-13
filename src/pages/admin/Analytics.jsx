@@ -320,9 +320,9 @@ export default function Analytics() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm overflow-hidden relative group">
                         <div className="absolute -right-4 -bottom-4 bg-emerald-50 w-24 h-24 rounded-full opacity-50 group-hover:scale-110 transition-transform"></div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Lifetime GMV</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Total Lifetime GMV</p>
                         <h3 className="text-2xl font-black text-slate-800">Rs. {stats.totalGMV.toLocaleString()}</h3>
-                        <div className={`mt-2 flex items-center gap-1 text-[10px] font-bold ${stats.growthRate >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        <div className={`mt-2 flex items-center gap-1 text-xs font-bold ${stats.growthRate >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                             {stats.growthRate >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                             {Math.abs(stats.growthRate).toFixed(1)}% vs Prev Month
                         </div>
@@ -330,15 +330,15 @@ export default function Analytics() {
 
                     <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm overflow-hidden relative group">
                         <div className="absolute -right-4 -bottom-4 bg-blue-50 w-24 h-24 rounded-full opacity-50 group-hover:scale-110 transition-transform"></div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Avg. Order Value</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Avg. Order Value</p>
                         <h3 className="text-2xl font-black text-slate-800">Rs. {Math.round(stats.avgOrderValue).toLocaleString()}</h3>
                     </div>
 
                     <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm overflow-hidden relative group">
                         <div className="absolute -right-4 -bottom-4 bg-orange-50 w-24 h-24 rounded-full opacity-50 group-hover:scale-110 transition-transform"></div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Struggling Shops</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Struggling Shops</p>
                         <h3 className="text-2xl font-black text-slate-800">{inactiveShops.length}</h3>
-                        <p className="text-[10px] text-slate-400 font-bold mt-2 italic">Inactive {'>'} 14 Days</p>
+                        <p className="text-xs text-slate-500 font-bold mt-2 italic">Inactive {'>'} 14 Days</p>
                     </div>
                 </div>
             )}
@@ -348,46 +348,46 @@ export default function Analytics() {
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative group overflow-hidden">
                         <div className="absolute -right-4 -bottom-4 bg-blue-50 w-16 h-16 rounded-full opacity-50"></div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Current MRR</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">Current MRR</p>
                         <h3 className="text-lg font-black text-slate-800">Rs. {saasStats.mrr.toLocaleString()}</h3>
-                        <p className="text-[9px] text-slate-400 font-bold mt-1">Monthly Recurring</p>
+                        <p className="text-xs text-slate-500 font-bold mt-1">Monthly Recurring</p>
                     </div>
 
                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative group overflow-hidden">
                         <div className="absolute -right-4 -bottom-4 bg-indigo-50 w-16 h-16 rounded-full opacity-50"></div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Current ARR</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">Current ARR</p>
                         <h3 className="text-lg font-black text-slate-800">Rs. {saasStats.arr.toLocaleString()}</h3>
-                        <p className="text-[9px] text-slate-400 font-bold mt-1">ARR (MRR * 12)</p>
+                        <p className="text-xs text-slate-500 font-bold mt-1">ARR (MRR * 12)</p>
                     </div>
 
                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative group overflow-hidden">
                         <div className="absolute -right-4 -bottom-4 bg-emerald-50 w-16 h-16 rounded-full opacity-50"></div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Avg ARPU</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">Avg ARPU</p>
                         <h3 className="text-lg font-black text-slate-800">Rs. {Math.round(saasStats.arpu).toLocaleString()}</h3>
-                        <p className="text-[9px] text-slate-400 font-bold mt-1">Per Active Shop</p>
+                        <p className="text-xs text-slate-500 font-bold mt-1">Per Active Shop</p>
                     </div>
 
                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative group overflow-hidden">
                         <div className="absolute -right-4 -bottom-4 bg-red-50 w-16 h-16 rounded-full opacity-50"></div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Account Churn</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">Account Churn</p>
                         <h3 className="text-lg font-black text-slate-800">{saasStats.churnRate.toFixed(1)}%</h3>
-                        <p className="text-[9px] text-slate-400 font-bold mt-1">{saasStats.suspendedShops} Suspended</p>
+                        <p className="text-xs text-slate-500 font-bold mt-1">{saasStats.suspendedShops} Suspended</p>
                     </div>
 
                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative group overflow-hidden">
                         <div className="absolute -right-4 -bottom-4 bg-amber-50 w-16 h-16 rounded-full opacity-50"></div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Customer LTV</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">Customer LTV</p>
                         <h3 className="text-lg font-black text-slate-800">
                             {saasStats.churnRate > 0 ? `Rs. ${Math.round(saasStats.ltv).toLocaleString()}` : 'N/A (0% Churn)'}
                         </h3>
-                        <p className="text-[9px] text-slate-400 font-bold mt-1">Projected Lifetime</p>
+                        <p className="text-xs text-slate-500 font-bold mt-1">Projected Lifetime</p>
                     </div>
 
                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative group overflow-hidden">
                         <div className="absolute -right-4 -bottom-4 bg-teal-50 w-16 h-16 rounded-full opacity-50"></div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Total Cash</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">Total Cash</p>
                         <h3 className="text-lg font-black text-slate-800">Rs. {saasStats.totalCash.toLocaleString()}</h3>
-                        <p className="text-[9px] text-slate-400 font-bold mt-1">Lifetime Revenue</p>
+                        <p className="text-xs text-slate-500 font-bold mt-1">Lifetime Revenue</p>
                     </div>
                 </div>
             )}
@@ -428,17 +428,17 @@ export default function Analytics() {
                         </h3>
                         <div className="space-y-4">
                             {topShops.length === 0 ? (
-                                <p className="text-center text-slate-400 py-12 text-sm italic">No data yet</p>
+                                <p className="text-center text-slate-500 py-12 text-sm italic">No data yet</p>
                             ) : (
                                 topShops.map((shop, i) => (
                                     <div key={shop.shop_id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:border-blue-200 transition group">
                                         <div className="flex items-center gap-4">
-                                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-black text-slate-400 text-xs shadow-sm">
+                                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-black text-slate-500 text-xs shadow-sm">
                                                 {i + 1}
                                             </div>
                                             <div>
                                                 <p className="font-black text-slate-700 text-sm truncate max-w-[150px]">{shop.shop_name}</p>
-                                                <p className="text-[10px] text-slate-400 font-bold uppercase">{shop.order_count} Orders</p>
+                                                <p className="text-xs text-slate-500 font-bold uppercase">{shop.order_count} Orders</p>
                                             </div>
                                         </div>
                                         <div className="text-right">
@@ -531,7 +531,7 @@ export default function Analytics() {
                         <h3 className="font-black text-slate-800 flex items-center gap-2">
                             <AlertTriangle size={20} className="text-orange-500" /> At Risk: Inactive Shops (14+ Days)
                         </h3>
-                        <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider">
+                        <span className="bg-orange-100 text-orange-700 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
                             Needs Attention
                         </span>
                     </div>
@@ -539,17 +539,17 @@ export default function Analytics() {
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50">
                                 <tr>
-                                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Shop Name</th>
-                                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Last Activity</th>
-                                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Days Since Sale</th>
-                                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Owner Contact</th>
+                                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Shop Name</th>
+                                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Last Activity</th>
+                                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Days Since Sale</th>
+                                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">Owner Contact</th>
                                     <th className="px-6 py-4"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {inactiveShops.length === 0 ? (
                                     <tr>
-                                        <td colSpan="5" className="px-6 py-12 text-center text-slate-400 text-sm font-medium">All active shops are actively transacting. Great job!</td>
+                                        <td colSpan="5" className="px-6 py-12 text-center text-slate-500 text-sm font-medium">All active shops are actively transacting. Great job!</td>
                                     </tr>
                                 ) : (
                                     inactiveShops.map(shop => {
@@ -563,7 +563,7 @@ export default function Analytics() {
                                                     {lastSale ? lastSale.toLocaleDateString() : 'Never'}
                                                 </td>
                                                 <td className="px-6 py-4 italic">
-                                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${daysAgo > 30 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
+                                                    <span className={`px-2 py-1 rounded-lg text-xs font-black ${daysAgo > 30 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
                                                         {daysAgo} Days Inactive
                                                     </span>
                                                 </td>
@@ -571,7 +571,7 @@ export default function Analytics() {
                                                 <td className="px-6 py-4 text-right">
                                                     <button
                                                         onClick={() => navigate(`/broadcast?shopId=${shop.shop_id}`)}
-                                                        className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition"
+                                                        className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-black uppercase hover:bg-blue-600 hover:text-white transition"
                                                     >
                                                         Reach Out
                                                     </button>

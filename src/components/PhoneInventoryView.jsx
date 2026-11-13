@@ -13,6 +13,7 @@ import PhoneReturnModal from './PhoneReturnModal'
 import EditPurchasePaymentModal from './EditPurchasePaymentModal'
 import EditPriceModal from './EditPriceModal'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 // Normalize PTA statuses from various formats to standard keys
 export const normalizePtaStatus = (status) => {
@@ -245,7 +246,7 @@ export default function PhoneInventoryView() {
   const handleIssueCustody = async (e) => {
     e.preventDefault()
     if (!custodyForm.recipient_name.trim()) {
-      notify('Recipient / Dealer ka naam darj karein!')
+      notify('Enter the recipient or dealer name.')
       return
     }
     setSavingCustody(true)
@@ -315,7 +316,7 @@ export default function PhoneInventoryView() {
   }
 
   const handleReturnCustody = async (phone) => {
-    const confirmReturn = window.confirm(`Kya aap "${phone.brand} ${phone.model}" ko wapas In-Stock karna chahte hain?`)
+    const confirmReturn = await confirmDialog(`Put ${phone.brand} ${phone.model} back in stock?`, { confirmLabel: 'Put back in stock' })
     if (!confirmReturn) return
 
     try {
@@ -521,49 +522,49 @@ export default function PhoneInventoryView() {
       {/* KPI Cards Header */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">In Stock Phones</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">In Stock Phones</p>
           <p className="text-2xl font-black text-blue-600 mt-1">
-            {inStockCount} <span className="text-xs font-normal text-gray-400">units</span>
+            {inStockCount} <span className="text-xs font-normal text-gray-500">units</span>
           </p>
-          <span className="text-[10px] text-gray-400 font-semibold">{uniqueModelsCount} Models</span>
+          <span className="text-xs text-gray-500 font-semibold">{uniqueModelsCount} Models</span>
         </div>
 
         <div className="bg-white p-3.5 rounded-2xl border border-emerald-100/60 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">PTA Approved</p>
+            <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">PTA Approved</p>
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
           </div>
           <p className="text-2xl font-black text-emerald-700 mt-1">
-            {ptaApprovedInStock} <span className="text-xs font-normal text-gray-400">units</span>
+            {ptaApprovedInStock} <span className="text-xs font-normal text-gray-500">units</span>
           </p>
-          <span className="text-[10px] text-emerald-600 font-semibold">Official PTA Approved</span>
+          <span className="text-xs text-emerald-600 font-semibold">Official PTA Approved</span>
         </div>
 
         <div className="bg-white p-3.5 rounded-2xl border border-rose-100/60 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">Non-PTA</p>
+            <p className="text-xs font-bold text-rose-600 uppercase tracking-wider">Non-PTA</p>
             <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
           </div>
           <p className="text-2xl font-black text-rose-600 mt-1">
-            {nonPtaInStock} <span className="text-xs font-normal text-gray-400">units</span>
+            {nonPtaInStock} <span className="text-xs font-normal text-gray-500">units</span>
           </p>
-          <span className="text-[10px] text-rose-500 font-semibold">Non-PTA Devices</span>
+          <span className="text-xs text-rose-500 font-semibold">Non-PTA Devices</span>
         </div>
 
         <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Reserved / Issued</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Reserved / Issued</p>
           <p className="text-2xl font-black text-amber-600 mt-1">
-            {phones.filter(p => ['reserved', 'issued', 'personal'].includes(p.status)).length} <span className="text-xs font-normal text-gray-400">units</span>
+            {phones.filter(p => ['reserved', 'issued', 'personal'].includes(p.status)).length} <span className="text-xs font-normal text-gray-500">units</span>
           </p>
-          <span className="text-[10px] text-amber-600 font-semibold">Reserved / Custody</span>
+          <span className="text-xs text-amber-600 font-semibold">Reserved / Custody</span>
         </div>
 
         <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm col-span-2 sm:col-span-1">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">In-Stock Valuation</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">In-Stock Valuation</p>
           <p className="text-xl font-black text-purple-700 mt-1 truncate">
             {canViewCost ? `Rs. ${inStockCostTotal.toLocaleString()}` : '••••••••'}
           </p>
-          <span className="text-[10px] text-gray-400 font-semibold">Total Cost Valuation</span>
+          <span className="text-xs text-gray-500 font-semibold">Total Cost Valuation</span>
         </div>
       </div>
 
@@ -581,7 +582,7 @@ export default function PhoneInventoryView() {
           >
             <Layers className="w-4 h-4" />
             <span>Model Breakdown Summary</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+            <span className={`px-1.5 py-0.2 rounded-full text-xs font-bold ${
               viewMode === 'model_summary' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
             }`}>
               {modelSummaries.length}
@@ -599,7 +600,7 @@ export default function PhoneInventoryView() {
           >
             <Smartphone className="w-4 h-4" />
             <span>All Serialized IMEIs</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+            <span className={`px-1.5 py-0.2 rounded-full text-xs font-bold ${
               viewMode === 'device_list' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
             }`}>
               {filtered.length}
@@ -630,8 +631,8 @@ export default function PhoneInventoryView() {
       {/* Advanced Filter and Search Bar */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
         <div className="relative">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
-          <input
+          <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
+          <input aria-label="Search Model (e.g. iPhone 14), Brand, Storage (128GB), IMEI"
             type="text"
             placeholder="Search Model (e.g. iPhone 14), Brand, Storage (128GB), IMEI 1, Color..."
             value={search}
@@ -641,7 +642,7 @@ export default function PhoneInventoryView() {
           {search && (
             <button
               onClick={() => setSearch('')}
-              className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+              className="absolute right-3 top-2.5 text-gray-500 hover:text-gray-600"
             >
               <X className="w-4 h-4" />
             </button>
@@ -673,7 +674,7 @@ export default function PhoneInventoryView() {
           </div>
 
           {/* PTA Filter (Specific user requirement) */}
-          <select
+          <select aria-label="PTA All Statuses"
             value={ptaFilter}
             onChange={e => setPtaFilter(e.target.value)}
             className="px-3 py-1.5 border border-gray-200 rounded-xl bg-white font-bold text-gray-700 outline-none hover:border-gray-300 transition"
@@ -687,7 +688,7 @@ export default function PhoneInventoryView() {
           </select>
 
           {/* Storage Filter (Specific user requirement) */}
-          <select
+          <select aria-label="Storage All"
             value={storageFilter}
             onChange={e => setStorageFilter(e.target.value)}
             className="px-3 py-1.5 border border-gray-200 rounded-xl bg-white font-bold text-gray-700 outline-none hover:border-gray-300 transition"
@@ -702,7 +703,7 @@ export default function PhoneInventoryView() {
           </select>
 
           {/* Brand Filter */}
-          <select
+          <select aria-label="Brand All"
             value={brandFilter}
             onChange={e => setBrandFilter(e.target.value)}
             className="px-3 py-1.5 border border-gray-200 rounded-xl bg-white font-bold text-gray-700 outline-none hover:border-gray-300 transition"
@@ -714,7 +715,7 @@ export default function PhoneInventoryView() {
           </select>
 
           {/* Condition Filter */}
-          <select
+          <select aria-label="Condition All"
             value={conditionFilter}
             onChange={e => setConditionFilter(e.target.value)}
             className="px-3 py-1.5 border border-gray-200 rounded-xl bg-white font-bold text-gray-700 outline-none hover:border-gray-300 transition"
@@ -756,15 +757,15 @@ export default function PhoneInventoryView() {
 
       {/* Main Content Area */}
       {loading ? (
-        <div className="p-16 text-center text-gray-400 bg-white rounded-2xl border border-gray-100">
+        <div className="p-16 text-center text-gray-500 bg-white rounded-2xl border border-gray-100">
           <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="font-bold text-gray-600">Loading Mobile Phone Inventory...</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="p-16 text-center text-gray-400 bg-white rounded-2xl border border-gray-100">
+        <div className="p-16 text-center text-gray-500 bg-white rounded-2xl border border-gray-100">
           <Smartphone className="w-12 h-12 mx-auto text-gray-300 mb-3" />
           <p className="font-bold text-gray-700 text-base">No Mobile Phones Found</p>
-          <p className="text-xs text-gray-400 mt-1">No phones match your active search or filter criteria.</p>
+          <p className="text-xs text-gray-500 mt-1">No phones match your active search or filter criteria.</p>
         </div>
       ) : viewMode === 'model_summary' ? (
         /* =========================================================================
@@ -793,7 +794,7 @@ export default function PhoneInventoryView() {
                           <Smartphone className="w-5 h-5 text-blue-600" />
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50/80 px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50/80 px-2 py-0.5 rounded-md">
                             {group.brand}
                           </span>
                           <h3 className="font-black text-gray-900 text-base leading-tight mt-0.5">
@@ -806,9 +807,9 @@ export default function PhoneInventoryView() {
                       <div className="text-right shrink-0">
                         <div className="bg-blue-600 text-white px-3 py-1 rounded-xl text-center shadow-sm shadow-blue-500/20">
                           <p className="text-lg font-black leading-none">{group.inStock}</p>
-                          <p className="text-[9px] uppercase tracking-wider font-bold">In Stock</p>
+                          <p className="text-xs uppercase tracking-wider font-bold">In Stock</p>
                         </div>
-                        <p className="text-[10px] text-gray-400 font-semibold mt-0.5 text-center">
+                        <p className="text-xs text-gray-500 font-semibold mt-0.5 text-center">
                           {group.inStock} Units In Stock
                         </p>
                       </div>
@@ -816,8 +817,8 @@ export default function PhoneInventoryView() {
 
                     {/* PTA Breakdown Badges */}
                     <div className="pt-2 border-t border-gray-50">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3 text-gray-400" /> PTA Status Breakdown
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3 text-gray-500" /> PTA Status Breakdown
                       </p>
                       <div className="flex flex-wrap items-center gap-1.5">
                         {group.ptaApproved > 0 && (
@@ -854,8 +855,8 @@ export default function PhoneInventoryView() {
 
                     {/* Storage Breakdown Chips */}
                     <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                        <HardDrive className="w-3 h-3 text-gray-400" /> Storage Breakdown
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                        <HardDrive className="w-3 h-3 text-gray-500" /> Storage Breakdown
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(group.storages).map(([st, count]) => (
@@ -871,7 +872,7 @@ export default function PhoneInventoryView() {
                     </div>
 
                     {/* Conditions and Colors summary */}
-                    <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1">
+                    <div className="flex items-center justify-between text-xs text-gray-500 pt-1">
                       <div className="flex items-center gap-1">
                         <Sparkles className="w-3 h-3 text-amber-500" />
                         <span>
@@ -891,7 +892,7 @@ export default function PhoneInventoryView() {
                   {/* Card Action: Toggle Devices List */}
                   <div className="bg-gray-50/80 px-4 py-2.5 border-t border-gray-100 flex items-center justify-between">
                     {canViewCost && (
-                      <span className="text-[10px] text-gray-500 font-medium">
+                      <span className="text-xs text-gray-500 font-medium">
                         Cost Value: <strong className="text-gray-800">Rs. {group.totalCost.toLocaleString()}</strong>
                       </span>
                     )}
@@ -908,7 +909,7 @@ export default function PhoneInventoryView() {
                   {/* Accordion IMEI Device Breakdown */}
                   {isExpanded && (
                     <div className="p-3 bg-slate-50 border-t border-gray-100 space-y-2">
-                      <p className="text-[11px] font-bold text-gray-700 px-1">
+                      <p className="text-xs font-bold text-gray-700 px-1">
                         Available Serialized Devices ({group.model}):
                       </p>
                       <div className="space-y-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
@@ -925,16 +926,16 @@ export default function PhoneInventoryView() {
                                   <span className="font-bold text-gray-900 text-xs tracking-tight">{phone.imei_1}</span>
                                   <button
                                     onClick={() => handleCopyImei(phone.imei_1)}
-                                    className="text-gray-400 hover:text-blue-600 cursor-pointer p-0.5 rounded transition"
+                                    className="text-gray-500 hover:text-blue-600 cursor-pointer p-0.5 rounded transition"
                                     title="Copy IMEI"
                                   >
                                     {copiedImei === phone.imei_1 ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
                                   </button>
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.color}`}>
+                                  <span className={`px-2 py-0.5 rounded text-xs font-bold border ${badge.color}`}>
                                     {badge.label}
                                   </span>
                                   {phone.storage && (
-                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-700">
+                                    <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-700">
                                       {phone.storage}
                                     </span>
                                   )}
@@ -945,7 +946,7 @@ export default function PhoneInventoryView() {
                                     Rs. {(parseFloat(phone.sale_price) || 0).toLocaleString()}
                                   </span>
                                   {canViewCost && (
-                                    <span className="text-[10px] text-gray-400">
+                                    <span className="text-xs text-gray-500">
                                       Cost: Rs. {(parseFloat(phone.cost_price) || 0).toLocaleString()}
                                     </span>
                                   )}
@@ -953,18 +954,18 @@ export default function PhoneInventoryView() {
                               </div>
 
                               {/* Middle Row: Specs / Details */}
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                                 {phone.color && <span>Color: <strong className="text-gray-700 font-medium">{phone.color}</strong></span>}
                                 {phone.battery_health && <span>· Battery: <strong className="text-gray-700 font-medium">{phone.battery_health}%</strong></span>}
                                 <span>· Condition: <strong className="text-gray-700 font-medium capitalize">{phone.condition}</strong></span>
-                                {phone.imei_2 && <span className="font-mono text-[10px] text-gray-400">· IMEI 2: {phone.imei_2}</span>}
+                                {phone.imei_2 && <span className="font-mono text-xs text-gray-500">· IMEI 2: {phone.imei_2}</span>}
                               </div>
 
                               {/* Dedicated Last Row: Status & Actions */}
                               <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex items-center gap-1.5">
                                   {phone.status !== 'in_stock' && (
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
                                       phone.status === 'sold' ? 'bg-blue-100 text-blue-700' :
                                       phone.status === 'returned' ? 'bg-purple-100 text-purple-700' :
                                       'bg-amber-100 text-amber-700'
@@ -1052,7 +1053,7 @@ export default function PhoneInventoryView() {
                           <Smartphone className="w-4 h-4 text-blue-600 shrink-0" />
                           <div>
                             <p className="font-bold text-gray-900">{p.brand} {p.model}</p>
-                            <p className="text-[10px] text-gray-400 font-normal">
+                            <p className="text-xs text-gray-500 font-normal">
                               {p.battery_health ? `Battery: ${p.battery_health}%` : ''}
                             </p>
                           </div>
@@ -1064,14 +1065,14 @@ export default function PhoneInventoryView() {
                           <span className="font-semibold text-gray-800">{p.imei_1}</span>
                           <button
                             onClick={() => handleCopyImei(p.imei_1)}
-                            className="text-gray-400 hover:text-blue-600 cursor-pointer"
+                            className="text-gray-500 hover:text-blue-600 cursor-pointer"
                             title="Copy IMEI 1"
                           >
                             {copiedImei === p.imei_1 ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
                         </div>
                         {p.imei_2 && (
-                          <div className="flex items-center gap-1.5 text-gray-400 text-[10px]">
+                          <div className="flex items-center gap-1.5 text-gray-500 text-xs">
                             <span>IMEI 2: {p.imei_2}</span>
                             <button
                               onClick={() => handleCopyImei(p.imei_2)}
@@ -1087,21 +1088,21 @@ export default function PhoneInventoryView() {
                       <td className="py-3 px-4">
                         <div className="space-y-0.5">
                           <span className="font-bold text-gray-900 font-mono text-xs">{p.storage || '-'}</span>
-                          {p.color && <p className="text-[11px] text-gray-500">{p.color}</p>}
+                          {p.color && <p className="text-xs text-gray-500">{p.color}</p>}
                         </div>
                       </td>
 
                       <td className="py-3 px-4">
                         <div className="flex flex-col gap-1">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border w-fit ${ptaBadge.color}`}>
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold border w-fit ${ptaBadge.color}`}>
                             {ptaBadge.label}
                           </span>
-                          <span className="text-[10px] text-gray-500 font-medium capitalize">{p.condition?.replace('_', ' ')}</span>
+                          <span className="text-xs text-gray-500 font-medium capitalize">{p.condition?.replace('_', ' ')}</span>
                         </div>
                       </td>
 
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
                           p.status === 'in_stock'
                             ? 'bg-blue-50 text-blue-700'
                             : p.status === 'sold'
@@ -1123,13 +1124,13 @@ export default function PhoneInventoryView() {
                               Rs. {(parseFloat(p.cost_price) || 0).toLocaleString()}
                             </span>
                             {p.additional_costs > 0 && (
-                              <span className="text-[10px] text-gray-500 block">
+                              <span className="text-xs text-gray-500 block">
                                 + Rs. {p.additional_costs} (Direct)
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-gray-400 font-mono">••••••••</span>
+                          <span className="text-gray-500 font-mono">••••••••</span>
                         )}
                       </td>
 
@@ -1204,7 +1205,7 @@ export default function PhoneInventoryView() {
                       <p className="font-bold text-gray-900 text-sm">{p.brand} {p.model}</p>
                       <p className="text-xs text-gray-500">{p.storage} {p.color ? `• ${p.color}` : ''}</p>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
                       p.status === 'in_stock' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
                     }`}>
                       {p.status.replace('_', ' ')}
@@ -1213,7 +1214,7 @@ export default function PhoneInventoryView() {
 
                   <div className="bg-gray-50 p-2.5 rounded-xl text-xs font-mono flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] text-gray-400 uppercase font-sans">IMEI 1</p>
+                      <p className="text-xs text-gray-500 uppercase font-sans">IMEI 1</p>
                       <p className="font-bold text-gray-800">{p.imei_1}</p>
                     </div>
                     <button
@@ -1226,13 +1227,13 @@ export default function PhoneInventoryView() {
 
                   <div className="flex items-center justify-between text-xs pt-1">
                     <div className="flex items-center gap-1.5">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${ptaBadge.color}`}>
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold border ${ptaBadge.color}`}>
                         {ptaBadge.label}
                       </span>
-                      <span className="text-[10px] text-gray-500 capitalize">{p.condition?.replace('_', ' ')}</span>
+                      <span className="text-xs text-gray-500 capitalize">{p.condition?.replace('_', ' ')}</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[10px] text-gray-400 uppercase block">Sale Price</span>
+                      <span className="text-xs text-gray-500 uppercase block">Sale Price</span>
                       <span className="font-bold text-emerald-700">Rs. {(parseFloat(p.sale_price) || 0).toLocaleString()}</span>
                     </div>
                   </div>
@@ -1244,13 +1245,13 @@ export default function PhoneInventoryView() {
                           Cost: Rs. {(parseFloat(p.cost_price) || 0).toLocaleString()}
                         </span>
                       ) : (
-                        <span className="text-gray-400 font-mono">Cost: ••••••••</span>
+                        <span className="text-gray-500 font-mono">Cost: ••••••••</span>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       <button
                         onClick={() => setPhoneToEditPrice(p)}
-                        className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                        className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
                         title="Edit price"
                       >
                         <DollarSign className="w-2.5 h-2.5" /> Price
@@ -1259,13 +1260,13 @@ export default function PhoneInventoryView() {
                         <>
                           <button
                             onClick={() => openCustodyModal(p)}
-                            className="px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-[11px] font-bold"
+                            className="px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold"
                           >
                             Issue / Reserve
                           </button>
                           <button
                             onClick={() => setPhoneForReturn(p)}
-                            className="px-2 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold flex items-center gap-1"
+                            className="px-2 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold flex items-center gap-1"
                           >
                             <RotateCcw className="w-2.5 h-2.5" /> Return
                           </button>
@@ -1274,7 +1275,7 @@ export default function PhoneInventoryView() {
                       {canViewCost && p.purchase_id && (
                         <button
                           onClick={() => handleEditPhonePayment(p)}
-                          className="px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-[11px] font-bold"
+                          className="px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold"
                         >
                           Payment
                         </button>
@@ -1282,7 +1283,7 @@ export default function PhoneInventoryView() {
                       {['issued', 'reserved', 'personal'].includes(p.status) && (
                         <button
                           onClick={() => handleReturnCustody(p)}
-                          className="px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] font-bold"
+                          className="px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold"
                         >
                           Return Stock
                         </button>
@@ -1304,7 +1305,7 @@ export default function PhoneInventoryView() {
 
       {/* History & Audit Trail Modal */}
       {selectedPhoneForHistory && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
@@ -1323,9 +1324,9 @@ export default function PhoneInventoryView() {
 
             <div className="overflow-y-auto flex-1 pr-1 custom-scrollbar space-y-3">
               {loadingHistory ? (
-                <div className="text-center py-8 text-gray-400 text-xs">Loading audit trail...</div>
+                <div className="text-center py-8 text-gray-500 text-xs">Loading audit trail...</div>
               ) : historyLogs.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 text-xs">
+                <div className="text-center py-8 text-gray-500 text-xs">
                   No status transition logs found for this phone yet.
                 </div>
               ) : (
@@ -1335,10 +1336,10 @@ export default function PhoneInventoryView() {
                       <div className="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-blue-600 ring-4 ring-white" />
                       <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 text-xs space-y-1">
                         <div className="flex justify-between items-center">
-                          <span className="font-bold text-gray-900 uppercase tracking-wider text-[10px]">
+                          <span className="font-bold text-gray-900 uppercase tracking-wider text-xs">
                             {log.action}
                           </span>
-                          <span className="text-[10px] text-gray-400">
+                          <span className="text-xs text-gray-500">
                             {new Date(log.created_at).toLocaleString()}
                           </span>
                         </div>
@@ -1348,7 +1349,7 @@ export default function PhoneInventoryView() {
                           </p>
                         )}
                         {log.details && (
-                          <pre className="text-[10px] bg-white p-1.5 rounded border border-gray-100 overflow-x-auto text-gray-600 font-mono">
+                          <pre className="text-xs bg-white p-1.5 rounded border border-gray-100 overflow-x-auto text-gray-600 font-mono">
                             {JSON.stringify(log.details, null, 2)}
                           </pre>
                         )}
@@ -1373,7 +1374,7 @@ export default function PhoneInventoryView() {
 
       {/* Custody Assignment Modal */}
       {selectedPhoneForCustody && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
@@ -1395,7 +1396,7 @@ export default function PhoneInventoryView() {
             <form onSubmit={handleIssueCustody} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Issue Purpose / Type</label>
-                <select
+                <select aria-label="Issue Purpose / Type"
                   value={custodyForm.issue_type}
                   onChange={e => setCustodyForm(prev => ({ ...prev, issue_type: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none bg-white"
@@ -1408,7 +1409,7 @@ export default function PhoneInventoryView() {
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Recipient Name *</label>
-                <input
+                <input aria-label="Recipient Name"
                   type="text"
                   required
                   placeholder="e.g. Asif Mobile Plaza, Tariq Bhai"
@@ -1421,7 +1422,7 @@ export default function PhoneInventoryView() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">Recipient Phone</label>
-                  <input
+                  <input aria-label="Recipient Phone"
                     type="text"
                     placeholder="0300..."
                     value={custodyForm.recipient_phone}
@@ -1431,7 +1432,7 @@ export default function PhoneInventoryView() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">Expected Return</label>
-                  <input
+                  <input aria-label="Expected Return"
                     type="date"
                     value={custodyForm.expected_return_date}
                     onChange={e => setCustodyForm(prev => ({ ...prev, expected_return_date: e.target.value }))}
@@ -1442,7 +1443,7 @@ export default function PhoneInventoryView() {
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Deposit / Advance Token (Rs.)</label>
-                <input
+                <input aria-label="Deposit / Advance Token (Rs.)"
                   type="number"
                   placeholder="0"
                   value={custodyForm.deposit_amount}
@@ -1453,7 +1454,7 @@ export default function PhoneInventoryView() {
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Notes / Terms</label>
-                <textarea
+                <textarea aria-label="Notes / Terms"
                   rows="2"
                   placeholder="e.g. In good condition, expected back by evening"
                   value={custodyForm.notes}

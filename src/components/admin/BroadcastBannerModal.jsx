@@ -129,7 +129,7 @@ export default function BroadcastBannerModal({ onClose, onSuccess }) {
   const currentPreview = typeStyles[type] || typeStyles.info
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
@@ -144,7 +144,7 @@ export default function BroadcastBannerModal({ onClose, onSuccess }) {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition"
+            className="p-1.5 text-slate-500 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition"
           >
             <X size={18} />
           </button>
@@ -152,7 +152,7 @@ export default function BroadcastBannerModal({ onClose, onSuccess }) {
 
         {/* Content */}
         {loading ? (
-          <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+          <div className="py-12 text-center text-slate-500 text-xs flex flex-col items-center gap-2">
             <RefreshCw className="animate-spin text-blue-500" size={24} />
             <span>Loading current announcement...</span>
           </div>
@@ -168,7 +168,7 @@ export default function BroadcastBannerModal({ onClose, onSuccess }) {
             <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200">
               <div>
                 <h4 className="text-xs font-bold text-slate-800">Broadcast Banner Status</h4>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-xs text-slate-500">
                   {active ? '🟢 Banner is visible to all shops right now.' : '⚪ Banner is currently turned OFF.'}
                 </p>
               </div>
@@ -185,28 +185,28 @@ export default function BroadcastBannerModal({ onClose, onSuccess }) {
 
             {/* Quick Presets */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                 Quick Announcement Templates
               </label>
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
                   onClick={() => setTemplate('warning', 'Maintenance', 'EdgeX POS server maintenance is scheduled for tonight 2:00 AM - 4:00 AM PKT. Offline sales will operate normally.')}
-                  className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[11px] font-semibold transition"
+                  className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold transition"
                 >
                   🛠️ Maintenance Notice
                 </button>
                 <button
                   type="button"
                   onClick={() => setTemplate('success', 'Update', 'New feature released: Direct WhatsApp bills and fast barcode scanner improvements now live!')}
-                  className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] font-semibold transition"
+                  className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition"
                 >
                   🚀 New Feature Alert
                 </button>
                 <button
                   type="button"
                   onClick={() => setTemplate('alert', 'Urgent', 'Baraye meherbani apne overdue subscription bills foran clear karein taakay store suspend na ho.')}
-                  className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-lg text-[11px] font-semibold transition"
+                  className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-lg text-xs font-semibold transition"
                 >
                   ⚠️ Overdue Reminder
                 </button>
@@ -241,7 +241,7 @@ export default function BroadcastBannerModal({ onClose, onSuccess }) {
               <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
                 Badge / Title
               </label>
-              <input
+              <input aria-label=" Badge / Title "
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -254,7 +254,7 @@ export default function BroadcastBannerModal({ onClose, onSuccess }) {
               <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
                 Announcement Message
               </label>
-              <textarea
+              <textarea aria-label=" Announcement Message "
                 rows={3}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
@@ -278,7 +278,7 @@ export default function BroadcastBannerModal({ onClose, onSuccess }) {
 
             {/* Live Preview */}
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                 <Eye size={12} />
                 <span>Live Preview</span>
               </div>
@@ -286,7 +286,7 @@ export default function BroadcastBannerModal({ onClose, onSuccess }) {
                 <div className="flex items-center gap-2 min-w-0">
                   {currentPreview.icon}
                   {title && (
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${currentPreview.badge}`}>
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${currentPreview.badge}`}>
                       {title}
                     </span>
                   )}

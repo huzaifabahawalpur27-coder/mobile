@@ -48,6 +48,7 @@ import {
 } from '../services/whatsappQueueService'
 import { notify } from '../utils/toast'
 import { isCashName } from '../utils/moneyMath'
+import { confirmDialog } from '../utils/dialog'
 
 // A template using the [Warranty Terms] placeholder already follows the saved terms;
 // pasting a fixed copy into it would freeze today's wording in the template.
@@ -569,7 +570,7 @@ function Settings() {
   }
 
   const handleUpdateOutboxWarranty = async () => {
-    if (!window.confirm('کیا آپ تمام پینڈنگ واٹس ایپ آؤٹ باکس میسجز میں اپنی تبدیل شدہ وارنٹی شرائط لاگو کرنا چاہتے ہیں؟\n\nAre you sure you want to update all pending outbox messages with your modified warranty terms?')) {
+    if (!await confirmDialog('کیا آپ تمام پینڈنگ واٹس ایپ آؤٹ باکس میسجز میں اپنی تبدیل شدہ وارنٹی شرائط لاگو کرنا چاہتے ہیں؟\n\nAre you sure you want to update all pending outbox messages with your modified warranty terms?')) {
       return
     }
     setUpdatingOutbox(true)
@@ -596,7 +597,7 @@ function Settings() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-400">
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-500">
         <div className="w-9 h-9 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
         <p className="text-sm font-medium">Loading store settings...</p>
       </div>
@@ -616,11 +617,11 @@ function Settings() {
               <h1 className="text-lg sm:text-xl font-black text-gray-900 dark:text-white tracking-tight">
                 Store Settings
               </h1>
-              <span className="px-2 py-0.5 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 text-[10px] font-bold uppercase rounded-md tracking-wider">
+              <span className="px-2 py-0.5 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 text-xs font-bold uppercase rounded-md tracking-wider">
                 Shop ID: #{user?.shop_id}
               </span>
               {planInfo && (
-                <span className="px-2 py-0.5 bg-blue-100/80 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 text-[10px] font-extrabold rounded-md uppercase">
+                <span className="px-2 py-0.5 bg-blue-100/80 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 text-xs font-extrabold rounded-md uppercase">
                   {planInfo.plan_name} Tier
                 </span>
               )}
@@ -639,7 +640,7 @@ function Settings() {
         >
           <Save size={16} className={saving ? 'animate-spin' : ''} />
           <span>{saving ? 'Saving...' : 'Save Settings'}</span>
-          <span className="hidden sm:inline-block text-[10px] bg-blue-700/60 px-1.5 py-0.5 rounded font-mono text-blue-100">Ctrl+S</span>
+          <span className="hidden sm:inline-block text-xs bg-blue-700/60 px-1.5 py-0.5 rounded font-mono text-blue-100">Ctrl+S</span>
         </button>
       </div>
 
@@ -661,7 +662,7 @@ function Settings() {
               <Icon size={14} className={isActive ? 'text-white' : 'text-blue-500'} />
               <span>{sec.label}</span>
               {sec.badge && (
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                <span className={`text-xs px-1.5 py-0.2 rounded-full font-mono ${
                   isActive ? 'bg-blue-700 text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-600'
                 }`}>
                   {sec.badge}
@@ -677,7 +678,7 @@ function Settings() {
         {/* Desktop Sticky Side Navigation */}
         <aside className="hidden md:block w-64 shrink-0 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-2.5 shadow-xs sticky top-3 space-y-1">
           <div className="px-3 py-2">
-            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 dark:text-slate-500">
+            <span className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-slate-500">
               Settings Menu
             </span>
           </div>
@@ -705,12 +706,12 @@ function Settings() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-bold leading-tight truncate">{sec.label}</p>
-                    <p className="text-[10px] text-gray-400 dark:text-slate-400 truncate mt-0.5">{sec.desc}</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 truncate mt-0.5">{sec.desc}</p>
                   </div>
                 </div>
 
                 {sec.badge && (
-                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                  <span className={`text-xs font-mono px-2 py-0.5 rounded-full font-bold shrink-0 ${
                     isActive
                       ? 'bg-blue-200/80 dark:bg-blue-800 text-blue-900 dark:text-blue-100'
                       : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300'
@@ -723,7 +724,7 @@ function Settings() {
           })}
 
           <div className="pt-3 mt-2 border-t border-gray-100 dark:border-slate-700 px-3 pb-1">
-            <div className="flex items-center justify-between text-[11px] text-gray-400 dark:text-slate-500">
+            <div className="flex items-center justify-between text-xs text-gray-500 dark:text-slate-500">
               <span>Status:</span>
               <span className="font-semibold text-emerald-600 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -757,16 +758,16 @@ function Settings() {
                     {logoUrl ? (
                       <img src={logoUrl} alt="Store Logo" className="w-full h-full object-contain p-1" />
                     ) : (
-                      <div className="text-center text-gray-400">
+                      <div className="text-center text-gray-500">
                         <Upload size={22} className="mx-auto mb-1 opacity-60" />
-                        <span className="text-[9px] font-bold uppercase tracking-wider block">No Logo</span>
+                        <span className="text-xs font-bold uppercase tracking-wider block">No Logo</span>
                       </div>
                     )}
                   </div>
 
                   <div className="space-y-1.5 text-center sm:text-left flex-1">
                     <p className="text-xs font-bold text-gray-800 dark:text-gray-200">Shop Logo (Receipts & Invoices)</p>
-                    <p className="text-[11px] text-gray-500 dark:text-slate-400 leading-snug">
+                    <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
                       PNG, JPG or WebP. Automatically compressed for thermal receipt printers and PDF exports.
                     </p>
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
@@ -779,7 +780,7 @@ function Settings() {
                         <button
                           type="button"
                           onClick={async () => {
-                            if (!window.confirm('Remove shop logo?')) return
+                            if (!await confirmDialog('Remove the shop logo?', { confirmLabel: 'Remove logo', danger: true })) return
                             const sid = Number(user.shop_id)
                             setLogoUrl('')
                             localStorage.removeItem(`shop_logo_${sid}`)
@@ -805,7 +806,7 @@ function Settings() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                       Shop / Business Name <span className="text-red-500">*</span>
                     </label>
-                    <input
+                    <input aria-label=" Shop / Business Name "
                       type="text"
                       required
                       value={form.name}
@@ -819,7 +820,7 @@ function Settings() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                       Contact Phone / WhatsApp
                     </label>
-                    <input
+                    <input aria-label=" Contact Phone / WhatsApp "
                       type="text"
                       value={form.phone}
                       onChange={e => setForm({ ...form, phone: e.target.value })}
@@ -832,7 +833,7 @@ function Settings() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                       Business Address / Shop Location
                     </label>
-                    <input
+                    <input aria-label=" Business Address / Shop Location "
                       type="text"
                       value={form.address}
                       onChange={e => setForm({ ...form, address: e.target.value })}
@@ -845,7 +846,7 @@ function Settings() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                       Invoice Number Prefix
                     </label>
-                    <input
+                    <input aria-label=" Invoice Number Prefix "
                       type="text"
                       value={form.invoice_prefix}
                       onChange={e => setForm({ ...form, invoice_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9\-]/g, '').slice(0, 8) })}
@@ -853,7 +854,7 @@ function Settings() {
                       placeholder="e.g. INV or STAR"
                       maxLength={8}
                     />
-                    <p className="text-[10px] text-gray-400 mt-1">
+                    <p className="text-xs text-gray-500 mt-1">
                       Preview: <span className="font-mono font-bold text-blue-600">{form.invoice_prefix || 'INV'}-00001234</span>
                     </p>
                   </div>
@@ -862,7 +863,7 @@ function Settings() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                       Tax / NTN / STRN No. (Optional)
                     </label>
-                    <input
+                    <input aria-label=" Tax / NTN / STRN No. (Optional) "
                       type="text"
                       value={form.tax_number}
                       onChange={e => setForm({ ...form, tax_number: e.target.value })}
@@ -875,7 +876,7 @@ function Settings() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                       Invoice Closing / Footer Note (Urdu/Eng)
                     </label>
-                    <input
+                    <input aria-label=" Invoice Closing / Footer Note (Urdu/Eng) "
                       type="text"
                       value={form.invoice_footer}
                       onChange={e => setForm({ ...form, invoice_footer: e.target.value })}
@@ -891,7 +892,7 @@ function Settings() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                       Secondary / Catalog Price Mode
                     </label>
-                    <select
+                    <select aria-label=" Secondary / Catalog Price Mode "
                       value={form.pricing_mode}
                       onChange={e => setForm({ ...form, pricing_mode: e.target.value })}
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
@@ -908,7 +909,7 @@ function Settings() {
                       <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                         Custom Price Label Name
                       </label>
-                      <input
+                      <input aria-label=" Custom Price Label Name "
                         type="text"
                         value={form.custom_price_label}
                         onChange={e => setForm({ ...form, custom_price_label: e.target.value })}
@@ -931,7 +932,7 @@ function Settings() {
                           <h3 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">
                             Batch-Based FIFO Inventory Costing (Lots)
                           </h3>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
                             form.batch_costing_enabled 
                               ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' 
                               : 'bg-gray-100 dark:bg-slate-800 text-gray-500 border border-gray-200 dark:border-slate-700'
@@ -939,7 +940,7 @@ function Settings() {
                             {form.batch_costing_enabled ? 'Active (FIFO)' : 'Disabled (Legacy)'}
                           </span>
                         </div>
-                        <p className="text-[11px] text-gray-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                        <p className="text-xs text-gray-600 dark:text-slate-400 mt-0.5 leading-relaxed">
                           Enables lot-based First-In First-Out costing for non-serialized accessories. Each purchase creates a distinct lot, and sales consume oldest lots first for exact profit and inventory valuation.
                         </p>
                       </div>
@@ -957,7 +958,7 @@ function Settings() {
                   </div>
 
                   {form.batch_costing_enabled && (
-                    <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-800/40 flex flex-wrap items-center justify-between text-[11px] text-emerald-800 dark:text-emerald-300">
+                    <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-800/40 flex flex-wrap items-center justify-between text-xs text-emerald-800 dark:text-emerald-300">
                       <span>Costing Strategy: <strong>First-In First-Out (FIFO)</strong></span>
                       <span className="text-gray-500 dark:text-slate-400">Products can be converted individually from the Products screen</span>
                     </div>
@@ -1003,15 +1004,15 @@ function Settings() {
                       <label className="block text-sm font-bold text-gray-800 dark:text-gray-100">
                         🧾 New Bill / Sale Template (انوائس بل میسج)
                       </label>
-                      <p className="text-[11px] text-gray-500 dark:text-slate-400">
+                      <p className="text-xs text-gray-500 dark:text-slate-400">
                         پی او ایس پر فروخت مکمل ہوتے ہی یہ پیغام واٹس ایپ آؤٹ باکس میں خودکار طور پر تیار ہوتا ہے۔
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => {
-                          if (window.confirm('کیا آپ تجویز کردہ پروفیشنل انوائس اور وارنٹی لوڈ کرنا چاہتے ہیں؟')) {
+                        onClick={async () => {
+                          if (await confirmDialog('کیا آپ تجویز کردہ پروفیشنل انوائس اور وارنٹی لوڈ کرنا چاہتے ہیں؟')) {
                             setForm(prev => ({ ...prev, wa_bill_template: DEFAULT_PROFESSIONAL_INVOICE_TEMPLATE }))
                           }
                         }}
@@ -1045,7 +1046,7 @@ function Settings() {
                     </div>
                   </div>
 
-                  <textarea
+                  <textarea aria-label="السلام علیکم Name Shop Name سے خریداری کا شکریہ"
                     dir="auto"
                     value={form.wa_bill_template}
                     onChange={e => setForm({ ...form, wa_bill_template: e.target.value })}
@@ -1055,7 +1056,7 @@ function Settings() {
 
                   {/* Tag Inserters */}
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mr-1">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 mr-1">
                       ٹیگز شامل کریں (Insert Tags):
                     </span>
                     {[
@@ -1082,7 +1083,7 @@ function Settings() {
                             wa_bill_template: (prev.wa_bill_template || '') + ' ' + tag
                           }))
                         }}
-                        className="px-2 py-0.5 text-[10px] font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-emerald-400 text-gray-700 dark:text-gray-300 rounded cursor-pointer transition shadow-xs"
+                        className="px-2 py-0.5 text-xs font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-emerald-400 text-gray-700 dark:text-gray-300 rounded cursor-pointer transition shadow-xs"
                         title={desc}
                       >
                         {tag}
@@ -1097,19 +1098,19 @@ function Settings() {
                         <label className="block text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
                           <span>🛡️ موبائل وارنٹی شرائط تبدیل کریں (Modify Warranty Terms)</span>
                         </label>
-                        <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                        <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
                           یہاں سے آپ اپنی شاپ کی وارنٹی شرائط میں جو چاہیں ترمیم، تبدیلی یا نیا نکتہ شامل کر سکتے ہیں۔
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm('کیا آپ وارنٹی شرائط کو ڈیفالٹ پر ری سیٹ کرنا چاہتے ہیں؟')) {
+                          onClick={async () => {
+                            if (await confirmDialog('کیا آپ وارنٹی شرائط کو ڈیفالٹ پر ری سیٹ کرنا چاہتے ہیں؟')) {
                               setForm(prev => ({ ...prev, warranty_terms: DEFAULT_WARRANTY_TERMS_URDU }))
                             }
                           }}
-                          className="px-2 py-1 text-[11px] font-semibold rounded-lg bg-amber-200/70 hover:bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 transition cursor-pointer"
+                          className="px-2 py-1 text-xs font-semibold rounded-lg bg-amber-200/70 hover:bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 transition cursor-pointer"
                           title="Reset to default 3 warranty points"
                         >
                           ✨ ڈیفالٹ شرائط
@@ -1117,7 +1118,7 @@ function Settings() {
                         <button
                           type="button"
                           onClick={handleApplyWarrantyToTemplate}
-                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition flex items-center gap-1 cursor-pointer shadow-xs"
+                          className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition flex items-center gap-1 cursor-pointer shadow-xs"
                           title="Sync these warranty terms directly into the bill template above"
                         >
                           📝 انوائس میسج میں لاگو کریں
@@ -1125,7 +1126,7 @@ function Settings() {
                       </div>
                     </div>
 
-                    <textarea
+                    <textarea aria-label="وارنٹی شرائط درج کریں (e.g. ۱ LCD کی وارنٹی نہیں ہوگی...)"
                       dir="auto"
                       rows={4}
                       value={form.warranty_terms}
@@ -1134,9 +1135,9 @@ function Settings() {
                       placeholder="وارنٹی شرائط درج کریں (e.g. ۱۔ LCD کی وارنٹی نہیں ہوگی...)"
                     />
 
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-amber-800 dark:text-amber-300">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-amber-800 dark:text-amber-300">
                       <span>💡 جو وارنٹی شرائط آپ یہاں لکھیں گے، وہ بل ٹیمپلیٹ، پی او ایس بلز اور آؤٹ باکس میں استعمال ہوں گی۔</span>
-                      <span className="font-mono text-[10px] opacity-75 self-end sm:self-auto">{form.warranty_terms?.length || 0} characters</span>
+                      <span className="font-mono text-xs opacity-75 self-end sm:self-auto">{form.warranty_terms?.length || 0} characters</span>
                     </div>
                   </div>
                 </div>
@@ -1157,8 +1158,8 @@ function Settings() {
                     <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => {
-                          if (window.confirm('کیا آپ فون ایکسچینج کی تجویز کردہ ڈیفالٹ رسید لوڈ کرنا چاہتے ہیں؟')) {
+                        onClick={async () => {
+                          if (await confirmDialog('کیا آپ فون ایکسچینج کی تجویز کردہ ڈیفالٹ رسید لوڈ کرنا چاہتے ہیں؟')) {
                             setForm(prev => ({ ...prev, wa_exchange_template: DEFAULT_EXCHANGE_WHATSAPP_TEMPLATE }))
                           }
                         }}
@@ -1183,7 +1184,7 @@ function Settings() {
                     </div>
                   </div>
 
-                  <textarea
+                  <textarea aria-label="Phone Exchange Bill Template"
                     dir="auto"
                     rows={8}
                     value={form.wa_exchange_template}
@@ -1194,7 +1195,7 @@ function Settings() {
 
                   {/* Tag Inserters */}
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mr-1">
+                    <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 mr-1">
                       ٹیگز شامل کریں (Insert Tags):
                     </span>
                     {[
@@ -1224,7 +1225,7 @@ function Settings() {
                             wa_exchange_template: (prev.wa_exchange_template || '') + ' ' + tag
                           }))
                         }}
-                        className="px-2 py-0.5 text-[10px] font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-purple-400 text-gray-700 dark:text-gray-300 rounded cursor-pointer transition shadow-xs"
+                        className="px-2 py-0.5 text-xs font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 hover:border-purple-400 text-gray-700 dark:text-gray-300 rounded cursor-pointer transition shadow-xs"
                         title={desc}
                       >
                         {tag}
@@ -1232,9 +1233,9 @@ function Settings() {
                     ))}
                   </div>
 
-                  <div className="flex justify-between items-center text-[11px] text-purple-800 dark:text-purple-300 pt-1">
+                  <div className="flex justify-between items-center text-xs text-purple-800 dark:text-purple-300 pt-1">
                     <span>💡 ایکسچینج ٹرانزیکشن پر کسٹمر کو یہ فارمیٹ واٹس ایپ پر اور آؤٹ باکس میں بھیجا جائے گا۔</span>
-                    <span className="font-mono text-[10px] opacity-75">{form.wa_exchange_template?.length || 0} characters</span>
+                    <span className="font-mono text-xs opacity-75">{form.wa_exchange_template?.length || 0} characters</span>
                   </div>
                 </div>
 
@@ -1243,7 +1244,7 @@ function Settings() {
                   <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">
                     💬 Customer Debt Reminder Template (کھاتہ بقایا جات یاد دہانی)
                   </label>
-                  <textarea
+                  <textarea aria-label=" Customer Debt Reminder Template (کھاتہ بقایا جات یاد دہانی)"
                     dir="auto"
                     rows={3}
                     value={form.wa_reminder_template}
@@ -1251,8 +1252,8 @@ function Settings() {
                     className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="Hello [Name], your outstanding balance is Rs. [Amount]..."
                   />
-                  <p className="text-[11px] text-gray-400">
-                    Customer Ledger se 1-click WhatsApp reminder bhejte waqt yeh template load hota hai.
+                  <p className="text-xs text-gray-500">
+                    Used when you send a one-tap WhatsApp reminder from the customer ledger.
                   </p>
                 </div>
 
@@ -1287,7 +1288,7 @@ function Settings() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                       Receipt Paper Format Size
                     </label>
-                    <select
+                    <select aria-label=" Receipt Paper Format Size "
                       value={form.print_size}
                       onChange={e => setForm({ ...form, print_size: e.target.value })}
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
@@ -1302,7 +1303,7 @@ function Settings() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                       Print Dispatch Flow
                     </label>
-                    <select
+                    <select aria-label=" Print Dispatch Flow "
                       value={form.print_mode}
                       onChange={e => setForm({ ...form, print_mode: e.target.value })}
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
@@ -1318,7 +1319,7 @@ function Settings() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">Receipt Design Layout Style</h3>
-                      <p className="text-xs text-gray-400">Choose how printed customer invoices look.</p>
+                      <p className="text-xs text-gray-500">Choose how printed customer invoices look.</p>
                     </div>
                   </div>
 
@@ -1342,10 +1343,10 @@ function Settings() {
                           <div className="font-bold text-sm text-gray-800 dark:text-gray-100 flex items-center gap-1.5">
                             <span>{t.name}</span>
                             {printTemplate === t.id && (
-                              <span className="text-[9px] font-black bg-blue-600 text-white px-1.5 py-0.2 rounded-full uppercase">Active</span>
+                              <span className="text-xs font-black bg-blue-600 text-white px-1.5 py-0.2 rounded-full uppercase">Active</span>
                             )}
                           </div>
-                          <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1 leading-snug mb-3">{t.desc}</p>
+                          <p className="text-xs text-gray-500 dark:text-slate-400 mt-1 leading-snug mb-3">{t.desc}</p>
                         </div>
                         
                         <div className="flex gap-1.5 mt-auto pt-2 border-t border-gray-100 dark:border-slate-700">
@@ -1414,7 +1415,7 @@ function Settings() {
                     </div>
                     <div>
                       <h2 className="font-bold text-gray-800 dark:text-white text-base">Business Bank Accounts & Balances</h2>
-                      <p className="text-xs text-gray-400 dark:text-slate-400 mt-0.5">
+                      <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
                         Manage shop settlement accounts, bank balances, and automatic purchase deductions.
                       </p>
                     </div>
@@ -1429,12 +1430,12 @@ function Settings() {
                 </div>
 
                 {loadingBanks ? (
-                  <div className="text-center py-8 text-gray-400 text-xs">Loading bank accounts...</div>
+                  <div className="text-center py-8 text-gray-500 text-xs">Loading bank accounts...</div>
                 ) : bankAccounts.length === 0 ? (
                   <div className="text-center py-10 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl p-6">
                     <Landmark className="w-10 h-10 text-gray-300 dark:text-slate-600 mx-auto mb-2" />
                     <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">No bank accounts added yet</p>
-                    <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
+                    <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
                       Add your physical Cash Drawer or commercial bank accounts to track payments accurately.
                     </p>
                     <button
@@ -1470,12 +1471,12 @@ function Settings() {
                               </div>
                               <div className="flex items-center gap-1 shrink-0">
                                 {isCashInHand && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
                                     💵 Cash
                                   </span>
                                 )}
                                 {acc.is_default && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
+                                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
                                     Default
                                   </span>
                                 )}
@@ -1490,7 +1491,7 @@ function Settings() {
                           </div>
 
                           <div className="pt-2 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase text-gray-400">Balance:</span>
+                            <span className="text-xs font-bold uppercase text-gray-500">Balance:</span>
                             <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono">
                               Rs. {Number(acc.current_balance || 0).toLocaleString()}
                             </span>
@@ -1559,10 +1560,10 @@ function Settings() {
                               </span>
                               {isSelected && <span className="text-xs text-blue-600 dark:text-blue-400 font-black">✓ Active</span>}
                             </div>
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">{theme.description}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 leading-snug">{theme.description}</p>
                           </div>
                           <div className="mt-3 flex items-center justify-between pt-2 border-t border-gray-100 dark:border-slate-800">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{theme.category}</span>
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{theme.category}</span>
                             <span
                               className="w-3.5 h-3.5 rounded-full border border-white shadow-xs"
                               style={{ backgroundColor: theme.accentColor }}
@@ -1601,7 +1602,7 @@ function Settings() {
                             <span className="text-xs text-blue-600 dark:text-blue-400 font-black">✓ Active</span>
                           )}
                         </div>
-                        <p className="text-[11px] text-gray-500 dark:text-slate-400 leading-snug">
+                        <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
                           Maximum cart item visibility (~15 items). "Charge (F4)" opens full tender sheet with note chips and digital wallets.
                         </p>
                       </div>
@@ -1622,7 +1623,7 @@ function Settings() {
                             <span className="text-xs text-blue-600 dark:text-blue-400 font-black">✓ Active</span>
                           )}
                         </div>
-                        <p className="text-[11px] text-gray-500 dark:text-slate-400 leading-snug">
+                        <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
                           Supermarket style: quick cash notes and tender controls span horizontally across screen bottom.
                         </p>
                       </div>
@@ -1643,7 +1644,7 @@ function Settings() {
                             <span className="text-xs text-blue-600 dark:text-blue-400 font-black">✓ Active</span>
                           )}
                         </div>
-                        <p className="text-[11px] text-gray-500 dark:text-slate-400 leading-snug">
+                        <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
                           All-in-one sidebar: all quick cash chips and payment inputs stay inside right sidebar beneath cart.
                         </p>
                       </div>
@@ -1707,7 +1708,7 @@ function Settings() {
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!confirm(`Retry ${syncDeadLetters.length} failed changes for this shop?`)) return
+                          if (!await confirmDialog(`Retry ${syncDeadLetters.length} failed changes for this shop?`)) return
                           for (const entry of syncDeadLetters) {
                             await db.sync_queue.add({ table: entry.table, action: entry.action, data: entry.data, timestamp: new Date().toISOString(), retry_count: 0 })
                             await db.sync_dead_letter.delete(entry.id)
@@ -1727,7 +1728,7 @@ function Settings() {
                 <div className="p-4 bg-gray-50 dark:bg-slate-900/60 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div>
                     <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">Offline Cache & Storage</h3>
-                    <p className="text-[11px] text-gray-400">Sync all store data to browser storage or clear cached records.</p>
+                    <p className="text-xs text-gray-500">Sync all store data to browser storage or clear cached records.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {hasFeature('offline_sync') && (
@@ -1735,7 +1736,7 @@ function Settings() {
                         type="button"
                         onClick={async () => {
                           if (!navigator.onLine) {
-                            notify('Aap abhi offline hain! Pehle internet se connect karein.')
+                            notify('You are offline. Connect to the internet first.')
                             return
                           }
                           setSaving(true)
@@ -1768,7 +1769,7 @@ function Settings() {
                             await safePut('expenses', ex.data)
                             await safePut('users', us.data)
 
-                            notify('Sari online data successfully local device mein save ho gayi hai! ✅')
+                            notify('All online data is now saved on this device.', 'success')
                           } catch (e) {
                             notify('Sync failed: ' + e.message)
                           } finally {
@@ -1799,7 +1800,7 @@ function Settings() {
                     <button
                       type="button"
                       onClick={async () => {
-                        if (confirm('Local cache clear krne se data re-fetch hoga. Continue?')) {
+                        if (await confirmDialog('Clear the data saved on this device?\nIt is downloaded again from the cloud. Changes waiting to sync are kept.', { confirmLabel: 'Clear saved data' })) {
                           await db.products.clear()
                           await db.categories.clear()
                           await db.customers.clear()
@@ -1810,7 +1811,7 @@ function Settings() {
                           await db.purchase_items.clear()
                           await db.expenses.clear()
                           await db.users.clear()
-                          notify('All local cache cleared! Page refresh karein.')
+                          notify('Saved data cleared. Refresh the page.', 'success')
                         }
                       }}
                       className="px-3 py-1.5 border border-gray-200 hover:bg-gray-100 text-gray-700 dark:text-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
@@ -1826,7 +1827,7 @@ function Settings() {
                     <div className="p-4 bg-green-50/50 dark:bg-green-950/20 rounded-2xl border border-green-100 dark:border-green-900/40 flex flex-col justify-between gap-3">
                       <div>
                         <p className="font-bold text-green-800 dark:text-green-300 text-sm">Full System Backup</p>
-                        <p className="text-[11px] text-green-600 dark:text-green-400 mt-0.5">Save a complete JSON snapshot of all products, customers, suppliers and ledger accounts.</p>
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">Save a complete JSON snapshot of all products, customers, suppliers and ledger accounts.</p>
                       </div>
                       <div className="flex flex-col gap-2">
                         <button
@@ -1858,7 +1859,7 @@ function Settings() {
                               a.click()
                               document.body.removeChild(a)
                               URL.revokeObjectURL(url)
-                              notify('Full backup downloaded! 💾 Is file ko safe rakhein.')
+                              notify('Backup downloaded. Keep this file somewhere safe.', 'success')
                             } catch (err) {
                               notify('Backup failed: ' + err.message)
                             }
@@ -1909,7 +1910,7 @@ function Settings() {
                     <div className="p-4 bg-gray-50 dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col justify-between gap-3 opacity-60">
                       <div>
                         <p className="font-bold text-gray-600 dark:text-gray-300 text-sm">Export All Data 🔒</p>
-                        <p className="text-[11px] text-gray-400 mt-0.5">Upgrade your subscription plan to enable automatic backups and Excel report export.</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Upgrade your subscription plan to enable automatic backups and Excel report export.</p>
                       </div>
                     </div>
                   )}
@@ -1918,7 +1919,7 @@ function Settings() {
                   <div className="p-4 bg-blue-50/50 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 flex flex-col justify-between gap-3">
                     <div>
                       <p className="font-bold text-blue-800 dark:text-blue-300 text-sm">Import / Restore Data</p>
-                      <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">Restore your database from an existing .json backup file.</p>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">Restore your database from an existing .json backup file.</p>
                     </div>
                     <div>
                       <input
@@ -1929,7 +1930,7 @@ function Settings() {
                         onChange={async (e) => {
                           const file = e.target.files[0]
                           if (!file) return
-                          if (!confirm('Warning: Is se apka mojooda local data replace ho jayega. Continue?')) return
+                          if (!await confirmDialog('Restore this backup?\nThe data saved on this device now is replaced by the backup.', { confirmLabel: 'Restore backup', danger: true })) return
                           const reader = new FileReader()
                           reader.onload = async (event) => {
                             try {
@@ -1964,7 +1965,7 @@ function Settings() {
                                   if (data.expenses?.length) await db.expenses.bulkAdd(data.expenses)
                                   if (data.users?.length) await db.users.bulkAdd(data.users)
                                 })
-                              alert('Data restored successfully! ✅ Page refresh ho raha hai.')
+                              alert('Backup restored. The page will now refresh.')
                               window.location.reload()
                             } catch (err) {
                               notify('Import failed: ' + err.message)
@@ -2025,15 +2026,15 @@ function Settings() {
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                       <div>
-                        <span className="text-[10px] text-gray-500 block uppercase">Product Limit:</span>
+                        <span className="text-xs text-gray-500 block uppercase">Product Limit:</span>
                         <span className="font-bold text-gray-800 dark:text-gray-200">{planInfo.product_limit} items</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-gray-500 block uppercase">Users Limit:</span>
+                        <span className="text-xs text-gray-500 block uppercase">Users Limit:</span>
                         <span className="font-bold text-gray-800 dark:text-gray-200">{planInfo.user_limit} accounts</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-gray-500 block uppercase">Next Renewal:</span>
+                        <span className="text-xs text-gray-500 block uppercase">Next Renewal:</span>
                         <span className="font-bold text-gray-800 dark:text-gray-200 font-mono">
                           {planInfo.next_billing_date ? new Date(planInfo.next_billing_date).toLocaleDateString('en-PK') : 'N/A'}
                         </span>
@@ -2050,13 +2051,13 @@ function Settings() {
                     </div>
                     <div>
                       <h3 className="font-bold text-red-800 dark:text-red-200 text-sm">Danger Zone</h3>
-                      <p className="text-[11px] text-red-600 dark:text-red-400">Irreversible actions — proceed with extreme caution</p>
+                      <p className="text-xs text-red-600 dark:text-red-400">Irreversible actions — proceed with extreme caution</p>
                     </div>
                   </div>
                   <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-red-100 dark:border-red-900/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div>
                       <p className="font-bold text-gray-800 dark:text-gray-100 text-xs sm:text-sm">🗑️ Clear All Shop Data</p>
-                      <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">
+                      <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
                         Permanently delete ALL products, sales, customers, suppliers and ledger entries for this shop.
                       </p>
                     </div>
@@ -2125,19 +2126,19 @@ function Settings() {
 
       {/* Billing Template Quick View Modal */}
       {previewTemplateId && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
             <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
               <div>
                 <h3 className="font-extrabold text-lg flex items-center gap-2">
                   <span>✨</span> Quick View Template Preview
                 </h3>
-                <p className="text-xs text-slate-400">See exactly how your customer receipt will print.</p>
+                <p className="text-xs text-slate-500">See exactly how your customer receipt will print.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setPreviewTemplateId(null)}
-                className="text-slate-400 hover:text-white transition text-xl p-1 font-bold cursor-pointer"
+                className="text-slate-500 hover:text-white transition text-xl p-1 font-bold cursor-pointer"
               >
                 ✕
               </button>
@@ -2147,7 +2148,7 @@ function Settings() {
               <div className="w-full md:w-80 bg-slate-50 border-r border-slate-100 p-6 flex flex-col justify-between overflow-y-auto">
                 <div className="space-y-6">
                   <div>
-                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block mb-2">Select Format Size</span>
+                    <span className="text-xs uppercase font-black tracking-wider text-slate-500 block mb-2">Select Format Size</span>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -2173,12 +2174,12 @@ function Settings() {
                   <div className="bg-white rounded-xl border border-slate-200/60 p-4 shadow-xs">
                     <h4 className="font-extrabold text-slate-800 text-sm mb-2">Template Specs</h4>
                     <ul className="text-xs text-slate-500 space-y-2">
-                      <li className="flex justify-between"><span className="text-slate-400">Option:</span> <span className="font-semibold text-slate-700">{previewTemplateId === '1' ? 'Simple' : previewTemplateId === '2' ? 'Classic' : previewTemplateId === '3' ? 'Professional' : 'Modern'}</span></li>
-                      <li className="flex justify-between"><span className="text-slate-400">Paper Width:</span> <span className="font-semibold text-slate-700">{previewSize === 'thermal' ? '80mm (Thermal)' : '210mm (A4)'}</span></li>
+                      <li className="flex justify-between"><span className="text-slate-500">Option:</span> <span className="font-semibold text-slate-700">{previewTemplateId === '1' ? 'Simple' : previewTemplateId === '2' ? 'Classic' : previewTemplateId === '3' ? 'Professional' : 'Modern'}</span></li>
+                      <li className="flex justify-between"><span className="text-slate-500">Paper Width:</span> <span className="font-semibold text-slate-700">{previewSize === 'thermal' ? '80mm (Thermal)' : '210mm (A4)'}</span></li>
                     </ul>
                   </div>
 
-                  <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100/50 text-[11px] text-blue-700 leading-relaxed">
+                  <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100/50 text-xs text-blue-700 leading-relaxed">
                     💡 <strong>Tip:</strong> The printed layout adjusts dynamically according to your printer paper size.
                   </div>
                 </div>

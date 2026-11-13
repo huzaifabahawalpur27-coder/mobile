@@ -146,7 +146,7 @@ export default function ExtendSubscriptionModal({ shop, onClose, onSuccess }) {
   const waLink = generateWhatsAppLink()
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden my-8">
         {/* Header */}
         <div className="px-6 py-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white flex items-center justify-between">
@@ -157,7 +157,7 @@ export default function ExtendSubscriptionModal({ shop, onClose, onSuccess }) {
             <div>
               <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
                 <span>Extend Subscription</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
                   Shop #{shop.id}
                 </span>
               </h2>
@@ -184,17 +184,17 @@ export default function ExtendSubscriptionModal({ shop, onClose, onSuccess }) {
           </div>
           <div>
             {currentDaysLeft === null ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-600">No Date</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-600">No Date</span>
             ) : currentDaysLeft > 5 ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
                 Active ({currentDaysLeft}d left)
               </span>
             ) : currentDaysLeft >= 0 ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
                 Expiring soon ({currentDaysLeft}d left)
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
                 Expired ({Math.abs(currentDaysLeft)}d ago)
               </span>
             )}
@@ -279,7 +279,7 @@ export default function ExtendSubscriptionModal({ shop, onClose, onSuccess }) {
                 <span>Or Select Exact Expiry Date</span>
               </span>
               {daysAdded > 0 && (
-                <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
                   +{daysAdded} days extension
                 </span>
               )}
@@ -292,7 +292,7 @@ export default function ExtendSubscriptionModal({ shop, onClose, onSuccess }) {
               onChange={(e) => setSelectedDate(e.target.value)}
               className="w-full p-3 bg-white border border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm font-bold text-slate-800 shadow-sm"
             />
-            <p className="text-[11px] text-slate-400 mt-1.5">
+            <p className="text-xs text-slate-500 mt-1.5">
               New expiry will be set to:{' '}
               <span className="font-bold text-slate-700">
                 {selectedDate ? new Date(selectedDate).toLocaleDateString('en-PK', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) : '---'}
@@ -311,7 +311,7 @@ export default function ExtendSubscriptionModal({ shop, onClose, onSuccess }) {
             />
             <label htmlFor="reactivateCheck" className="text-xs text-slate-700 font-medium cursor-pointer select-none">
               <span className="font-bold text-slate-800">Immediately Reactivate Shop</span>
-              <p className="text-[11px] text-slate-500">Clears any suspension lock and restores full POS counter access.</p>
+              <p className="text-xs text-slate-500">Clears any suspension lock and restores full POS counter access.</p>
             </label>
           </div>
 
@@ -320,7 +320,7 @@ export default function ExtendSubscriptionModal({ shop, onClose, onSuccess }) {
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
               Reason / Admin Memo (Audit Trail)
             </label>
-            <input
+            <input aria-label=" Reason / Admin Memo (Audit Trail) "
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}

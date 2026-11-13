@@ -329,7 +329,7 @@ function WhatsAppMessaging() {
               <h1 className="text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
                 WhatsApp Customer Messaging
               </h1>
-              <p className="text-xs text-[#86868b] dark:text-[#98989d] mt-0.5">
+              <p className="text-xs text-[#6e6e73] dark:text-[#98989d] mt-0.5">
                 Send personalized broadcasts, promotional deals, and payment reminders in 1 click.
               </p>
             </div>
@@ -358,7 +358,7 @@ function WhatsAppMessaging() {
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'broadcast'
                 ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-white shadow-sm font-bold'
-                : 'text-[#86868b] dark:text-[#98989d] hover:text-[#1d1d1f]'
+                : 'text-[#6e6e73] dark:text-[#98989d] hover:text-[#1d1d1f]'
             }`}
           >
             <span>📢</span>
@@ -369,13 +369,13 @@ function WhatsAppMessaging() {
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'reminders'
                 ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-white shadow-sm font-bold'
-                : 'text-[#86868b] dark:text-[#98989d] hover:text-[#1d1d1f]'
+                : 'text-[#6e6e73] dark:text-[#98989d] hover:text-[#1d1d1f]'
             }`}
           >
             <span>💳</span>
             <span>Debt Reminders</span>
             {debtorCustomers.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[10px]">
+              <span className="ml-1 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-xs">
                 {debtorCustomers.length}
               </span>
             )}
@@ -385,7 +385,7 @@ function WhatsAppMessaging() {
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'templates'
                 ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-white shadow-sm font-bold'
-                : 'text-[#86868b] dark:text-[#98989d] hover:text-[#1d1d1f]'
+                : 'text-[#6e6e73] dark:text-[#98989d] hover:text-[#1d1d1f]'
             }`}
           >
             <span>📋</span>
@@ -406,7 +406,7 @@ function WhatsAppMessaging() {
                     <Users size={16} className="text-emerald-500" />
                     <span>Select Audience</span>
                   </h2>
-                  <p className="text-[11px] text-[#86868b] dark:text-[#98989d]">
+                  <p className="text-xs text-[#6e6e73] dark:text-[#98989d]">
                     Choose which customers should receive this message.
                   </p>
                 </div>
@@ -424,7 +424,7 @@ function WhatsAppMessaging() {
                   className={`px-3 py-1.5 rounded-xl text-xs font-medium transition ${
                     audienceFilter === 'all'
                       ? 'bg-emerald-500 text-white font-semibold'
-                      : 'bg-[#f5f5f7] dark:bg-[#2c2c2e] text-[#86868b] hover:bg-[#e5e5ea]'
+                      : 'bg-[#f5f5f7] dark:bg-[#2c2c2e] text-[#6e6e73] hover:bg-[#e5e5ea]'
                   }`}
                 >
                   All ({customers.filter(c => c.phone).length})
@@ -434,7 +434,7 @@ function WhatsAppMessaging() {
                   className={`px-3 py-1.5 rounded-xl text-xs font-medium transition flex items-center gap-1 ${
                     audienceFilter === 'phone_buyers'
                       ? 'bg-emerald-500 text-white font-semibold'
-                      : 'bg-[#f5f5f7] dark:bg-[#2c2c2e] text-[#86868b] hover:bg-[#e5e5ea]'
+                      : 'bg-[#f5f5f7] dark:bg-[#2c2c2e] text-[#6e6e73] hover:bg-[#e5e5ea]'
                   }`}
                 >
                   <Smartphone size={12} />
@@ -445,7 +445,7 @@ function WhatsAppMessaging() {
                   className={`px-3 py-1.5 rounded-xl text-xs font-medium transition flex items-center gap-1 ${
                     audienceFilter === 'debtors'
                       ? 'bg-emerald-500 text-white font-semibold'
-                      : 'bg-[#f5f5f7] dark:bg-[#2c2c2e] text-[#86868b] hover:bg-[#e5e5ea]'
+                      : 'bg-[#f5f5f7] dark:bg-[#2c2c2e] text-[#6e6e73] hover:bg-[#e5e5ea]'
                   }`}
                 >
                   <CreditCard size={12} />
@@ -456,8 +456,8 @@ function WhatsAppMessaging() {
               {/* Search & Select All row */}
               <div className="flex items-center gap-2 pt-1">
                 <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3 top-2.5 text-[#86868b]" />
-                  <input
+                  <Search size={14} className="absolute left-3 top-2.5 text-[#6e6e73]" />
+                  <input aria-label="Search customer by name or phone"
                     type="text"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
@@ -486,7 +486,7 @@ function WhatsAppMessaging() {
               {/* Customer Scroll List */}
               <div className="max-h-[460px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
                 {broadcastList.length === 0 ? (
-                  <div className="text-center py-10 text-xs text-[#86868b]">
+                  <div className="text-center py-10 text-xs text-[#6e6e73]">
                     No matching customers with phone numbers found.
                   </div>
                 ) : (
@@ -520,12 +520,12 @@ function WhatsAppMessaging() {
                             <div className="text-xs font-bold text-[#1d1d1f] dark:text-[#f5f5f7] truncate flex items-center gap-1.5">
                               <span>{customer.name}</span>
                               {isPhoneBuyer && (
-                                <span className="px-1.5 py-0.2 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded text-[9px] font-bold">
+                                <span className="px-1.5 py-0.2 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded text-xs font-bold">
                                   📱 Phone
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-[#86868b] font-mono">
+                            <div className="text-xs text-[#6e6e73] font-mono">
                               {customer.phone}
                             </div>
                           </div>
@@ -533,7 +533,7 @@ function WhatsAppMessaging() {
 
                         {hasBalance && (
                           <div className="text-right shrink-0">
-                            <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-950/40 px-2 py-0.5 rounded-full border border-red-500/20">
+                            <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-950/40 px-2 py-0.5 rounded-full border border-red-500/20">
                               Rs. {Number(customer.outstanding_balance).toLocaleString()}
                             </span>
                           </div>
@@ -554,14 +554,14 @@ function WhatsAppMessaging() {
                   <Sparkles size={16} className="text-emerald-500" />
                   <span>Compose WhatsApp Campaign</span>
                 </h2>
-                <p className="text-[11px] text-[#86868b] dark:text-[#98989d]">
+                <p className="text-xs text-[#6e6e73] dark:text-[#98989d]">
                   Choose a high-converting message preset or type your custom announcement.
                 </p>
               </div>
 
               {/* Quick Presets */}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-[#86868b] uppercase tracking-wider">
+                <label className="text-xs font-bold text-[#6e6e73] uppercase tracking-wider">
                   Quick Campaign Presets
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -585,9 +585,9 @@ function WhatsAppMessaging() {
 
               {/* Dynamic Variables Chips */}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-[#86868b] uppercase tracking-wider flex items-center justify-between">
+                <label className="text-xs font-bold text-[#6e6e73] uppercase tracking-wider flex items-center justify-between">
                   <span>Dynamic Tag Chips (Click to insert)</span>
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">Auto-replaced per customer</span>
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-normal">Auto-replaced per customer</span>
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {[
@@ -612,11 +612,11 @@ function WhatsAppMessaging() {
 
               {/* Message Input */}
               <div className="space-y-1">
-                <div className="flex items-center justify-between text-[11px] text-[#86868b]">
+                <div className="flex items-center justify-between text-xs text-[#6e6e73]">
                   <span>Message Body</span>
                   <span>{campaignMessage.length} characters</span>
                 </div>
-                <textarea
+                <textarea aria-label="Type your message here"
                   ref={textareaRef}
                   value={campaignMessage}
                   onChange={e => setCampaignMessage(e.target.value)}
@@ -628,14 +628,14 @@ function WhatsAppMessaging() {
 
               {/* Live iPhone Chat Bubble Mockup */}
               <div className="p-4 bg-[#e5ddd5]/30 dark:bg-[#1a2324]/40 rounded-2xl border border-black/[0.04] dark:border-white/[0.04] space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-[#86868b]">
+                <div className="flex items-center justify-between text-xs text-[#6e6e73]">
                   <span className="font-bold flex items-center gap-1">
                     <span>📱 Live WhatsApp Preview</span>
-                    <span className="text-[10px] text-emerald-600 font-normal">
+                    <span className="text-xs text-emerald-600 font-normal">
                       (Simulating: {previewCustomer.name})
                     </span>
                   </span>
-                  <span className="text-[10px]">WhatsApp Web / App</span>
+                  <span className="text-xs">WhatsApp Web / App</span>
                 </div>
 
                 {/* WhatsApp Chat Bubble */}
@@ -644,7 +644,7 @@ function WhatsAppMessaging() {
                     <p className="whitespace-pre-wrap">
                       {renderMessageForCustomer(previewCustomer)}
                     </p>
-                    <div className="flex items-center justify-end gap-1 text-[9px] text-[#667781] dark:text-[#8696a0] font-mono">
+                    <div className="flex items-center justify-end gap-1 text-xs text-[#667781] dark:text-[#8696a0] font-mono">
                       <span>Just now</span>
                       <span className="text-emerald-500 dark:text-emerald-400 font-bold">✓✓</span>
                     </div>
@@ -661,7 +661,7 @@ function WhatsAppMessaging() {
                   className={`w-full py-3.5 px-6 rounded-2xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-lg ${
                     selectedCustomerIds.size > 0
                       ? 'bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-emerald-500/25 cursor-pointer'
-                      : 'bg-[#e5e5ea] dark:bg-[#2c2c2e] text-[#86868b] cursor-not-allowed shadow-none'
+                      : 'bg-[#e5e5ea] dark:bg-[#2c2c2e] text-[#6e6e73] cursor-not-allowed shadow-none'
                   }`}
                 >
                   <Send size={16} />
@@ -670,7 +670,7 @@ function WhatsAppMessaging() {
                   </span>
                   <ArrowRight size={16} />
                 </button>
-                <p className="text-[10px] text-center text-[#86868b] mt-2">
+                <p className="text-xs text-center text-[#6e6e73] mt-2">
                   Opens WhatsApp Web or Desktop with each message pre-loaded. 100% official, zero ban risk.
                 </p>
               </div>
@@ -689,7 +689,7 @@ function WhatsAppMessaging() {
                 Rs
               </div>
               <div>
-                <p className="text-xs font-bold text-[#86868b] uppercase tracking-wider">
+                <p className="text-xs font-bold text-[#6e6e73] uppercase tracking-wider">
                   Total Outstanding Customer Balance
                 </p>
                 <h3 className="text-2xl font-black text-red-600 dark:text-red-400 tracking-tight">
@@ -709,8 +709,8 @@ function WhatsAppMessaging() {
           <div className="bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] rounded-[24px] overflow-hidden shadow-sm">
             <div className="p-4 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-4">
               <div className="relative flex-1 max-w-md">
-                <Search size={14} className="absolute left-3 top-3 text-[#86868b]" />
-                <input
+                <Search size={14} className="absolute left-3 top-3 text-[#6e6e73]" />
+                <input aria-label="Search debtor by name or phone"
                   type="text"
                   value={reminderSearch}
                   onChange={e => setReminderSearch(e.target.value)}
@@ -723,7 +723,7 @@ function WhatsAppMessaging() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-[#f5f5f7]/60 dark:bg-[#2c2c2e]/40 text-[#86868b] text-[10px] font-bold uppercase tracking-wider border-b border-black/[0.04] dark:border-white/[0.04]">
+                  <tr className="bg-[#f5f5f7]/60 dark:bg-[#2c2c2e]/40 text-[#6e6e73] text-xs font-bold uppercase tracking-wider border-b border-black/[0.04] dark:border-white/[0.04]">
                     <th className="px-6 py-4">Customer</th>
                     <th className="px-6 py-4">Phone Number</th>
                     <th className="px-6 py-4 text-right">Outstanding Balance</th>
@@ -733,7 +733,7 @@ function WhatsAppMessaging() {
                 <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                   {debtorCustomers.length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="px-6 py-12 text-center text-xs text-[#86868b]">
+                      <td colSpan="4" className="px-6 py-12 text-center text-xs text-[#6e6e73]">
                         🎉 Excellent! No customers currently have outstanding balances.
                       </td>
                     </tr>
@@ -746,12 +746,12 @@ function WhatsAppMessaging() {
                             <div className="text-xs font-bold text-[#1d1d1f] dark:text-[#f5f5f7]">
                               {customer.name}
                             </div>
-                            <div className="text-[10px] text-[#86868b]">
+                            <div className="text-xs text-[#6e6e73]">
                               ID: {customer.id?.slice(-6)}
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="text-xs font-mono text-[#86868b]">
+                            <div className="text-xs font-mono text-[#6e6e73]">
                               {customer.phone || 'No Phone Number'}
                             </div>
                           </td>
@@ -772,7 +772,7 @@ function WhatsAppMessaging() {
                                 <span>Send Reminder</span>
                               </a>
                             ) : (
-                              <span className="text-[10px] text-amber-500 font-semibold">
+                              <span className="text-xs text-amber-500 font-semibold">
                                 Missing Phone
                               </span>
                             )}
@@ -795,14 +795,14 @@ function WhatsAppMessaging() {
           <div className="bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl border-2 border-emerald-500/30 dark:border-emerald-500/20 rounded-[28px] p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <span className="text-[10px] uppercase tracking-wider font-black px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20">
+                <span className="text-xs uppercase tracking-wider font-black px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20">
                   POS Counter 1-Click Feature
                 </span>
                 <h3 className="text-base font-bold text-[#1d1d1f] dark:text-[#f5f5f7] mt-1.5 flex items-center gap-2">
                   <span>⚡</span>
                   <span>Quick WhatsApp Invoice & Thank-You (Urdu & English)</span>
                 </h3>
-                <p className="text-xs text-[#86868b] dark:text-[#98989d] mt-0.5">
+                <p className="text-xs text-[#6e6e73] dark:text-[#98989d] mt-0.5">
                   Available side-by-side with the 🖨️ Print button on every checkout. Starts with <b>Asslam o Alaikum</b>, itemizes the invoice, says thank you, and signs off with your shop name and phone.
                 </p>
               </div>
@@ -815,7 +815,7 @@ function WhatsAppMessaging() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                     invoicePreviewLang === 'english'
                       ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white'
+                      : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-white'
                   }`}
                 >
                   🇬🇧 English
@@ -826,7 +826,7 @@ function WhatsAppMessaging() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                     invoicePreviewLang === 'urdu'
                       ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-white'
+                      : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-white'
                   }`}
                 >
                   🇵🇰 اردو (Roman Urdu)
@@ -884,7 +884,7 @@ function WhatsAppMessaging() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <input
+                      <input aria-label="Test mobile (0300...)"
                         type="tel"
                         placeholder="Test mobile (0300...)"
                         value={testPhoneInput}
@@ -926,13 +926,13 @@ function WhatsAppMessaging() {
                   setCopiedTemplate('bill')
                   setTimeout(() => setCopiedTemplate(null), 2000)
                 }}
-                className="text-xs text-[#86868b] hover:text-[#1d1d1f] flex items-center gap-1"
+                className="text-xs text-[#6e6e73] hover:text-[#1d1d1f] flex items-center gap-1"
               >
                 {copiedTemplate === 'bill' ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                 <span>{copiedTemplate === 'bill' ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
-            <p className="text-xs text-[#86868b]">
+            <p className="text-xs text-[#6e6e73]">
               Sent automatically after checkout from POS billing. Includes customer name, bill amount, items, warranty terms, and date.
             </p>
             <div className="p-3 bg-[#f5f5f7] dark:bg-[#2c2c2e] rounded-xl text-xs font-mono whitespace-pre-wrap text-[#1d1d1f] dark:text-[#f5f5f7]">
@@ -954,13 +954,13 @@ function WhatsAppMessaging() {
                   setCopiedTemplate('phone_thanks')
                   setTimeout(() => setCopiedTemplate(null), 2000)
                 }}
-                className="text-xs text-[#86868b] hover:text-[#1d1d1f] flex items-center gap-1"
+                className="text-xs text-[#6e6e73] hover:text-[#1d1d1f] flex items-center gap-1"
               >
                 {copiedTemplate === 'phone_thanks' ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                 <span>{copiedTemplate === 'phone_thanks' ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
-            <p className="text-xs text-[#86868b]">
+            <p className="text-xs text-[#6e6e73]">
               Special warranty & appreciation message sent when customer buys a mobile phone in POS.
             </p>
             <div className="p-3 bg-[#f5f5f7] dark:bg-[#2c2c2e] rounded-xl text-xs font-mono whitespace-pre-wrap text-[#1d1d1f] dark:text-[#f5f5f7]">
@@ -982,13 +982,13 @@ function WhatsAppMessaging() {
                   setCopiedTemplate('reminder')
                   setTimeout(() => setCopiedTemplate(null), 2000)
                 }}
-                className="text-xs text-[#86868b] hover:text-[#1d1d1f] flex items-center gap-1"
+                className="text-xs text-[#6e6e73] hover:text-[#1d1d1f] flex items-center gap-1"
               >
                 {copiedTemplate === 'reminder' ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                 <span>{copiedTemplate === 'reminder' ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
-            <p className="text-xs text-[#86868b]">
+            <p className="text-xs text-[#6e6e73]">
               Used when dispatching reminders to customers with unpaid balances.
             </p>
             <div className="p-3 bg-[#f5f5f7] dark:bg-[#2c2c2e] rounded-xl text-xs font-mono whitespace-pre-wrap text-[#1d1d1f] dark:text-[#f5f5f7]">
@@ -1010,13 +1010,13 @@ function WhatsAppMessaging() {
                   setCopiedTemplate('reorder')
                   setTimeout(() => setCopiedTemplate(null), 2000)
                 }}
-                className="text-xs text-[#86868b] hover:text-[#1d1d1f] flex items-center gap-1"
+                className="text-xs text-[#6e6e73] hover:text-[#1d1d1f] flex items-center gap-1"
               >
                 {copiedTemplate === 'reorder' ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                 <span>{copiedTemplate === 'reorder' ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
-            <p className="text-xs text-[#86868b]">
+            <p className="text-xs text-[#6e6e73]">
               Used in Stock Inventory when placing instant restocking orders to suppliers.
             </p>
             <div className="p-3 bg-[#f5f5f7] dark:bg-[#2c2c2e] rounded-xl text-xs font-mono whitespace-pre-wrap text-[#1d1d1f] dark:text-[#f5f5f7]">
@@ -1029,12 +1029,12 @@ function WhatsAppMessaging() {
 
       {/* ──────────────── MODAL: RAPID DISPATCH QUEUE ──────────────── */}
       {isDispatchModalOpen && dispatchQueue.length > 0 && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#1c1c1e] border border-black/[0.08] dark:border-white/[0.1] rounded-[28px] max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full uppercase tracking-wider">
                   Sending {currentIndex + 1} of {dispatchQueue.length}
                 </span>
                 <h3 className="text-lg font-bold text-[#1d1d1f] dark:text-[#f5f5f7] mt-1.5">
@@ -1044,7 +1044,7 @@ function WhatsAppMessaging() {
               <button
                 type="button"
                 onClick={() => setIsDispatchModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-[#f5f5f7] dark:bg-[#2c2c2e] flex items-center justify-center text-[#86868b] hover:text-[#1d1d1f] transition"
+                className="w-8 h-8 rounded-full bg-[#f5f5f7] dark:bg-[#2c2c2e] flex items-center justify-center text-[#6e6e73] hover:text-[#1d1d1f] transition"
               >
                 <X size={16} />
               </button>
@@ -1068,12 +1068,12 @@ function WhatsAppMessaging() {
                     <h4 className="text-sm font-bold text-[#1d1d1f] dark:text-[#f5f5f7]">
                       {dispatchQueue[currentIndex].name}
                     </h4>
-                    <p className="text-xs font-mono text-[#86868b]">
+                    <p className="text-xs font-mono text-[#6e6e73]">
                       {dispatchQueue[currentIndex].phone}
                     </p>
                   </div>
                   {dispatchedIds.has(dispatchQueue[currentIndex].id) && (
-                    <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full">
+                    <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full">
                       <CheckCircle2 size={12} />
                       <span>Sent</span>
                     </span>
@@ -1111,7 +1111,7 @@ function WhatsAppMessaging() {
                 <button
                   type="button"
                   onClick={() => setIsDispatchModalOpen(false)}
-                  className="px-4 py-2.5 text-xs font-semibold text-[#86868b] hover:text-[#1d1d1f] transition"
+                  className="px-4 py-2.5 text-xs font-semibold text-[#6e6e73] hover:text-[#1d1d1f] transition"
                 >
                   Close
                 </button>

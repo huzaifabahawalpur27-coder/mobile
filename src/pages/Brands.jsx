@@ -6,6 +6,7 @@ import { db, addToSyncQueue } from '../services/db'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 function Brands() {
   const { user } = useAuth()
@@ -100,7 +101,7 @@ function Brands() {
         await addToSyncQueue('brands', 'INSERT', offlineData)
         await db.brands.add(offlineData)
       }
-      notify(`✅ Brand "${missingItem.name}" Master Data mein add ho gaya!`)
+      notify(`Brand "${missingItem.name}" added.`, 'success')
       fetchBrands()
     } catch (err) {
       notify('Error adding brand: ' + (err.message || err))
@@ -134,7 +135,7 @@ function Brands() {
         }
         count++
       }
-      notify(`✅ ${count} missing brands Master Data mein successfully add ho gaye!`)
+      notify(`${count} missing brands added.`, 'success')
       fetchBrands()
     } catch (err) {
       notify('Error syncing brands: ' + (err.message || err))
@@ -218,7 +219,7 @@ function Brands() {
         )
         if (insBcErr) {
           console.error('brand_categories insert error:', insBcErr)
-          notify('Categories link karne mein masla hua: ' + insBcErr.message + '\n\nSQL migration dobara run karein: sql/add_brand_categories.sql')
+          notify('Could not link the categories: ' + insBcErr.message + '\nRun sql/add_brand_categories.sql in Supabase again.', 'error')
         }
       }
       // Always sync to IndexedDB regardless of Supabase result
@@ -268,7 +269,7 @@ function Brands() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure?')) return
+    if (!await confirmDialog('Delete this brand?', { confirmLabel: 'Delete brand', danger: true })) return
     try {
       if (!navigator.onLine) throw new TypeError('Failed to fetch')
       const { error } = await supabase.from('brands').delete().eq('id', id)
@@ -459,7 +460,7 @@ function Brands() {
                 </span>
               </h3>
               <p className="text-xs text-amber-700 mt-1">
-                Products mein kuch brands use ho rahe hain jo Master Data brands list mein register nahi hain. Inhe add karne se POS aur filters theek ho jayenge:
+                Some products use brands that are not in your brand list. Add them so POS and the filters show them:
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 {missingBrands.map((item, idx) => (
@@ -468,7 +469,7 @@ function Brands() {
                     <button
                       onClick={() => handleSyncMissingBrand(item)}
                       disabled={syncingMissing}
-                      className="text-[10px] bg-amber-600 hover:bg-amber-700 text-white font-bold px-2 py-0.5 rounded transition disabled:opacity-50"
+                      className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-2 py-0.5 rounded transition disabled:opacity-50"
                     >
                       + Add
                     </button>
@@ -489,7 +490,7 @@ function Brands() {
 
       {/* Search Bar */}
       <div className="mb-4">
-        <input
+        <input aria-label="Search brands"
           type="text"
           placeholder="🔍 Search brands..."
           value={searchBrand}
@@ -506,7 +507,7 @@ function Brands() {
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-gray-700 font-medium mb-1">Brand Name *</label>
-              <input
+              <input aria-label="Brand Name"
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -518,7 +519,7 @@ function Brands() {
             {categories.length > 0 && (
               <div>
                 <label className="block text-gray-700 font-medium mb-2">Categories (optional)</label>
-                <p className="text-xs text-gray-400 mb-2">Is brand ki categories select karein. POS aur product form mein sirf yeh categories dikhein gi.</p>
+                <p className="text-xs text-gray-500 mb-2">Choose this brand's categories. POS and the product form show only these.</p>
                 <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2 bg-gray-50">
                   {categories.map(cat => (
                     <label key={cat.id} className="flex items-center gap-2 cursor-pointer hover:bg-white rounded px-1.5 py-1 transition">
@@ -565,7 +566,7 @@ function Brands() {
         <p className="text-gray-500">Loading...</p>
       ) : brands.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-400 text-lg">No brands yet</p>
+          <p className="text-gray-500 text-lg">No brands yet</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -620,21 +621,21 @@ function Brands() {
 
       {/* View Products Modal */}
       {viewBrand && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4" onClick={() => setViewBrand(null)}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4" onClick={() => setViewBrand(null)}>
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-4xl flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4 shrink-0">
               <div>
                 <h2 className="text-xl font-bold text-gray-800">📦 Products of {viewBrand.name}</h2>
                 <p className="text-xs text-gray-500">Click any product row to view purchase price history</p>
               </div>
-              <button onClick={() => setViewBrand(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setViewBrand(null)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
 
             <div className="flex-1 overflow-auto border rounded-xl bg-gray-50">
               {loadingProducts ? (
-                <p className="text-center text-gray-400 py-10">Loading products...</p>
+                <p className="text-center text-gray-500 py-10">Loading products...</p>
               ) : brandProducts.length === 0 ? (
-                <p className="text-center text-gray-400 py-10 italic">No products found for this brand.</p>
+                <p className="text-center text-gray-500 py-10 italic">No products found for this brand.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 sticky top-0 z-10">
@@ -668,9 +669,9 @@ function Brands() {
                           <tr key={`${p.id}-history`}>
                             <td colSpan="6" className="px-4 py-2 bg-blue-50/50">
                               {loadingHistoryId === p.id ? (
-                                <p className="text-center text-gray-400 text-xs py-3">Loading history...</p>
+                                <p className="text-center text-gray-500 text-xs py-3">Loading history...</p>
                               ) : (productHistory[p.id]?.length || 0) === 0 ? (
-                                <p className="text-center text-gray-400 text-xs py-3 italic">No previous purchases found.</p>
+                                <p className="text-center text-gray-500 text-xs py-3 italic">No previous purchases found.</p>
                               ) : (
                                 <div className="border rounded-lg overflow-hidden mx-4 my-1">
                                   <table className="w-full text-xs">

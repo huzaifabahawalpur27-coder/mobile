@@ -85,7 +85,7 @@ export default function BroadcastBanner({ isLogin = false }) {
         <div className="flex items-center gap-2.5 min-w-0">
           {currentStyle.icon}
           {banner.title && (
-            <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] tracking-wide uppercase shrink-0 ${currentStyle.badgeBg}`}>
+            <span className={`px-2 py-0.5 rounded-md font-bold text-xs tracking-wide uppercase shrink-0 ${currentStyle.badgeBg}`}>
               {banner.title}
             </span>
           )}

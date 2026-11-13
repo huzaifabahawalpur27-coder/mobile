@@ -54,7 +54,7 @@ export default function UserGuide() {
             }`}
           >
             <span>{tab.label}</span>
-            <span className={`text-[10px] font-normal ${activeTab === tab.id ? 'text-blue-100' : 'text-gray-400'}`}>
+            <span className={`text-xs font-normal ${activeTab === tab.id ? 'text-blue-100' : 'text-gray-500'}`}>
               {tab.labelUrdu}
             </span>
           </button>
@@ -299,19 +299,19 @@ export default function UserGuide() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
                 <div className="bg-white p-2.5 rounded-lg border border-gray-200">
                   <span className="font-bold text-gray-900 block">🏪 Dealer Trial</span>
-                  <span className="text-gray-500 text-[11px]">Given to another shop/dealer to show a customer.</span>
+                  <span className="text-gray-500 text-xs">Given to another shop/dealer to show a customer.</span>
                 </div>
                 <div className="bg-white p-2.5 rounded-lg border border-gray-200">
                   <span className="font-bold text-gray-900 block">🔖 Customer Reservation</span>
-                  <span className="text-gray-500 text-[11px]">Reserved with token deposit (بیعانہ).</span>
+                  <span className="text-gray-500 text-xs">Reserved with token deposit (بیعانہ).</span>
                 </div>
                 <div className="bg-white p-2.5 rounded-lg border border-gray-200">
                   <span className="font-bold text-gray-900 block">📱 Personal / Staff Use</span>
-                  <span className="text-gray-500 text-[11px]">Temporary use by owner or salesperson.</span>
+                  <span className="text-gray-500 text-xs">Temporary use by owner or salesperson.</span>
                 </div>
                 <div className="bg-white p-2.5 rounded-lg border border-gray-200">
                   <span className="font-bold text-gray-900 block">🔧 Repair Transit</span>
-                  <span className="text-gray-500 text-[11px]">Dispatched to technician or service lab.</span>
+                  <span className="text-gray-500 text-xs">Dispatched to technician or service lab.</span>
                 </div>
               </div>
             </div>

@@ -167,7 +167,7 @@ export default function ResetShopPasswordModal({ shop, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
@@ -182,7 +182,7 @@ export default function ResetShopPasswordModal({ shop, onClose, onSuccess }) {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition"
+            className="p-1.5 text-slate-500 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition"
           >
             <X size={18} />
           </button>
@@ -255,7 +255,7 @@ export default function ResetShopPasswordModal({ shop, onClose, onSuccess }) {
               </button>
             </div>
           ) : loading ? (
-            <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+            <div className="py-8 text-center text-slate-500 text-xs flex flex-col items-center gap-2">
               <RefreshCw className="animate-spin text-blue-500" size={24} />
               <span>Loading shop accounts...</span>
             </div>
@@ -270,7 +270,7 @@ export default function ResetShopPasswordModal({ shop, onClose, onSuccess }) {
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
                   Select User Account
                 </label>
-                <select
+                <select aria-label=" Select User Account "
                   value={selectedUserId}
                   onChange={(e) => setSelectedUserId(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
@@ -291,13 +291,13 @@ export default function ResetShopPasswordModal({ shop, onClose, onSuccess }) {
                   <button
                     type="button"
                     onClick={() => setNewPassword(generateRandomPassword())}
-                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1"
                   >
                     <RefreshCw size={11} /> Generate
                   </button>
                 </div>
                 <div className="relative">
-                  <input
+                  <input aria-label="Enter new password"
                     type={showPassword ? 'text' : 'password'}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -308,12 +308,12 @@ export default function ResetShopPasswordModal({ shop, onClose, onSuccess }) {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-600"
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   Password will be hashed for POS login and stored securely for SuperAdmin support.
                 </p>
               </div>

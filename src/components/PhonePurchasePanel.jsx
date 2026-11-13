@@ -1151,7 +1151,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
               </div>
               <h2 className="font-bold text-gray-800 text-base">Scan & Add Phone</h2>
             </div>
-            <span className="text-[11px] font-semibold text-gray-400 bg-gray-50 px-2 py-1 rounded-md">
+            <span className="text-xs font-semibold text-gray-500 bg-gray-50 px-2 py-1 rounded-md">
               Barcode / Serial Scanner Ready
             </span>
           </div>
@@ -1165,14 +1165,14 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     IMEI 1 <span className="text-red-500">*</span>
                   </label>
                   {imeiLookupLoading && (
-                    <span className="text-[10px] text-blue-600 font-semibold animate-pulse flex items-center gap-1">
+                    <span className="text-xs text-blue-600 font-semibold animate-pulse flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
                       Checking History...
                     </span>
                   )}
                 </div>
                 <div className="relative">
-                  <input
+                  <input aria-label="Scan or enter IMEI 1"
                     ref={imeiInputRef}
                     type="text"
                     required
@@ -1196,7 +1196,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                       historyMatch ? 'border-amber-400 bg-amber-50/20' : 'border-gray-300'
                     }`}
                   />
-                  <Scan className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                  <Scan className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
                   {imeiLookupLoading && (
                     <div className="absolute right-3 top-2.5">
                       <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -1207,9 +1207,9 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  IMEI 2 <span className="text-gray-400 font-normal">(Optional)</span>
+                  IMEI 2 <span className="text-gray-500 font-normal">(Optional)</span>
                 </label>
-                <input
+                <input aria-label=" IMEI 2 (Optional) "
                   type="text"
                   placeholder="Scan or enter IMEI 2..."
                   value={phoneForm.imei_2}
@@ -1231,19 +1231,19 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     <span className="text-2xl shrink-0">{historyMatch.status === 'in_stock' ? '⚠️' : '🌟'}</span>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold text-white uppercase tracking-wider ${
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold text-white uppercase tracking-wider ${
                           historyMatch.status === 'in_stock' ? 'bg-rose-600' : 'bg-amber-500'
                         }`}>
                           {historyMatch.status === 'in_stock' ? 'Already In Stock' : 'Device Sold by Us Before (Buy-Back)'}
                         </span>
-                        <span className="text-[10px] text-gray-500 font-semibold">
+                        <span className="text-xs text-gray-500 font-semibold">
                           {historyMatch.status === 'in_stock' ? '• Cannot be purchased again' : '• Specs Auto-Filled & Ready for Buy-Back'}
                         </span>
                       </div>
                       <h4 className="font-bold text-gray-900 dark:text-white text-sm mt-1">
                         {historyMatch.brand} {historyMatch.model} {historyMatch.storage} {historyMatch.color ? `(${historyMatch.color})` : ''}
                       </h4>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-600 dark:text-gray-300 text-[11px] mt-1 font-medium">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-600 dark:text-gray-300 text-xs mt-1 font-medium">
                         <span>👤 Sold to: <strong className="text-gray-900 dark:text-white font-bold">{historyMatch.originalBuyer}</strong></span>
                         {historyMatch.soldDate && (
                           <span>📅 Sold Date: <strong className="text-gray-900 dark:text-white font-bold">{new Date(historyMatch.soldDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
@@ -1272,7 +1272,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     <button
                       type="button"
                       onClick={() => setHistoryMatch(null)}
-                      className="px-2 py-1 text-gray-400 hover:text-gray-700 text-xs font-bold cursor-pointer"
+                      className="px-2 py-1 text-gray-500 hover:text-gray-700 text-xs font-bold cursor-pointer"
                       title="Dismiss alert"
                     >
                       ✕
@@ -1286,7 +1286,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Brand</label>
-                <select
+                <select aria-label="Brand"
                   value={phoneForm.brand}
                   onChange={e => {
                     const b = e.target.value
@@ -1308,7 +1308,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     Model <span className="text-red-500">*</span>
                   </label>
                   {phoneForm.brand === 'Apple' && (
-                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded">
+                    <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded">
                       Type 11, 14, 16, X...
                     </span>
                   )}
@@ -1334,7 +1334,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                   <button
                     type="button"
                     onClick={() => setShowModelDropdown(prev => !prev)}
-                    className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    className="absolute right-2 top-2.5 text-gray-500 hover:text-gray-600 cursor-pointer"
                     title="Toggle iPhone Models Dropdown"
                   >
                     <ChevronDown className="w-4 h-4" />
@@ -1344,12 +1344,12 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 {/* iPhone Models Dropdown Popover */}
                 {showModelDropdown && (
                   <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-2xl z-40 max-h-60 overflow-y-auto divide-y divide-gray-100">
-                    <div className="p-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-500">
+                    <div className="p-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between text-xs font-bold text-gray-500">
                       <span>Apple iPhone Presets ({matchingIphoneModels.length})</span>
-                      <span className="text-[10px] text-gray-400">Click or type shorthand</span>
+                      <span className="text-xs text-gray-500">Click or type shorthand</span>
                     </div>
                     {matchingIphoneModels.length === 0 ? (
-                      <div className="p-3 text-xs text-gray-400 text-center">
+                      <div className="p-3 text-xs text-gray-500 text-center">
                         No iPhone preset matching "{phoneForm.model}". Custom model will be kept.
                       </div>
                     ) : (
@@ -1373,11 +1373,11 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                         >
                           <div>
                             <span className="font-bold">{m.name}</span>
-                            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">
+                            <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">
                               Series {m.series}
                             </span>
                           </div>
-                          <span className="text-[10px] text-gray-400 truncate max-w-[120px]">
+                          <span className="text-xs text-gray-500 truncate max-w-[120px]">
                             {m.colors.slice(0, 2).join(', ')}...
                           </span>
                         </button>
@@ -1389,7 +1389,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Storage</label>
-                <select
+                <select aria-label="Storage"
                   value={phoneForm.storage}
                   onChange={e => setPhoneForm(prev => ({ ...prev, storage: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium"
@@ -1408,13 +1408,13 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">Color</label>
                   {phoneForm.brand === 'Apple' && officialModelColors.length > 0 && (
-                    <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded">
+                    <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded">
                       Official Colors
                     </span>
                   )}
                 </div>
                 <div className="relative">
-                  <input
+                  <input aria-label="Natural Titanium / Black"
                     type="text"
                     placeholder="e.g. Natural Titanium / Black"
                     value={phoneForm.color}
@@ -1430,7 +1430,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                   <button
                     type="button"
                     onClick={toggleColorDropdown}
-                    className="absolute right-2 top-2.5 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    className="absolute right-2 top-2.5 text-gray-500 hover:text-gray-600 cursor-pointer"
                     title="Choose Color"
                   >
                     <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showColorDropdown ? 'rotate-180' : ''}`} />
@@ -1445,7 +1445,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                         key={c}
                         type="button"
                         onClick={() => setPhoneForm(prev => ({ ...prev, color: c }))}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition cursor-pointer ${
+                        className={`px-2 py-0.5 rounded-md text-xs font-semibold border transition cursor-pointer ${
                           phoneForm.color === c
                             ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                             : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200'
@@ -1465,7 +1465,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                         key={'badge-cust-' + c}
                         type="button"
                         onClick={() => setPhoneForm(prev => ({ ...prev, color: c }))}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition cursor-pointer ${
+                        className={`px-2 py-0.5 rounded-md text-xs font-semibold border transition cursor-pointer ${
                           phoneForm.color === c
                             ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                             : 'bg-blue-50/70 hover:bg-blue-100 text-blue-700 border-blue-200'
@@ -1489,7 +1489,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     {/* Real-time Add Custom Color input */}
                     <div className="p-2 bg-slate-50 border-b border-gray-100">
                       <div className="flex items-center gap-1.5">
-                        <input
+                        <input aria-label="Add custom color"
                           type="text"
                           value={newCustomColor}
                           onChange={e => setNewCustomColor(e.target.value)}
@@ -1516,7 +1516,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     {/* Custom Colors Section */}
                     {customColors.length > 0 && (
                       <div className="p-1.5 bg-blue-50/50">
-                        <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider px-2 py-0.5">
+                        <p className="text-xs font-bold text-blue-700 uppercase tracking-wider px-2 py-0.5">
                           Custom Colors ({customColors.length})
                         </p>
                         <div className="flex flex-wrap gap-1 p-1">
@@ -1543,7 +1543,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                                   e.stopPropagation()
                                   handleRemoveCustomColor(c)
                                 }}
-                                className="text-[10px] opacity-60 hover:opacity-100 hover:text-red-500 ml-1 cursor-pointer"
+                                className="text-xs opacity-60 hover:opacity-100 hover:text-red-500 ml-1 cursor-pointer"
                                 title="Remove custom color"
                               >
                                 ✕
@@ -1556,7 +1556,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
                     {officialModelColors.length > 0 && (
                       <div className="p-1.5 bg-gray-50">
-                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-2 py-1">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider px-2 py-1">
                           Official {phoneForm.model} Colors
                         </p>
                         {officialModelColors.map(c => (
@@ -1579,7 +1579,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     )}
 
                     <div className="p-1.5">
-                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-2 py-1">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider px-2 py-1">
                         All Apple iPhone Colors
                       </p>
                       {ALL_IPHONE_COLORS.filter(c => !officialModelColors.includes(c)).map(c => (
@@ -1605,7 +1605,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Condition</label>
-                <select
+                <select aria-label="Condition"
                   value={phoneForm.condition}
                   onChange={e => setPhoneForm(prev => ({ ...prev, condition: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium"
@@ -1623,7 +1623,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                   <button
                     type="button"
                     onClick={togglePtaDropdown}
-                    className="text-[10px] text-blue-600 font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
+                    className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
                     <Plus className="w-3 h-3" /> Custom
                   </button>
@@ -1636,7 +1636,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm font-bold text-left flex items-center justify-between bg-white text-blue-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer shadow-xs"
                   >
                     <span className="truncate">{phoneForm.pta_status || 'PTA Approved'}</span>
-                    <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${
+                    <ChevronDown className={`w-4 h-4 text-gray-500 shrink-0 transition-transform duration-200 ${
                       showPtaDropdown ? 'rotate-180' : ''
                     }`} />
                   </button>
@@ -1654,7 +1654,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     {/* Real-time Add Custom PTA Status input */}
                     <div className="p-2 bg-slate-50 border-b border-gray-100">
                       <div className="flex items-center gap-1.5">
-                        <input
+                        <input aria-label="Type custom status (e.g. Tax Paid)"
                           type="text"
                           value={newCustomPta}
                           onChange={e => setNewCustomPta(e.target.value)}
@@ -1681,7 +1681,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     {/* Custom PTA Statuses List */}
                     {customPtaStatuses.length > 0 && (
                       <div className="p-1.5 bg-blue-50/40">
-                        <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider px-2 py-0.5">
+                        <p className="text-xs font-bold text-blue-700 uppercase tracking-wider px-2 py-0.5">
                           Your Custom Statuses
                         </p>
                         <div className="space-y-0.5">
@@ -1708,7 +1708,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                                     e.stopPropagation()
                                     handleRemoveCustomPta(s)
                                   }}
-                                  className="text-gray-400 hover:text-red-500 text-xs ml-1 cursor-pointer"
+                                  className="text-gray-500 hover:text-red-500 text-xs ml-1 cursor-pointer"
                                   title="Delete custom status"
                                 >
                                   ✕
@@ -1722,7 +1722,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
                     {/* Standard PTA Statuses */}
                     <div className="p-1.5">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 py-0.5">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider px-2 py-0.5">
                         Standard Statuses
                       </p>
                       <div className="space-y-0.5">
@@ -1755,7 +1755,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
                   Purchase Cost (Rs.) <span className="text-red-500">*</span>
                 </label>
-                <input
+                <input aria-label=" Purchase Cost (Rs.) "
                   type="number"
                   required
                   min="0"
@@ -1768,7 +1768,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Direct Cost (Rs.)</label>
-                <input
+                <input aria-label="Direct Cost (Rs.)"
                   type="number"
                   min="0"
                   placeholder="Repair/Tax"
@@ -1779,8 +1779,8 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Target Sale (Rs.) <span className="text-gray-400 font-normal lowercase">(optional)</span></label>
-                <input
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Target Sale (Rs.) <span className="text-gray-500 font-normal lowercase">(optional)</span></label>
+                <input aria-label="Target Sale (Rs.) (optional)"
                   type="number"
                   min="0"
                   placeholder="e.g. 175000"
@@ -1819,7 +1819,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 <Plus className="w-3.5 h-3.5" /> New Supplier
               </button>
             </div>
-            <select
+            <select aria-label="Supplier"
               value={supplierId}
               onChange={e => setSupplierId(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none bg-white"
@@ -1842,7 +1842,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
             <div className="my-3 max-h-56 overflow-y-auto space-y-2 pr-1 custom-scrollbar flex-1">
               {phoneCart.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 text-xs">
+                <div className="text-center py-8 text-gray-500 text-xs">
                   <Smartphone className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                   No phones in batch yet. Scan IMEI to add.
                 </div>
@@ -1853,12 +1853,12 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                       <p className="font-bold text-gray-800 truncate">
                         {p.brand} {p.model} <span className="text-gray-500 font-normal">({p.storage})</span>
                       </p>
-                      <p className="font-mono text-[11px] text-gray-500">IMEI: {p.imei_1}</p>
+                      <p className="font-mono text-xs text-gray-500">IMEI: {p.imei_1}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[10px] font-bold px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded">
+                        <span className="text-xs font-bold px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded">
                           {p.pta_status}
                         </span>
-                        <span className="text-[10px] font-semibold px-1.5 py-0.2 bg-gray-200 text-gray-700 rounded">
+                        <span className="text-xs font-semibold px-1.5 py-0.2 bg-gray-200 text-gray-700 rounded">
                           {p.condition}
                         </span>
                       </div>
@@ -1883,8 +1883,8 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
             <div className="border-t border-gray-100 pt-3 space-y-2.5">
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Payment Method</label>
-                  <select
+                  <label className="block text-xs font-bold text-gray-600 mb-1">Payment Method</label>
+                  <select aria-label="Payment Method"
                     value={paymentType}
                     onChange={e => {
                       const val = e.target.value
@@ -1918,7 +1918,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                  <label className="block text-xs font-bold text-gray-600 mb-1">
                     {paymentType === 'credit' ? 'Advance Token (Optional Rs.)' : 'Paid Amount (Rs.)'}
                   </label>
                   <input
@@ -1943,13 +1943,13 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     <button
                       type="button"
                       onClick={() => setShowSplitModal(true)}
-                      className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer shadow-xs"
+                      className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-xs"
                     >
                       Configure Split
                     </button>
                   </div>
 
-                  <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar text-[11px]">
+                  <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar text-xs">
                     {splitPayments.length === 0 ? (
                       <p className="text-gray-500 italic py-1">No payment tenders configured yet.</p>
                     ) : (
@@ -1968,7 +1968,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                     )}
                   </div>
 
-                  <div className="pt-1.5 border-t border-purple-200/80 flex items-center justify-between text-[11px]">
+                  <div className="pt-1.5 border-t border-purple-200/80 flex items-center justify-between text-xs">
                     <div>
                       <span className="text-gray-500">Paid: </span>
                       <span className="font-bold text-emerald-700">Rs. {Math.round(effectivePaid).toLocaleString()}</span>
@@ -1984,12 +1984,12 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                   </div>
                 </div>
               ) : paymentType === 'credit' ? (
-                <div className="flex justify-between items-center text-[11px] bg-amber-50 text-amber-900 px-2.5 py-1.5 rounded-lg border border-amber-200">
+                <div className="flex justify-between items-center text-xs bg-amber-50 text-amber-900 px-2.5 py-1.5 rounded-lg border border-amber-200">
                   <span className="font-semibold">📒 Credit (Udhaar) to Supplier:</span>
                   <span className="font-bold">Rs. {remainingBalance.toLocaleString()}</span>
                 </div>
               ) : (
-                <div className="flex justify-between items-center text-[11px] bg-emerald-50 text-emerald-900 px-2.5 py-1.5 rounded-lg border border-emerald-200">
+                <div className="flex justify-between items-center text-xs bg-emerald-50 text-emerald-900 px-2.5 py-1.5 rounded-lg border border-emerald-200">
                   <span className="font-semibold">{paymentType === 'bank' ? '🏦 Bank Transfer Payment:' : '💵 Cash Payment:'}</span>
                   <span className="font-bold">Rs. {effectivePaid.toLocaleString()}</span>
                 </div>
@@ -1999,14 +1999,14 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
               {paymentType === 'bank' && (
                 <div className="rounded-xl p-3 space-y-2 text-xs border transition bg-blue-50/90 border-blue-300 ring-2 ring-blue-100">
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5 uppercase tracking-wide">
+                    <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5 uppercase tracking-wide">
                       <Landmark className="w-3.5 h-3.5 text-blue-600" />
                       Pay Through Bank Account *
                     </label>
                     <button
                       type="button"
                       onClick={() => setShowBankModal(true)}
-                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                      className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <Plus className="w-3 h-3" /> + Add Bank
                     </button>
@@ -2014,7 +2014,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
                   {bankAccounts.length === 0 ? (
                     <div className="bg-white p-2.5 rounded-lg border border-blue-200 space-y-1.5">
-                      <p className="text-gray-600 text-[11px] font-medium">
+                      <p className="text-gray-600 text-xs font-medium">
                         No business bank accounts found yet. Add your Meezan, HBL, Bank Alfalah, etc. to deduct from balance.
                       </p>
                       <button
@@ -2026,7 +2026,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                       </button>
                     </div>
                   ) : (
-                    <select
+                    <select aria-label="Bank Account"
                       value={selectedBankAccountId}
                       onChange={e => {
                         const val = e.target.value
@@ -2044,7 +2044,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                   )}
 
                   {selectedBankAccount && (
-                    <div className="pt-1 border-t border-blue-100 flex flex-col gap-1 text-[11px]">
+                    <div className="pt-1 border-t border-blue-100 flex flex-col gap-1 text-xs">
                       <div className="flex justify-between items-center text-blue-800 font-medium">
                         <span>Current Account Balance:</span>
                         <span className="font-mono font-bold">Rs. {selectedBankAccount.current_balance.toLocaleString()}</span>
@@ -2058,7 +2058,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                         </div>
                       )}
                       {effectivePaid > 0 && selectedBankAccount.current_balance < effectivePaid && (
-                        <p className="text-[10px] text-red-600 font-semibold pt-0.5">
+                        <p className="text-xs text-red-600 font-semibold pt-0.5">
                           ⚠️ Warning: Deduction will make this bank account balance negative.
                         </p>
                       )}
@@ -2080,7 +2080,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
                 onClick={handlePostPurchase}
                 className={`w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm ${
                   submitting || phoneCart.length === 0
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
                 }`}
               >
@@ -2093,13 +2093,13 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
 
       {/* Quick Add Supplier Modal */}
       {showSupplierModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4">
             <h3 className="font-bold text-gray-900 text-base">Quick Add Supplier</h3>
             <form onSubmit={handleCreateSupplier} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Supplier Name *</label>
-                <input
+                <input aria-label="Supplier Name"
                   type="text"
                   required
                   placeholder="e.g. Ali Wholesaler"
@@ -2110,7 +2110,7 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Phone Number</label>
-                <input
+                <input aria-label="Phone Number"
                   type="text"
                   placeholder="0300-1234567"
                   value={newSupplierPhone}

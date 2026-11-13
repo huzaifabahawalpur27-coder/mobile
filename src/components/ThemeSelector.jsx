@@ -27,12 +27,12 @@ export default function ThemeSelector() {
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         data-sound="toggle"
-        className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-[10px] sm:text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+        className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-xs sm:text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
         title="Switch Mobile OS Theme & Appearance"
       >
         <span className="text-sm leading-none">{activeThemeMeta.icon}</span>
         <span className="hidden md:inline text-gray-700 dark:text-gray-200">{activeThemeMeta.name}</span>
-        <span className="text-[10px] text-gray-400">
+        <span className="text-xs text-gray-500">
           {isDark ? '🌙' : '☀️'}
         </span>
       </button>
@@ -43,7 +43,7 @@ export default function ThemeSelector() {
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 dark:border-gray-800">
             <div>
               <div className="text-xs font-black text-gray-900 dark:text-gray-100">Mobile OS Theme</div>
-              <div className="text-[10px] text-gray-400">Tailored mobile shop aesthetics</div>
+              <div className="text-xs text-gray-500">Tailored mobile shop aesthetics</div>
             </div>
             
             {/* Dark / Light Toggle */}
@@ -90,12 +90,12 @@ export default function ThemeSelector() {
                       <div className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate flex items-center gap-1.5">
                         <span>{theme.name}</span>
                         {isSelected && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded-full font-black bg-blue-600 text-white">
+                          <span className="text-xs px-1.5 py-0.2 rounded-full font-black bg-blue-600 text-white">
                             Active
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-gray-500 truncate">{theme.category}</div>
+                      <div className="text-xs text-gray-500 truncate">{theme.category}</div>
                     </div>
                   </div>
 

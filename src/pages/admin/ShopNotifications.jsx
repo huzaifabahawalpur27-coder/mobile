@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { logAction } from '../../services/auditService'
 import { NOTIFICATION_CATEGORIES } from '../../services/notificationService'
 import { notify } from '../../utils/toast'
+import { confirmDialog } from '../../utils/dialog'
 
 // Pages of the shop app a notification can open
 const MODULES = [
@@ -109,7 +110,7 @@ export default function ShopNotificationsAdmin() {
     if (!form.title.trim()) return
     if (form.target === 'selected' && form.shopIds.length === 0) { notify('Choose at least one shop.'); return }
     const audience = form.target === 'all' ? 'all active shops' : `${form.shopIds.length} shop(s)`
-    if (!confirm(`Push "${form.title.trim()}" to ${audience}?\n\nEach shop sees it once as a popup, then it stays in their bell until they delete it.`)) return
+    if (!await confirmDialog(`Push "${form.title.trim()}" to ${audience}?\n\nEach shop sees it once as a popup, then it stays in their bell until they delete it.`)) return
     setPushing(true)
     setNotice(null)
     try {
@@ -142,7 +143,7 @@ export default function ShopNotificationsAdmin() {
   }
 
   const handleWithdraw = async (c) => {
-    if (!confirm(`Withdraw "${c.title}"?\n\nIt will be removed from every shop's notifications.`)) return
+    if (!await confirmDialog(`Withdraw "${c.title}"?\n\nIt will be removed from every shop's notifications.`)) return
     const { error } = await supabaseAdmin.rpc('withdraw_notification_campaign', { p_campaign_id: c.id })
     if (error) { notify('Withdraw failed: ' + error.message); return }
     setNotice({ type: 'success', text: `"${c.title}" withdrawn.` })
@@ -182,9 +183,9 @@ export default function ShopNotificationsAdmin() {
                 className="text-left p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 transition">
                 <span className="flex items-center justify-between gap-2">
                   <span className="text-sm font-bold text-slate-800">{u.title}</span>
-                  {sent && <span className="text-[10px] font-black uppercase text-emerald-600 shrink-0">Sent</span>}
+                  {sent && <span className="text-xs font-black uppercase text-emerald-600 shrink-0">Sent</span>}
                 </span>
-                <span className="block text-[11px] text-slate-500 mt-0.5">{moduleLabel(u.path)}</span>
+                <span className="block text-xs text-slate-500 mt-0.5">{moduleLabel(u.path)}</span>
               </button>
             )
           })}
@@ -233,7 +234,7 @@ export default function ShopNotificationsAdmin() {
             {form.target === 'selected' && (
               <div className="space-y-2">
                 <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input aria-label="Search shops" value={shopSearch} onChange={e => setShopSearch(e.target.value)} placeholder="Search shops" className={`${fieldClass} pl-8`} />
                 </div>
                 <div className="max-h-48 overflow-y-auto bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
@@ -241,10 +242,10 @@ export default function ShopNotificationsAdmin() {
                     <label key={s.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50">
                       <input type="checkbox" checked={form.shopIds.includes(s.id)} onChange={() => toggleShop(s.id)} />
                       <span className="font-semibold text-slate-700">{s.name || `Shop #${s.id}`}</span>
-                      {s.status && s.status !== 'active' && <span className="text-[10px] uppercase font-black text-amber-600">{s.status}</span>}
+                      {s.status && s.status !== 'active' && <span className="text-xs uppercase font-black text-amber-600">{s.status}</span>}
                     </label>
                   ))}
-                  {filteredShops.length === 0 && <p className="px-3 py-4 text-center text-slate-400 text-xs">No shops found</p>}
+                  {filteredShops.length === 0 && <p className="px-3 py-4 text-center text-slate-500 text-xs">No shops found</p>}
                 </div>
                 <p className="text-xs text-slate-500">{form.shopIds.length} selected</p>
               </div>
@@ -263,7 +264,7 @@ export default function ShopNotificationsAdmin() {
           <div className="bg-white rounded-2xl shadow-lg border border-blue-100 overflow-hidden">
             <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2"><Bell size={14} /> New update</div>
             <div className="p-4 space-y-2">
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${cat.className}`}>{cat.label}</span>
+              <span className={`px-1.5 py-0.5 rounded text-xs font-black uppercase tracking-wider ${cat.className}`}>{cat.label}</span>
               <p className="text-base font-extrabold text-slate-900">{form.title || 'Title'}</p>
               <p className="text-sm text-slate-600 whitespace-pre-line">{form.body || 'Message'}</p>
               <p className="pt-1 text-xs font-black text-blue-600 inline-flex items-center gap-1">Open {moduleLabel(form.path)} <ArrowRight size={12} /></p>
@@ -279,9 +280,9 @@ export default function ShopNotificationsAdmin() {
           <button type="button" onClick={loadCampaigns} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Refresh sent list"><RefreshCw size={16} /></button>
         </div>
         {loadingList ? (
-          <p className="text-sm text-slate-400 py-4 text-center">Loading…</p>
+          <p className="text-sm text-slate-500 py-4 text-center">Loading…</p>
         ) : campaigns.length === 0 ? (
-          <p className="text-sm text-slate-400 py-4 text-center">Nothing pushed yet.</p>
+          <p className="text-sm text-slate-500 py-4 text-center">Nothing pushed yet.</p>
         ) : (
           <ul className="divide-y divide-slate-100">
             {campaigns.map(c => (

@@ -306,7 +306,7 @@ export default function EditPriceModal({
   const phoneTitle = `${item.brand || ''} ${item.model || ''}`.trim() || item.name || 'Mobile Phone'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div 
         className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[92dvh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -332,7 +332,7 @@ export default function EditPriceModal({
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition cursor-pointer"
+            className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition cursor-pointer"
             title="Close"
           >
             <X size={18} />
@@ -351,10 +351,10 @@ export default function EditPriceModal({
           {/* Details: every field editable */}
           <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 space-y-3">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-[10px]">
+              <span className="font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-xs">
                 {isPhone ? 'Phone Details' : 'Product Details'}
               </span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+              <span className={`px-2 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
                 item.status === 'in_stock' || item.status === 'active'
                   ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
                   : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400'
@@ -366,43 +366,43 @@ export default function EditPriceModal({
             {isPhone ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="ep-brand" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Brand</label>
+                  <label htmlFor="ep-brand" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Brand</label>
                   <input id="ep-brand" type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="e.g. Samsung" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                 </div>
                 <div>
-                  <label htmlFor="ep-model" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Model *</label>
+                  <label htmlFor="ep-model" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Model *</label>
                   <input id="ep-model" type="text" required value={model} onChange={e => setModel(e.target.value)} placeholder="e.g. Galaxy S23" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                 </div>
                 <div>
-                  <label htmlFor="ep-storage" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Storage</label>
+                  <label htmlFor="ep-storage" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Storage</label>
                   <input id="ep-storage" type="text" list="ep-storage-options" value={storage} onChange={e => setStorage(e.target.value)} placeholder="e.g. 128GB" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                   <datalist id="ep-storage-options">
                     {['32GB', '64GB', '128GB', '256GB', '512GB', '1TB', '2TB'].map(o => <option key={o} value={o} />)}
                   </datalist>
                 </div>
                 <div>
-                  <label htmlFor="ep-color" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Color</label>
+                  <label htmlFor="ep-color" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Color</label>
                   <input id="ep-color" type="text" value={color} onChange={e => setColor(e.target.value)} placeholder="e.g. Black" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                 </div>
                 <div>
-                  <label htmlFor="ep-condition" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Condition</label>
+                  <label htmlFor="ep-condition" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Condition</label>
                   <input id="ep-condition" type="text" list="ep-condition-options" value={condition} onChange={e => setCondition(e.target.value)} placeholder="e.g. Used" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                   <datalist id="ep-condition-options">
                     {['New', 'Used', 'Refurbished', 'Used - Like New', 'Used - Good', 'Used - Fair', 'Damaged'].map(o => <option key={o} value={o} />)}
                   </datalist>
                 </div>
                 <div>
-                  <label htmlFor="ep-pta" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">PTA Status</label>
+                  <label htmlFor="ep-pta" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">PTA Status</label>
                   <input id="ep-pta" type="text" list="ep-pta-options" value={ptaStatus} onChange={e => setPtaStatus(e.target.value)} placeholder="e.g. PTA Approved" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                   <datalist id="ep-pta-options">
                     {['PTA Approved', 'Non-PTA', 'JV', 'CPID / Patch', 'CPID Approved', 'VIP Approved', 'Software Patch', '60-Days Extension'].map(o => <option key={o} value={o} />)}
                   </datalist>
                 </div>
                 <div>
-                  <label htmlFor="ep-imei1" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <label htmlFor="ep-imei1" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center justify-between">
                     <span>IMEI 1 *</span>
                     {item.imei_1 && (
-                      <button type="button" onClick={handleCopyImei} className="normal-case font-semibold text-gray-400 hover:text-blue-600 flex items-center gap-1 cursor-pointer" title="Copy saved IMEI">
+                      <button type="button" onClick={handleCopyImei} className="normal-case font-semibold text-gray-500 hover:text-blue-600 flex items-center gap-1 cursor-pointer" title="Copy saved IMEI">
                         {copiedImei ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />} Copy
                       </button>
                     )}
@@ -410,30 +410,30 @@ export default function EditPriceModal({
                   <input id="ep-imei1" type="text" inputMode="numeric" required maxLength={20} value={imei1} onChange={e => setImei1(e.target.value.replace(/\s+/g, ''))} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition font-mono" />
                 </div>
                 <div>
-                  <label htmlFor="ep-imei2" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">IMEI 2</label>
+                  <label htmlFor="ep-imei2" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">IMEI 2</label>
                   <input id="ep-imei2" type="text" inputMode="numeric" maxLength={20} value={imei2} onChange={e => setImei2(e.target.value.replace(/\s+/g, ''))} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition font-mono" />
                 </div>
                 <div>
-                  <label htmlFor="ep-battery" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Battery Health (%)</label>
+                  <label htmlFor="ep-battery" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Battery Health (%)</label>
                   <input id="ep-battery" type="number" min="0" max="100" inputMode="numeric" value={batteryHealth} onChange={e => setBatteryHealth(e.target.value)} placeholder="e.g. 89" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                 </div>
                 <div className="sm:col-span-2">
-                  <label htmlFor="ep-notes" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Device Notes</label>
+                  <label htmlFor="ep-notes" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Device Notes</label>
                   <input id="ep-notes" type="text" value={deviceNotes} onChange={e => setDeviceNotes(e.target.value)} placeholder="e.g. Box + charger, minor scratch" className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
-                  <label htmlFor="ep-name" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Product Name *</label>
+                  <label htmlFor="ep-name" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Product Name *</label>
                   <input id="ep-name" type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                 </div>
                 <div>
-                  <label htmlFor="ep-sku" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">SKU / Barcode</label>
+                  <label htmlFor="ep-sku" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">SKU / Barcode</label>
                   <input id="ep-sku" type="text" value={sku} onChange={e => setSku(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition font-mono" />
                 </div>
                 <div>
-                  <label htmlFor="ep-pbrand" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Brand</label>
+                  <label htmlFor="ep-pbrand" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">Brand</label>
                   <input id="ep-pbrand" type="text" value={brand} onChange={e => setBrand(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl text-sm font-semibold text-gray-900 dark:text-gray-100 outline-none transition" />
                 </div>
               </div>
@@ -446,7 +446,7 @@ export default function EditPriceModal({
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                 <span>Sale / Selling Price *</span>
-                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold normal-case">
+                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold normal-case">
                   What customer pays
                 </span>
               </label>
@@ -472,7 +472,7 @@ export default function EditPriceModal({
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>Purchase / Cost Price *</span>
-                  <span className="text-[11px] text-gray-400 font-semibold normal-case">
+                  <span className="text-xs text-gray-500 font-semibold normal-case">
                     Initial purchase cost
                   </span>
                 </label>
@@ -498,7 +498,7 @@ export default function EditPriceModal({
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>Additional Costs (Optional)</span>
-                  <span className="text-[11px] text-gray-400 font-semibold normal-case">
+                  <span className="text-xs text-gray-500 font-semibold normal-case">
                     Repair / Tax / Parts
                   </span>
                 </label>
@@ -531,7 +531,7 @@ export default function EditPriceModal({
                 <div className="flex items-center gap-2">
                   <TrendingUp size={16} />
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-wider">
+                    <p className="text-xs font-black uppercase tracking-wider">
                       {profit > 0 ? 'Projected Profit' : profit < 0 ? 'Projected Loss' : 'Break-even'}
                     </p>
                     <p className="text-base font-black">
@@ -540,7 +540,7 @@ export default function EditPriceModal({
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Margin</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Margin</p>
                   <p className="text-sm font-black">
                     {parsedSale > 0 ? `${marginPercent.toFixed(1)}%` : '0%'}
                   </p>
@@ -553,7 +553,7 @@ export default function EditPriceModal({
               <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1">
                 Reason for change (Optional, kept in history)
               </label>
-              <input
+              <input aria-label=" Reason for change (Optional, kept in history) "
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}

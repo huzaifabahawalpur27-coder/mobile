@@ -12,6 +12,7 @@ import BatchManagementModal from '../components/BatchManagementModal'
 import PhoneInventoryView from '../components/PhoneInventoryView'
 import { deduplicateProducts } from '../utils/productUtils'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 function Inventory() {
   const { user } = useAuth()
@@ -111,7 +112,7 @@ function Inventory() {
   const handleReorderWhatsApp = async (e) => {
     const btn = e?.currentTarget
     const lowItems = products.filter(p => p.stock_quantity <= (p.low_stock_threshold || 10))
-    if (lowItems.length === 0) { notify('Koi bhi product low stock mein nahi hai!'); return }
+    if (lowItems.length === 0) { notify('No product is low on stock.'); return }
 
     // Group by supplier
     const bySupplier = {}
@@ -630,8 +631,8 @@ function Inventory() {
     const affected = products.filter(p =>
       p.brand === arBrand && (arCategory ? String(p.category_id) === String(arCategory) : true)
     )
-    if (affected.length === 0) { notify('Koi product nahi mila is filter ke sath.'); return }
-    if (!confirm(`${arAction === 'increase' ? '+' : '-'}${arPercent}% apply karein ${affected.length} product(s) par?`)) return
+    if (affected.length === 0) { notify('No products match this filter.'); return }
+    if (!await confirmDialog(`Change the price of ${affected.length} product(s) by ${arAction === 'increase' ? '+' : '-'}${arPercent}%?`, { confirmLabel: 'Change prices' })) return
     setSaving(true)
     try {
       for (const p of affected) {
@@ -649,7 +650,7 @@ function Inventory() {
         }
         await db.products.update(p.id, updates)
       }
-      notify(`✅ ${affected.length} products update ho gaye.`)
+      notify(`${affected.length} products updated.`, 'success')
       setShowAdjustRatesModal(false)
       setArBrand(''); setArCategory(''); setArPercent('')
       fetchInventory()
@@ -664,14 +665,14 @@ function Inventory() {
 
   const handleManualSync = async () => {
     if (!navigator.onLine) {
-      notify('Internet connection nahi hai. Cloud sync ke liye online hona zaroori hai.')
+      notify('No internet connection. Go online to sync with the cloud.')
       return
     }
     setManualSyncing(true)
     try {
       const res = await reconcileOfflineProducts(user.shop_id)
       await fetchInventory()
-      notify(`Cloud sync mukammal! ${res?.synced || 0} product(s) sync ho gaye.`)
+      notify(`Cloud sync finished. ${res?.synced || 0} product(s) synced.`, 'success')
     } catch (err) {
       notify('Sync error: ' + (err?.message || err))
     } finally {
@@ -719,10 +720,10 @@ function Inventory() {
                 <span className="text-2xl">⚠️</span>
                 <div>
                   <div className="font-bold text-amber-950">
-                    {unsyncedCount} Product(s) Offline Stored (Cloud par mojood nahi)
+                    {unsyncedCount} product(s) saved on this device only
                   </div>
                   <div className="text-xs text-amber-800">
-                    Ye products local IndexedDB mein hain aur abhi tak Supabase Cloud par sync nahi hue. Online version par dekhne ke liye sync button dabayein.
+                    These products are saved on this device and have not reached the cloud yet. Press the sync button to upload them.
                   </div>
                 </div>
               </div>
@@ -743,26 +744,26 @@ function Inventory() {
         </div>
         <div className="flex gap-4 overflow-x-auto pb-1 max-w-full">
           <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 text-center min-w-[120px]">
-            <p className="text-xs text-gray-400 font-bold uppercase">Total Items</p>
+            <p className="text-xs text-gray-500 font-bold uppercase">Total Items</p>
             <p className="text-lg font-bold text-blue-600">{products.length}</p>
           </div>
           <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 text-center min-w-[120px]">
-            <p className="text-xs text-gray-400 font-bold uppercase">Low Stock</p>
+            <p className="text-xs text-gray-500 font-bold uppercase">Low Stock</p>
             <p className="text-lg font-bold text-orange-500">{lowStockCount}</p>
           </div>
           <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 text-center min-w-[120px]">
-            <p className="text-xs text-gray-400 font-bold uppercase">Critical</p>
+            <p className="text-xs text-gray-500 font-bold uppercase">Critical</p>
             <p className="text-lg font-bold text-red-600">{criticalStockCount}</p>
           </div>
           {(user.role === 'admin' || user.role === 'manager') && (
             <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 text-center min-w-[120px]">
-              <p className="text-xs text-gray-400 font-bold uppercase">Est. Profit</p>
+              <p className="text-xs text-gray-500 font-bold uppercase">Est. Profit</p>
               <p className="text-lg font-bold text-green-600">Rs. {totalProfitValue.toLocaleString()}</p>
             </div>
           )}
           {(user.role === 'admin' || user.role === 'manager') && (
             <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 text-center min-w-[120px]">
-              <p className="text-xs text-gray-400 font-bold uppercase">Stock Value (Cost)</p>
+              <p className="text-xs text-gray-500 font-bold uppercase">Stock Value (Cost)</p>
               <p className="text-lg font-bold text-blue-600">Rs. {totalCostValue.toLocaleString()}</p>
             </div>
           )}
@@ -772,7 +773,7 @@ function Inventory() {
       {/* Filters */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3">
         <div className="flex gap-3 w-full">
-          <input
+          <input aria-label="Search product or brand"
             type="text"
             placeholder="Search product or brand..."
             className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -783,7 +784,7 @@ function Inventory() {
         <div className="flex flex-col gap-2 w-full sm:w-auto">
           {/* Row 1: Filters */}
           <div className="flex flex-wrap gap-2 items-center">
-            <select
+            <select aria-label="Categories filter"
               className="px-3 py-1.5 border rounded-lg outline-none text-sm"
               value={selectedCategory}
               onChange={e => setSelectedCategory(e.target.value)}
@@ -791,7 +792,7 @@ function Inventory() {
               <option value="">All Categories</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <select
+            <select aria-label="Brands filter"
               className="px-3 py-1.5 border rounded-lg outline-none text-sm bg-white"
               value={selectedBrand}
               onChange={e => setSelectedBrand(e.target.value)}
@@ -900,9 +901,9 @@ function Inventory() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="divide-y divide-gray-100 md:hidden">
           {loading ? (
-            <p className="px-6 py-10 text-center text-gray-400 italic text-lg">Loading inventory data...</p>
+            <p className="px-6 py-10 text-center text-gray-500 italic text-lg">Loading inventory data...</p>
           ) : filtered.length === 0 ? (
-            <p className="px-6 py-10 text-center text-gray-400 italic text-lg">No products found matching criteria.</p>
+            <p className="px-6 py-10 text-center text-gray-500 italic text-lg">No products found matching criteria.</p>
           ) : filtered.map(p => {
             const isLow = p.stock_quantity <= (p.low_stock_threshold || 10)
             const isCritical = p.stock_quantity <= 5
@@ -913,8 +914,8 @@ function Inventory() {
                   <div className="min-w-0">
                     <p className="truncate font-black text-gray-900">{p.name}</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
-                      <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{p.categories?.name || 'No category'}</span>
-                      <span className="rounded bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">{p.brand || 'No brand'}</span>
+                      <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">{p.categories?.name || 'No category'}</span>
+                      <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-600">{p.brand || 'No brand'}</span>
                     </div>
                   </div>
                   <span className={`shrink-0 rounded-full px-3 py-1 text-sm font-black ${isZero ? 'bg-black text-white' : isCritical ? 'bg-red-100 text-red-700' : isLow ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
@@ -923,17 +924,17 @@ function Inventory() {
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
                   <div>
-                    <p className="text-[10px] font-bold uppercase text-gray-400">C. Rate</p>
+                    <p className="text-xs font-bold uppercase text-gray-500">C. Rate</p>
                     <p className="font-black text-blue-600">{p.c_rate || 0}</p>
                   </div>
                   {(user.role === 'admin' || user.role === 'manager') && (
                     <div>
-                      <p className="text-[10px] font-bold uppercase text-gray-400">Cost</p>
+                      <p className="text-xs font-bold uppercase text-gray-500">Cost</p>
                       <p className="font-black text-gray-700">Rs. {p.cost_price}</p>
                     </div>
                   )}
                   <div>
-                    <p className="text-[10px] font-bold uppercase text-gray-400">Sale</p>
+                    <p className="text-xs font-bold uppercase text-gray-500">Sale</p>
                     <p className="font-black text-gray-900">Rs. {p.sale_price}</p>
                   </div>
                 </div>
@@ -969,9 +970,9 @@ function Inventory() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-400 italic text-lg">Loading inventory data...</td></tr>
+                <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-500 italic text-lg">Loading inventory data...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-400 italic text-lg">No products found matching criteria.</td></tr>
+                <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-500 italic text-lg">No products found matching criteria.</td></tr>
               ) : filtered.map(p => {
                 const isLow = p.stock_quantity <= (p.low_stock_threshold || 10)
                 const isCritical = p.stock_quantity <= 5
@@ -1039,11 +1040,11 @@ function Inventory() {
 
       {/* Adjust Stock Modal */}
       {selectedProduct && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-sm">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">Manual Adjustment</h2>
-              <button onClick={() => setSelectedProduct(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setSelectedProduct(null)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
             <p className="text-sm text-gray-500 mb-4">Update stock for <b>{selectedProduct.name}</b></p>
             {selectedProduct.inventory_mode === 'batch_tracked' && (
@@ -1066,7 +1067,7 @@ function Inventory() {
             <form onSubmit={handleAdjustStock} className="space-y-4">
               <div>
                 <label className="block text-gray-700 font-medium mb-1">New Stock Quantity</label>
-                <input
+                <input aria-label="New Stock Quantity"
                   type="number"
                   autoFocus
                   required
@@ -1077,7 +1078,7 @@ function Inventory() {
               </div>
               <div>
                 <label className="block text-gray-700 font-medium mb-1 text-sm">Reason / Note</label>
-                <input
+                <input aria-label="Reason / Note"
                   type="text"
                   placeholder="e.g. Broken item, Found in warehouse..."
                   value={adjustmentNote}
@@ -1107,16 +1108,16 @@ function Inventory() {
       )}
       {/* Record Return Modal */}
       {returnProduct && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-sm">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">Record Product Return</h2>
-              <button onClick={() => setReturnProduct(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setReturnProduct(null)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
             <form onSubmit={handleRecordReturn} className="space-y-4">
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Select Product</label>
-                <select
+                <select aria-label="Select Product"
                   required
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   value={returnProduct?.id || ''}
@@ -1137,7 +1138,7 @@ function Inventory() {
               </div>
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Return Quantity</label>
-                <input
+                <input aria-label="Return Quantity"
                   type="number"
                   required
                   min="1"
@@ -1170,18 +1171,18 @@ function Inventory() {
 
       {/* Bulk Price Update Modal */}
       {showBulkPriceModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">Bulk Price Update</h2>
-              <button onClick={() => setShowBulkPriceModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setShowBulkPriceModal(false)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
             <p className="text-sm text-gray-500 mb-6">Modify all products of a specific brand by a percentage.</p>
 
             <form onSubmit={handleBulkPriceUpdate} className="space-y-4">
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Select Brand</label>
-                <select
+                <select aria-label="Select Brand"
                   required
                   className="w-full px-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-purple-500"
                   value={bulkBrand}
@@ -1197,7 +1198,7 @@ function Inventory() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-gray-700 font-medium mb-1">Action</label>
-                  <select
+                  <select aria-label="Action"
                     className="w-full px-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-purple-500"
                     value={bulkAction}
                     onChange={e => setBulkAction(e.target.value)}
@@ -1208,7 +1209,7 @@ function Inventory() {
                 </div>
                 <div>
                   <label className="block text-gray-700 font-medium mb-1">Percentage (%)</label>
-                  <input
+                  <input aria-label="Percentage (%)"
                     type="number"
                     step="0.01"
                     required
@@ -1250,21 +1251,21 @@ function Inventory() {
 
       {/* History Modal */}
       {historyProduct && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
             <div className="flex justify-between items-center mb-4 shrink-0">
               <div>
                 <h2 className="text-xl font-bold text-gray-800">Timeline: {historyProduct.name}</h2>
                 <p className="text-xs text-gray-500">{historyProduct.brand} | {historyProduct.sku || 'No SKU'}</p>
               </div>
-              <button onClick={() => setHistoryProduct(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setHistoryProduct(null)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
               {loadingHistory ? (
-                <p className="text-center py-10 text-gray-400">Fetching history logs...</p>
+                <p className="text-center py-10 text-gray-500">Fetching history logs...</p>
               ) : historyLogs.length === 0 ? (
-                <p className="text-center py-10 text-gray-400 italic">No history found for this product.</p>
+                <p className="text-center py-10 text-gray-500 italic">No history found for this product.</p>
               ) : historyLogs.map((log, idx) => (
                 <div key={idx} className="flex gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <div className="shrink-0 flex flex-col items-center">
@@ -1277,8 +1278,8 @@ function Inventory() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{log.type}</span>
-                      <span className="text-[10px] text-gray-400">{new Date(log.date).toLocaleString()}</span>
+                      <span className="text-xs font-black text-gray-500 uppercase tracking-widest">{log.type}</span>
+                      <span className="text-xs text-gray-500">{new Date(log.date).toLocaleString()}</span>
                     </div>
                     <p className="text-sm text-gray-700 font-medium">{log.desc}</p>
                   </div>
@@ -1291,14 +1292,14 @@ function Inventory() {
 
       {/* Bulk Price Editor Modal */}
       {showBulkEditor && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-4xl flex flex-col">
             <div className="flex justify-between items-center mb-4 shrink-0">
               <div>
                 <h2 className="text-xl font-bold text-gray-800">Individual Bulk Price Editor</h2>
                 <p className="text-sm text-gray-500">Edit costs and sale prices for <b>{bulkBrand || 'All Brands'}</b></p>
               </div>
-              <button onClick={() => setShowBulkEditor(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              <button onClick={() => setShowBulkEditor(false)} className="text-gray-500 hover:text-gray-600 text-2xl">×</button>
             </div>
 
             <div className="flex-1 overflow-auto border rounded-xl mb-4 bg-gray-50">
@@ -1318,7 +1319,7 @@ function Inventory() {
                     const marginPercent = p.sale_price > 0 ? ((margin / p.sale_price) * 100).toFixed(0) : 0;
                     return (
                       <tr key={p.id}>
-                        <td className="px-4 py-2 font-medium text-gray-700">{p.name} <span className="text-[10px] text-gray-400">({p.brand})</span></td>
+                        <td className="px-4 py-2 font-medium text-gray-700">{p.name} <span className="text-xs text-gray-500">({p.brand})</span></td>
                         <td className="px-4 py-2">
                           <input type="number"
                             value={p.c_rate || 0}
@@ -1391,25 +1392,25 @@ function Inventory() {
           p.brand === arBrand && (arCategory ? String(p.category_id) === String(arCategory) : true)
         ).length
         return (
-          <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
             <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-md">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-800">🎯 Adjust Rates</h2>
-                <button onClick={() => setShowAdjustRatesModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+                <button onClick={() => setShowAdjustRatesModal(false)} className="text-gray-500 hover:text-gray-600 text-2xl leading-none">×</button>
               </div>
-              <p className="text-sm text-gray-500 mb-4">Brand aur Category filter karo, phir percentage se rates adjust karo.</p>
+              <p className="text-sm text-gray-500 mb-4">Filter by brand and category, then change prices by a percentage.</p>
               <form onSubmit={handleAdjustRates} className="space-y-4">
                 <div>
                   <label className="block text-gray-700 font-medium mb-1 text-sm">Brand *</label>
-                  <select required value={arBrand} onChange={e => { setArBrand(e.target.value); setArCategory('') }}
+                  <select aria-label="Brand" required value={arBrand} onChange={e => { setArBrand(e.target.value); setArCategory('') }}
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-sm">
-                    <option value="">Brand choose karein...</option>
+                    <option value="">Choose a brand</option>
                     {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-gray-700 font-medium mb-1 text-sm">Category <span className="text-gray-400 text-xs">(optional — blank = all)</span></label>
-                  <select value={arCategory} onChange={e => setArCategory(e.target.value)}
+                  <label className="block text-gray-700 font-medium mb-1 text-sm">Category <span className="text-gray-500 text-xs">(optional — blank = all)</span></label>
+                  <select aria-label="Category (optional blank all)" value={arCategory} onChange={e => setArCategory(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-sm">
                     <option value="">Tamam Categories</option>
                     {arFilteredCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1417,17 +1418,17 @@ function Inventory() {
                 </div>
                 <div>
                   <label className="block text-gray-700 font-medium mb-1 text-sm">Apply To</label>
-                  <select value={arTarget} onChange={e => setArTarget(e.target.value)}
+                  <select aria-label="Apply To" value={arTarget} onChange={e => setArTarget(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-sm">
-                    <option value="sale_price">Sale Price sirf</option>
-                    <option value="cost_price">Cost Price sirf</option>
+                    <option value="sale_price">Sale price only</option>
+                    <option value="cost_price">Cost price only</option>
                     <option value="both">Dono (Sale + Cost)</option>
                   </select>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-gray-700 font-medium mb-1 text-sm">Action</label>
-                    <select value={arAction} onChange={e => setArAction(e.target.value)}
+                    <select aria-label="Action" value={arAction} onChange={e => setArAction(e.target.value)}
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-sm">
                       <option value="increase">Increase (+)</option>
                       <option value="decrease">Decrease (-)</option>
@@ -1435,20 +1436,20 @@ function Inventory() {
                   </div>
                   <div>
                     <label className="block text-gray-700 font-medium mb-1 text-sm">Percentage (%)</label>
-                    <input type="number" step="0.01" min="0" required placeholder="e.g. 10"
+                    <input aria-label="Percentage (%)" type="number" step="0.01" min="0" required placeholder="e.g. 10"
                       value={arPercent} onChange={e => setArPercent(e.target.value)}
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
                   </div>
                 </div>
                 {arBrand && (
                   <div className={`p-3 rounded-xl border text-xs font-semibold ${affectedCount > 0 ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-red-50 border-red-100 text-red-600'}`}>
-                    {affectedCount > 0 ? `${affectedCount} product(s) affect honge` : 'Koi product nahi mila — filter check karein'}
+                    {affectedCount > 0 ? `${affectedCount} product(s) will change` : 'No products match. Check the filter.'}
                   </div>
                 )}
                 <div className="flex gap-3 pt-2">
                   <button type="submit" disabled={saving || !affectedCount}
                     className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition disabled:opacity-50 text-sm">
-                    {saving ? 'Update ho raha hai...' : 'Apply Karein'}
+                    {saving ? 'Updating…' : 'Apply change'}
                   </button>
                   <button type="button" onClick={() => setShowAdjustRatesModal(false)}
                     className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition text-sm">

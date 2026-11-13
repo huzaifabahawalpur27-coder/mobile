@@ -59,7 +59,7 @@ export default function BatchCostAdjustmentModal({ batch, productName, onClose, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
       <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-lg rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden flex flex-col max-h-[90dvh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.06] flex items-center justify-between">
@@ -67,13 +67,13 @@ export default function BatchCostAdjustmentModal({ batch, productName, onClose, 
             <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-base flex items-center gap-2">
               <span>💰</span> Adjust FIFO Batch Cost
             </h3>
-            <p className="text-xs text-[#86868b] mt-0.5">
+            <p className="text-xs text-[#6e6e73] mt-0.5">
               Batch <span className="font-mono font-bold text-[#0071e3]">{batch.batch_no}</span> • {productName || 'Product'}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-[#86868b] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7] flex items-center justify-center font-bold text-lg"
+            className="w-8 h-8 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7] flex items-center justify-center font-bold text-lg"
           >
             ×
           </button>
@@ -90,19 +90,19 @@ export default function BatchCostAdjustmentModal({ batch, productName, onClose, 
           {/* Current State Summary */}
           <div className="grid grid-cols-3 gap-2.5 p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.05] dark:border-white/[0.05] text-xs">
             <div>
-              <span className="text-[#86868b] block text-[10px] uppercase font-bold">Original Cost</span>
+              <span className="text-[#6e6e73] block text-xs uppercase font-bold">Original Cost</span>
               <span className="font-bold font-mono text-[#1d1d1f] dark:text-[#f5f5f7]">
                 Rs. {originalCost.toLocaleString()}
               </span>
             </div>
             <div>
-              <span className="text-[#86868b] block text-[10px] uppercase font-bold">Current Cost</span>
+              <span className="text-[#6e6e73] block text-xs uppercase font-bold">Current Cost</span>
               <span className="font-bold font-mono text-[#0071e3]">
                 Rs. {currentCost.toLocaleString()}
               </span>
             </div>
             <div>
-              <span className="text-[#86868b] block text-[10px] uppercase font-bold">Units (Rem / Sold)</span>
+              <span className="text-[#6e6e73] block text-xs uppercase font-bold">Units (Rem / Sold)</span>
               <span className="font-bold font-mono text-[#1d1d1f] dark:text-[#f5f5f7]">
                 {qtyRemaining} / {qtySold}
               </span>
@@ -114,7 +114,7 @@ export default function BatchCostAdjustmentModal({ batch, productName, onClose, 
             <label className="block text-xs font-bold text-[#1d1d1f] dark:text-[#f5f5f7] mb-1">
               New Unit Cost (Rs.) *
             </label>
-            <input
+            <input aria-label=" New Unit Cost (Rs.) "
               type="number"
               step="any"
               min="0"
@@ -132,7 +132,7 @@ export default function BatchCostAdjustmentModal({ batch, productName, onClose, 
             <label className="block text-xs font-bold text-[#1d1d1f] dark:text-[#f5f5f7] mb-1">
               Adjustment Reason (Mandatory) *
             </label>
-            <textarea
+            <textarea aria-label=" Adjustment Reason (Mandatory) "
               required
               rows={2}
               value={reason}
@@ -151,7 +151,7 @@ export default function BatchCostAdjustmentModal({ batch, productName, onClose, 
                   {costDiff > 0 ? `+Rs. ${costDiff}/unit` : `-Rs. ${Math.abs(costDiff)}/unit`}
                 </span>
               </div>
-              <ul className="space-y-1 text-blue-800 dark:text-blue-200 text-[11px] list-disc list-inside">
+              <ul className="space-y-1 text-blue-800 dark:text-blue-200 text-xs list-disc list-inside">
                 <li>
                   <strong>Remaining Stock ({qtyRemaining} units):</strong> Revalued at Rs. {parsedNewCost.toLocaleString()} from now on.
                 </li>

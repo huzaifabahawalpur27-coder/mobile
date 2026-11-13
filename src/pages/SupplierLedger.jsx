@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue } from '../services/db'
 import { adjustSupplierBalance, adjustProductStock, releasePhoneFromPurchase } from '../services/atomicOps'
 import { getBankAccounts, creditBankBalance, deductBankBalance } from '../services/bankService'
-import { supplierLedgerEffect, netAmount, paidAmount, confirmAmount, isCashName } from '../utils/moneyMath'
+import { supplierLedgerEffect, netAmount, paidAmount, unusualAmount, isCashName } from '../utils/moneyMath'
 import { applyMoneyOp, accountForMode, deleteBillPayments } from '../services/moneyOps'
 import EditLedgerEntryModal from '../components/EditLedgerEntryModal'
 import { hasFeature } from '../utils/featureGate'
@@ -21,6 +21,7 @@ import {
     Printer, FileText, RotateCcw, CreditCard, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { notify } from '../utils/toast'
+import { confirmDialog, confirmUnusualAmount } from '../utils/dialog'
 
 function SupplierLedger() {
     const { id } = useParams()
@@ -340,14 +341,14 @@ function SupplierLedger() {
     const handleSubmitTransaction = async (e) => {
         e.preventDefault()
         if (purchaseAmt === 0 && paidAmt === 0) {
-            notify('Purchase amount ya paid amount mein se koi ek lazmi hai.')
+            notify('Enter a purchase amount, a paid amount, or both.')
             return
         }
 
         // Catch an extra digit before it is saved
         const pastAmounts = (kind) => ledger.filter(l => l.type === kind).map(l => l.amount)
-        if (!confirmAmount(purchaseAmt, pastAmounts('debit').concat(pastAmounts('purchase')), 'Purchase amount')) return
-        if (!confirmAmount(paidAmt, pastAmounts('payment'), 'Payment to supplier')) return
+        if (!await confirmUnusualAmount(purchaseAmt, unusualAmount(purchaseAmt, pastAmounts('debit').concat(pastAmounts('purchase'))), 'Purchase amount')) return
+        if (!await confirmUnusualAmount(paidAmt, unusualAmount(paidAmt, pastAmounts('payment')), 'Payment to supplier')) return
         setSaving(true)
         const now = txForm.date ? new Date(txForm.date + 'T12:00:00').toISOString() : new Date().toISOString()
 
@@ -395,9 +396,9 @@ function SupplierLedger() {
             })
             if (!res.ok) throw new Error(res.error || 'Could not save the transaction')
             setSupplier(sup => sup ? { ...sup, outstanding_balance: (Number(sup.outstanding_balance) || 0) + purchaseAmt - paidAmt, balance: (Number(sup.outstanding_balance) || 0) + purchaseAmt - paidAmt } : sup)
-            if (res.queued) notify('Offline mode: Transaction locally save ho gaya. Online hone pr sync hoga! 🔄')
+            if (res.queued) notify('Saved on this device. It syncs when you are back online.', 'info')
             else if (res.problems?.length) notify(`Saved, but please check:\n${res.problems.join('\n')}`)
-            else notify('Transaction save ho gaya! ✅')
+            else notify('Transaction saved.', 'success')
             resetForm()
             fetchSupplierData()
         } catch (error) {
@@ -413,13 +414,13 @@ function SupplierLedger() {
 
     // ── Delete Transaction ──────────────────────────────────────────────────────
     const handleDeleteTransaction = async (item) => {
-        if (isOpeningRow(item)) { notify('Opening balance entry directly delete nahi ho sakti.'); return }
+        if (isOpeningRow(item)) { notify('The opening balance row cannot be deleted. Use Reconcile to change it.'); return }
         const typeLabel = item.type === 'purchase' ? 'Purchase Order'
             : item.type === 'debit' ? 'Debit Entry'
             : item.type === 'payment' ? 'Payment'
             : 'Return'
-        const confirmed = window.confirm(
-            `Yeh transaction delete karein?\n\nType: ${typeLabel}\nAmount: Rs. ${Number(item.amount).toLocaleString()}\nNote: ${item.note}\n\nSupplier balance bhi adjust ho ga.`
+        const confirmed = await confirmDialog(
+            `Delete this ${typeLabel.toLowerCase()}?\nAmount: Rs. ${Number(item.amount).toLocaleString()}\nNote: ${item.note}\n\nThe supplier balance is adjusted to match.`, { confirmLabel: 'Delete entry', danger: true }
         )
         if (!confirmed) return
 
@@ -490,7 +491,7 @@ function SupplierLedger() {
             await changeBalance(deletionDelta(item))
             fetchSupplierData()
         } catch (err) {
-            notify('Delete nahi hua: ' + err.message)
+            notify('Not deleted: ' + err.message, 'error')
         }
     }
 
@@ -532,9 +533,9 @@ function SupplierLedger() {
             const ws = wb.Sheets[wb.SheetNames[0]]
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'yyyy-mm-dd' })
 
-            if (!rows.length) { notify('File mein koi data nahi mila.'); return }
+            if (!rows.length) { notify('The file has no rows.'); return }
 
-            const confirmed = window.confirm(`${rows.length} transactions import karein?`)
+            const confirmed = await confirmDialog(`Import ${rows.length} transactions?`, { confirmLabel: 'Import transactions' })
             if (!confirmed) return
 
             const insertRows = []
@@ -570,7 +571,7 @@ function SupplierLedger() {
                 }
             }
 
-            if (!insertRows.length) { notify('Koi valid row nahi mili (Debit/Credit columns check karein).'); return }
+            if (!insertRows.length) { notify('No usable rows found. Check the Debit and Credit columns.', 'error'); return }
 
             if (navigator.onLine) {
                 let { error } = await supabase.from('supplier_payments').insert(insertRows)
@@ -609,7 +610,7 @@ function SupplierLedger() {
                 await changeBalance(balanceDelta)
             }
 
-            notify(`${insertRows.length} entries import ho gayi! ✅`)
+            notify(`${insertRows.length} entries imported.`, 'success')
             fetchSupplierData()
         } catch (err) {
             console.error('Import error:', err)
@@ -654,14 +655,14 @@ function SupplierLedger() {
 
     const handleClearAllLedger = async () => {
         if (!ledger.length) return
-        if (!confirm(`Poora ledger clear karein? (${ledger.length} entries)\n\nSupplier balance zero ho jayega.\nYeh supplier ko delete karne ke liye zaruri hai.`)) return
+        if (!await confirmDialog(`Delete all ${ledger.length} ledger entries?\nThe supplier balance becomes zero. This is needed before the supplier can be deleted.`, { confirmLabel: 'Delete all entries', danger: true })) return
         await _doDeleteItems(ledger)
     }
 
     const handleBulkDelete = async () => {
         const toDelete = ledger.filter(item => selectedIds.has(item.id) && !isOpeningRow(item))
         if (!toDelete.length) return
-        if (!confirm(`${toDelete.length} transactions delete karein?\n\nSupplier balance bhi adjust ho ga.`)) return
+        if (!await confirmDialog(`Delete ${toDelete.length} transactions?\nThe supplier balance is adjusted to match.`, { confirmLabel: 'Delete transactions', danger: true })) return
         await _doDeleteItems(toDelete)
     }
 
@@ -705,14 +706,14 @@ function SupplierLedger() {
         }
         await changeBalance(totalDelta)
         setSelectedIds(new Set())
-        if (errors.length) notify(`${errors.length} entries delete nahi huin:\n${errors.slice(0, 3).join('\n')}`)
+        if (errors.length) notify(`${errors.length} entries were not deleted:\n${errors.slice(0, 3).join('\n')}`, 'error')
         fetchSupplierData()
     }
 
     const handleReconcileBalance = async () => {
         if (!ledger.length && supplier?.outstanding_balance === 0) return
         const computedBalance = ledger.length > 0 ? ledger[0].balance : 0
-        const confirmed = confirm(`Balance Reconcile Karein?\n\nPresent Stored Balance: Rs. ${supplier?.outstanding_balance || 0}\nCalculated Ledger Sum: Rs. ${computedBalance}\n\nSupplier balance transaction ledger ke mutabiq sync ho jayega.`)
+        const confirmed = await confirmDialog(`Set the balance to match the ledger?\nSaved balance: Rs. ${supplier?.outstanding_balance || 0}\nLedger adds up to: Rs. ${computedBalance}`, { confirmLabel: 'Set balance' })
         if (!confirmed) return
 
         try {
@@ -1002,19 +1003,19 @@ function SupplierLedger() {
                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                     <p className="text-xs text-gray-500 uppercase font-semibold">Total Purchases (Debit)</p>
                     <p className="text-xl font-bold text-gray-900 mt-1">Rs. {stats.totalPurchases.toLocaleString()}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">Purchases & debits</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Purchases & debits</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                     <p className="text-xs text-gray-500 uppercase font-semibold">Total Payments (Credit)</p>
                     <p className="text-xl font-bold text-green-600 mt-1">Rs. {stats.totalPayments.toLocaleString()}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">Payments made</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Payments made</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                     <p className="text-xs text-gray-500 uppercase font-semibold">Returns / Adjustments</p>
                     <p className="text-xl font-bold text-purple-600 mt-1">Rs. {stats.totalReturns.toLocaleString()}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">{stats.returnedCount} phone(s) returned</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{stats.returnedCount} phone(s) returned</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm col-span-2 sm:col-span-1">
@@ -1022,18 +1023,18 @@ function SupplierLedger() {
                     <p className={`text-xl font-bold mt-1 ${stats.currentBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                         Rs. {stats.currentBalance.toLocaleString()}
                     </p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">{stats.currentBalance > 0 ? 'Payable to supplier' : 'Account Cleared'}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{stats.currentBalance > 0 ? 'Payable to supplier' : 'Account Cleared'}</p>
                 </div>
 
                 <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-100 shadow-sm col-span-2 sm:col-span-1">
                     <div className="flex justify-between items-start">
                         <p className="text-xs text-blue-800 uppercase font-bold">Active Stock Value</p>
-                        <span className="px-2 py-0.5 text-[11px] font-bold bg-blue-600 text-white rounded-full">
+                        <span className="px-2 py-0.5 text-xs font-bold bg-blue-600 text-white rounded-full">
                             {stats.inStockCount} In Stock
                         </span>
                     </div>
                     <p className="text-xl font-bold text-blue-900 mt-1">Rs. {stats.inStockValue.toLocaleString()}</p>
-                    <p className="text-[11px] text-blue-600 mt-0.5">Sold: {stats.soldCount} | Total: {stats.totalPhones}</p>
+                    <p className="text-xs text-blue-600 mt-0.5">Sold: {stats.soldCount} | Total: {stats.totalPhones}</p>
                 </div>
             </div>
 
@@ -1088,14 +1089,14 @@ function SupplierLedger() {
                 {/* Search */}
                 <div className="flex-1 min-w-[180px]">
                     <label className="block text-xs text-gray-500 font-semibold mb-1 uppercase tracking-wide">🔍 Search</label>
-                    <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                    <input aria-label="Search" type="text" value={search} onChange={e => setSearch(e.target.value)}
                         placeholder="Bill #, description, amount..."
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 outline-none" />
                 </div>
                 {/* Type filter */}
                 <div className="min-w-[140px]">
                     <label className="block text-xs text-gray-500 font-semibold mb-1 uppercase tracking-wide">Type</label>
-                    <select value={filterType} onChange={e => setFilterType(e.target.value)}
+                    <select aria-label="Type" value={filterType} onChange={e => setFilterType(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 outline-none bg-white">
                         <option value="all">All Types</option>
                         <option value="debit">Purchase / Debit</option>
@@ -1107,13 +1108,13 @@ function SupplierLedger() {
                 {/* Date From */}
                 <div>
                     <label className="block text-xs text-gray-500 font-semibold mb-1 uppercase tracking-wide">From</label>
-                    <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+                    <input aria-label="From" type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
                         className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 outline-none" />
                 </div>
                 {/* Date To */}
                 <div>
                     <label className="block text-xs text-gray-500 font-semibold mb-1 uppercase tracking-wide">To</label>
-                    <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+                    <input aria-label="To" type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
                         className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 outline-none" />
                 </div>
                 {/* Clear */}
@@ -1125,7 +1126,7 @@ function SupplierLedger() {
                 )}
                 {/* Result count */}
                 {isFiltered && (
-                    <span className="text-xs text-gray-400 self-center">
+                    <span className="text-xs text-gray-500 self-center">
                         {filteredLedger.length} of {ledger.length} entries
                     </span>
                 )}
@@ -1150,15 +1151,15 @@ function SupplierLedger() {
             <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
                 <div className="divide-y divide-gray-100 md:hidden">
                     {filteredLedger.length === 0 ? (
-                        <p className="p-6 text-center text-gray-400 text-sm">
-                            {isFiltered ? `"${search || filterType}" se koi result nahi mila. Filter clear karein.` : 'Koi transaction nahi mili. "Add Transaction" se pehli entry karein.'}
+                        <p className="p-6 text-center text-gray-500 text-sm">
+                            {isFiltered ? `Nothing matches "${search || filterType}". Clear the filter.` : 'No transactions yet. Use "Add Transaction" to add the first one.'}
                         </p>
                     ) : (
                         filteredLedger.map((item, idx) => (
                             <div key={idx} className={`p-4 ${selectedIds.has(item.id) ? 'bg-red-50/40' : ''}`}>
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="text-xs text-gray-400">{new Date(item.date).toLocaleDateString('en-PK')}</p>
+                                        <p className="text-xs text-gray-500">{new Date(item.date).toLocaleDateString('en-PK')}</p>
                                         <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                                             <span className="font-semibold text-gray-800">{item.note}</span>
                                             {item.bill_number && (
@@ -1169,21 +1170,21 @@ function SupplierLedger() {
 
                                         <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                                             {item.payment_mode && (
-                                                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold capitalize">{item.payment_mode}</span>
+                                                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-semibold capitalize">{item.payment_mode}</span>
                                             )}
                                             {item.transaction_ref && (
-                                                <span className="text-[10px] text-gray-400">Ref: {item.transaction_ref}</span>
+                                                <span className="text-xs text-gray-500">Ref: {item.transaction_ref}</span>
                                             )}
                                             {item.type === 'purchase' && (
                                                 <button
                                                     onClick={() => setExpandedBill(expandedBill === item.id ? null : item.id)}
-                                                    className="text-[10px] text-blue-600 hover:underline font-bold uppercase tracking-tighter"
+                                                    className="text-xs text-blue-600 hover:underline font-bold uppercase tracking-tighter"
                                                 >
                                                     {expandedBill === item.id ? 'Collapse ▲' : 'Details ▼'}
                                                 </button>
                                             )}
-                                            {item.type === 'return' && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] uppercase font-bold">Return</span>}
-                                            {item.type === 'debit' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] uppercase font-bold">Manual Entry</span>}
+                                            {item.type === 'return' && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs uppercase font-bold">Return</span>}
+                                            {item.type === 'debit' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs uppercase font-bold">Manual Entry</span>}
                                         </div>
                                     </div>
 
@@ -1192,27 +1193,27 @@ function SupplierLedger() {
                                             className="w-4 h-4 rounded cursor-pointer" />
                                         {canEditEntry(item) && (
                                             <button onClick={() => setEditEntry(item)} title="Correct amount" aria-label="Correct amount"
-                                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
+                                                className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
                                         )}
                                         <button
                                             onClick={() => handleDeleteTransaction(item)}
                                             title="Delete transaction"
-                                            className="p-1 text-gray-400 hover:text-red-500 rounded transition text-xs"
+                                            className="p-1 text-gray-500 hover:text-red-500 rounded transition text-xs"
                                         >🗑️</button>
                                     </div>
                                 </div>
 
                                 <div className="mt-3 grid grid-cols-3 gap-2 text-right text-xs">
                                     <div>
-                                        <p className="text-[10px] font-bold uppercase text-gray-400 text-left">Debit (+)</p>
+                                        <p className="text-xs font-bold uppercase text-gray-500 text-left">Debit (+)</p>
                                         <p className="font-bold text-orange-600">{(item.type === 'purchase' || item.type === 'debit') ? `+ Rs. ${Number(item.amount).toLocaleString()}` : '—'}</p>
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-bold uppercase text-gray-400 text-left">Credit (-)</p>
+                                        <p className="text-xs font-bold uppercase text-gray-500 text-left">Credit (-)</p>
                                         <p className="font-bold text-green-600">{(item.type !== 'purchase' && item.type !== 'debit') ? `- Rs. ${Math.abs(Number(item.amount)).toLocaleString()}` : '—'}</p>
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-bold uppercase text-gray-400 text-left">Balance</p>
+                                        <p className="text-xs font-bold uppercase text-gray-500 text-left">Balance</p>
                                         <p className={`font-black ${item.balance > 0 ? 'text-red-600' : 'text-green-700'}`}>Rs. {Number(item.balance).toLocaleString()}</p>
                                     </div>
                                 </div>
@@ -1220,8 +1221,8 @@ function SupplierLedger() {
                                 {item.type === 'purchase' && expandedBill === item.id && (
                                     <div className="mt-3 bg-orange-50/50 p-3 rounded-lg border border-orange-100/50">
                                         <div className="flex items-center gap-2 mb-2">
-                                            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Payment:</span>
-                                            <span className={`px-3 py-0.5 rounded-full text-[10px] font-bold uppercase ${item.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                            <span className="text-xs text-gray-500 uppercase font-bold tracking-widest">Payment:</span>
+                                            <span className={`px-3 py-0.5 rounded-full text-xs font-bold uppercase ${item.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                                                 {item.payment_type}
                                             </span>
                                         </div>
@@ -1238,10 +1239,10 @@ function SupplierLedger() {
                                                     <div key={iidx} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs bg-white/90 p-2.5 rounded-xl border border-orange-100/80 shadow-2xs gap-1.5">
                                                         <div className="space-y-0.5">
                                                             <p className="text-gray-900 font-bold text-xs">{name}</p>
-                                                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                                                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                                                                 {specs && <span>{specs}</span>}
                                                                 {imei && (
-                                                                    <span className="font-mono bg-orange-50/80 text-orange-800 border border-orange-200/60 px-1.5 py-0.2 rounded text-[10px]">
+                                                                    <span className="font-mono bg-orange-50/80 text-orange-800 border border-orange-200/60 px-1.5 py-0.2 rounded text-xs">
                                                                         IMEI: {imei}
                                                                     </span>
                                                                 )}
@@ -1249,7 +1250,7 @@ function SupplierLedger() {
                                                         </div>
                                                         <div className="text-right shrink-0">
                                                             <span className="text-gray-900 font-bold">Rs. {Number(price).toLocaleString()}</span>
-                                                            <span className="text-gray-500 text-[11px]"> × {qty}</span>
+                                                            <span className="text-gray-500 text-xs"> × {qty}</span>
                                                         </div>
                                                     </div>
                                                 )
@@ -1291,7 +1292,7 @@ function SupplierLedger() {
                                             {item.bill_number
                                                 ? <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-mono font-bold">{item.bill_number}</span>
                                                 : item.type === 'purchase'
-                                                    ? <span className="text-xs text-gray-400 font-mono">{String(item.id).slice(-8)}</span>
+                                                    ? <span className="text-xs text-gray-500 font-mono">{String(item.id).slice(-8)}</span>
                                                     : <span className="text-gray-300">—</span>}
                                         </td>
                                         <td className="px-5 py-3">
@@ -1300,20 +1301,20 @@ function SupplierLedger() {
                                                     <span className="font-medium text-gray-800">{item.note}</span>
                                                     {item.type === 'purchase' && (
                                                         <button onClick={() => setExpandedBill(expandedBill === item.id ? null : item.id)}
-                                                            className="text-[10px] text-blue-600 hover:text-blue-800 font-bold uppercase tracking-tighter">
+                                                            className="text-xs text-blue-600 hover:text-blue-800 font-bold uppercase tracking-tighter">
                                                             {expandedBill === item.id ? 'Collapse ▲' : 'Details ▼'}
                                                         </button>
                                                     )}
-                                                    {item.type === 'return' && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] uppercase font-bold">Return</span>}
-                                                    {item.type === 'debit' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] uppercase font-bold">Manual Entry</span>}
+                                                    {item.type === 'return' && <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs uppercase font-bold">Return</span>}
+                                                    {item.type === 'debit' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs uppercase font-bold">Manual Entry</span>}
                                                 </div>
                                                 {item.details && <span className="text-xs text-gray-500 truncate max-w-xs">{item.details}</span>}
                                                 <div className="flex items-center gap-1.5 flex-wrap">
                                                     {item.payment_mode && (
-                                                        <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold capitalize">{item.payment_mode}</span>
+                                                        <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-semibold capitalize">{item.payment_mode}</span>
                                                     )}
                                                     {item.transaction_ref && (
-                                                        <span className="text-[10px] text-gray-400">Ref: {item.transaction_ref}</span>
+                                                        <span className="text-xs text-gray-500">Ref: {item.transaction_ref}</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -1332,7 +1333,7 @@ function SupplierLedger() {
                                         <td className="px-3 py-3 text-right">
                                             {canEditEntry(item) && (
                                                 <button onClick={() => setEditEntry(item)} title="Correct amount" aria-label="Correct amount"
-                                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
+                                                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs">✏️</button>
                                             )}
                                             <button onClick={() => handleDeleteTransaction(item)}
                                                 title="Delete transaction"
@@ -1345,8 +1346,8 @@ function SupplierLedger() {
                                         <tr className="bg-orange-50/50 border-b border-gray-100">
                                             <td colSpan="8" className="px-5 py-3">
                                                 <div className="flex items-center gap-2 mb-2">
-                                                    <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Payment:</span>
-                                                    <span className={`px-3 py-0.5 rounded-full text-[10px] font-bold uppercase ${item.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                    <span className="text-xs text-gray-500 uppercase font-bold tracking-widest">Payment:</span>
+                                                    <span className={`px-3 py-0.5 rounded-full text-xs font-bold uppercase ${item.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                                                         {item.payment_type}
                                                     </span>
                                                 </div>
@@ -1363,17 +1364,17 @@ function SupplierLedger() {
                                                             <div key={iidx} className="flex flex-col justify-between text-xs bg-white/90 p-2.5 rounded-xl border border-orange-100/80 shadow-2xs gap-1.5">
                                                                 <div className="space-y-0.5">
                                                                     <p className="text-gray-900 font-bold text-xs">{name}</p>
-                                                                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                                                                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                                                                         {specs && <span>{specs}</span>}
                                                                         {imei && (
-                                                                            <span className="font-mono bg-orange-50/80 text-orange-800 border border-orange-200/60 px-1.5 py-0.2 rounded text-[10px]">
+                                                                            <span className="font-mono bg-orange-50/80 text-orange-800 border border-orange-200/60 px-1.5 py-0.2 rounded text-xs">
                                                                                 IMEI: {imei}
                                                                             </span>
                                                                         )}
                                                                     </div>
                                                                 </div>
                                                                 <div className="text-right pt-1 border-t border-gray-100/80 flex justify-between items-center">
-                                                                    <span className="text-gray-400 text-[10px]">Qty: {qty}</span>
+                                                                    <span className="text-gray-500 text-xs">Qty: {qty}</span>
                                                                     <span className="text-gray-900 font-bold">Rs. {Number(price).toLocaleString()}</span>
                                                                 </div>
                                                             </div>
@@ -1387,8 +1388,8 @@ function SupplierLedger() {
                             ))}
                             {ledger.length === 0 && (
                                 <tr>
-                                    <td colSpan="8" className="px-6 py-12 text-center text-gray-400">
-                                        {isFiltered ? `"${search || filterType}" se koi result nahi mila. Filter clear karein.` : 'Koi transaction nahi mili. "Add Transaction" se pehli entry karein.'}
+                                    <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
+                                        {isFiltered ? `Nothing matches "${search || filterType}". Clear the filter.` : 'No transactions yet. Use "Add Transaction" to add the first one.'}
                                     </td>
                                 </tr>
                             )}
@@ -1413,8 +1414,8 @@ function SupplierLedger() {
                     </div>
 
                     {purchasesList.length === 0 ? (
-                        <div className="p-12 text-center text-gray-400">
-                            <p className="text-sm">Koi purchase invoice nahi mili is supplier ke liye.</p>
+                        <div className="p-12 text-center text-gray-500">
+                            <p className="text-sm">No purchase invoices for this supplier.</p>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
@@ -1448,7 +1449,7 @@ function SupplierLedger() {
                                                     {itemsCount > 0 ? (
                                                         <div>
                                                             <span className="font-semibold text-gray-900">{itemsCount} item(s)</span>
-                                                            <p className="text-[11px] text-gray-400 truncate max-w-xs">
+                                                            <p className="text-xs text-gray-500 truncate max-w-xs">
                                                                 {p.purchase_items.map(i => {
                                                                     const ph = i.phones || (supplierPhones || []).find(sp => sp.id === i.phone_id || sp.purchase_id === p.id)
                                                                     return i.product_name || i.item_name || (ph ? `${ph.brand && ph.brand !== 'Unknown' ? ph.brand + ' ' : ''}${ph.model || 'Phone'}` : 'Item')
@@ -1456,7 +1457,7 @@ function SupplierLedger() {
                                                             </p>
                                                         </div>
                                                     ) : (
-                                                        <span className="text-gray-400">Direct Purchase</span>
+                                                        <span className="text-gray-500">Direct Purchase</span>
                                                     )}
                                                 </td>
                                                 <td className="p-3 text-right font-bold text-gray-900 whitespace-nowrap">
@@ -1484,7 +1485,7 @@ function SupplierLedger() {
                                                     <button
                                                         onClick={() => setPurchaseToEditPayment(p)}
                                                         className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ml-auto shadow-xs"
-                                                        title="Credit ya Paid status change karein financial adjustment ke sath"
+                                                        title="Change how this bill was paid; balances are adjusted"
                                                     >
                                                         <CreditCard size={13} />
                                                         Change Method
@@ -1550,8 +1551,8 @@ function SupplierLedger() {
 
                         <div className="flex items-center gap-2 flex-1 max-w-sm ml-auto">
                             <div className="relative w-full">
-                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                                <input aria-label="Search IMEI, model, color"
                                     type="text"
                                     value={phoneSearch}
                                     onChange={e => setPhoneSearch(e.target.value)}
@@ -1569,9 +1570,9 @@ function SupplierLedger() {
                     </div>
 
                     {filteredPhones.length === 0 ? (
-                        <div className="p-12 text-center text-gray-400">
+                        <div className="p-12 text-center text-gray-500">
                             <Smartphone size={32} className="mx-auto mb-2 opacity-30" />
-                            <p className="text-sm">Koi phone nahi mila criteria ke mutabiq.</p>
+                            <p className="text-sm">No phones match.</p>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
@@ -1609,7 +1610,7 @@ function SupplierLedger() {
                                                         {(phone.imei1 || phone.imei) && (
                                                             <button
                                                                 onClick={() => handleCopyImei(phone.imei1 || phone.imei)}
-                                                                className="text-gray-400 hover:text-blue-600 transition"
+                                                                className="text-gray-500 hover:text-blue-600 transition"
                                                                 title="Copy IMEI"
                                                             >
                                                                 {copiedImei === (phone.imei1 || phone.imei) ? (
@@ -1621,11 +1622,11 @@ function SupplierLedger() {
                                                         )}
                                                     </div>
                                                     {phone.imei2 && (
-                                                        <div className="font-mono text-[11px] text-gray-400 flex items-center gap-1.5 mt-0.5">
+                                                        <div className="font-mono text-xs text-gray-500 flex items-center gap-1.5 mt-0.5">
                                                             <span>{phone.imei2}</span>
                                                             <button
                                                                 onClick={() => handleCopyImei(phone.imei2)}
-                                                                className="text-gray-400 hover:text-blue-600 transition"
+                                                                className="text-gray-500 hover:text-blue-600 transition"
                                                                 title="Copy IMEI 2"
                                                             >
                                                                 {copiedImei === phone.imei2 ? (
@@ -1668,17 +1669,17 @@ function SupplierLedger() {
                                                         <button
                                                             onClick={() => setPhoneForReturn(phone)}
                                                             className="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ml-auto shadow-xs"
-                                                            title="Supplier ko phone wapis karein (Credit adjustment / Cash refund / Bank refund)"
+                                                            title="Return this phone to the supplier (credit note, cash refund or bank refund)"
                                                         >
                                                             <RotateCcw size={13} />
                                                             Return to Supplier
                                                         </button>
                                                     ) : isReturned ? (
-                                                        <span className="text-xs text-gray-400 italic">
+                                                        <span className="text-xs text-gray-500 italic">
                                                             {phone.return_settlement || 'Returned'}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-xs text-gray-400 italic">Customer Sold</span>
+                                                        <span className="text-xs text-gray-500 italic">Customer Sold</span>
                                                     )}
                                                 </td>
                                             </tr>
@@ -1702,13 +1703,13 @@ function SupplierLedger() {
 
             {/* ── Add Transaction Modal ── */}
             {showModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
+                <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black bg-opacity-40 flex items-start sm:items-center justify-center z-50 overflow-y-auto py-4 px-2 sm:px-4">
                     <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-md">
                         <h2 className="text-xl font-bold text-gray-800 mb-1">➕ Add Transaction</h2>
-                        <p className="text-xs text-gray-400 mb-3">Record a purchase, supplier payment, or both</p>
+                        <p className="text-xs text-gray-500 mb-3">Record a purchase, supplier payment, or both</p>
 
                         {/* Informational Guidance Banner */}
-                        <div className="p-2.5 rounded-xl bg-blue-50/80 border border-blue-200/80 text-[11px] text-blue-800 leading-snug mb-3">
+                        <div className="p-2.5 rounded-xl bg-blue-50/80 border border-blue-200/80 text-xs text-blue-800 leading-snug mb-3">
                             💡 <b>Note:</b> Purchases completed in the <b>Purchases</b> module or <b>Phone Purchase Panel</b> are synced to this ledger automatically. Use this form only for manual credit/debit entries.
                         </div>
 
@@ -1743,13 +1744,13 @@ function SupplierLedger() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-1 text-sm">Date</label>
-                                    <input type="date" value={txForm.date}
+                                    <input aria-label="Date" type="date" value={txForm.date}
                                         onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-1 text-sm">Bill # (Optional)</label>
-                                    <input type="text" value={txForm.bill_number}
+                                    <input aria-label="Bill (Optional)" type="text" value={txForm.bill_number}
                                         onChange={e => setTxForm(f => ({ ...f, bill_number: e.target.value }))}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                         placeholder="e.g. INV-001" />
@@ -1762,11 +1763,11 @@ function SupplierLedger() {
                                     <label className="block font-semibold mb-1 text-sm text-orange-600">
                                         📦 Total Purchase Amount (Debit)
                                     </label>
-                                    <input type="number" min="0" step="any" value={txForm.purchase_amount}
+                                    <input aria-label=" Total Purchase Amount (Debit) " type="number" min="0" step="any" value={txForm.purchase_amount}
                                         onChange={e => setTxForm(f => ({ ...f, purchase_amount: e.target.value }))}
                                         className="w-full px-4 py-2.5 border border-orange-200 bg-orange-50 rounded-lg focus:ring-2 focus:ring-orange-400 outline-none text-sm"
                                         placeholder="0  — kitna maal liya (Rs.)" />
-                                    <p className="text-xs text-gray-400 mt-0.5">Supplier sy jo maal purchase kiya uski total value</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">Supplier sy jo maal purchase kiya uski total value</p>
                                 </div>
                             )}
 
@@ -1776,11 +1777,11 @@ function SupplierLedger() {
                                     <label className="block font-semibold mb-1 text-sm text-green-600">
                                         💵 Amount Paid (Credit)
                                     </label>
-                                    <input type="number" min="0" step="any" value={txForm.paid_amount}
+                                    <input aria-label=" Amount Paid (Credit) " type="number" min="0" step="any" value={txForm.paid_amount}
                                         onChange={e => setTxForm(f => ({ ...f, paid_amount: e.target.value }))}
                                         className="w-full px-4 py-2.5 border border-green-200 bg-green-50 rounded-lg focus:ring-2 focus:ring-green-400 outline-none text-sm"
                                         placeholder="0  — kitna paisa diya (Rs.)" />
-                                    <p className="text-xs text-gray-400 mt-0.5">Supplier ko abhi kitni payment ki</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">How much you paid the supplier now</p>
                                 </div>
                             )}
 
@@ -1816,7 +1817,7 @@ function SupplierLedger() {
                             {/* Details */}
                             <div>
                                 <label className="block text-gray-700 font-medium mb-1 text-sm">Details (Optional)</label>
-                                <textarea rows="2" value={txForm.details}
+                                <textarea aria-label="Details (Optional)" rows="2" value={txForm.details}
                                     onChange={e => setTxForm(f => ({ ...f, details: e.target.value }))}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
                                     placeholder="Saman ki tafseel ya bill link..." />
@@ -1826,7 +1827,7 @@ function SupplierLedger() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-1 text-sm">Payment Mode</label>
-                                    <select value={txForm.payment_mode}
+                                    <select aria-label="Payment Mode" value={txForm.payment_mode}
                                         onChange={e => setTxForm(f => ({ ...f, payment_mode: e.target.value }))}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
                                         <option value="cash">Cash</option>
@@ -1838,7 +1839,7 @@ function SupplierLedger() {
                                 </div>
                                 <div>
                                     <label className="block text-gray-700 font-medium mb-1 text-sm">Transaction Ref</label>
-                                    <input type="text" value={txForm.transaction_ref}
+                                    <input aria-label="Transaction Ref" type="text" value={txForm.transaction_ref}
                                         onChange={e => setTxForm(f => ({ ...f, transaction_ref: e.target.value }))}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                         placeholder="Cheque # / Txn ID" />
@@ -1848,7 +1849,7 @@ function SupplierLedger() {
                             {/* Note */}
                             <div>
                                 <label className="block text-gray-700 font-medium mb-1 text-sm">Note (Optional)</label>
-                                <textarea rows="2" value={txForm.note}
+                                <textarea aria-label="Note (Optional)" rows="2" value={txForm.note}
                                     onChange={e => setTxForm(f => ({ ...f, note: e.target.value }))}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
                                     placeholder="e.g. Monthly payment / Outstanding cleared..." />

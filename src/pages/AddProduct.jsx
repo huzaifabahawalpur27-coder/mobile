@@ -243,7 +243,7 @@ function AddProduct() {
       const currentCount = await db.products.where('shop_id').equals(user.shop_id).count()
 
       if (limits.product_limit && currentCount >= limits.product_limit) {
-        notify(`Limit Reached! Aapka ${limits.plan_name || 'TRIAL'} plan sirf ${limits.product_limit} products ki ijazat deta hai. Meharbani karke Superadmin se plan upgrade karwayein.`)
+        notify(`Product limit reached\nThe ${limits.plan_name || 'TRIAL'} plan allows ${limits.product_limit} products. Ask support to upgrade the plan.`, 'warning')
         setLoading(false)
         return
       }
@@ -563,7 +563,7 @@ function AddProduct() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-gray-700 font-medium mb-1">Product Name *</label>
-              <input
+              <input aria-label="Product Name"
                 type="text"
                 name="name"
                 value={form.name}
@@ -579,14 +579,14 @@ function AddProduct() {
                 <button
                   type="button"
                   onClick={() => setShowNewBrandInput(!showNewBrandInput)}
-                  className="text-[10px] text-blue-600 font-bold uppercase hover:underline"
+                  className="text-xs text-blue-600 font-bold uppercase hover:underline"
                 >
                   {showNewBrandInput ? '← Select' : '+ New Brand'}
                 </button>
               </label>
               {showNewBrandInput ? (
                 <div className="flex gap-2">
-                  <input
+                  <input aria-label="Brand name"
                     type="text"
                     value={newBrandName}
                     onChange={(e) => setNewBrandName(e.target.value)}
@@ -602,7 +602,7 @@ function AddProduct() {
                   </button>
                 </div>
               ) : (
-                <select
+                <select aria-label="brand..."
                   name="brand"
                   value={form.brand}
                   onChange={handleChange}
@@ -621,7 +621,7 @@ function AddProduct() {
             <div>
               <label className="block text-gray-700 font-medium mb-1">SKU / Barcode</label>
               <div className="flex gap-2">
-                <input
+                <input aria-label="SKU / Barcode"
                   type="text"
                   name="sku"
                   value={form.sku}
@@ -638,7 +638,7 @@ function AddProduct() {
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Category *</label>
-              <select
+              <select aria-label="Category"
                 name="category_id"
                 value={form.category_id}
                 onChange={handleChange}
@@ -655,7 +655,7 @@ function AddProduct() {
 
           <div>
             <label className="block text-gray-700 font-medium mb-1">Supplier</label>
-            <select
+            <select aria-label="Supplier"
               name="supplier_id"
               value={form.supplier_id}
               onChange={handleChange}
@@ -670,12 +670,12 @@ function AddProduct() {
 
           <div>
             <label className="block text-gray-700 font-medium mb-1">Unit of Measure</label>
-            <select name="unit_id" value={form.unit_id} onChange={handleChange}
+            <select aria-label="Unit of Measure" name="unit_id" value={form.unit_id} onChange={handleChange}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Select unit...</option>
               {units.map(u => <option key={u.id} value={u.id}>{u.name}{u.abbreviation ? ` (${u.abbreviation})` : ''}</option>)}
             </select>
-            {units.length === 0 && <p className="text-xs text-gray-400 mt-1">Units add karne ke liye Master Data → Units mein jayein</p>}
+            {units.length === 0 && <p className="text-xs text-gray-500 mt-1">Units add karne ke liye Master Data → Units mein jayein</p>}
           </div>
 
           {/* Pricing */}
@@ -697,7 +697,7 @@ function AddProduct() {
             )}
             <div>
               <label className="block text-gray-700 font-medium mb-1">Purchase / Cost Price *</label>
-              <input
+              <input aria-label="Purchase / Cost Price"
                 type="number"
                 name="cost_price"
                 value={form.cost_price}
@@ -708,8 +708,8 @@ function AddProduct() {
               />
             </div>
             <div>
-              <label className="block text-gray-700 font-medium mb-1">Sale / Selling Price <span className="text-gray-400 text-sm font-normal">(optional - set at POS)</span></label>
-              <input
+              <label className="block text-gray-700 font-medium mb-1">Sale / Selling Price <span className="text-gray-500 text-sm font-normal">(optional - set at POS)</span></label>
+              <input aria-label="Sale / Selling Price (optional - set at POS)"
                 type="number"
                 name="sale_price"
                 value={form.sale_price}
@@ -738,7 +738,7 @@ function AddProduct() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-gray-700 font-medium mb-1">Stock Quantity *</label>
-              <input
+              <input aria-label="Stock Quantity"
                 type="number"
                 name="stock_quantity"
                 value={form.stock_quantity}
@@ -750,7 +750,7 @@ function AddProduct() {
             </div>
             <div>
               <label className="block text-gray-700 font-medium mb-1">Low Stock Alert</label>
-              <input
+              <input aria-label="Low Stock Alert"
                 type="number"
                 name="low_stock_threshold"
                 value={form.low_stock_threshold}
@@ -866,13 +866,13 @@ function AddProduct() {
                         <button
                           type="button"
                           onClick={() => setShowBankModal(true)}
-                          className="text-blue-600 hover:underline text-[11px]"
+                          className="text-blue-600 hover:underline text-xs"
                         >
                           + Add Bank
                         </button>
                       </div>
                       {bankOnlyAccounts.length > 0 ? (
-                        <select
+                        <select aria-label="Bank Account"
                           value={selectedBankAccountId}
                           onChange={e => setSelectedBankAccountId(e.target.value)}
                           className="w-full px-3 py-2 border border-blue-300 rounded-lg text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-blue-500"
@@ -890,7 +890,7 @@ function AddProduct() {
                           <button
                             type="button"
                             onClick={() => setShowBankModal(true)}
-                            className="px-2 py-1 bg-blue-600 text-white rounded font-bold text-[10px]"
+                            className="px-2 py-1 bg-blue-600 text-white rounded font-bold text-xs"
                           >
                             Add Account
                           </button>
@@ -921,7 +921,7 @@ function AddProduct() {
 
           <div>
             <label className="block text-gray-700 font-medium mb-1">Status</label>
-            <select
+            <select aria-label="Status"
               name="status"
               value={form.status}
               onChange={handleChange}

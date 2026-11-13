@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Megaphone, X, ArrowRight } from 'lucide-react'
 import { NOTIFICATION_CATEGORIES } from '../services/notificationService'
 import { notify } from '../utils/toast'
+import { confirmDialog } from '../utils/dialog'
 
 const when = (iso) => {
   const d = new Date(iso)
@@ -22,7 +23,7 @@ function MessageText({ text, className }) {
 
 function CategoryBadge({ category }) {
   const c = NOTIFICATION_CATEGORIES[category] || NOTIFICATION_CATEGORIES.feature
-  return <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${c.className}`}>{c.label}</span>
+  return <span className={`px-1.5 py-0.5 rounded text-xs font-black uppercase tracking-wider ${c.className}`}>{c.label}</span>
 }
 
 /** "Updates" section of the bell dropdown: history of pushed notifications. */
@@ -30,7 +31,7 @@ export function ShopUpdatesSection({ items, newIds, canDelete, onNavigate, onDel
   const [deleting, setDeleting] = useState(null)
 
   const handleDelete = async (n) => {
-    if (!window.confirm(`Delete "${n.title}" permanently?\n\nIt will be removed from your notification history.`)) return
+    if (!await confirmDialog(`Delete "${n.title}" permanently?\n\nIt will be removed from your notification history.`)) return
     setDeleting(n.id)
     try {
       await onDelete(n.id)
@@ -44,7 +45,7 @@ export function ShopUpdatesSection({ items, newIds, canDelete, onNavigate, onDel
   if (!items.length) return null
   return (
     <div className="divide-y divide-gray-50">
-      <p className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-blue-50/60 flex items-center gap-1.5">
+      <p className="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-widest bg-blue-50/60 flex items-center gap-1.5">
         <Megaphone size={12} className="text-blue-500" /> Updates
       </p>
       {items.map(n => {
@@ -54,14 +55,14 @@ export function ShopUpdatesSection({ items, newIds, canDelete, onNavigate, onDel
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <CategoryBadge category={n.category} />
-                {isNew && <span className="text-[9px] font-black text-blue-600 uppercase">• New</span>}
-                <span className="text-[10px] text-gray-400 font-medium">{when(n.created_at)}</span>
+                {isNew && <span className="text-xs font-black text-blue-600 uppercase">• New</span>}
+                <span className="text-xs text-gray-500 font-medium">{when(n.created_at)}</span>
               </div>
               <p className="mt-1 text-sm font-bold text-gray-800 leading-snug">{n.title}</p>
               {n.body && <MessageText text={n.body} className="mt-0.5 text-xs text-gray-600 leading-relaxed space-y-1" />}
               {n.link_path && (
                 <Link to={n.link_path} onClick={onNavigate}
-                  className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-wide">
+                  className="mt-1.5 inline-flex items-center gap-1 text-xs font-black text-blue-600 hover:text-blue-800 uppercase tracking-wide">
                   Open {n.module_label || 'page'} <ArrowRight size={12} />
                 </Link>
               )}
@@ -98,7 +99,7 @@ export function ShopUpdatePopup({ item, more, onClose, onShowAll }) {
   if (!item) return null
   return (
     // Centred over a dimmed page; tapping outside the card closes it
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]" onClick={onClose}>
     <div
       role="dialog"
       aria-modal="true"
@@ -111,7 +112,7 @@ export function ShopUpdatePopup({ item, more, onClose, onShowAll }) {
         <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 -mr-1 rounded-lg hover:bg-white/20"><X size={16} /></button>
       </div>
       <div className="p-4 space-y-2">
-        <div className="flex items-center gap-2"><CategoryBadge category={item.category} /><span className="text-[10px] text-gray-400">{when(item.created_at)}</span></div>
+        <div className="flex items-center gap-2"><CategoryBadge category={item.category} /><span className="text-xs text-gray-500">{when(item.created_at)}</span></div>
         <p id="shop-update-title" className="text-base font-extrabold text-gray-900 leading-snug">{item.title}</p>
         {item.body && <MessageText text={item.body} className="text-sm text-gray-600 leading-relaxed max-h-[40dvh] overflow-y-auto space-y-2" />}
       </div>

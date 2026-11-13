@@ -30,7 +30,7 @@ export default function ProductDetailModal({
   const canSeeMargins = userRole === 'admin' || userRole === 'manager'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div 
         className="w-full max-w-2xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[92dvh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -46,7 +46,7 @@ export default function ProductDetailModal({
                 <h2 className="text-lg font-black text-gray-900 dark:text-gray-100 truncate">
                   {product.name}
                 </h2>
-                <span className={`px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider shrink-0 ${
+                <span className={`px-2 py-0.5 rounded-full text-xs font-black uppercase tracking-wider shrink-0 ${
                   product.status === 'active'
                     ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
@@ -62,7 +62,7 @@ export default function ProductDetailModal({
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+            className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition"
             title="Close"
           >
             <X size={20} />
@@ -82,35 +82,35 @@ export default function ProductDetailModal({
                   : 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-400'
             }`}>
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">Current Stock</span>
+                <span className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">Current Stock</span>
                 {isOutOfStock ? <AlertTriangle size={14} /> : isLowStock ? <AlertTriangle size={14} /> : <CheckCircle size={14} />}
               </div>
               <div className="mt-2">
                 <span className="text-2xl font-black">{stock}</span>
                 <span className="text-xs ml-1 font-bold">{unitName || 'Units'}</span>
               </div>
-              <p className="text-[10px] mt-1 font-semibold opacity-90">
+              <p className="text-xs mt-1 font-semibold opacity-90">
                 {isOutOfStock ? '⚠️ Out of Stock' : isLowStock ? `Low (Alert: ≤${threshold})` : 'Healthy Inventory'}
               </p>
             </div>
 
             {/* Sale Price Card */}
             <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40 flex flex-col justify-between">
-              <span className="text-[11px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">Retail Price</span>
+              <span className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">Retail Price</span>
               <div className="mt-2">
                 <span className="text-xl font-black text-gray-900 dark:text-gray-100">Rs. {sale.toLocaleString()}</span>
               </div>
-              <p className="text-[10px] text-gray-400 mt-1">Per {unitName || 'Item'}</p>
+              <p className="text-xs text-gray-500 mt-1">Per {unitName || 'Item'}</p>
             </div>
 
             {/* Cost Price Card */}
             {canSeeMargins && (
               <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40 flex flex-col justify-between">
-                <span className="text-[11px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">Cost Price</span>
+                <span className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">Cost Price</span>
                 <div className="mt-2">
                   <span className="text-xl font-black text-gray-900 dark:text-gray-100">Rs. {cost.toLocaleString()}</span>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1">Purchase Cost</p>
+                <p className="text-xs text-gray-500 mt-1">Purchase Cost</p>
               </div>
             )}
 
@@ -118,13 +118,13 @@ export default function ProductDetailModal({
             {canSeeMargins && (
               <div className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/30 flex flex-col justify-between text-blue-700 dark:text-blue-400">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">Profit Margin</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">Profit Margin</span>
                   <TrendingUp size={14} />
                 </div>
                 <div className="mt-2">
                   <span className="text-xl font-black">{marginPercent.toFixed(1)}%</span>
                 </div>
-                <p className="text-[10px] mt-1 font-bold">
+                <p className="text-xs mt-1 font-bold">
                   +Rs. {profitPerUnit.toLocaleString()} / unit
                 </p>
               </div>
@@ -140,19 +140,19 @@ export default function ProductDetailModal({
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
-                  <p className="text-[10px] font-bold uppercase text-gray-400">Total Cost Invested</p>
+                  <p className="text-xs font-bold uppercase text-gray-500">Total Cost Invested</p>
                   <p className="text-base font-black text-gray-800 dark:text-gray-200 mt-0.5">
                     Rs. {totalCostValuation.toLocaleString()}
                   </p>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
-                  <p className="text-[10px] font-bold uppercase text-gray-400">Total Retail Value</p>
+                  <p className="text-xs font-bold uppercase text-gray-500">Total Retail Value</p>
                   <p className="text-base font-black text-gray-800 dark:text-gray-200 mt-0.5">
                     Rs. {totalRetailValuation.toLocaleString()}
                   </p>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
-                  <p className="text-[10px] font-bold uppercase text-gray-400">Expected Profit</p>
+                  <p className="text-xs font-bold uppercase text-gray-500">Expected Profit</p>
                   <p className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
                     Rs. {totalPotentialProfit.toLocaleString()}
                   </p>
@@ -170,7 +170,7 @@ export default function ProductDetailModal({
                   <span>Mobile Phone IMEI & Hardware Specs</span>
                 </span>
                 {product.pta_status && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
                     product.pta_status === 'pta_approved'
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                       : product.pta_status === 'non_pta'

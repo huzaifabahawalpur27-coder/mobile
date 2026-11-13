@@ -326,7 +326,7 @@ export default function EditProductModal({
   if (!isOpen || !product) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         className="w-full max-w-2xl sm:max-w-3xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-800 flex flex-col max-h-[92dvh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -346,7 +346,7 @@ export default function EditProductModal({
                 <h2 className="text-base sm:text-lg font-black text-gray-900 dark:text-white truncate">
                   {isPhone ? 'Edit Mobile Phone Details' : 'Edit Product Details'}
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 shrink-0">
+                <span className="px-2 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 shrink-0">
                   {isPhone ? 'Phone Inventory' : 'Product Catalog'}
                 </span>
               </div>
@@ -359,7 +359,7 @@ export default function EditProductModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 transition cursor-pointer"
             title="Close"
           >
             <X size={20} />
@@ -389,7 +389,7 @@ export default function EditProductModal({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Brand *</label>
-                    <input
+                    <input aria-label="Brand"
                       type="text"
                       required
                       placeholder="e.g. Apple, Samsung"
@@ -401,7 +401,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Model Name *</label>
-                    <input
+                    <input aria-label="Model Name"
                       type="text"
                       required
                       placeholder="e.g. iPhone 15 Pro Max"
@@ -413,7 +413,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Storage</label>
-                    <select
+                    <select aria-label="Storage"
                       value={storage}
                       onChange={e => setStorage(e.target.value)}
                       className="w-full p-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white font-semibold"
@@ -428,7 +428,7 @@ export default function EditProductModal({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Color</label>
-                    <input
+                    <input aria-label="Color"
                       type="text"
                       placeholder="e.g. Natural Titanium, Black"
                       value={color}
@@ -439,7 +439,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Condition</label>
-                    <select
+                    <select aria-label="Condition"
                       value={condition}
                       onChange={e => setCondition(e.target.value)}
                       className="w-full p-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white font-semibold"
@@ -452,7 +452,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">PTA Status</label>
-                    <select
+                    <select aria-label="PTA Status"
                       value={ptaStatus}
                       onChange={e => setPtaStatus(e.target.value)}
                       className="w-full p-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white font-semibold"
@@ -474,7 +474,7 @@ export default function EditProductModal({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Primary IMEI 1 *</label>
-                    <input
+                    <input aria-label="Primary IMEI 1"
                       type="text"
                       required
                       placeholder="15-digit IMEI 1"
@@ -486,7 +486,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Secondary IMEI 2</label>
-                    <input
+                    <input aria-label="Secondary IMEI 2"
                       type="text"
                       placeholder="Optional IMEI 2"
                       value={imei2}
@@ -497,7 +497,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Battery Health (%)</label>
-                    <input
+                    <input aria-label="Battery Health (%)"
                       type="number"
                       min="1"
                       max="100"
@@ -520,7 +520,7 @@ export default function EditProductModal({
                   {canViewCost && (
                     <div>
                       <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Cost / Purchase Price (Rs.)</label>
-                      <input
+                      <input aria-label="Cost / Purchase Price (Rs.)"
                         type="number"
                         min="0"
                         step="any"
@@ -534,7 +534,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Selling / Sale Price (Rs.) *</label>
-                    <input
+                    <input aria-label="Selling / Sale Price (Rs.)"
                       type="number"
                       min="0"
                       step="any"
@@ -548,7 +548,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Inventory Status</label>
-                    <select
+                    <select aria-label="Inventory Status"
                       value={status}
                       onChange={e => setStatus(e.target.value)}
                       className="w-full p-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white font-bold"
@@ -562,7 +562,7 @@ export default function EditProductModal({
 
                 <div>
                   <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Inspection Notes / Defects</label>
-                  <input
+                  <input aria-label="Inspection Notes / Defects"
                     type="text"
                     placeholder="e.g. Minor scratch on bezel, includes original box & cable"
                     value={notes}
@@ -586,7 +586,7 @@ export default function EditProductModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="sm:col-span-2">
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Product Name *</label>
-                    <input
+                    <input aria-label="Product Name"
                       type="text"
                       required
                       placeholder="e.g. Fast Charger 20W Type-C"
@@ -602,12 +602,12 @@ export default function EditProductModal({
                       <button
                         type="button"
                         onClick={handleAutoGenerateSKU}
-                        className="text-[10px] text-blue-600 hover:text-blue-800 dark:text-blue-400 font-bold cursor-pointer"
+                        className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 font-bold cursor-pointer"
                       >
                         Auto-generate
                       </button>
                     </div>
-                    <input
+                    <input aria-label="CHG-20W-01"
                       type="text"
                       placeholder="e.g. CHG-20W-01"
                       value={sku}
@@ -622,7 +622,7 @@ export default function EditProductModal({
                       <button
                         type="button"
                         onClick={() => setShowAddBrand(!showAddBrand)}
-                        className="text-[10px] text-blue-600 hover:text-blue-800 dark:text-blue-400 font-bold cursor-pointer"
+                        className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 font-bold cursor-pointer"
                       >
                         {showAddBrand ? 'Choose existing' : '+ New Brand'}
                       </button>
@@ -630,7 +630,7 @@ export default function EditProductModal({
 
                     {showAddBrand ? (
                       <div className="flex gap-1.5">
-                        <input
+                        <input aria-label="Brand name"
                           type="text"
                           placeholder="Brand name"
                           value={newBrandName}
@@ -646,7 +646,7 @@ export default function EditProductModal({
                         </button>
                       </div>
                     ) : (
-                      <select
+                      <select aria-label="No Brand / Generic"
                         value={brand}
                         onChange={e => setBrand(e.target.value)}
                         className="w-full p-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white font-semibold"
@@ -663,7 +663,7 @@ export default function EditProductModal({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Category</label>
-                    <select
+                    <select aria-label="Category"
                       value={categoryId}
                       onChange={e => setCategoryId(e.target.value)}
                       className="w-full p-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white font-semibold"
@@ -677,7 +677,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Supplier</label>
-                    <select
+                    <select aria-label="Supplier"
                       value={supplierId}
                       onChange={e => setSupplierId(e.target.value)}
                       className="w-full p-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white font-semibold"
@@ -691,7 +691,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Measurement Unit</label>
-                    <select
+                    <select aria-label="Measurement Unit"
                       value={unitId}
                       onChange={e => setUnitId(e.target.value)}
                       className="w-full p-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white font-semibold"
@@ -715,7 +715,7 @@ export default function EditProductModal({
                   {canViewCost && (
                     <div>
                       <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Cost Price (خرید قیمت)</label>
-                      <input
+                      <input aria-label="Cost Price (خرید قیمت)"
                         type="number"
                         min="0"
                         step="any"
@@ -729,7 +729,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Sale / Retail Price (فروخت قیمت) *</label>
-                    <input
+                    <input aria-label="Sale / Retail Price (فروخت قیمت)"
                       type="number"
                       min="0"
                       step="any"
@@ -743,7 +743,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Wholesale / C-Rate</label>
-                    <input
+                    <input aria-label="Wholesale / C-Rate"
                       type="number"
                       min="0"
                       step="any"
@@ -769,7 +769,7 @@ export default function EditProductModal({
                         <button
                           type="button"
                           onClick={() => setShowBatchModal(true)}
-                          className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 flex items-center gap-1 transition cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg text-xs font-black uppercase bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 flex items-center gap-1 transition cursor-pointer"
                         >
                           <Boxes size={12} /> Manage FIFO Batches
                         </button>
@@ -777,7 +777,7 @@ export default function EditProductModal({
                         <button
                           type="button"
                           onClick={() => setShowConversionModal(true)}
-                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-emerald-700 hover:bg-emerald-50 border border-dashed border-emerald-400 flex items-center gap-1 transition cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-700 hover:bg-emerald-50 border border-dashed border-emerald-400 flex items-center gap-1 transition cursor-pointer"
                         >
                           <Boxes size={12} /> Convert to FIFO Batches
                         </button>
@@ -789,7 +789,7 @@ export default function EditProductModal({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Current Stock Quantity</label>
-                    <input
+                    <input aria-label="Current Stock Quantity"
                       type="number"
                       step="any"
                       placeholder="0"
@@ -801,7 +801,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Low Stock Alert (≤)</label>
-                    <input
+                    <input aria-label="Low Stock Alert ()"
                       type="number"
                       min="0"
                       placeholder="10"
@@ -813,7 +813,7 @@ export default function EditProductModal({
 
                   <div>
                     <label className="font-bold text-gray-600 dark:text-gray-400 block mb-1">Catalog Status</label>
-                    <select
+                    <select aria-label="Catalog Status"
                       value={status}
                       onChange={e => setStatus(e.target.value)}
                       className="w-full p-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white font-bold"
