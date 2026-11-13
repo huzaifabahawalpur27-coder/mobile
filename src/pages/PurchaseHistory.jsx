@@ -12,6 +12,7 @@ import { buildBillHTML } from '../utils/billTemplates'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
 import { getBankAccounts, creditBankBalance } from '../services/bankService'
 import { checkPurchaseBatchesBeforeVoid, voidPurchaseBatches } from '../services/batchService'
+import { netAmount, paidAmount } from '../utils/moneyMath'
 import { adjustProductStock, adjustSupplierBalance, releasePhoneFromPurchase } from '../services/atomicOps'
 
 const normalizePurchaseItem = (it, phonesPool = [], productsPool = []) => {
@@ -650,7 +651,7 @@ function PurchaseHistory() {
                     }
 
                     // Reverse Cash / Bank / Split payment made for this purchase
-                    const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? item.total_amount : 0)) || 0
+                    const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? netAmount(item) : 0)) || 0
                     if (paid > 0 && item.payment_type !== 'credit') {
                         const accounts = await getBankAccounts(user.shop_id)
                         const method = String(item.payment_type || item.payment_method || '').toLowerCase()
@@ -716,7 +717,8 @@ function PurchaseHistory() {
                 await db.purchases.delete(id)
 
                 if (item.supplier_id) {
-                    const unpaid = Math.max(0, Number(item.total_amount || 0) - Number(item.paid_amount || 0))
+                    // Bill after discount minus what was paid: exactly what this purchase added
+                    const unpaid = Math.max(0, netAmount(item) - paidAmount(item))
                     if (unpaid > 0) {
                         // Applied now when online, queued (and applied once) when offline
                         const balRes = await adjustSupplierBalance(item.supplier_id, -unpaid)

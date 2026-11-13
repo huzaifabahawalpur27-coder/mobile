@@ -532,6 +532,28 @@ export async function returnPhoneToSupplier({
 
     // B. Cash Refund: Supplier paid cash immediately
     else if (settlementType === 'cash_refund') {
+      // The cash received goes into the cash account (it used to be recorded nowhere)
+      try {
+        const accounts = await getBankAccounts(shopId)
+        const cashAcc = accounts.find(a =>
+          a.bank_name?.toLowerCase().includes('cash') ||
+          a.account_name?.toLowerCase().includes('cash') ||
+          a.account_number === 'CASH'
+        )
+        if (cashAcc) {
+          await creditBankBalance({
+            shopId,
+            accountId: cashAcc.id,
+            amount: costPrice,
+            referenceType: 'PHONE_RETURN_REFUND',
+            referenceId: phone.id,
+            description: `Supplier Cash Refund: ${phone.brand} ${phone.model} (IMEI: ${phone.imei_1})`
+          })
+        }
+      } catch (cErr) {
+        console.warn('Cash refund deposit warning:', cErr)
+      }
+
       const returnEntry = {
         shop_id: shopId,
         supplier_id: supplierId,

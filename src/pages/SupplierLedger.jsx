@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { db, addToSyncQueue } from '../services/db'
 import { adjustSupplierBalance, adjustProductStock, releasePhoneFromPurchase } from '../services/atomicOps'
 import { getBankAccounts, creditBankBalance, deductBankBalance } from '../services/bankService'
+import { supplierLedgerEffect, netAmount, paidAmount } from '../utils/moneyMath'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import EditPurchasePaymentModal from '../components/EditPurchasePaymentModal'
@@ -129,7 +130,9 @@ function SupplierLedger() {
                 type: 'purchase',
                 payment_type: p.payment_type,
                 bill_number: '',
-                amount: p.total_amount,
+                // Bill after discount: that is what the supplier is owed for it
+                amount: netAmount(p),
+                paid_amount: paidAmount(p),
                 note: `Bill #${String(p.id).slice(-8)}`,
                 items: (p.purchase_items || []).map(it => {
                     const ph = it.phones || (phonesPool || []).find(sp => sp.id === it.phone_id || sp.purchase_id === p.id)
@@ -173,10 +176,7 @@ function SupplierLedger() {
 
         // Check for opening dues / payable difference
         const currentSupDue = Number(supplier?.outstanding_balance ?? supplier?.balance ?? 0)
-        const netTx = combined.reduce((acc, item) => {
-            if (item.type === 'purchase' || item.type === 'debit') return acc + Number(item.amount || 0)
-            return acc - Math.abs(Number(item.amount || 0))
-        }, 0)
+        const netTx = combined.reduce((acc, item) => acc + supplierLedgerEffect(item), 0)
         const openingSupDues = currentSupDue - netTx
         if (Math.abs(openingSupDues) >= 1) {
             combined.unshift({
@@ -192,8 +192,7 @@ function SupplierLedger() {
 
         let running = 0
         const withBalance = combined.map(item => {
-            if (item.type === 'purchase' || item.type === 'debit') running += Number(item.amount || 0)
-            else running -= Math.abs(Number(item.amount || 0))
+            running += supplierLedgerEffect(item)
             return { ...item, balance: running }
         })
         setLedger(withBalance.reverse())
@@ -250,9 +249,39 @@ function SupplierLedger() {
         }
     }
 
+    // The computed "opening balance" row is not a stored entry
+    const isOpeningRow = (item) => String(item?.id ?? '').startsWith('opening')
+
+    // Balance effect of removing a ledger entry. Deleting a purchase gives the money paid
+    // for it back to the shop's account (see refundPurchasePayment), so only the unpaid
+    // part of the bill comes off what the shop owes.
     const deletionDelta = (item) => {
-        if (item.type === 'purchase' || item.type === 'debit') return -Number(item.amount || 0)
-        return Math.abs(Number(item.amount || 0))
+        if (item.type === 'purchase') return -(Number(item.amount || 0) - Number(item.paid_amount || 0))
+        return -supplierLedgerEffect(item)
+    }
+
+    // Money paid for a purchase goes back into the cash / bank account when it is deleted
+    const refundPurchasePayment = async (item) => {
+        const paid = Number(item.paid_amount || 0)
+        if (!(paid > 0)) return
+        const accounts = await getBankAccounts(user.shop_id)
+        const method = String(item.payment_type || item.payment_mode || 'cash').toLowerCase()
+        const isBank = method === 'bank' || method === 'online'
+        const targetAcc = accounts.find(a =>
+            isBank
+                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+        ) || accounts[0]
+        if (targetAcc) {
+            await creditBankBalance({
+                shopId: user.shop_id,
+                accountId: targetAcc.id,
+                amount: paid,
+                referenceType: 'PURCHASE_DELETION',
+                referenceId: String(item.id),
+                description: `Purchase Deletion Refund (${item.id})`
+            })
+        }
     }
 
     // ── Submit transaction ──────────────────────────────────────────────────────
@@ -378,6 +407,7 @@ function SupplierLedger() {
 
     // ── Delete Transaction ──────────────────────────────────────────────────────
     const handleDeleteTransaction = async (item) => {
+        if (isOpeningRow(item)) { alert('Opening balance entry directly delete nahi ho sakti.'); return }
         const typeLabel = item.type === 'purchase' ? 'Purchase Order'
             : item.type === 'debit' ? 'Debit Entry'
             : item.type === 'payment' ? 'Payment'
@@ -393,27 +423,7 @@ function SupplierLedger() {
                 try {
                     await rollbackPurchaseInventory(item)
                     // Reverse Cash / Bank payment made for this purchase
-                    const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? item.amount : 0)) || 0
-                    if (paid > 0 && item.payment_type !== 'credit') {
-                        const accounts = await getBankAccounts(user.shop_id)
-                        const method = String(item.payment_type || item.payment_mode || 'cash').toLowerCase()
-                        const isBank = method === 'bank' || method === 'online'
-                        const targetAcc = accounts.find(a =>
-                            isBank
-                                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
-                        ) || accounts[0]
-                        if (targetAcc) {
-                            await creditBankBalance({
-                                shopId: user.shop_id,
-                                accountId: targetAcc.id,
-                                amount: paid,
-                                referenceType: 'PURCHASE_DELETION',
-                                referenceId: String(item.id),
-                                description: `Purchase Deletion Refund (${item.id})`
-                            })
-                        }
-                    }
+                    await refundPurchasePayment(item)
                 } catch (rollbackErr) {
                     console.warn('Rollback warning on purchase deletion:', rollbackErr)
                 }
@@ -641,7 +651,7 @@ function SupplierLedger() {
     }
 
     const handleBulkDelete = async () => {
-        const toDelete = ledger.filter(item => selectedIds.has(item.id))
+        const toDelete = ledger.filter(item => selectedIds.has(item.id) && !isOpeningRow(item))
         if (!toDelete.length) return
         if (!confirm(`${toDelete.length} transactions delete karein?\n\nSupplier balance bhi adjust ho ga.`)) return
         await _doDeleteItems(toDelete)
@@ -655,7 +665,10 @@ function SupplierLedger() {
             try {
                 if (item.type === 'purchase') {
                     // Stock and phones back out, as a single delete does (this used to be skipped)
-                    try { await rollbackPurchaseInventory(item) } catch (rbErr) { console.warn('Rollback warning on bulk purchase deletion:', rbErr) }
+                    try {
+                        await rollbackPurchaseInventory(item)
+                        await refundPurchasePayment(item)
+                    } catch (rbErr) { console.warn('Rollback warning on bulk purchase deletion:', rbErr) }
                     if (navigator.onLine) {
                         await supabase.from('purchase_items').delete().eq('purchase_id', item.id)
                         const { error } = await supabase.from('purchases').delete().eq('id', item.id)
@@ -738,7 +751,7 @@ function SupplierLedger() {
             } else if (item.type === 'payment') {
                 totalPayments += amt
             } else if (item.type === 'return') {
-                totalReturns += amt
+                totalReturns += Math.abs(amt)
             }
         })
 

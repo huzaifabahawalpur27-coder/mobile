@@ -216,9 +216,19 @@ function Expenses() {
 
       if (error) throw error
       if (data) {
+        const cleanData = JSON.parse(JSON.stringify(data))
+        // account_id lives on this device only: keep it when re-caching the server rows
+        try {
+          const localRows = await db.expenses.bulkGet(cleanData.map(r => r.id))
+          localRows.forEach((row, i) => {
+            if (row?.account_id && cleanData[i].account_id == null) {
+              cleanData[i].account_id = row.account_id
+              data[i].account_id = row.account_id
+            }
+          })
+        } catch (_) { /* cache only */ }
         setExpenses(data)
         calculateSummary(data)
-        const cleanData = JSON.parse(JSON.stringify(data))
         await db.expenses.bulkPut(cleanData)
       }
     } catch (_e) {
@@ -235,6 +245,20 @@ function Expenses() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Which cash / bank account an expense was paid from
+  const accountIdOfExpense = (exp) => {
+    if (!exp) return ''
+    if (exp.account_id && bankAccounts.some(a => String(a.id) === String(exp.account_id))) return String(exp.account_id)
+    const pm = String(exp.payment_method || 'cash').toLowerCase()
+    const isCash = (a) => a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash')
+    const matched = bankAccounts.find(a =>
+      (pm === 'cash' && isCash(a)) ||
+      a.bank_name?.toLowerCase() === pm ||
+      a.account_name?.toLowerCase() === pm
+    )
+    return matched ? String(matched.id) : ''
   }
 
   const calculateSummary = (data) => {
@@ -371,7 +395,10 @@ function Expenses() {
             const oldExpense = expenses.find(e => e.id === editingId)
             const oldAmount = Number(oldExpense?.amount || 0)
             const newAmount = Number(payload.amount || 0)
-            const oldAccId = oldExpense?.account_id || selectedAccountId
+            // The account the expense was really paid from. The account id is kept on this
+            // device only, so after a reload it is worked out from the saved payment method
+            // (it used to fall back to the newly chosen account, hiding an account change).
+            const oldAccId = accountIdOfExpense(oldExpense) || selectedAccountId
 
             if (String(oldAccId) === String(selectedAccountId)) {
               // Same account: adjust net difference
@@ -529,10 +556,7 @@ function Expenses() {
         // Refund expense back to the selected Account / Cash Drawer
         if (item.amount > 0) {
           try {
-            const targetAccountId = item.account_id || (bankAccounts.find(a => 
-              (item.payment_method === 'cash' && (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))) ||
-              a.bank_name?.toLowerCase() === String(item.payment_method).toLowerCase()
-            )?.id) || bankAccounts[0]?.id
+            const targetAccountId = accountIdOfExpense(item) || bankAccounts[0]?.id
 
             if (targetAccountId) {
               await creditBankBalance({

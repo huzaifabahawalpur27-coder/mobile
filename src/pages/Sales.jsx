@@ -8,7 +8,8 @@ import { recordAuditLog } from '../services/auditService'
 import PasswordModal from '../components/PasswordModal'
 import { printHTML } from '../utils/printUtils'
 import { buildBillHTML } from '../utils/billTemplates'
-import { getBankAccounts, deductBankBalance } from '../services/bankService'
+import { getBankAccounts, deductBankBalance, reverseSaleFromAccounts } from '../services/bankService'
+import { computeReturn, isCountedSale, saleBalanceEffect } from '../utils/moneyMath'
 import { returnSaleItemBatches } from '../services/batchService'
 import { adjustProductStock, adjustCustomerBalance, releasePhoneFromSale } from '../services/atomicOps'
 
@@ -426,45 +427,14 @@ function Sales() {
         }
       }
 
-      // Calculate prorated discount and net return amount
-      const remainingGross = Number(selectedSale.total_amount || 0)
-      const discountRate = remainingGross > 0 ? (Number(selectedSale.discount || 0) / remainingGross) : 0
-      const discountReturned = Math.round(totalReturnAmount * discountRate * 100) / 100
-      const totalNetReturn = Math.max(0, totalReturnAmount - discountReturned)
+      // Discount given back in proportion; cash handed back never exceeds what was paid
+      // on this invoice, the rest comes off the customer's balance
+      const ret = computeReturn({ record: selectedSale, grossReturn: totalReturnAmount, toBalance: refundType === 'credit' })
+      const cashRefundAmount = ret.cashRefund
+      const creditRefundAmount = ret.balanceRefund
 
-      // Determine cash vs credit refund split based on actual cash paid
-      const currentPaid = Number(selectedSale.paid_amount || selectedSale.amount_paid || 0)
-      let cashRefundAmount = 0
-      let creditRefundAmount = 0
-
-      if (refundType === 'credit') {
-        cashRefundAmount = 0
-        creditRefundAmount = totalNetReturn
-      } else {
-        // Cash refund cannot exceed actual cash tendered on this invoice
-        cashRefundAmount = Math.min(totalNetReturn, currentPaid)
-        creditRefundAmount = Math.max(0, totalNetReturn - cashRefundAmount)
-      }
-
-      const newSaleTotal = Math.max(0, remainingGross - totalReturnAmount)
-      const newDiscount = newSaleTotal === 0 ? 0 : Math.max(0, Number(selectedSale.discount || 0) - discountReturned)
-      const newNetAmount = Math.max(0, newSaleTotal - newDiscount)
-      const newPaidAmount = Math.max(0, currentPaid - cashRefundAmount)
-
-      await supabase.from('sales').update({
-        total_amount: newSaleTotal,
-        discount: newDiscount,
-        net_amount: newNetAmount,
-        paid_amount: newPaidAmount,
-        amount_paid: newPaidAmount
-      }).eq('id', selectedSale.id)
-      await db.sales.update(selectedSale.id, {
-        total_amount: newSaleTotal,
-        discount: newDiscount,
-        net_amount: newNetAmount,
-        paid_amount: newPaidAmount,
-        amount_paid: newPaidAmount
-      })
+      await supabase.from('sales').update(ret.update).eq('id', selectedSale.id)
+      await db.sales.update(selectedSale.id, ret.update)
 
       // Process Credit Refund component if customer exists
       if (creditRefundAmount > 0 && selectedSale.customer_id) {
@@ -506,6 +476,8 @@ function Sales() {
               shopId: user.shop_id,
               accountId: cashAcc.id,
               amount: cashRefundAmount,
+              referenceType: 'SALE_RETURN',
+              referenceId: String(selectedSale.id),
               description: `Sale Return Cash Refund (Invoice #${selectedSale.id})`
             })
           }
@@ -567,29 +539,45 @@ function Sales() {
           }
         }
 
-        // Update local Sale total
-        const remainingGross = Number(selectedSale.total_amount || 0)
-        const discountReturned = remainingGross > 0
-          ? Number(selectedSale.discount || 0) * Math.min(1, totalReturnAmount / remainingGross)
-          : 0
-        const newSaleTotal = Math.max(0, Number(selectedSale.total_amount || 0) - totalReturnAmount)
-        const newDiscount = newSaleTotal === 0 ? 0 : Math.max(0, Number(selectedSale.discount || 0) - discountReturned)
-        const newNetAmount = Math.max(0, newSaleTotal - newDiscount)
-        const newPaidAmount = Math.max(0, Number(selectedSale.paid_amount || selectedSale.amount_paid || 0) - (refundType === 'credit' ? 0 : totalReturnAmount))
-        const offlineSaleUpdate = {
-          total_amount: newSaleTotal,
-          discount: newDiscount,
-          net_amount: newNetAmount,
-          paid_amount: newPaidAmount,
-          amount_paid: newPaidAmount
-        }
+        // Update local Sale total (same figures as the online return)
+        const ret = computeReturn({ record: selectedSale, grossReturn: totalReturnAmount, toBalance: refundType === 'credit' })
+        const offlineSaleUpdate = ret.update
+        const newSaleTotal = ret.update.total_amount
+        const newDiscount = ret.update.discount
         await db.sales.update(selectedSale.id, offlineSaleUpdate)
         await addToSyncQueue('sales', 'UPDATE', { id: selectedSale.id, ...offlineSaleUpdate })
+
+        // The part that is not handed back in cash comes off the customer's balance
+        if (ret.balanceRefund > 0 && selectedSale.customer_id) {
+          await adjustCustomerBalance(selectedSale.customer_id, -ret.balanceRefund, { queueOnly: true }).catch(() => {})
+        }
+        // Cash handed back leaves the cash account
+        if (ret.cashRefund > 0) {
+          try {
+            const accounts = await getBankAccounts(user.shop_id)
+            const cashAcc = accounts.find(a =>
+              a.bank_name?.toLowerCase().includes('cash') ||
+              a.account_name?.toLowerCase().includes('cash')
+            ) || accounts[0]
+            if (cashAcc) {
+              await deductBankBalance({
+                shopId: user.shop_id,
+                accountId: cashAcc.id,
+                amount: ret.cashRefund,
+                referenceType: 'SALE_RETURN',
+                referenceId: String(selectedSale.id),
+                description: `Sale Return Cash Refund (Invoice #${selectedSale.id})`
+              })
+            }
+          } catch (accErr) {
+            console.warn('Could not deduct refund from cash account (offline):', accErr)
+          }
+        }
 
         alert('Offline mode: Return processed locally. Stock and Invoice updated! 🔄')
         setReturning(false)
         setReturnQtys({})
-        setSelectedSale({ ...selectedSale, total_amount: newSaleTotal, discount: newDiscount })
+        setSelectedSale({ ...selectedSale, ...offlineSaleUpdate, total_amount: newSaleTotal, discount: newDiscount })
         // Reflect updated returned_qty in modal items
         const localUpdated = await db.sale_items.where({ sale_id: selectedSale.id }).toArray().catch(() => [])
         const [lPhones, lProducts] = await Promise.all([
@@ -761,7 +749,8 @@ function Sales() {
         // Rollback inventory and ledger before deleting
         try {
           const { data: saleItems } = await supabase.from('sale_items').select('*').eq('sale_id', id)
-          if (saleItems && saleItems.length > 0) {
+          // A quotation (or a voided sale) never took stock, so there is nothing to put back
+          if (isCountedSale(item) && saleItems && saleItems.length > 0) {
             for (const si of saleItems) {
               // Restore phone status to in_stock
               if (si.phone_id) {
@@ -778,38 +767,23 @@ function Sales() {
               }
             }
           }
-          // Reverse customer credit balance if credit sale
-          if (item.payment_type === 'credit' && item.customer_id) {
-            // Reverse only what this sale added to the account: the unpaid part
-            const saleAmount = Number(item.net_amount ?? (Number(item.total_amount || 0) - Number(item.discount || 0))) || 0
-            const paidOnSale = Number(item.paid_amount || item.amount_paid || 0) || 0
-            const unpaid = Math.max(0, saleAmount - Math.min(saleAmount, paidOnSale))
-            const balRes = await adjustCustomerBalance(item.customer_id, -unpaid)
-            if (!balRes.ok) console.warn('Could not reverse customer balance for deleted sale:', balRes.error)
-          } else if (item.payment_type !== 'credit') {
-            // Reverse bank or cash proceeds recorded in accounts for this sale
-            const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? (Number(item.total_amount || 0) - Number(item.discount || 0)) : 0)) || 0
-            if (paid > 0) {
-              try {
-                const accounts = await getBankAccounts(user.shop_id)
-                const method = String(item.payment_type || item.payment_method || '').toLowerCase()
-                const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(method)
-                const targetAcc = accounts.find(a =>
-                  isBank
-                    ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                    : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
-                ) || accounts[0]
-                if (targetAcc) {
-                  await deductBankBalance({
-                    shopId: user.shop_id,
-                    accountId: targetAcc.id,
-                    amount: paid,
-                    description: `Sale Deletion Reversal (Invoice #${id})`
-                  })
-                }
-              } catch (accErr) {
-                console.warn('Could not reverse account balance for deleted sale:', accErr)
-              }
+          if (isCountedSale(item)) {
+            // Take off the customer's balance exactly what this sale put on it (bill minus
+            // paid), whatever the payment type: a part-paid cash sale adds to it too
+            if (item.customer_id) {
+              const balRes = await adjustCustomerBalance(item.customer_id, -saleBalanceEffect(item))
+              if (!balRes.ok) console.warn('Could not reverse customer balance for deleted sale:', balRes.error)
+            }
+            // Take the money received back out of the accounts it went into (each tender
+            // of a split, and cash received on a credit sale, on its own account)
+            try {
+              await reverseSaleFromAccounts({
+                shopId: user.shop_id,
+                sale: item,
+                description: `Sale Deletion Reversal (Invoice #${id})`
+              })
+            } catch (accErr) {
+              console.warn('Could not reverse account balance for deleted sale:', accErr)
             }
           }
         } catch (rollbackErr) {

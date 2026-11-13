@@ -8,6 +8,7 @@
     "api": "node api-server.js",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "node scripts/test_money_math.mjs",
     "preview": "vite preview",
     "postinstall": "node scripts/patchHtml2canvas.cjs"
   },

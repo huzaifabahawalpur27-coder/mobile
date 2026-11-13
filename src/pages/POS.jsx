@@ -30,6 +30,7 @@ import {
   adjustProductStock, adjustCustomerBalance, markPhoneSold, queuePhoneSold,
   findPhonesNotInStock, applyLocalDelta, processPosSale
 } from '../services/atomicOps'
+import { buildSaleTenders, applyTenders } from '../utils/moneyMath'
 const PAKISTANI_PAYMENT_PROVIDERS = [
   { id: 'jazzcash', name: 'JazzCash', icon: '📱' },
   { id: 'easypaisa', name: 'Easypaisa', icon: '🟢' },
@@ -1125,23 +1126,19 @@ function POS() {
 
     // If split payment not used, default to single payment
     const singleMethod = paymentType === 'online' ? onlineProvider : paymentType
-    const finalPayments = payments.length > 0
-      ? payments
-      : [{
-          method: singleMethod,
-          provider: paymentType === 'online' ? onlineProvider : null,
-          ref: paymentType === 'online' ? transactionRef : null,
-          amount: (receivedAmount === '' ? total : Number(receivedAmount)),
-          account_id: chosenAccountId
-        }]
-    const tenderedTotal = finalPayments.reduce((s, p) => s + Math.max(0, Number(p.amount) || 0), 0)
-    let unappliedAmount = total
-    const appliedPayments = finalPayments.map(p => {
-      const amount = Math.min(unappliedAmount, Math.max(0, Number(p.amount) || 0))
-      unappliedAmount -= amount
-      return { ...p, amount }
+    // A credit (udhaar) sale takes no money unless an amount is typed in; that amount is
+    // cash in the drawer. Nothing is applied beyond the bill total.
+    const finalPayments = buildSaleTenders({
+      paymentType,
+      total,
+      receivedAmount,
+      splitPayments: payments,
+      singleMethod,
+      provider: paymentType === 'online' ? onlineProvider : null,
+      ref: paymentType === 'online' ? transactionRef : null,
+      accountId: paymentType === 'credit' ? (selectedCashVaultId || null) : chosenAccountId
     })
-    const totalPaid = Math.min(total, tenderedTotal)
+    const { applied: appliedPayments, tendered: tenderedTotal, paid: totalPaid } = applyTenders(finalPayments, total)
 
     if ((paymentType === 'credit' || totalPaid < total) && !customerId && !walkInName.trim()) {
       alert('Balance amount (Credit) ke liye customer select karein ya Walk-in Name likhein!')
@@ -2007,9 +2004,10 @@ function POS() {
 
   const printQuotation = () => {
     const customer = customers.find(c => String(c.id) === String(customerId))
-    const sub = cart.reduce((s, i) => s + i.custom_price * i.qty, 0)
-    const disc = parseFloat(discount) || 0
-    const tot = Math.max(0, sub - disc)
+    // Same figures as the cart shows (percent discounts included, never above the subtotal)
+    const sub = subtotal
+    const disc = totalDiscount
+    const tot = total
     const fakeSale = { id: Date.now(), created_at: new Date().toISOString(), created_by: user?.username || 'Staff', payment_type: paymentType, payment_details: null, paid_amount: tot }
     printHTML(buildReceiptHTML({ sale: fakeSale, items: cart, customer, subtotal: sub, totalDiscount: disc, total: tot, paymentType }, true))
   }
@@ -2019,9 +2017,10 @@ function POS() {
     if (btn) { btn.disabled = true; btn.textContent = '⏳...' }
     try {
       const customer = customers.find(c => String(c.id) === String(customerId))
-      const sub = cart.reduce((s, i) => s + i.custom_price * i.qty, 0)
-      const disc = parseFloat(discount) || 0
-      const tot = Math.max(0, sub - disc)
+      // Same figures as the cart shows (percent discounts included, never above the subtotal)
+      const sub = subtotal
+      const disc = totalDiscount
+      const tot = total
       const fakeSale = { id: Date.now(), created_at: new Date().toISOString(), created_by: user?.username || 'Staff', payment_type: paymentType, payment_details: null, paid_amount: tot }
       const quotationReceipt = { sale: fakeSale, items: cart, customer, subtotal: sub, totalDiscount: disc, total: tot, paymentType, isQuotation: true, shop_id: user?.shop_id }
       const html = buildReceiptHTML(quotationReceipt, true)

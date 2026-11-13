@@ -1,6 +1,7 @@
 import { useState, useEffect, useId } from 'react'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
+import { cashPortion, isCountedSale, isCashExpenseInShift, isPurchaseBillPayment, isCashPartyPayment } from '../utils/moneyMath'
 
 export default function CashSessionModal({ isOpen, onClose, user, onSessionChange }) {
   const openingFloatId = useId()
@@ -86,23 +87,13 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
       // Cash Sales during shift (including split cash)
       const { data: salesData } = await supabase
         .from('sales')
-        .select('id, paid_amount, amount_paid, payment_method, payment_type, payment_details')
+        .select('*')
         .eq('shop_id', shopId)
         .gte('created_at', session.opened_at)
 
-      const cashSales = (salesData || []).reduce((sum, s) => {
-        const method = (s.payment_method || s.payment_type || 'cash').toLowerCase()
-        if (method === 'cash') {
-          return sum + (Number(s.paid_amount || s.amount_paid) || 0)
-        }
-        if (method === 'split' && Array.isArray(s.payment_details)) {
-          const splitCash = s.payment_details
-            .filter(p => String(p.method || p.provider || '').toLowerCase() === 'cash')
-            .reduce((pSum, p) => pSum + (Number(p.amount) || 0), 0)
-          return sum + splitCash
-        }
-        return sum
-      }, 0)
+      // Cash part of every bill: cash sales, the cash tender of a split payment and
+      // cash received on a credit sale. Quotations and voided sales are left out.
+      const cashSales = (salesData || []).filter(isCountedSale).reduce((sum, s) => sum + cashPortion(s), 0)
 
       // Cash payments from customers (filter out online/debits)
       const { data: paymentsData } = await supabase
@@ -111,23 +102,17 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
         .eq('shop_id', shopId)
         .gte('created_at', session.opened_at)
 
-      const cashPayments = (paymentsData || []).reduce((sum, p) => {
-        const type = String(p.payment_type || 'payment').toLowerCase()
-        const mode = String(p.payment_mode || 'cash').toLowerCase()
-        if (type === 'payment' && (mode === 'cash' || !mode)) {
-          return sum + (Number(p.amount) || 0)
-        }
-        return sum
-      }, 0)
+      const cashPayments = (paymentsData || []).filter(isCashPartyPayment).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
 
       // Cash expenses
       const { data: expensesData } = await supabase
         .from('expenses')
-        .select('amount')
+        .select('*')
         .eq('shop_id', shopId)
         .gte('date', session.opened_at.split('T')[0])
 
-      const cashExpenses = (expensesData || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+      const cashExpenses = (expensesData || []).filter(e => isCashExpenseInShift(e, session.opened_at))
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
 
       // Cash stock purchases during shift (phones, stock, buy-backs paid in cash)
       const { data: purchasesData } = await supabase
@@ -136,37 +121,19 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
         .eq('shop_id', shopId)
         .gte('created_at', session.opened_at)
 
-      const cashPurchases = (purchasesData || []).reduce((sum, p) => {
-        const method = (p.payment_method || p.payment_type || 'cash').toLowerCase()
-        const netCost = Number(p.net_amount ?? (Number(p.total_amount || 0) - Number(p.discount || 0)))
-        const paidAmt = Number(p.paid_amount ?? p.amount_paid ?? (method === 'cash' ? netCost : 0)) || 0
-        if (method === 'cash') {
-          return sum + paidAmt
-        }
-        if (method === 'split' && Array.isArray(p.payment_details)) {
-          const splitCash = p.payment_details
-            .filter(d => String(d.method || d.provider || '').toLowerCase() === 'cash')
-            .reduce((dSum, d) => dSum + (Number(d.amount) || 0), 0)
-          return sum + splitCash
-        }
-        return sum
-      }, 0)
+      const cashPurchases = (purchasesData || []).reduce((sum, p) => sum + cashPortion(p), 0)
 
       // Cash supplier payments during shift (paying off vendor bills from the till)
       const { data: supplierPaymentsData } = await supabase
         .from('supplier_payments')
-        .select('amount, payment_type, payment_mode')
+        .select('*')
         .eq('shop_id', shopId)
         .gte('created_at', session.opened_at)
 
-      const cashSupplierPayments = (supplierPaymentsData || []).reduce((sum, p) => {
-        const type = String(p.payment_type || 'payment').toLowerCase()
-        const mode = String(p.payment_mode || 'cash').toLowerCase()
-        if (type === 'payment' && (mode === 'cash' || !mode)) {
-          return sum + (Number(p.amount) || 0)
-        }
-        return sum
-      }, 0)
+      // Payments written with a purchase bill are already in cashPurchases above
+      const cashSupplierPayments = (supplierPaymentsData || [])
+        .filter(p => isCashPartyPayment(p) && !isPurchaseBillPayment(p))
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
 
       setSessionStats({
         cashSales,
@@ -191,56 +158,21 @@ export default function CashSessionModal({ isOpen, onClose, user, onSessionChang
 
         const sessionOpenTime = new Date(session.opened_at).getTime()
         const mySales = lSales.filter(s => String(s.shop_id) === sidStr && new Date(s.created_at).getTime() >= sessionOpenTime)
-        const cashSales = mySales.reduce((sum, s) => {
-          const method = (s.payment_method || s.payment_type || 'cash').toLowerCase()
-          if (method === 'cash') return sum + (Number(s.paid_amount || s.amount_paid) || 0)
-          if (method === 'split' && Array.isArray(s.payment_details)) {
-            const splitCash = s.payment_details
-              .filter(p => String(p.method || p.provider || '').toLowerCase() === 'cash')
-              .reduce((pSum, p) => pSum + (Number(p.amount) || 0), 0)
-            return sum + splitCash
-          }
-          return sum
-        }, 0)
+        const cashSales = mySales.filter(isCountedSale).reduce((sum, s) => sum + cashPortion(s), 0)
 
         const myCP = lCP.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at).getTime() >= sessionOpenTime)
-        const cashPayments = myCP.reduce((sum, p) => {
-          const type = String(p.payment_type || 'payment').toLowerCase()
-          const mode = String(p.payment_mode || 'cash').toLowerCase()
-          if (type === 'payment' && (mode === 'cash' || !mode)) {
-            return sum + (Number(p.amount) || 0)
-          }
-          return sum
-        }, 0)
+        const cashPayments = myCP.filter(isCashPartyPayment).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
 
-        const sessionDateStr = session.opened_at.split('T')[0]
-        const myExp = lExp.filter(e => String(e.shop_id) === sidStr && (e.date >= sessionDateStr || new Date(e.created_at).getTime() >= sessionOpenTime))
+        const myExp = lExp.filter(e => String(e.shop_id) === sidStr && isCashExpenseInShift(e, session.opened_at))
         const cashExpenses = myExp.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
 
         const myPur = lPur.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at).getTime() >= sessionOpenTime)
-        const cashPurchases = myPur.reduce((sum, p) => {
-          const method = (p.payment_method || p.payment_type || 'cash').toLowerCase()
-          const netCost = Number(p.net_amount ?? (Number(p.total_amount || 0) - Number(p.discount || 0)))
-          const paidAmt = Number(p.paid_amount ?? p.amount_paid ?? (method === 'cash' ? netCost : 0)) || 0
-          if (method === 'cash') return sum + paidAmt
-          if (method === 'split' && Array.isArray(p.payment_details)) {
-            const splitCash = p.payment_details
-              .filter(d => String(d.method || d.provider || '').toLowerCase() === 'cash')
-              .reduce((dSum, d) => dSum + (Number(d.amount) || 0), 0)
-            return sum + splitCash
-          }
-          return sum
-        }, 0)
+        const cashPurchases = myPur.reduce((sum, p) => sum + cashPortion(p), 0)
 
         const mySP = lSP.filter(p => String(p.shop_id) === sidStr && new Date(p.created_at).getTime() >= sessionOpenTime)
-        const cashSupplierPayments = mySP.reduce((sum, p) => {
-          const type = String(p.payment_type || 'payment').toLowerCase()
-          const mode = String(p.payment_mode || 'cash').toLowerCase()
-          if (type === 'payment' && (mode === 'cash' || !mode)) {
-            return sum + (Number(p.amount) || 0)
-          }
-          return sum
-        }, 0)
+        const cashSupplierPayments = mySP
+          .filter(p => isCashPartyPayment(p) && !isPurchaseBillPayment(p))
+          .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
 
         setSessionStats({
           cashSales,

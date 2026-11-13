@@ -7,7 +7,8 @@ import { printHTML, getShopBranding } from '../utils/printUtils'
 import { db, addToSyncQueue } from '../services/db'
 import { adjustCustomerBalance, adjustProductStock, releasePhoneFromSale } from '../services/atomicOps'
 import { generateOutstandingPDF, shareOrDownloadPDF } from '../utils/pdfShare'
-import { getBankAccounts, creditBankBalance, deductBankBalance } from '../services/bankService'
+import { getBankAccounts, creditBankBalance, deductBankBalance, reverseSaleFromAccounts } from '../services/bankService'
+import { customerLedgerEffect, isCountedSale, netAmount, paidAmount } from '../utils/moneyMath'
 
 const normalizeSaleItem = (it, phonesPool = [], productsPool = []) => {
     let snap = null
@@ -100,8 +101,11 @@ function CustomerLedger() {
                     date: s.created_at,
                     type: 'sale',
                     payment_type: s.payment_type,
-                    amount: s.total_amount - (s.discount || 0),
-                    paid_amount: s.paid_amount || 0,
+                    sale_type: s.sale_type ?? null,
+                    status: s.status ?? null,
+                    payment_details: s.payment_details ?? null,
+                    amount: netAmount(s),
+                    paid_amount: paidAmount(s),
                     note: `Invoice #${String(s.id).slice(-8)}`,
                     items: (s.sale_items || []).map(it => normalizeSaleItem(it))
                 })),
@@ -124,18 +128,7 @@ function CustomerLedger() {
 
             // Check for initial opening balance / previous dues
             const currentTotalDue = Number(custRes.data.outstanding_balance ?? custRes.data.balance ?? 0)
-            const netTxBalance = combined.reduce((acc, item) => {
-                if (item.type === 'sale') {
-                    const owed = Math.max(0, item.amount - (item.paid_amount || 0))
-                    return acc + owed
-                } else if (item.type === 'debit') {
-                    return acc + Number(item.amount || 0)
-                } else if (item.payment_type === 'refund') {
-                    return acc
-                } else {
-                    return acc - Math.abs(Number(item.amount || 0))
-                }
-            }, 0)
+            const netTxBalance = combined.reduce((acc, item) => acc + customerLedgerEffect(item), 0)
 
             const openingDues = currentTotalDue - netTxBalance
             if (Math.abs(openingDues) >= 1) {
@@ -153,16 +146,7 @@ function CustomerLedger() {
             // Calculate running balance
             let running = 0
             const withBalance = combined.map(item => {
-                if (item.type === 'sale') {
-                    const owed = Math.max(0, item.amount - (item.paid_amount || 0))
-                    if (owed > 0) running += owed
-                } else if (item.type === 'debit') {
-                    running += Number(item.amount || 0)
-                } else if (item.payment_type === 'refund') {
-                    // cash refund — no balance change
-                } else {
-                    running -= Math.abs(Number(item.amount || 0))
-                }
+                running += customerLedgerEffect(item)
                 return { ...item, balance: running }
             })
 
@@ -192,8 +176,11 @@ function CustomerLedger() {
                         date: s.created_at,
                         type: 'sale',
                         payment_type: s.payment_type,
-                        amount: s.total_amount - (s.discount || 0),
-                        paid_amount: s.paid_amount || 0,
+                        sale_type: s.sale_type ?? null,
+                        status: s.status ?? null,
+                        payment_details: s.payment_details ?? null,
+                        amount: netAmount(s),
+                        paid_amount: paidAmount(s),
                         note: `Invoice #${String(s.id).slice(-8)}`,
                         items: lItems.filter(i => i.sale_id === s.id).map(it => normalizeSaleItem(it, lPhones, lProducts))
                     })),
@@ -214,16 +201,7 @@ function CustomerLedger() {
                 combined.sort((a, b) => new Date(a.date) - new Date(b.date))
                 let running = 0
                 const withBalance = combined.map(item => {
-                    if (item.type === 'sale') {
-                        const owed = Math.max(0, item.amount - (item.paid_amount || 0))
-                        if (owed > 0) running += owed
-                    } else if (item.type === 'debit') {
-                        running += Number(item.amount)
-                    } else if (item.payment_type === 'refund') {
-                        // no balance change
-                    } else {
-                        running -= Math.abs(item.amount)
-                    }
+                    running += customerLedgerEffect(item)
                     return { ...item, balance: running }
                 })
                 // Check for opening dues difference offline
@@ -434,12 +412,7 @@ function CustomerLedger() {
     }
 
     // Balance effect of removing a ledger entry
-    const deletionDelta = (item) => {
-        if (item.type === 'sale') return -Math.max(0, Number(item.amount || 0) - Number(item.paid_amount || 0))
-        if (item.payment_type === 'refund') return 0
-        if (item.payment_type === 'debit') return -Number(item.amount || 0)
-        return Math.abs(Number(item.amount || 0))
-    }
+    const deletionDelta = (item) => -customerLedgerEffect(item)
 
     const resetTxForm = () => {
         setTxForm({ date: new Date().toISOString().slice(0, 10), bill_number: '', sale_amount: '', payment_amount: '', details: '', payment_mode: 'cash', transaction_ref: '', note: '' })
@@ -531,100 +504,106 @@ function CustomerLedger() {
         }
     }
 
+    // The computed "opening balance" row is not a stored entry
+    const isOpeningRow = (item) => String(item?.id ?? '').startsWith('opening')
+
+    // Removes one ledger entry: stock and phones back for a sale, the money back out of
+    // (or into) the account it touched, then the record itself. Used by single and bulk delete.
+    const removeLedgerEntry = async (item) => {
+        if (item.type === 'sale') {
+            // 1. Rollback inventory and accounts before deleting sale
+            try {
+                // A quotation (or a voided sale) never took stock or money
+                if (isCountedSale(item)) {
+                    await rollbackSaleInventory(item)
+                    // Take the money received back out of the accounts it went into
+                    await reverseSaleFromAccounts({
+                        shopId: user.shop_id,
+                        sale: {
+                            id: item.id,
+                            sale_type: item.sale_type,
+                            status: item.status,
+                            payment_type: item.payment_type,
+                            payment_details: item.payment_details,
+                            net_amount: item.amount,
+                            paid_amount: item.paid_amount
+                        },
+                        description: `Sale Deletion Reversal (Customer Ledger #${item.id})`
+                    })
+                }
+            } catch (rollbackErr) {
+                console.warn('Rollback warning on sale deletion:', rollbackErr)
+            }
+
+            // Cascade: delete sale_items first, then sale
+            if (navigator.onLine) {
+                await supabase.from('sale_items').delete().eq('sale_id', item.id)
+                const { error } = await supabase.from('sales').delete().eq('id', item.id)
+                if (error) throw error
+            } else {
+                const lItems = await db.sale_items.toArray()
+                const toDelIds = lItems.filter(i => String(i.sale_id) === String(item.id)).map(i => i.id)
+                await db.sale_items.bulkDelete(toDelIds)
+                await db.sales.delete(item.id)
+                await addToSyncQueue('sales', 'DELETE', { id: item.id })
+            }
+        } else {
+            // payment or return — delete from customer_payments
+            const payAmt = Math.abs(Number(item.amount || 0))
+            if (payAmt > 0) {
+                try {
+                    const accounts = await getBankAccounts(user.shop_id)
+                    const mode = String(item.payment_mode || item.payment_type || 'cash').toLowerCase()
+                    const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
+                    const targetAcc = accounts.find(a =>
+                        isBank
+                            ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
+                            : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
+                    ) || accounts[0]
+
+                    if (targetAcc) {
+                        if (item.payment_type === 'refund') {
+                            // Deleting a refund restores money to account
+                            await creditBankBalance({
+                                shopId: user.shop_id,
+                                accountId: targetAcc.id,
+                                amount: payAmt,
+                                referenceType: 'REFUND_DELETION',
+                                referenceId: String(item.id),
+                                description: `Deleted Customer Refund Reversal (${customer?.name || 'Customer'})`
+                            })
+                        } else if (item.payment_type === 'payment' || !item.payment_type) {
+                            // Deleting a received payment reverses money from account
+                            await deductBankBalance({
+                                shopId: user.shop_id,
+                                accountId: targetAcc.id,
+                                amount: payAmt,
+                                description: `Deleted Customer Payment Reversal (${customer?.name || 'Customer'})`
+                            })
+                        }
+                    }
+                } catch (accErr) {
+                    console.warn('Could not reverse account balance for deleted payment:', accErr)
+                }
+            }
+
+            if (navigator.onLine) {
+                const { error } = await supabase.from('customer_payments').delete().eq('id', item.id)
+                if (error) throw error
+            } else {
+                await db.customer_payments.delete(item.id)
+                await addToSyncQueue('customer_payments', 'DELETE', { id: item.id })
+            }
+        }
+    }
+
     const handleDeleteTransaction = async (item) => {
-        if (item.id === 'opening') { alert('Opening balance entry directly delete nahi ho sakti.'); return }
+        if (isOpeningRow(item)) { alert('Opening balance entry directly delete nahi ho sakti.'); return }
         const label = item.type === 'sale' ? 'Sale/Invoice' : item.type === 'payment' ? 'Payment' : 'Return'
         if (!confirm(`Yeh transaction delete karein?\n\nType: ${label}\nAmount: Rs. ${Number(item.amount).toLocaleString()}\nNote: ${item.note}\n\nCustomer ka outstanding balance bhi adjust ho ga.`)) return
 
         try {
-            if (item.type === 'sale') {
-                // 1. Rollback inventory and accounts before deleting sale
-                try {
-                    await rollbackSaleInventory(item)
-                    // Reverse bank/cash account proceeds if sale had paid amount
-                    const paid = Number(item.paid_amount || item.amount_paid || (item.payment_type === 'cash' ? item.amount : 0)) || 0
-                    if (paid > 0 && item.payment_type !== 'credit') {
-                        const accounts = await getBankAccounts(user.shop_id)
-                        const method = String(item.payment_type || item.payment_mode || 'cash').toLowerCase()
-                        const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(method)
-                        const targetAcc = accounts.find(a =>
-                            isBank
-                                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
-                        ) || accounts[0]
-                        if (targetAcc) {
-                            await deductBankBalance({
-                                shopId: user.shop_id,
-                                accountId: targetAcc.id,
-                                amount: paid,
-                                description: `Sale Deletion Reversal (Customer Ledger #${item.id})`
-                            })
-                        }
-                    }
-                } catch (rollbackErr) {
-                    console.warn('Rollback warning on sale deletion:', rollbackErr)
-                }
-
-                // Cascade: delete sale_items first, then sale
-                if (navigator.onLine) {
-                    await supabase.from('sale_items').delete().eq('sale_id', item.id)
-                    const { error } = await supabase.from('sales').delete().eq('id', item.id)
-                    if (error) throw error
-                } else {
-                    const lItems = await db.sale_items.toArray()
-                    const toDelIds = lItems.filter(i => String(i.sale_id) === String(item.id)).map(i => i.id)
-                    await db.sale_items.bulkDelete(toDelIds)
-                    await db.sales.delete(item.id)
-                    await addToSyncQueue('sales', 'DELETE', { id: item.id })
-                }
-            } else {
-                // payment or return — delete from customer_payments
-                const payAmt = Math.abs(Number(item.amount || 0))
-                if (payAmt > 0) {
-                    try {
-                        const accounts = await getBankAccounts(user.shop_id)
-                        const mode = String(item.payment_mode || item.payment_type || 'cash').toLowerCase()
-                        const isBank = ['online', 'bank', 'jazzcash', 'easypaisa', 'sadapay', 'nayapay'].includes(mode)
-                        const targetAcc = accounts.find(a =>
-                            isBank
-                                ? (!a.bank_name?.toLowerCase().includes('cash') && !a.account_name?.toLowerCase().includes('cash'))
-                                : (a.bank_name?.toLowerCase().includes('cash') || a.account_name?.toLowerCase().includes('cash'))
-                        ) || accounts[0]
-
-                        if (targetAcc) {
-                            if (item.payment_type === 'refund') {
-                                // Deleting a refund restores money to account
-                                await creditBankBalance({
-                                    shopId: user.shop_id,
-                                    accountId: targetAcc.id,
-                                    amount: payAmt,
-                                    referenceType: 'REFUND_DELETION',
-                                    referenceId: String(item.id),
-                                    description: `Deleted Customer Refund Reversal (${customer?.name || 'Customer'})`
-                                })
-                            } else if (item.payment_type === 'payment' || !item.payment_type) {
-                                // Deleting a received payment reverses money from account
-                                await deductBankBalance({
-                                    shopId: user.shop_id,
-                                    accountId: targetAcc.id,
-                                    amount: payAmt,
-                                    description: `Deleted Customer Payment Reversal (${customer?.name || 'Customer'})`
-                                })
-                            }
-                        }
-                    } catch (accErr) {
-                        console.warn('Could not reverse account balance for deleted payment:', accErr)
-                    }
-                }
-
-                if (navigator.onLine) {
-                    const { error } = await supabase.from('customer_payments').delete().eq('id', item.id)
-                    if (error) throw error
-                } else {
-                    await db.customer_payments.delete(item.id)
-                    await addToSyncQueue('customer_payments', 'DELETE', { id: item.id })
-                }
-            }
+            await removeLedgerEntry(item)
 
             // Reverse the entry's effect on the balance (no cut-off at zero: advances are kept)
             await changeBalance(deletionDelta(item))
@@ -634,7 +613,7 @@ function CustomerLedger() {
         }
     }
 
-    const selectableItems = ledger.filter(item => item.id !== 'opening')
+    const selectableItems = ledger.filter(item => !isOpeningRow(item))
     const allSelected = selectableItems.length > 0 && selectableItems.every(item => selectedIds.has(item.id))
 
     const toggleSelect = (itemId) => {
@@ -653,36 +632,15 @@ function CustomerLedger() {
     }
 
     const handleBulkDelete = async () => {
-        const toDelete = ledger.filter(item => selectedIds.has(item.id) && item.id !== 'opening')
+        const toDelete = ledger.filter(item => selectedIds.has(item.id) && !isOpeningRow(item))
         if (!toDelete.length) return
         if (!confirm(`${toDelete.length} transactions delete karein?\n\nCustomer ka outstanding balance bhi adjust ho ga.`)) return
 
         let totalDelta = 0
         try {
             for (const item of toDelete) {
-                if (item.type === 'sale') {
-                    // Stock and phones back, as a single delete does (this used to be skipped)
-                    try { await rollbackSaleInventory(item) } catch (rbErr) { console.warn('Rollback warning on bulk sale deletion:', rbErr) }
-                    if (navigator.onLine) {
-                        await supabase.from('sale_items').delete().eq('sale_id', item.id)
-                        await supabase.from('sales').delete().eq('id', item.id)
-                    } else {
-                        const lItems = await db.sale_items.toArray()
-                        const toDelIds = lItems.filter(i => String(i.sale_id) === String(item.id)).map(i => i.id)
-                        await db.sale_items.bulkDelete(toDelIds)
-                        await db.sales.delete(item.id)
-                        await addToSyncQueue('sales', 'DELETE', { id: item.id })
-                    }
-                    totalDelta += deletionDelta(item)
-                } else {
-                    if (navigator.onLine) {
-                        await supabase.from('customer_payments').delete().eq('id', item.id)
-                    } else {
-                        await db.customer_payments.delete(item.id)
-                        await addToSyncQueue('customer_payments', 'DELETE', { id: item.id })
-                    }
-                    totalDelta += deletionDelta(item)
-                }
+                await removeLedgerEntry(item)
+                totalDelta += deletionDelta(item)
             }
             await changeBalance(totalDelta)
             setSelectedIds(new Set())
@@ -849,11 +807,11 @@ function CustomerLedger() {
                                     </div>
 
                                     <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                        {item.id !== 'opening' && (
+                                        {!isOpeningRow(item) && (
                                             <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)}
                                                 className="w-4 h-4 rounded cursor-pointer" />
                                         )}
-                                        {item.id !== 'opening' && (
+                                        {!isOpeningRow(item) && (
                                             <button
                                                 onClick={() => handleDeleteTransaction(item)}
                                                 title="Delete transaction"
@@ -946,7 +904,7 @@ function CustomerLedger() {
                             <React.Fragment key={idx}>
                                 <tr className={`hover:bg-gray-50 transition ${selectedIds.has(item.id) ? 'bg-red-50/40' : ''}`}>
                                     <td className="px-4 py-4">
-                                        {item.id !== 'opening' && (
+                                        {!isOpeningRow(item) && (
                                             <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)}
                                                 className="w-4 h-4 rounded cursor-pointer" />
                                         )}
@@ -998,7 +956,7 @@ function CustomerLedger() {
                                         Rs. {item.balance.toFixed(0)}
                                     </td>
                                     <td className="px-4 py-4 text-right">
-                                        {item.id !== 'opening' && (
+                                        {!isOpeningRow(item) && (
                                             <button
                                                 onClick={() => handleDeleteTransaction(item)}
                                                 title="Delete transaction"

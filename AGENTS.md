@@ -26,6 +26,11 @@ Standalone admin: `cd superadmin`, then the same npm scripts.
 - Enforce tenant isolation and roles in database RLS/RPC/server code, not only frontend filters or `ProtectedRoute`. Review SQL migrations together; order and duplicate policies materially affect security.
 - Preserve shop-scoped localStorage key patterns (`shop_name_${shopId}`, `shop_logo_${shopId}`, `shop_settings_${shopId}`, plan and print settings). Avoid casual changes to sync queue, session, or offline-login behavior. Do not discard queued business writes silently; use idempotency and observable recovery.
 
+## Money Rules
+
+- Shared money maths lives in `src/utils/moneyMath.js` (returns, tenders, ledger row effects, cash-drawer portions). POS, Sales, both ledgers, the cash session and Trash restore use it; change a rule there, not per screen. `npm test` runs `scripts/test_money_math.mjs`.
+- Cash / bank account balances change only through `creditBankBalance` / `deductBankBalance` in `src/services/bankService.js`, which send a signed amount to `adjust_bank_balance` (`sql/atomic_bank_balance.sql`) and queue the same call when offline. Never write `current_balance` as an absolute number from a screen.
+
 ## UI And Product Conventions
 
 - Keep the app shell full-screen; let `Layout` own available height and pages scroll inside `<main>`. Prefer flex + `min-h-0`/`h-full`, and `dvh` when viewport sizing is unavoidable. Avoid page-local `100vh` subtraction.

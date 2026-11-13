@@ -5,6 +5,8 @@ import { db, restoreFromTrash, addToSyncQueue } from '../services/db'
 import PasswordModal from '../components/PasswordModal'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
+import { recordSaleToAccounts, recordPurchaseToAccounts } from '../services/bankService'
+import { customerLedgerEffect, supplierLedgerEffect, isCountedSale, saleBalanceEffect, paidAmount } from '../utils/moneyMath'
 import { adjustProductStock, adjustCustomerBalance, adjustSupplierBalance, resellPhoneForRestoredSale, restockPhoneForRestoredPurchase } from '../services/atomicOps'
 
 // Deletion priority — lower number = delete first (no dependencies)
@@ -100,6 +102,23 @@ function TrashBin() {
             const lineQty = (line) => (Number(line.quantity ?? 1) || 0) - (Number(line.returned_qty) || 0)
             if (table === 'purchases') {
                 if (data?.supplier_id) note('supplier balance', await adjustSupplierBalance(data.supplier_id, unpaidOf(data)))
+                // Deleting the purchase gave its payment back to the accounts: take it out again
+                const paidOnPurchase = paidAmount(data)
+                if (paidOnPurchase > 0 && data.payment_type !== 'credit') {
+                    try {
+                        await recordPurchaseToAccounts({
+                            shopId: data.shop_id || user.shop_id,
+                            purchaseId: data.id,
+                            paymentType: data.payment_type,
+                            paymentMethod: data.payment_method || data.payment_type,
+                            paymentDetails: Array.isArray(data.payment_details) ? data.payment_details : [],
+                            totalPaid: paidOnPurchase,
+                            description: `Restored Purchase PR-${String(data.id).slice(-6)}`
+                        })
+                    } catch (accErr) {
+                        problems.push(`accounts: ${accErr?.message || accErr}`)
+                    }
+                }
                 const { data: pItems } = await supabase.from('purchase_items').select('*').eq('purchase_id', data.id)
                 const items = pItems || (await db.purchase_items?.where({ purchase_id: data.id }).toArray().catch(() => [])) || []
                 for (const pi of items) {
@@ -107,13 +126,32 @@ function TrashBin() {
                     if (pi.product_id) note(`product ${pi.product_id} stock`, await adjustProductStock(pi.product_id, lineQty(pi)))
                 }
             } else if (table === 'supplier_payments' && data?.supplier_id) {
-                const amt = Number(data.amount || 0)
-                note('supplier balance', await adjustSupplierBalance(data.supplier_id, data.payment_type === 'debit' ? amt : -amt))
+                // Same rule the supplier ledger uses (a refund or cash-settled return is not a payment)
+                note('supplier balance', await adjustSupplierBalance(data.supplier_id, supplierLedgerEffect(data)))
             } else if (table === 'customer_payments' && data?.customer_id) {
-                const amt = Number(data.amount || 0)
-                note('customer balance', await adjustCustomerBalance(data.customer_id, data.payment_type === 'debit' ? amt : -amt))
+                // Same rule the customer ledger uses (return / refund notes do not move the balance)
+                note('customer balance', await adjustCustomerBalance(data.customer_id, customerLedgerEffect(data)))
             } else if (table === 'sales') {
-                if (data?.customer_id) note('customer balance', await adjustCustomerBalance(data.customer_id, unpaidOf(data)))
+                // A quotation (or a voided sale) never moved stock, balance or money
+                if (!isCountedSale(data)) return
+                if (data?.customer_id) note('customer balance', await adjustCustomerBalance(data.customer_id, saleBalanceEffect(data)))
+                // Deleting the sale took its money out of the accounts: put it back
+                const paidOnSale = paidAmount(data)
+                if (paidOnSale > 0) {
+                    try {
+                        await recordSaleToAccounts({
+                            shopId: data.shop_id || user.shop_id,
+                            saleId: data.id,
+                            paymentType: data.payment_type,
+                            paymentMethod: data.payment_method || data.payment_type,
+                            paymentDetails: Array.isArray(data.payment_details) ? data.payment_details : [],
+                            totalPaid: paidOnSale,
+                            description: `Restored Sale #${data.id}`
+                        })
+                    } catch (accErr) {
+                        problems.push(`accounts: ${accErr?.message || accErr}`)
+                    }
+                }
                 const { data: sItems } = await supabase.from('sale_items').select('*').eq('sale_id', data.id)
                 const items = sItems || (await db.sale_items?.where({ sale_id: data.id }).toArray().catch(() => [])) || []
                 for (const si of items) {
