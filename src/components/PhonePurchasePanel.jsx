@@ -967,19 +967,24 @@ export default function PhonePurchasePanel({ suppliers = [], onPurchaseComplete,
       // Cache phones and full purchases locally in Dexie with authentic database IDs
       try {
         if (db.phones) {
-          const toCache = (typeof savedPhonesList !== 'undefined' && savedPhonesList.length > 0)
-            ? savedPhonesList
-            : phoneCart.map(p => ({
-                ...p,
-                shop_id: user.shop_id,
-                branch_id: user.branch_id,
-                supplier_id: parseInt(supplierId),
-                purchase_id: rpcData.purchase_id,
-                condition: normalizeCondition(p.condition),
-                pta_status: p.pta_status,
-                status: 'in_stock'
-              }))
-          await db.phones.bulkPut(toCache)
+          // Cache the rows the server saved. The purchase cart's ids are temporary
+          // browser UUIDs; caching those let POS send them to process_phone_sale
+          // ("invalid input syntax for type integer").
+          let toCache = savedPhonesList
+          if (toCache.length === 0 && rpcData?.purchase_id) {
+            const { data: serverPhones } = await supabase.from('phones')
+              .select('*').eq('shop_id', user.shop_id).eq('purchase_id', rpcData.purchase_id)
+            toCache = serverPhones || []
+          }
+          if (toCache.length > 0) {
+            // Drop any earlier local copies of these IMEIs that carry a temporary id
+            const imeis = new Set(toCache.map(p => String(p.imei_1 || '')).filter(Boolean))
+            const stale = (await db.phones.toArray().catch(() => []))
+              .filter(p => imeis.has(String(p.imei_1 || '')) && !/^\d+$/.test(String(p.id)))
+              .map(p => p.id)
+            if (stale.length > 0) await db.phones.bulkDelete(stale).catch(() => {})
+            await db.phones.bulkPut(JSON.parse(JSON.stringify(toCache)))
+          }
         }
         if (db.purchases && rpcData?.purchase_id) {
           const fullItems = (typeof savedItemsList !== 'undefined' && savedItemsList.length > 0)

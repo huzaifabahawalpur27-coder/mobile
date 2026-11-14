@@ -1106,7 +1106,55 @@ function POS() {
     return buildBillHTML(r, isQuotation, shopSettings)
   }
 
+  // Phones bought on this device could be cached with a temporary browser UUID instead
+  // of the server's id; the database then refused the sale ("invalid input syntax for
+  // type integer"). Swap any such id for the server's in-stock phone with that IMEI.
+  const resolveCartPhoneIds = async (items) => {
+    const isServerId = (v) => /^\d+$/.test(String(v ?? '').trim())
+    const unresolved = items.filter(i => i.phone_id && !isServerId(i.phone_id))
+    if (unresolved.length === 0 || !navigator.onLine) return items
+
+    const imeis = [...new Set(unresolved.map(i => String(i.imei_1 || i.imei || '').trim()).filter(Boolean))]
+    let serverPhones = []
+    if (imeis.length > 0) {
+      const { data, error } = await supabase.from('phones').select('*')
+        .eq('shop_id', user.shop_id).eq('status', 'in_stock').in('imei_1', imeis)
+      if (error) {
+        notify(`⚠️ Sale Nahi Ho Saki: could not check the phone in stock (${error.message}). Try again.`)
+        return null
+      }
+      serverPhones = data || []
+    }
+    const byImei = new Map(serverPhones.map(p => [String(p.imei_1).trim(), p]))
+    const missing = unresolved.filter(i => !byImei.has(String(i.imei_1 || i.imei || '').trim()))
+    if (missing.length > 0) {
+      notify(`⚠️ Sale Nahi Ho Saki: phone not found in stock (${missing.map(i => i.imei_1 || i.name).join(', ')}). Refresh POS and try again.`)
+      return null
+    }
+
+    const fixed = items.map(i => {
+      if (!i.phone_id || isServerId(i.phone_id)) return i
+      const p = byImei.get(String(i.imei_1 || i.imei || '').trim())
+      return { ...i, id: `phone-${p.id}`, phone_id: p.id }
+    })
+    // Replace the temporary local copies so the next sale starts with the right ids
+    const staleIds = unresolved.map(i => i.phone_id)
+    if (db.phones) {
+      await db.phones.bulkDelete(staleIds).catch(() => {})
+      await db.phones.bulkPut(JSON.parse(JSON.stringify(serverPhones))).catch(() => {})
+    }
+    setPhones(prev => deduplicatePhones([...serverPhones, ...prev.filter(p => !staleIds.includes(p.id))]))
+    setCart(fixed)
+    return fixed
+  }
+
   const handleCompleteSale = async () => {
+    const resolvedCart = await resolveCartPhoneIds(cart)
+    if (!resolvedCart) return
+    return completeSale(resolvedCart)
+  }
+
+  const completeSale = async (cart) => {
     if (cart.length === 0) {
       notify('The cart is empty. Add an item first.')
       return
@@ -1150,7 +1198,8 @@ function POS() {
     setSaving(true)
 
     // Sanitize integer FK — offline-created customers have UUID ids
-    const toIntOrNull = (v) => { const n = parseInt(v); return isNaN(n) ? null : n }
+    // (strict: parseInt('4132abec-...') would quietly give 4132, another customer's id)
+    const toIntOrNull = (v) => (/^\d+$/.test(String(v ?? '').trim()) ? Number(v) : null)
 
     const primaryPaymentMethod = saleType === 'quotation'
       ? 'quotation'
