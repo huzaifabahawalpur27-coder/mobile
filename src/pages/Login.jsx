@@ -378,25 +378,47 @@ function Login() {
       setLoading(false)
     }
   }
+  const fadeUp = {
+    hidden: { opacity: 0, y: 18 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
+  }
+  const stagger = {
+    hidden: {},
+    show: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } }
+  }
+
   return (
     <div className="min-h-[100dvh] relative flex flex-col overflow-hidden font-sans selection:bg-[#0071e3] selection:text-white text-[#1d1d1f] dark:text-[#f5f5f7]">
 
-      {/* Background: soft showroom image + theme-aware frost */}
+      {/* Animated background */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <motion.div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
           style={{ backgroundImage: 'url("/mobile_shop_bg.jpg")' }}
-          initial={{ scale: 1 }}
-          animate={{ scale: [1, 1.04, 1] }}
-          transition={{ duration: 24, repeat: Infinity, ease: 'easeInOut' }}
+          initial={{ scale: 1.04 }}
+          animate={{ scale: [1.04, 1.12, 1.04] }}
+          transition={{ duration: 28, repeat: Infinity, ease: 'easeInOut' }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-white/88 via-slate-50/85 to-white/92 dark:from-[#0b0b0f]/88 dark:via-[#0b0b12]/90 dark:to-black/92 backdrop-blur-[6px]" />
-        <div className="absolute -top-40 -left-40 w-[32rem] h-[32rem] rounded-full bg-blue-400/12 dark:bg-blue-500/15 blur-[120px]" />
-        <div className="absolute -bottom-40 -right-40 w-[32rem] h-[32rem] rounded-full bg-indigo-300/16 dark:bg-indigo-600/15 blur-[120px]" />
+        <motion.div
+          className="absolute -top-40 -left-40 w-[32rem] h-[32rem] rounded-full bg-blue-400/12 dark:bg-blue-500/15 blur-[120px]"
+          animate={{ x: [0, 40, 0], y: [0, 24, 0] }}
+          transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <motion.div
+          className="absolute -bottom-40 -right-40 w-[32rem] h-[32rem] rounded-full bg-indigo-300/16 dark:bg-indigo-600/15 blur-[120px]"
+          animate={{ x: [0, -40, 0], y: [0, -24, 0] }}
+          transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
+        />
       </div>
 
       {/* Header */}
-      <header className="relative z-20 px-4 sm:px-8 lg:px-10 py-3.5 bg-white/70 dark:bg-slate-900/55 backdrop-blur-xl border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-3">
+      <motion.header
+        initial={{ opacity: 0, y: -14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+        className="relative z-20 px-4 sm:px-8 lg:px-10 py-3.5 bg-white/70 dark:bg-slate-900/55 backdrop-blur-xl border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-3"
+      >
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 shadow-sm border border-black/[0.06] dark:border-white/[0.08] p-1.5 flex items-center justify-center shrink-0">
             <img src={logoUrl} alt={platformName} className="w-full h-full object-contain" />
@@ -424,7 +446,7 @@ function Login() {
           }`}>
             {isOnline ? (
               <>
-                <Wifi size={13} className="text-emerald-600 dark:text-emerald-400" />
+                <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 2, repeat: Infinity }} className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 <span className="text-xs font-medium hidden sm:inline">Terminal Online</span>
               </>
             ) : (
@@ -435,17 +457,19 @@ function Login() {
             )}
           </div>
 
-          <button
+          <motion.button
             type="button"
             onClick={toggleTheme}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.9, rotate: -20 }}
             aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="w-9 h-9 rounded-full bg-white/70 dark:bg-slate-800 border border-black/[0.06] dark:border-white/[0.08] text-[#1d1d1f] dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 active:scale-95 flex items-center justify-center transition cursor-pointer shrink-0"
+            className="w-9 h-9 rounded-full bg-white/70 dark:bg-slate-800 border border-black/[0.06] dark:border-white/[0.08] text-[#1d1d1f] dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
           >
             {isDark ? <Sun size={16} className="text-[#ff9f0a]" /> : <Moon size={16} className="text-[#5856d6]" />}
-          </button>
+          </motion.button>
         </div>
-      </header>
+      </motion.header>
 
       {/* Broadcast banner */}
       <div className="relative z-20">
@@ -456,92 +480,93 @@ function Login() {
       <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-12 flex items-center justify-center">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 w-full items-center">
 
-          {/* Left: product story (desktop only) */}
-          <div className="hidden lg:block lg:col-span-7 space-y-7 text-left">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 dark:bg-slate-800/70 backdrop-blur-md border border-black/[0.06] dark:border-white/[0.08] shadow-sm text-xs font-semibold text-[#0071e3] dark:text-[#2997ff]">
-              <Sparkles size={14} />
-              <span>Made for mobile &amp; electronics shops</span>
-            </div>
+          {/* Left: product story (desktop) */}
+          <motion.div
+            variants={stagger}
+            initial="hidden"
+            animate="show"
+            className="hidden lg:block lg:col-span-7 space-y-7 text-left"
+          >
+            <motion.div variants={fadeUp} className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 dark:bg-slate-800/70 backdrop-blur-md border border-black/[0.06] dark:border-white/[0.08] shadow-sm text-xs font-semibold text-[#0071e3] dark:text-[#2997ff]">
+              <motion.span animate={{ rotate: [0, 18, -8, 0] }} transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}>
+                <Sparkles size={14} />
+              </motion.span>
+              <span>Built for mobile &amp; electronics shops</span>
+            </motion.div>
 
             <div className="space-y-4">
-              <h1 className="text-4xl lg:text-[44px] font-black text-[#1d1d1f] dark:text-white tracking-tight leading-[1.1]">
-                Full control of every phone, IMEI{' '}
+              <motion.h1 variants={fadeUp} className="text-4xl lg:text-[44px] font-black text-[#1d1d1f] dark:text-white tracking-tight leading-[1.1]">
+                Run your whole shop from one fast screen, every{' '}
                 <span className="bg-gradient-to-r from-[#0071e3] to-[#5856d6] dark:from-[#2997ff] dark:to-[#7d7aff] bg-clip-text text-transparent">
-                  &amp; sale.
+                  phone &amp; sale.
                 </span>
-              </h1>
-              <p dir="rtl" lang="ur" className="text-[#1d1d1f] dark:text-slate-200 text-base font-semibold leading-relaxed max-w-xl">
-                ہر فون، ہر آئی ایم ای آئی اور ہر بکری کا مکمل حساب — ایک ہی جگہ۔
-              </p>
-              <p className="text-[#6e6e73] dark:text-slate-400 text-[15px] leading-relaxed max-w-xl">
-                Fast barcode billing, automatic WhatsApp receipts, customer khata (udhaar), and safe stock records &mdash; built for a busy shop counter.
-              </p>
+              </motion.h1>
+              <motion.p variants={fadeUp} className="text-[#6e6e73] dark:text-slate-400 text-[15px] leading-relaxed max-w-xl">
+                Scan, bill and track every handset in seconds &mdash; with WhatsApp receipts, customer udhaar, and stock that always adds up.
+              </motion.p>
             </div>
 
             <div className="grid grid-cols-3 gap-4 pt-1">
-              <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_24px_rgba(0,0,0,0.35)] hover:shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all space-y-3">
+              <motion.div variants={fadeUp} whileHover={{ y: -6, scale: 1.015 }} className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_24px_rgba(0,0,0,0.35)] space-y-3 cursor-default">
                 <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-[#0071e3] dark:text-[#2997ff] border border-blue-500/20 flex items-center justify-center">
                   <Smartphone size={20} />
                 </div>
-                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">IMEI &amp; PTA</h3>
+                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">Scan IMEI &amp; PTA</h3>
                 <p className="text-xs text-[#6e6e73] dark:text-slate-400 leading-relaxed">
-                  Save each phone&apos;s IMEI, PTA status and warranty.
+                  Every handset logged by IMEI, with PTA status and warranty in one tap.
                 </p>
-                <p dir="rtl" lang="ur" className="text-[11px] text-[#6e6e73] dark:text-slate-400 leading-relaxed">
-                  ہر فون کا آئی ایم ای آئی، پی ٹی اے اور وارنٹی محفوظ۔
-                </p>
-              </div>
+              </motion.div>
 
-              <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_24px_rgba(0,0,0,0.35)] hover:shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all space-y-3">
+              <motion.div variants={fadeUp} whileHover={{ y: -6, scale: 1.015 }} className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_24px_rgba(0,0,0,0.35)] space-y-3 cursor-default">
                 <div className="w-11 h-11 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
                   <Receipt size={20} />
                 </div>
-                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">WhatsApp Bill</h3>
+                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">WhatsApp Receipts</h3>
                 <p className="text-xs text-[#6e6e73] dark:text-slate-400 leading-relaxed">
-                  Send the bill and warranty to the customer on WhatsApp.
+                  Send the bill and warranty card to the customer&apos;s phone instantly.
                 </p>
-                <p dir="rtl" lang="ur" className="text-[11px] text-[#6e6e73] dark:text-slate-400 leading-relaxed">
-                  گاہک کو بل اور وارنٹی واٹس ایپ پر بھیجیں۔
-                </p>
-              </div>
+              </motion.div>
 
-              <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_24px_rgba(0,0,0,0.35)] hover:shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all space-y-3">
+              <motion.div variants={fadeUp} whileHover={{ y: -6, scale: 1.015 }} className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl border border-black/[0.05] dark:border-white/[0.08] shadow-[0_6px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_24px_rgba(0,0,0,0.35)] space-y-3 cursor-default">
                 <div className="w-11 h-11 rounded-xl bg-purple-500/10 text-[#af52de] dark:text-[#c77dff] border border-purple-500/20 flex items-center justify-center">
                   <Users size={20} />
                 </div>
                 <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">Khata &amp; Udhaar</h3>
                 <p className="text-xs text-[#6e6e73] dark:text-slate-400 leading-relaxed">
-                  Customer and dealer udhaar, with a daily cash record.
+                  Customer and dealer credit with a clear daily cash book.
                 </p>
-                <p dir="rtl" lang="ur" className="text-[11px] text-[#6e6e73] dark:text-slate-400 leading-relaxed">
-                  گاہک اور ڈیلر کا ادھار اور روزانہ کیش کا حساب۔
-                </p>
-              </div>
+              </motion.div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] dark:text-slate-400 pt-1">
+            <motion.div variants={fadeUp} className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] dark:text-slate-400 pt-1">
               <ShieldCheck size={16} className="text-emerald-500 dark:text-emerald-400 shrink-0" />
               <span>Works without internet &bull; Thermal receipt printing &bull; Bank &amp; cash matching</span>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
 
           {/* Right: login card */}
           <div className="lg:col-span-5 w-full flex justify-center">
-            <div className="w-full max-w-md bg-white/85 dark:bg-slate-900/70 backdrop-blur-2xl border border-white/90 dark:border-white/10 rounded-3xl p-6 sm:p-9 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] space-y-6 text-left">
-
+            <motion.div
+              initial={{ opacity: 0, y: 22, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-md bg-white/85 dark:bg-slate-900/70 backdrop-blur-2xl border border-white/90 dark:border-white/10 rounded-3xl p-6 sm:p-9 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] space-y-6 text-left"
+            >
               <div className="text-center space-y-2">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-white dark:bg-slate-800 p-2.5 shadow-md shadow-black/[0.04] border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center">
+                <motion.div
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.15, type: 'spring', stiffness: 220, damping: 16 }}
+                  className="w-16 h-16 mx-auto rounded-2xl bg-white dark:bg-slate-800 p-2.5 shadow-md shadow-black/[0.04] border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center"
+                >
                   <img src={logoUrl} alt={platformName} className="max-w-full max-h-full object-contain" />
-                </div>
+                </motion.div>
                 <div>
                   <h2 className="text-2xl font-bold text-[#1d1d1f] dark:text-white tracking-tight">
                     Sign in to {platformName}
                   </h2>
                   <p className="text-xs sm:text-sm text-[#6e6e73] dark:text-slate-400 mt-0.5">
-                    Enter your username and password
-                  </p>
-                  <p dir="rtl" lang="ur" className="text-xs text-[#6e6e73] dark:text-slate-400 mt-1">
-                    اپنا یوزرنیم اور پاس ورڈ درج کریں
+                    Enter your username and password to start billing
                   </p>
                 </div>
               </div>
@@ -549,7 +574,7 @@ function Login() {
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73] dark:text-slate-400 ml-0.5">
-                    Username or Email <span dir="rtl" lang="ur" className="normal-case tracking-normal font-medium text-[#86868b] dark:text-slate-500">(یوزرنیم یا ای میل)</span>
+                    Username or Email
                   </label>
                   <div className="relative rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b] dark:text-slate-500">
@@ -570,15 +595,16 @@ function Login() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between px-0.5">
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73] dark:text-slate-400">
-                      Password <span dir="rtl" lang="ur" className="normal-case tracking-normal font-medium text-[#86868b] dark:text-slate-500">(پاس ورڈ)</span>
+                      Password
                     </label>
-                    <button
+                    <motion.button
                       type="button"
                       onClick={handleQuickDemoFill}
+                      whileTap={{ scale: 0.94 }}
                       className="text-xs font-semibold text-[#0071e3] dark:text-[#2997ff] hover:text-[#0077ed] bg-blue-500/10 hover:bg-blue-500/15 dark:bg-blue-500/15 dark:hover:bg-blue-500/25 px-2.5 py-0.5 rounded-full transition cursor-pointer"
                     >
                       &#9889; Fill Demo
-                    </button>
+                    </motion.button>
                   </div>
                   <div className="relative rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b] dark:text-slate-500">
@@ -621,10 +647,12 @@ function Login() {
                   )}
                 </AnimatePresence>
 
-                <button
+                <motion.button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3.5 px-5 bg-[#0071e3] hover:bg-[#0077ed] active:scale-[0.985] text-white font-semibold text-sm rounded-xl transition-all duration-150 shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+                  whileHover={{ scale: loading ? 1 : 1.015 }}
+                  whileTap={{ scale: loading ? 1 : 0.97 }}
+                  className="w-full py-3.5 px-5 bg-[#0071e3] hover:bg-[#0077ed] text-white font-semibold text-sm rounded-xl transition-colors duration-150 shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-2"
                 >
                   {loading ? (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -634,7 +662,7 @@ function Login() {
                       <ArrowRight size={16} />
                     </>
                   )}
-                </button>
+                </motion.button>
               </form>
 
               <div className="pt-3 border-t border-black/[0.06] dark:border-white/[0.08] text-center">
@@ -642,7 +670,7 @@ function Login() {
                   Works offline &bull; Your data stays safe &amp; encrypted
                 </p>
               </div>
-            </div>
+            </motion.div>
           </div>
 
         </div>
