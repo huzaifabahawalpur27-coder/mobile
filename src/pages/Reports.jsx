@@ -2,8 +2,7 @@ import { useEffect, useState, useMemo, Fragment } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, BarChart, Bar
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
 } from 'recharts'
 import * as XLSX from 'xlsx'
 import { db } from '../services/db'
@@ -2649,107 +2648,88 @@ function Reports() {
           {activeTab === 'summary' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Sales Trend Chart */}
+                {/* Best-selling products */}
                 <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-xs p-5">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-between mb-3">
                     <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm flex items-center gap-2">
-                      <span className="w-2 h-4 bg-[#0071e3] rounded-full"></span>
-                      <span>Sales over time</span>
+                      <span className="w-2 h-4 bg-[#34c759] rounded-full"></span>
+                      <span>Best sellers</span>
                     </h3>
-                    <span className="text-xs text-[#6e6e73] font-medium">Revenues over time</span>
+                    <span className="text-xs text-[#6e6e73] font-medium">Top items this period</span>
                   </div>
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer width="100%" height={250}>
-                      <LineChart data={salesTrend}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(128,128,128,0.12)" />
-                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#86868b' }} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#86868b' }} />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#1d1d1f',
-                            color: '#fff',
-                            borderRadius: '14px',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            fontSize: '11px',
-                            boxShadow: '0 8px 30px rgba(0,0,0,0.15)'
-                          }}
-                        />
-                        <Line type="monotone" dataKey="amount" stroke="#0071e3" strokeWidth={3} dot={{ r: 3, fill: '#0071e3', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 5 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {(() => {
+                    const best = [...productList].filter(p => Number(p.qty) > 0).sort((a, b) => b.revenue - a.revenue).slice(0, 8)
+                    if (best.length === 0) return <div className="py-6 text-center text-xs text-[#6e6e73]">No sales in this period.</div>
+                    return (
+                      <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+                        {best.map((p, idx) => (
+                          <div key={p.name} className="flex items-center gap-3 py-2.5">
+                            <span className="w-6 h-6 rounded-full bg-[#0071e3]/10 text-[#0071e3] text-xs font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-sm text-[#1d1d1f] dark:text-[#f5f5f7] truncate" title={p.name}>{p.name}</div>
+                              <div className="text-xs text-[#6e6e73]">{p.qty} sold · profit Rs. {Math.round(p.profit).toLocaleString()}</div>
+                            </div>
+                            <div className="text-sm font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums shrink-0">Rs. {Math.round(p.revenue).toLocaleString()}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
 
-                {/* Category Profit Distribution */}
+                {/* Profit by category */}
                 <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-xs p-5">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-between mb-3">
                     <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm flex items-center gap-2">
                       <span className="w-2 h-4 bg-[#af52de] rounded-full"></span>
                       <span>Profit by category</span>
                     </h3>
-                    <span className="text-xs text-[#6e6e73] font-medium">Category contribution</span>
+                    <span className="text-xs text-[#6e6e73] font-medium">Where profit comes from</span>
                   </div>
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie
-                          data={categoryData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={80}
-                          paddingAngle={4}
-                          dataKey="value"
-                        >
-                          {categoryData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={['#0071e3', '#5856d6', '#af52de', '#ff9500', '#34c759', '#30b0c7'][index % 6]} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#1d1d1f',
-                            color: '#fff',
-                            borderRadius: '14px',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            fontSize: '11px'
-                          }}
-                        />
-                        <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {(() => {
+                    const cats = [...categoryData].sort((a, b) => b.value - a.value).slice(0, 8)
+                    const max = cats[0]?.value || 1
+                    if (cats.length === 0) return <div className="py-6 text-center text-xs text-[#6e6e73]">No profit data yet.</div>
+                    return (
+                      <div className="space-y-2.5">
+                        {cats.map((c, idx) => (
+                          <div key={c.name}>
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] truncate pr-2">{c.name}</span>
+                              <span className="font-bold tabular-nums text-[#1d1d1f] dark:text-[#f5f5f7] shrink-0">Rs. {Math.round(c.value).toLocaleString()}</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-black/[0.05] dark:bg-white/[0.08] overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${Math.max(4, (c.value / max) * 100)}%`, backgroundColor: ['#0071e3', '#5856d6', '#af52de', '#ff9500', '#34c759', '#30b0c7'][idx % 6] }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
 
-              {/* Top 8 Products BarChart */}
+              {/* Sales by day */}
               <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-xs p-5">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-3">
                   <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm flex items-center gap-2">
-                    <span className="w-2 h-4 bg-[#34c759] rounded-full"></span>
-                    <span>Top Product Champions (Revenue vs Profit)</span>
+                    <span className="w-2 h-4 bg-[#0071e3] rounded-full"></span>
+                    <span>Sales by day</span>
                   </h3>
-                  <span className="text-xs text-[#6e6e73] font-medium">Top 8 bestsellers</span>
+                  <span className="text-xs text-[#6e6e73] font-medium">Daily sales total</span>
                 </div>
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={filteredProducts.slice(0, 8)}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(128,128,128,0.12)" />
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#86868b' }} interval={0} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#86868b' }} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1d1d1f',
-                          color: '#fff',
-                          borderRadius: '14px',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          fontSize: '11px'
-                        }}
-                      />
-                      <Bar dataKey="revenue" fill="#0071e3" radius={[5, 5, 0, 0]} name="Revenue (Rs.)" />
-                      <Bar dataKey="profit" fill="#34c759" radius={[5, 5, 0, 0]} name="Gross Profit (Rs.)" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                {salesTrend.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-[#6e6e73]">No sales in this period.</div>
+                ) : (
+                  <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+                    {salesTrend.map(d => (
+                      <div key={d.date} className="flex items-center justify-between py-2.5 text-sm">
+                        <span className="text-[#1d1d1f] dark:text-[#f5f5f7] font-medium">{d.date}</span>
+                        <span className="font-bold tabular-nums text-[#1d1d1f] dark:text-[#f5f5f7]">Rs. {Math.round(d.amount).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
