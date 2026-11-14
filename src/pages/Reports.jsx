@@ -50,7 +50,8 @@ function Reports() {
   const [range, setRange] = useState('today') // today, week, month, year, custom, all
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
-  const [activeTab, setActiveTab] = useState('products') // 'products', 'daily', 'flow', 'overview', 'financials'
+  const [activeTab, setActiveTab] = useState('summary') // 'summary', 'products', 'daily'
+  const [showAdvanced, setShowAdvanced] = useState(false) // Summary tab: reveals stock movement + granular detail
   const [catalogSegment, setCatalogSegment] = useState('all') // 'all', 'products', 'phones'
 
   // Product table filters & sorting
@@ -1257,20 +1258,11 @@ function Reports() {
       {/*  Apple Native Title & Range Header */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pt-1 pb-1">
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 text-[#1d1d1f] dark:text-[#f5f5f7] border border-black/[0.04] dark:border-white/[0.08]">
-              <span className="text-xs leading-none font-bold text-[#0071e3]"></span>
-              <span>Reports & Analytics</span>
-            </span>
-            <span className="text-xs text-[#6e6e73] font-medium">
-              • {filteredProducts.length} Products Analyzed
-            </span>
-          </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
-            Business Intelligence
+            Reports
           </h1>
           <p className="text-[#6e6e73] text-xs sm:text-sm mt-0.5 font-normal">
-            Product sales volume, gross margins, inventory turnover, and financial performance.
+            Your sales, profit and stock at a glance.
           </p>
         </div>
 
@@ -1281,9 +1273,8 @@ function Reports() {
               { id: 'today', label: 'Today' },
               { id: 'week', label: '7 Days' },
               { id: 'month', label: 'Month' },
-              { id: 'year', label: 'Year' },
-              { id: 'custom', label: 'Custom' },
-              { id: 'all', label: 'All' }
+              { id: 'all', label: 'All' },
+              { id: 'custom', label: 'Custom' }
             ].map(r => (
               <button
                 key={r.id}
@@ -1358,19 +1349,19 @@ function Reports() {
       )}
 
       {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 animate-pulse">
-          {[1, 2, 3, 4, 5, 6].map(i => (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 animate-pulse">
+          {[1, 2, 3, 4].map(i => (
             <div key={i} className="h-28 bg-[#e5e5ea]/50 dark:bg-[#2c2c2e]/50 rounded-[22px]"></div>
           ))}
         </div>
       ) : (
         <>
           {/*  Apple Squircle KPI Metric Widgets (6 Cards) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-            {/* 1. Gross Revenue */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {/* 1. Sales */}
             <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Gross Revenue</span>
+                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Sales</span>
                 <div className="w-7 h-7 rounded-[9px] bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center shrink-0">
                   <DollarSign size={14} />
                 </div>
@@ -1383,44 +1374,10 @@ function Reports() {
               </div>
             </div>
 
-            {/* 2. Units Sold */}
+            {/* 2. Profit */}
             <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Units Sold</span>
-                <div className="w-7 h-7 rounded-[9px] bg-[#5856d6]/10 text-[#5856d6] flex items-center justify-center shrink-0">
-                  <Package size={14} />
-                </div>
-              </div>
-              <div>
-                <div className="text-xl sm:text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
-                  {stats.totalUnitsSold} <span className="text-xs font-normal text-[#6e6e73]">pcs</span>
-                </div>
-                <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">{filteredProducts.length} unique items</p>
-              </div>
-            </div>
-
-            {/* 3. Cost of Goods (COGS) */}
-            <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Cost (COGS)</span>
-                <div className="w-7 h-7 rounded-[9px] bg-[#ff9500]/10 text-[#ff9500] flex items-center justify-center shrink-0">
-                  <ShoppingBag size={14} />
-                </div>
-              </div>
-              <div>
-                <div className="text-xl sm:text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
-                  Rs. {stats.costOfSales.toLocaleString()}
-                </div>
-                <p className="text-xs text-[#6e6e73] mt-1 font-medium truncate">
-                  {stats.totalDirectCosts > 0 ? `Incl. Rs. ${stats.totalDirectCosts.toLocaleString()} direct cost` : 'Stock purchase basis'}
-                </p>
-              </div>
-            </div>
-
-            {/* 4. Gross Profit */}
-            <div className="bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl rounded-[22px] p-4 border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Gross Profit</span>
+                <span className="text-xs font-semibold text-[#6e6e73] tracking-wider uppercase">Profit</span>
                 <div className="w-7 h-7 rounded-[9px] bg-[#34c759]/10 text-[#34c759] flex items-center justify-center shrink-0">
                   <TrendingUp size={14} />
                 </div>
@@ -1468,95 +1425,50 @@ function Reports() {
             </div>
           </div>
 
-          {/* Weekly 7-Day Quick Callout Pill */}
-          {range === 'week' && activeTab !== 'daily' && (
-            <div className="bg-[#0071e3]/10 dark:bg-[#0071e3]/15 border border-[#0071e3]/20 rounded-[20px] p-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-base">📅</span>
-                <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
-                  Weekly 7-Day breakdown is ready.
-                </span>
-                <span className="text-[#6e6e73] hidden sm:inline">
-                  Inspect day-by-day revenue velocity, phone vs accessory volume, gross profit, and operating expenses.
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveTab('daily')}
-                className="px-3.5 py-1.5 bg-[#0071e3] text-white rounded-full text-xs font-semibold hover:bg-[#0077ed] transition shrink-0 cursor-pointer shadow-xs flex items-center gap-1"
-              >
-                <span>View Daily Breakdown Table</span>
-                <span>→</span>
-              </button>
-            </div>
-          )}
+          {/* Compact secondary figures */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#6e6e73] px-1 -mt-1">
+            <span><span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">{stats.totalUnitsSold}</span> units sold</span>
+            <span>Cost of goods: <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Rs. {stats.costOfSales.toLocaleString()}</span></span>
+            <span>{filteredProducts.length} items</span>
+          </div>
 
           {/*  Authentic iOS Segmented Control Tab Switcher */}
-          <div className="bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 p-1 rounded-full flex flex-wrap gap-1 backdrop-blur-md border border-black/[0.04] dark:border-white/[0.06] shadow-xs w-fit">
-            <button
-              onClick={() => setActiveTab('products')}
-              className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'products'
-                  ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
-              }`}
-            >
-              <Package size={13} className={activeTab === 'products' ? 'text-[#0071e3]' : ''} />
-              <span>Product Sales & Profit ({filteredProducts.length})</span>
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 p-1 rounded-full flex flex-wrap gap-1 backdrop-blur-md border border-black/[0.04] dark:border-white/[0.06] shadow-xs w-fit">
+              {[
+                { id: 'summary', label: 'Summary', Icon: BarChart3 },
+                { id: 'products', label: `Products (${filteredProducts.length})`, Icon: Package },
+                { id: 'daily', label: `Daily (${dailyBreakdown.length})`, Icon: Calendar }
+              ].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === t.id
+                      ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
+                      : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                  }`}
+                >
+                  <t.Icon size={13} className={activeTab === t.id ? 'text-[#0071e3]' : ''} />
+                  <span>{t.label}</span>
+                </button>
+              ))}
+            </div>
 
-            <button
-              onClick={() => setActiveTab('daily')}
-              className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'daily'
-                  ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
-              }`}
-            >
-              <Calendar size={13} className={activeTab === 'daily' ? 'text-[#0071e3]' : ''} />
-              <span>📅 Daily Breakdown ({dailyBreakdown.length} Days)</span>
-              {range === 'week' && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#0071e3]/15 text-[#0071e3] text-xs font-bold">
-                  Weekly
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('overview')}
-              className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'overview'
-                  ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
-              }`}
-            >
-              <BarChart3 size={13} className={activeTab === 'overview' ? 'text-[#0071e3]' : ''} />
-              <span>Visual Sales Trends</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('flow')}
-              className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'flow'
-                  ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
-              }`}
-            >
-              <Layers size={13} className={activeTab === 'flow' ? 'text-[#0071e3]' : ''} />
-              <span>📦 Product Flow & Velocity</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('financials')}
-              className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'financials'
-                  ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
-                  : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
-              }`}
-            >
-              <DollarSign size={13} className={activeTab === 'financials' ? 'text-[#0071e3]' : ''} />
-              <span>P&L Statement</span>
-            </button>
+            {activeTab === 'summary' && (
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(v => !v)}
+                className={`px-3.5 py-2 rounded-full text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  showAdvanced
+                    ? 'bg-[#0071e3] text-white border-[#0071e3] shadow-xs'
+                    : 'bg-white dark:bg-[#1c1c1e] text-[#6e6e73] border-black/[0.08] dark:border-white/[0.1] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                }`}
+              >
+                <Layers size={13} />
+                <span>{showAdvanced ? 'Hide advanced' : 'Advanced details'}</span>
+              </button>
+            )}
           </div>
 
           {/* TAB 1: PRODUCT SALES & PROFIT ANALYSIS */}
@@ -2351,7 +2263,7 @@ function Reports() {
           )}
 
           {/* TAB: PRODUCT FLOW & STOCK VELOCITY */}
-          {activeTab === 'flow' && (
+          {activeTab === 'summary' && showAdvanced && (
             <div className="space-y-6">
               {/* Dual-Flow Comparative Cards */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -2734,7 +2646,7 @@ function Reports() {
           )}
 
           {/* TAB 2: VISUAL TRENDS & CATEGORY PERFORMANCE */}
-          {activeTab === 'overview' && (
+          {activeTab === 'summary' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Sales Trend Chart */}
@@ -2742,7 +2654,7 @@ function Reports() {
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm flex items-center gap-2">
                       <span className="w-2 h-4 bg-[#0071e3] rounded-full"></span>
-                      <span>Daily Sales Revenue Velocity</span>
+                      <span>Sales over time</span>
                     </h3>
                     <span className="text-xs text-[#6e6e73] font-medium">Revenues over time</span>
                   </div>
@@ -2773,7 +2685,7 @@ function Reports() {
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] text-sm flex items-center gap-2">
                       <span className="w-2 h-4 bg-[#af52de] rounded-full"></span>
-                      <span>Gross Profit by Category</span>
+                      <span>Profit by category</span>
                     </h3>
                     <span className="text-xs text-[#6e6e73] font-medium">Category contribution</span>
                   </div>
@@ -2843,7 +2755,7 @@ function Reports() {
           )}
 
           {/* TAB 3: FINANCIAL P&L & EXPENSES */}
-          {activeTab === 'financials' && (
+          {activeTab === 'summary' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Detailed Financial Summary */}
               <div className="lg:col-span-2 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-xs p-6">
