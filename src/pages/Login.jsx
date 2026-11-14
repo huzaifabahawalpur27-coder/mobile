@@ -411,7 +411,7 @@ function Login() {
               </span>
             </div>
             <p className="text-xs text-[#6e6e73] dark:text-slate-400 hidden sm:block">
-              Mobile Store Retail &amp; Serialized Inventory
+              Mobile Shop Billing &amp; Stock
             </p>
           </div>
         </div>
@@ -460,18 +460,21 @@ function Login() {
           <div className="hidden lg:block lg:col-span-7 space-y-7 text-left">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 dark:bg-slate-800/70 backdrop-blur-md border border-black/[0.06] dark:border-white/[0.08] shadow-sm text-xs font-semibold text-[#0071e3] dark:text-[#2997ff]">
               <Sparkles size={14} />
-              <span>Tailored for Smartphone &amp; Electronics Showrooms</span>
+              <span>Made for mobile &amp; electronics shops</span>
             </div>
 
             <div className="space-y-4">
               <h1 className="text-4xl lg:text-[44px] font-black text-[#1d1d1f] dark:text-white tracking-tight leading-[1.1]">
-                Complete control over every{' '}
+                Full control of every phone, IMEI{' '}
                 <span className="bg-gradient-to-r from-[#0071e3] to-[#5856d6] dark:from-[#2997ff] dark:to-[#7d7aff] bg-clip-text text-transparent">
-                  IMEI &amp; sale.
+                  &amp; sale.
                 </span>
               </h1>
+              <p dir="rtl" lang="ur" className="text-[#1d1d1f] dark:text-slate-200 text-base font-semibold leading-relaxed max-w-xl">
+                ہر فون، ہر آئی ایم ای آئی اور ہر بکری کا مکمل حساب — ایک ہی جگہ۔
+              </p>
               <p className="text-[#6e6e73] dark:text-slate-400 text-[15px] leading-relaxed max-w-xl">
-                High-speed barcode checkout, automated bilingual WhatsApp receipts, instant customer credit ledgers, and multi-vault inventory protection &mdash; built for the pace of a busy counter.
+                Fast barcode billing, automatic WhatsApp receipts, customer khata (udhaar), and safe stock records &mdash; built for a busy shop counter.
               </p>
             </div>
 
@@ -480,9 +483,12 @@ function Login() {
                 <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-[#0071e3] dark:text-[#2997ff] border border-blue-500/20 flex items-center justify-center">
                   <Smartphone size={20} />
                 </div>
-                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">Dual IMEI &amp; PTA</h3>
+                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">IMEI &amp; PTA</h3>
                 <p className="text-xs text-[#6e6e73] dark:text-slate-400 leading-relaxed">
-                  Box-pack, used, PTA-approved and warranty status tracked per device.
+                  Save each phone&apos;s IMEI, PTA status and warranty.
+                </p>
+                <p dir="rtl" lang="ur" className="text-[11px] text-[#6e6e73] dark:text-slate-400 leading-relaxed">
+                  ہر فون کا آئی ایم ای آئی، پی ٹی اے اور وارنٹی محفوظ۔
                 </p>
               </div>
 
@@ -490,9 +496,12 @@ function Login() {
                 <div className="w-11 h-11 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
                   <Receipt size={20} />
                 </div>
-                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">WhatsApp Slips</h3>
+                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">WhatsApp Bill</h3>
                 <p className="text-xs text-[#6e6e73] dark:text-slate-400 leading-relaxed">
-                  Branded invoices and warranty notes sent straight to the customer.
+                  Send the bill and warranty to the customer on WhatsApp.
+                </p>
+                <p dir="rtl" lang="ur" className="text-[11px] text-[#6e6e73] dark:text-slate-400 leading-relaxed">
+                  گاہک کو بل اور وارنٹی واٹس ایپ پر بھیجیں۔
                 </p>
               </div>
 
@@ -500,16 +509,19 @@ function Login() {
                 <div className="w-11 h-11 rounded-xl bg-purple-500/10 text-[#af52de] dark:text-[#c77dff] border border-purple-500/20 flex items-center justify-center">
                   <Users size={20} />
                 </div>
-                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">Khata &amp; Ledgers</h3>
+                <h3 className="text-sm font-bold text-[#1d1d1f] dark:text-white">Khata &amp; Udhaar</h3>
                 <p className="text-xs text-[#6e6e73] dark:text-slate-400 leading-relaxed">
-                  Dealer udhaar, supplier balances and daily cash-drawer shifts.
+                  Customer and dealer udhaar, with a daily cash record.
+                </p>
+                <p dir="rtl" lang="ur" className="text-[11px] text-[#6e6e73] dark:text-slate-400 leading-relaxed">
+                  گاہک اور ڈیلر کا ادھار اور روزانہ کیش کا حساب۔
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] dark:text-slate-400 pt-1">
               <ShieldCheck size={16} className="text-emerald-500 dark:text-emerald-400 shrink-0" />
-              <span>Offline-first PWA sync &bull; Thermal ESC/POS ready &bull; Bank transfer reconciliation</span>
+              <span>Works without internet &bull; Thermal receipt printing &bull; Bank &amp; cash matching</span>
             </div>
           </div>
 
@@ -526,7 +538,10 @@ function Login() {
                     Sign in to {platformName}
                   </h2>
                   <p className="text-xs sm:text-sm text-[#6e6e73] dark:text-slate-400 mt-0.5">
-                    Enter your staff credentials to continue
+                    Enter your username and password
+                  </p>
+                  <p dir="rtl" lang="ur" className="text-xs text-[#6e6e73] dark:text-slate-400 mt-1">
+                    اپنا یوزرنیم اور پاس ورڈ درج کریں
                   </p>
                 </div>
               </div>
@@ -534,7 +549,7 @@ function Login() {
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73] dark:text-slate-400 ml-0.5">
-                    Username or Email
+                    Username or Email <span dir="rtl" lang="ur" className="normal-case tracking-normal font-medium text-[#86868b] dark:text-slate-500">(یوزرنیم یا ای میل)</span>
                   </label>
                   <div className="relative rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 focus-within:bg-white dark:focus-within:bg-slate-800 focus-within:border-[#0071e3] focus-within:ring-4 focus-within:ring-[#0071e3]/15 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#86868b] dark:text-slate-500">
@@ -555,7 +570,7 @@ function Login() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between px-0.5">
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6e6e73] dark:text-slate-400">
-                      Password
+                      Password <span dir="rtl" lang="ur" className="normal-case tracking-normal font-medium text-[#86868b] dark:text-slate-500">(پاس ورڈ)</span>
                     </label>
                     <button
                       type="button"
@@ -624,7 +639,7 @@ function Login() {
 
               <div className="pt-3 border-t border-black/[0.06] dark:border-white/[0.08] text-center">
                 <p className="text-xs text-[#86868b] dark:text-slate-500">
-                  Offline PWA Ready &bull; Serialized Hardware Vault Encrypted
+                  Works offline &bull; Your data stays safe &amp; encrypted
                 </p>
               </div>
             </div>
