@@ -109,6 +109,8 @@ function Reports() {
   const [salesTrend, setSalesTrend] = useState([])
   const [categoryData, setCategoryData] = useState([])
   const [categories, setCategories] = useState([])
+  const [transactions, setTransactions] = useState([]) // each sale/expense/purchase in range
+  const [txnType, setTxnType] = useState('all') // 'all' | 'Sale' | 'Expense' | 'Purchase'
 
   useEffect(() => {
     if (user?.shop_id) {
@@ -949,6 +951,48 @@ function Reports() {
     })
 
     setDailyBreakdown(dailyDays)
+
+    // 10. Transaction Ledger — every individual sale, expense and purchase in range
+    const txns = []
+    ;(sales || []).forEach(s => {
+      txns.push({
+        key: `sale-${s.id}`,
+        date: s.created_at,
+        type: 'Sale',
+        dir: 'in',
+        label: s.customer_name ? `Sale · ${s.customer_name}` : 'Sale',
+        ref: s.invoice_number || s.invoice_no || s.id,
+        method: String(s.payment_type || 'cash'),
+        amount: Math.max(0, Number(s.net_amount ?? (Number(s.total_amount || 0) - Number(s.discount || 0))))
+      })
+    })
+    ;(expenses || []).forEach(e => {
+      const note = e.note || e.description || ''
+      txns.push({
+        key: `exp-${e.id}`,
+        date: e.created_at,
+        type: 'Expense',
+        dir: 'out',
+        label: (e.category || 'Expense') + (note ? ` · ${note}` : ''),
+        ref: e.id,
+        method: '',
+        amount: Number(e.amount || 0)
+      })
+    })
+    ;(purchases || []).forEach(p => {
+      txns.push({
+        key: `pur-${p.id}`,
+        date: p.created_at,
+        type: 'Purchase',
+        dir: 'out',
+        label: p.supplier_name || p.supplier?.name || p.vendor_name || 'Stock purchase',
+        ref: p.invoice_number || p.id,
+        method: String(p.payment_type || 'cash'),
+        amount: Number(p.net_amount ?? p.total_amount ?? 0)
+      })
+    })
+    txns.sort((a, b) => new Date(b.date) - new Date(a.date))
+    setTransactions(txns)
   }
 
   // Filtered & Sorted Product List
@@ -1436,6 +1480,7 @@ function Reports() {
             <div className="bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 p-1 rounded-full flex flex-wrap gap-1 backdrop-blur-md border border-black/[0.04] dark:border-white/[0.06] shadow-xs w-fit">
               {[
                 { id: 'summary', label: 'Summary', Icon: BarChart3 },
+                { id: 'transactions', label: `Transactions (${transactions.length})`, Icon: Banknote },
                 { id: 'products', label: `Products (${filteredProducts.length})`, Icon: Package },
                 { id: 'daily', label: `Daily (${dailyBreakdown.length})`, Icon: Calendar }
               ].map(t => (
@@ -1469,6 +1514,70 @@ function Reports() {
               </button>
             )}
           </div>
+
+          {/* TAB: TRANSACTION LEDGER (each sale / expense / purchase) */}
+          {activeTab === 'transactions' && (
+            <div className="space-y-4">
+              <div className="bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 p-1 rounded-full flex flex-wrap gap-1 w-fit text-xs">
+                {[
+                  { id: 'all', label: `All (${transactions.length})` },
+                  { id: 'Sale', label: 'Sales' },
+                  { id: 'Expense', label: 'Expenses' },
+                  { id: 'Purchase', label: 'Purchases' }
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => setTxnType(f.id)}
+                    className={`px-3.5 py-1.5 rounded-full font-semibold transition cursor-pointer ${
+                      txnType === f.id
+                        ? 'bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-xs'
+                        : 'text-[#6e6e73] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7]'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-xs overflow-hidden">
+                {(() => {
+                  const list = transactions.filter(t => txnType === 'all' || t.type === txnType)
+                  if (list.length === 0) {
+                    return <div className="py-10 text-center text-sm text-[#6e6e73]">No transactions in this period.</div>
+                  }
+                  return (
+                    <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+                      {list.map(t => (
+                        <div key={t.key} className="flex items-center gap-3 px-4 py-3">
+                          <span className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
+                            t.type === 'Sale' ? 'bg-[#34c759]/10 text-[#34c759]' : t.type === 'Expense' ? 'bg-[#ff3b30]/10 text-[#ff3b30]' : 'bg-[#ff9500]/10 text-[#ff9500]'
+                          }`}>
+                            {t.type === 'Sale' ? <TrendingUp size={18} /> : t.type === 'Expense' ? <Layers size={18} /> : <ShoppingBag size={18} />}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full shrink-0 ${
+                                t.type === 'Sale' ? 'bg-[#34c759]/10 text-[#34c759]' : t.type === 'Expense' ? 'bg-[#ff3b30]/10 text-[#ff3b30]' : 'bg-[#ff9500]/10 text-[#ff9500]'
+                              }`}>{t.type}</span>
+                              <span className="font-semibold text-sm text-[#1d1d1f] dark:text-[#f5f5f7] truncate" title={t.label}>{t.label}</span>
+                            </div>
+                            <div className="text-xs text-[#6e6e73] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span>{t.date ? new Date(t.date).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</span>
+                              {t.ref ? <span>· #{String(t.ref).slice(-8)}</span> : null}
+                              {t.method ? <span className="capitalize">· {t.method}</span> : null}
+                            </div>
+                          </div>
+                          <div className={`text-sm font-bold tabular-nums shrink-0 ${t.dir === 'in' ? 'text-[#34c759]' : 'text-[#ff3b30]'}`}>
+                            {t.dir === 'in' ? '+' : '−'} Rs. {Math.round(t.amount).toLocaleString()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          )}
 
           {/* TAB 1: PRODUCT SALES & PROFIT ANALYSIS */}
           {activeTab === 'products' && (
