@@ -26,6 +26,7 @@ import {
   Wallet
 } from 'lucide-react'
 import { isCashName } from '../utils/moneyMath'
+import RecentSalesFeed from '../components/RecentSalesFeed'
 
 // Apple HIG / Linear SaaS Widget Stat Card
 const AppleWidget = ({
@@ -178,6 +179,25 @@ function Dashboard() {
     try {
       if (!navigator.onLine) throw new Error('Offline')
 
+      // Latest sales with their product lines. Older databases may lack some sale
+      // columns; then fall back to the basic columns rather than fail the dashboard.
+      const RECENT_ITEMS = 'sale_items(id, phone_id, product_id, product_name, quantity, price, unit_price, line_total, subtotal, returned_qty, imei_snapshot, products(name, categories(name)))'
+      const fetchRecentSales = async () => {
+        const query = (cols) => supabase
+          .from('sales')
+          .select(cols)
+          .eq('shop_id', user.shop_id)
+          .or(COUNTED_SALE_FILTER)
+          .order('created_at', { ascending: false })
+          .limit(6)
+        const detailed = await query(`id, total_amount, discount, net_amount, paid_amount, payment_type, payment_method, payment_details, online_provider, transaction_ref, created_at, created_by, customer_id, customer_name, customer_phone, invoice_token, customers(name, phone), ${RECENT_ITEMS}`)
+        if (!detailed.error) return detailed
+        console.warn('Dashboard: detailed recent sales failed, using basic columns:', detailed.error.message)
+        const withItems = await query(`id, total_amount, discount, payment_type, online_provider, created_at, customer_id, customers(name), ${RECENT_ITEMS}`)
+        if (!withItems.error) return withItems
+        return query('id, total_amount, discount, payment_type, online_provider, created_at, customer_id, customers(name)')
+      }
+
       const fetchPromise = Promise.all([
         // 1. Today's sales with full line-item metadata
         supabase
@@ -204,13 +224,7 @@ function Dashboard() {
           .gte('created_at', thirtyDaysISO),
 
         // 4. Recent sales (latest 6)
-        supabase
-          .from('sales')
-          .select('id, total_amount, discount, payment_type, online_provider, created_at, customer_id, customers(name)')
-          .eq('shop_id', user.shop_id)
-          .or(COUNTED_SALE_FILTER)
-          .order('created_at', { ascending: false })
-          .limit(6),
+        fetchRecentSales(),
 
         // 5. Products catalog & inventory
         supabase
@@ -321,7 +335,10 @@ function Dashboard() {
         }))
         const monthSalesList = mySales.filter(s => new Date(s.created_at) >= firstDayOfMonth)
         const weekSalesList = mySales.filter(s => new Date(s.created_at) >= thirtyDaysAgo)
-        const recentSalesList = [...mySales].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6)
+        const recentSalesList = [...mySales].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6).map(s => ({
+          ...s,
+          sale_items: s.sale_items?.length ? s.sale_items : lItems.filter(i => String(i.sale_id) === String(s.id))
+        }))
         const productList = lProducts.filter(p => String(p.shop_id) === sidStr)
         const phonesList = (lPhones || []).filter(p => String(p.shop_id) === sidStr)
         const todayExpensesList = (lExpenses || []).filter(e => String(e.shop_id) === sidStr && new Date(e.created_at) >= today)
@@ -1115,8 +1132,11 @@ function Dashboard() {
         </div>
       </div>
 
-      {/*  Bottom Row: Top Movers, Live Activity, and Reorder Watchlist */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* Recent sales with product details */}
+      <RecentSalesFeed sales={stats.recentSales} todayOrdersCount={stats.todayOrdersCount} />
+
+      {/* Bottom row: top movers and reorder watchlist */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* 1. Top Moving Products Today */}
         <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
           <div>
@@ -1176,78 +1196,6 @@ function Dashboard() {
             <span className="text-[#6e6e73] font-medium">Period Total Units:</span>
             <span className="font-bold text-[#0071e3] tabular-nums">
               {stats.todayItemsSold} Items Sold Today
-            </span>
-          </div>
-        </div>
-
-        {/* 2. Live Recent Transactions Feed */}
-        <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-[15px] flex items-center gap-1.5">
-                  <Clock size={16} className="text-[#0071e3]" />
-                  <span>Recent Checkout Activity</span>
-                </h3>
-                <p className="text-[#6e6e73] text-xs">Most recent completed sales</p>
-              </div>
-              <Link to="/sales" className="text-xs text-[#0071e3] font-semibold hover:underline flex items-center gap-0.5">
-                <span>All Orders</span>
-                <ChevronRight size={13} />
-              </Link>
-            </div>
-
-            {stats.recentSales.length > 0 ? (
-              <div className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
-                {stats.recentSales.map(s => {
-                  const custName = s.customer_name || s.customers?.name || 'Walk-in Customer'
-                  const pType = String(s.payment_type || 'cash').toLowerCase()
-                  const netAmount = Number(s.total_amount || 0) - Number(s.discount || 0)
-                  const timeStr = s.created_at
-                    ? new Date(s.created_at).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' })
-                    : ''
-
-                  return (
-                    <div key={s.id} className="py-2.5 flex items-center justify-between hover:bg-[#f5f5f7]/60 dark:hover:bg-white/[0.03] px-2 rounded-[14px] transition">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#f5f5f7] dark:bg-white/10 text-[#0071e3] font-bold text-xs flex items-center justify-center shrink-0">
-                          #{s.id}
-                        </div>
-                        <div className="truncate max-w-[120px] sm:max-w-[150px]">
-                          <span className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] text-xs block truncate">{custName}</span>
-                          <span className="text-xs text-[#6e6e73]">{timeStr}</span>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="font-bold text-xs sm:text-sm text-[#1d1d1f] dark:text-[#f5f5f7] block tabular-nums">
-                          Rs. {Math.round(netAmount).toLocaleString()}
-                        </span>
-                        <span className={`text-xs font-semibold uppercase px-2 py-0.5 rounded-full inline-block ${
-                          pType === 'cash'
-                            ? 'bg-[#34c759]/10 text-[#34c759]'
-                            : pType === 'credit'
-                              ? 'bg-[#ff9500]/10 text-[#ff9500]'
-                              : 'bg-[#5856d6]/10 text-[#5856d6]'
-                        }`}>
-                          {pType}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="py-9 text-center text-[#6e6e73] text-xs italic bg-[#f5f5f7] dark:bg-white/[0.03] rounded-[18px]">
-                No recent transactions recorded yet.
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center text-xs">
-            <span className="text-[#6e6e73] font-medium">Total Orders Today:</span>
-            <span className="font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
-              {stats.todayOrdersCount} Invoices
             </span>
           </div>
         </div>
