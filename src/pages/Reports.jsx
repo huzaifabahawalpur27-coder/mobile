@@ -31,7 +31,15 @@ const lineCostParts = (line, snap, current = null, productCost = 0) => {
   if (lineCost !== null || snapCost !== null) {
     const lineExtras = Number(line?.additional_costs) > 0 ? Number(line.additional_costs) : null
     const snapExtras = snap && snap.additional_costs != null ? (Number(snap.additional_costs) || 0) : 0
-    return { base: lineCost ?? snapCost, extras: lineExtras ?? snapExtras }
+    let extras = lineExtras ?? snapExtras
+    // Some versions of process_phone_sale saved only the phone's base cost and kept
+    // its extra costs (repair, PTA, ...) nowhere, which overstated profit. When the
+    // line's cost equals the phone's base cost and nothing else recorded extras, add them.
+    if (lineExtras === null && !(snap && snap.additional_costs != null) && lineCost !== null &&
+        current && Number(current.directCost) > 0 && Math.abs(lineCost - Number(current.baseCost)) < 0.5) {
+      extras = Number(current.directCost)
+    }
+    return { base: lineCost ?? snapCost, extras }
   }
   if (current) return { base: Number(current.baseCost) || 0, extras: Number(current.directCost) || 0 }
   return { base: Number(productCost) || 0, extras: 0 }
@@ -491,7 +499,7 @@ function Reports() {
         name = `${i.brand} ${i.model}`.trim()
       }
 
-      name = name.replace(/\s*\(?IMEI[:\s]+[0-9/,\s]+\)?/gi, '').trim() || 'Uncategorized Product'
+      name = name.replace(/\s*[([]?\s*IMEI[:\s]+[0-9/,\s]+[)\]]?/gi, '').trim() || 'Uncategorized Product'
 
       const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
       const phoneInfo = i.phone_id ? phoneMap[i.phone_id] : null
@@ -884,7 +892,7 @@ function Reports() {
       else if (snap && (snap.brand || snap.model)) {
         name = `${snap.brand || ''} ${snap.model || ''}${snap.storage ? ` ${snap.storage}` : ''}`.trim()
       } else if (i.brand && i.model) name = `${i.brand} ${i.model}`.trim()
-      name = name.replace(/\s*\(?IMEI[:\s]+[0-9/,\s]+\)?/gi, '').trim() || 'Uncategorized Product'
+      name = name.replace(/\s*[([]?\s*IMEI[:\s]+[0-9/,\s]+[)\]]?/gi, '').trim() || 'Uncategorized Product'
 
       const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
 
