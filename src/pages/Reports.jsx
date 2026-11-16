@@ -25,7 +25,24 @@ import {
 //  - POS saves the base cost on the line and the extra costs in imei_snapshot;
 //  - the phone-sale and exchange database functions save cost + extra costs on the line
 //    (their snapshot has no additional_costs), so nothing is added twice.
-const lineCostParts = (line, snap, current = null, productCost = 0) => {
+// A sold phone's profit is its sale price minus its purchase cost and extra costs, read
+// from the phone's record (so a corrected cost is used). That record describes THIS
+// sale only while the phone is still sold and was not bought back and sold again since;
+// otherwise the cost saved with the sale is used.
+const localDay = (d) => {
+  const x = new Date(d)
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+}
+const phoneRecordFitsSale = (phone, saleDate) => {
+  if (!phone || !saleDate || phone.status !== 'sold') return false
+  if (phone.purchaseDate && String(phone.purchaseDate).slice(0, 10) > localDay(saleDate)) return false
+  if (phone.soldAt && new Date(phone.soldAt) - new Date(saleDate) > 30 * 60 * 1000) return false
+  return true
+}
+const lineCostParts = (line, snap, current = null, productCost = 0, saleDate = null) => {
+  if (phoneRecordFitsSale(current, saleDate)) {
+    return { base: Number(current.baseCost) || 0, extras: Number(current.directCost) || 0 }
+  }
   const lineCost = Number(line?.cost_price) > 0 ? Number(line.cost_price) : null
   const snapCost = snap && Number(snap.cost_price) > 0 ? Number(snap.cost_price) : null
   if (lineCost !== null || snapCost !== null) {
@@ -188,7 +205,7 @@ function Reports() {
         fetchAll(() => supabase.from('purchases').select('*, purchase_items(*)').eq('shop_id', user.shop_id).gte('created_at', startISO).lte('created_at', endISO)),
         fetchAll(() => supabase.from('products').select('id, name, stock_quantity, cost_price, sale_price, category_id, inventory_mode, categories(name)').eq('shop_id', user.shop_id)),
         fetchAll(() => supabase.from('categories').select('*').eq('shop_id', user.shop_id)),
-        fetchAll(() => supabase.from('phones').select('id, brand, model, storage, color, status, cost_price, sale_price, additional_costs').eq('shop_id', user.shop_id)),
+        fetchAll(() => supabase.from('phones').select('*').eq('shop_id', user.shop_id)),
         fetchAll(() => supabase.from('batch_cost_adjustments').select('*').eq('shop_id', user.shop_id).gte('adjusted_at', startISO).lte('adjusted_at', endISO)),
         fetchAll(() => supabase.from('stock_batches').select('*').eq('shop_id', user.shop_id).eq('status', 'active').gt('qty_remaining', 0))
       ])
@@ -293,7 +310,10 @@ function Reports() {
         baseCost,
         directCost,
         cost: baseCost + directCost,
-        price: Number(p.sale_price || 0)
+        price: Number(p.sale_price || 0),
+        status: p.status,
+        purchaseDate: p.purchase_date || null,
+        soldAt: p.sold_at || null
       }
       return acc
     }, {})
@@ -504,7 +524,8 @@ function Reports() {
       const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
       const phoneInfo = i.phone_id ? phoneMap[i.phone_id] : null
       const { base: baseCost, extras: directCost } = lineCostParts(i, snap, phoneInfo,
-        (i.product_id ? productCostMap[i.product_id] : null) ?? (productCostMap[name] || 0))
+        (i.product_id ? productCostMap[i.product_id] : null) ?? (productCostMap[name] || 0),
+        i.sales?.created_at || saleMap[i.sale_id]?.created_at || i.created_at)
       const totalUnitCost = baseCost + directCost
       const costPrice = totalUnitCost
       const unitPrice = Number(
@@ -902,7 +923,7 @@ function Reports() {
         (i.phone_id ? phoneMap[i.phone_id]?.price : 0) ?? 0
       )
       const costPrice = lineUnitCost(i, snap, i.phone_id ? phoneMap[i.phone_id] : null,
-        (i.product_id ? productCostMap[i.product_id] : null) ?? (productCostMap[name] || 0))
+        (i.product_id ? productCostMap[i.product_id] : null) ?? (productCostMap[name] || 0), itemDate)
 
       let lineRev = Number(
         (Number(i.line_total) > 0 ? i.line_total : null) ??
