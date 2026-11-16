@@ -1132,11 +1132,8 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Recent sales with product details */}
-      <RecentSalesFeed sales={stats.recentSales} todayOrdersCount={stats.todayOrdersCount} />
-
-      {/* Bottom row: top movers and reorder watchlist */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {/* Bottom row: top movers, recent sales and reorder watchlist */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* 1. Top Moving Products Today */}
         <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
           <div>
@@ -1199,6 +1196,9 @@ function Dashboard() {
             </span>
           </div>
         </div>
+
+        {/* 2. Recent sales: basic row, details on tap */}
+        <RecentSalesFeed sales={stats.recentSales} todayOrdersCount={stats.todayOrdersCount} />
 
         {/* 3. Reorder Watchlist & Low Stock Alerts (Replacing Old Debtors/Receivables) */}
         <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl p-5 sm:p-6 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col justify-between">
