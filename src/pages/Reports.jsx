@@ -61,6 +61,16 @@ const lineCostParts = (line, snap, current = null, productCost = 0, saleDate = n
   if (current) return { base: Number(current.baseCost) || 0, extras: Number(current.directCost) || 0 }
   return { base: Number(productCost) || 0, extras: 0 }
 }
+// Revenue of the part of a sale line still sold: the saved line total covers the
+// whole quantity, so a partly returned line counts only its remaining share.
+const soldLineRevenue = (line, qty, fallbackUnit = 0) => {
+  const fullQty = Number(line.quantity || line.qty || 1) || 1
+  const unit = Number(line.unit_price) > 0 ? Number(line.unit_price)
+    : Number(line.price) > 0 ? Number(line.price) : (Number(fallbackUnit) || 0)
+  const full = Number(line.line_total) > 0 ? Number(line.line_total)
+    : Number(line.subtotal) > 0 ? Number(line.subtotal) : fullQty * unit
+  return full * (qty / fullQty)
+}
 const lineUnitCost = (...args) => { const c = lineCostParts(...args); return c.base + c.extras }
 
 const isCountedSale = (sale) =>
@@ -136,6 +146,7 @@ function Reports() {
   const [categories, setCategories] = useState([])
   const [transactions, setTransactions] = useState([]) // each sale/expense/purchase in range
   const [txnType, setTxnType] = useState('all') // 'all' | 'Sale' | 'Expense' | 'Purchase'
+  const [soldLines, setSoldLines] = useState([]) // each sold line with sale price, costs and profit
 
   useEffect(() => {
     if (user?.shop_id) {
@@ -461,6 +472,7 @@ function Reports() {
     let phoneSoldProfit = 0
 
     const prodMap = {}
+    const soldLines = [] // every sold line, for the Sold items tab
 
     const saleMap = (sales || []).reduce((acc, s) => {
       acc[s.id] = s
@@ -477,14 +489,7 @@ function Reports() {
         (Number(i.price) > 0 ? i.price : null) ??
         (i.phone_id && phoneMap[i.phone_id] ? phoneMap[i.phone_id].price : 0) ?? 0
       )
-      let lineRev = Number(
-        (Number(i.line_total) > 0 ? i.line_total : null) ??
-        (Number(i.subtotal) > 0 ? i.subtotal : null) ??
-        (qty * unitPrice)
-      )
-      if (lineRev <= 0 && Number(i.price || 0) > 0) {
-        lineRev = qty * Number(i.price)
-      }
+      let lineRev = soldLineRevenue(i, qty, unitPrice)
       if (i.sale_id) {
         saleSubtotalMap[i.sale_id] = (saleSubtotalMap[i.sale_id] || 0) + lineRev
       }
@@ -533,14 +538,7 @@ function Reports() {
         (Number(i.price) > 0 ? i.price : null) ??
         (phoneInfo ? phoneInfo.price : 0) ?? 0
       )
-      let lineRev = Number(
-        (Number(i.line_total) > 0 ? i.line_total : null) ??
-        (Number(i.subtotal) > 0 ? i.subtotal : null) ??
-        (qty * unitPrice)
-      )
-      if (lineRev <= 0 && Number(i.price || 0) > 0) {
-        lineRev = qty * Number(i.price)
-      }
+      let lineRev = soldLineRevenue(i, qty, unitPrice)
       const parentSale = i.sale_id ? saleMap[i.sale_id] : null
       const saleDiscount = Number(parentSale?.discount || 0)
       const saleSubtotal = i.sale_id ? (saleSubtotalMap[i.sale_id] || 0) : 0
@@ -595,7 +593,29 @@ function Reports() {
       prodMap[name].directCost = (prodMap[name].directCost || 0) + (qty * directCost)
       prodMap[name].profit += lineProfit
       if (categoryName !== 'General') prodMap[name].category = categoryName
+
+      soldLines.push({
+        key: i.id ?? `${i.sale_id}-${name}-${soldLines.length}`,
+        date: i.sales?.created_at || parentSale?.created_at || i.created_at || null,
+        saleId: i.sale_id,
+        invoice: parentSale?.invoice_number || (parentSale?.invoice_token ? `INV-${parentSale.invoice_token}` : (i.sale_id ? `#${i.sale_id}` : '')),
+        customer: parentSale?.customer_name || 'Walk-in customer',
+        name,
+        imei: snap ? [snap.imei_1, snap.imei_2].filter(Boolean).join(' / ') : '',
+        isPhone,
+        category: categoryName,
+        qty,
+        unitPrice: qty > 0 ? lineRev / qty : 0,
+        discount: itemDiscount,
+        revenue: netLineRev,
+        purchaseCost: qty * baseCost,
+        extraCost: qty * directCost,
+        cost: lineCost,
+        profit: lineProfit
+      })
     })
+    soldLines.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+    setSoldLines(soldLines)
 
     // Also include live products that didn't sell this period so stock & inventory velocity show all items
     ;(liveProducts || []).forEach(p => {
@@ -925,14 +945,7 @@ function Reports() {
       const costPrice = lineUnitCost(i, snap, i.phone_id ? phoneMap[i.phone_id] : null,
         (i.product_id ? productCostMap[i.product_id] : null) ?? (productCostMap[name] || 0), itemDate)
 
-      let lineRev = Number(
-        (Number(i.line_total) > 0 ? i.line_total : null) ??
-        (Number(i.subtotal) > 0 ? i.subtotal : null) ??
-        (qty * unitPrice)
-      )
-      if (lineRev <= 0 && Number(i.price || 0) > 0) {
-        lineRev = qty * Number(i.price)
-      }
+      let lineRev = soldLineRevenue(i, qty, unitPrice)
       const lineCost = qty * costPrice
 
       if (isPhone) {
@@ -1216,6 +1229,94 @@ function Reports() {
   }
 
   // Export Product Sales Report to Excel
+  // Sold items grouped by day (newest first), with day totals
+  const soldDays = (() => {
+    const map = new Map()
+    for (const l of soldLines) {
+      const d = l.date ? new Date(l.date) : null
+      const key = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : 'unknown'
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          label: d ? d.toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }) : 'Date not recorded',
+          lines: [], qty: 0, revenue: 0, discount: 0, purchaseCost: 0, extraCost: 0, cost: 0, profit: 0
+        })
+      }
+      const day = map.get(key)
+      day.lines.push(l)
+      for (const f of ['qty', 'revenue', 'discount', 'purchaseCost', 'extraCost', 'cost', 'profit']) day[f] += l[f]
+    }
+    return [...map.values()]
+  })()
+  const rs = (n) => `Rs. ${Math.round(Number(n) || 0).toLocaleString()}`
+  const lineTime = (l) => (l.date ? new Date(l.date).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }) : '')
+  const marginOf = (profit, revenue) => (revenue > 0 ? `${((profit / revenue) * 100).toFixed(1)}%` : '—')
+
+  const handleExportSoldItems = () => {
+    const rows = soldLines.map(l => ({
+      'Date': l.date ? new Date(l.date).toLocaleDateString('en-PK') : '',
+      'Time': lineTime(l),
+      'Invoice': l.invoice,
+      'Customer': l.customer,
+      'Item': l.name,
+      'IMEI': l.imei,
+      'Type': l.isPhone ? 'Phone' : 'Accessory',
+      'Category': l.category,
+      'Qty': l.qty,
+      'Sale price (Rs.)': Math.round(l.unitPrice),
+      'Discount (Rs.)': Math.round(l.discount),
+      'Net sale (Rs.)': Math.round(l.revenue),
+      'Purchase cost (Rs.)': Math.round(l.purchaseCost),
+      'Extra cost (Rs.)': Math.round(l.extraCost),
+      'Total cost (Rs.)': Math.round(l.cost),
+      'Profit (Rs.)': Math.round(l.profit),
+      'Margin': marginOf(l.profit, l.revenue)
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Sold items')
+    XLSX.writeFile(wb, `Sold_Items_${range.toUpperCase()}_${new Date().toLocaleDateString()}.xlsx`)
+  }
+
+  const handlePrintSoldItems = () => {
+    const esc = (v) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+    const td = (v, right = false, extra = '') => `<td style="padding:5px 6px;border-bottom:1px solid #eee;${right ? 'text-align:right;' : ''}${extra}">${v}</td>`
+    const branding = getShopBranding(user?.shop_id)
+    const header = brandedA4Header(branding, 'Sold Items & Profit', `Period: ${range.toUpperCase()}`)
+    const body = soldDays.map(d => `
+      <tr><td colspan="9" style="padding:8px 6px 4px;font-weight:800;border-bottom:2px solid #0f172a;">${esc(d.label)}</td></tr>
+      ${d.lines.map(l => `<tr>
+        ${td(esc(lineTime(l)))}
+        ${td(`<b>${esc(l.name)}</b>${l.imei ? `<br><span style="color:#555">IMEI ${esc(l.imei)}</span>` : ''}<br><span style="color:#555">${esc(l.customer)} · ${esc(l.invoice)}</span>`)}
+        ${td(l.qty, true)}
+        ${td(rs(l.unitPrice), true)}
+        ${td(l.discount > 0 ? rs(l.discount) : '—', true)}
+        ${td(rs(l.purchaseCost), true)}
+        ${td(l.extraCost > 0 ? rs(l.extraCost) : '—', true)}
+        ${td(rs(l.profit), true, `font-weight:700;color:${l.profit < 0 ? '#dc2626' : '#059669'};`)}
+        ${td(marginOf(l.profit, l.revenue), true)}
+      </tr>`).join('')}
+      <tr style="background:#f8fafc;font-weight:700;">
+        ${td('')}${td(`Day total · sales ${rs(d.revenue)}`)}${td(d.qty, true)}${td('', true)}${td(d.discount > 0 ? rs(d.discount) : '—', true)}
+        ${td(rs(d.purchaseCost), true)}${td(d.extraCost > 0 ? rs(d.extraCost) : '—', true)}${td(rs(d.profit), true, `color:${d.profit < 0 ? '#dc2626' : '#059669'};`)}${td(marginOf(d.profit, d.revenue), true)}
+      </tr>`).join('')
+    printHTML(`
+      <html><head><title>Sold Items & Profit</title>
+      <style>@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact}body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;margin:16px}table{width:100%;border-collapse:collapse}th{background:#0f172a;color:#fff;padding:6px;font-size:10px;text-align:left}</style>
+      </head><body>
+      ${header}
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Item</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Sale price</th>
+          <th style="text-align:right;">Discount</th><th style="text-align:right;">Purchase cost</th><th style="text-align:right;">Extra cost</th>
+          <th style="text-align:right;">Profit</th><th style="text-align:right;">Margin</th>
+        </tr></thead>
+        <tbody>${body || '<tr><td colspan="9" style="padding:12px;text-align:center;">No items sold in this period.</td></tr>'}</tbody>
+      </table>
+      </body></html>
+    `)
+  }
+
   const handleExportProductReport = () => {
     const dataToExport = filteredProducts.map((p, idx) => ({
       'Rank': idx + 1,
@@ -1225,8 +1326,6 @@ function Reports() {
       'Inward (Purchased)': p.inwardQty || 0,
       'Outward (Sold)': p.qty,
       'Net Movement': p.netMovement ?? ((p.inwardQty || 0) - p.qty),
-      'Avg Selling Price (Rs.)': p.qty > 0 ? Math.round(p.avgPrice) : (p.catalogPrice > 0 ? Math.round(p.catalogPrice) : '—'),
-      'Avg Cost (Rs.)': Math.round(p.avgCost),
       'Total Revenue (Rs.)': p.qty > 0 ? Math.round(p.revenue) : '—',
       'Cost of Goods (Rs.)': p.qty > 0 ? Math.round(p.cost) : '—',
       'Gross Profit (Rs.)': p.qty > 0 ? Math.round(p.profit) : '—',
@@ -1250,7 +1349,6 @@ function Reports() {
         <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600;">${p.name}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#666;">${p.category}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;font-weight:bold;">${p.qty}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${p.qty > 0 ? `Rs. ${Math.round(p.avgPrice).toLocaleString()}` : (p.catalogPrice > 0 ? `Rs. ${Math.round(p.catalogPrice).toLocaleString()}` : '—')}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${p.qty > 0 ? `Rs. ${Math.round(p.revenue).toLocaleString()}` : '—'}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">${p.qty > 0 ? `Rs. ${Math.round(p.profit).toLocaleString()}` : '—'}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:${p.qty > 0 && p.margin >= 20 ? '#059669' : '#666'}">${p.qty > 0 ? `${(p.margin ?? 0).toFixed(1)}%` : '—'}</td>
@@ -1302,7 +1400,6 @@ function Reports() {
             <th>Product Name</th>
             <th>Category</th>
             <th style="text-align:center;">Qty</th>
-            <th style="text-align:right;">Avg Price</th>
             <th style="text-align:right;">Revenue</th>
             <th style="text-align:right;">Profit</th>
             <th style="text-align:right;">Margin %</th>
@@ -1364,7 +1461,7 @@ function Reports() {
 
           {/* Action Pills */}
           <button
-            onClick={activeTab === 'daily' ? handleExportDailyReport : handleExportProductReport}
+            onClick={activeTab === 'daily' ? handleExportDailyReport : activeTab === 'items' ? handleExportSoldItems : handleExportProductReport}
             className="px-3.5 py-2 bg-white dark:bg-[#1c1c1e] hover:bg-[#f5f5f7] dark:hover:bg-[#2c2c2e] active:scale-[0.98] text-[#1d1d1f] dark:text-[#f5f5f7] text-xs font-semibold rounded-full border border-black/[0.08] dark:border-white/[0.1] shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
             title={activeTab === 'daily' ? 'Download Daily Breakdown in Excel (.xlsx)' : 'Download Product Sales Analysis in Excel (.xlsx)'}
           >
@@ -1373,7 +1470,7 @@ function Reports() {
           </button>
 
           <button
-            onClick={activeTab === 'daily' ? handlePrintDailyReport : handlePrintSummary}
+            onClick={activeTab === 'daily' ? handlePrintDailyReport : activeTab === 'items' ? handlePrintSoldItems : handlePrintSummary}
             className="px-3.5 py-2 bg-[#0071e3] hover:bg-[#0077ed] active:scale-[0.98] text-white text-xs font-semibold rounded-full shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
             title={activeTab === 'daily' ? 'Print Daily Breakdown Report' : 'Print Executive A4 / Thermal Summary'}
           >
@@ -1509,6 +1606,7 @@ function Reports() {
             <div className="bg-[#e5e5ea]/80 dark:bg-[#2c2c2e]/80 p-1 rounded-full flex flex-wrap gap-1 backdrop-blur-md border border-black/[0.04] dark:border-white/[0.06] shadow-xs w-fit">
               {[
                 { id: 'summary', label: 'Summary', Icon: BarChart3 },
+                { id: 'items', label: `Sold items (${soldLines.length})`, Icon: ShoppingBag },
                 { id: 'transactions', label: `Transactions (${transactions.length})`, Icon: Banknote },
                 { id: 'products', label: `Products (${filteredProducts.length})`, Icon: Package },
                 { id: 'daily', label: `Daily (${dailyBreakdown.length})`, Icon: Calendar }
@@ -1543,6 +1641,95 @@ function Reports() {
               </button>
             )}
           </div>
+
+          {/* TAB: SOLD ITEMS by day, with sale price, purchase and extra cost, profit */}
+          {activeTab === 'items' && (
+            <div className="space-y-4">
+              {soldDays.length === 0 ? (
+                <div className="bg-white/95 dark:bg-[#1c1c1e]/95 rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] py-10 text-center text-sm text-[#6e6e73]">
+                  No items sold in this period.
+                </div>
+              ) : soldDays.map(day => (
+                <section key={day.key} aria-label={day.label} className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl rounded-[24px] border border-black/[0.05] dark:border-white/[0.08] shadow-xs overflow-hidden">
+                  {/* Day header with totals */}
+                  <div className="px-4 sm:px-5 py-3.5 bg-[#f5f5f7]/90 dark:bg-[#2c2c2e]/90 border-b border-black/[0.05] dark:border-white/[0.06]">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                      <h3 className="font-semibold text-sm text-[#1d1d1f] dark:text-[#f5f5f7]">{day.label}</h3>
+                      <span className="text-xs text-[#6e6e73]">{day.qty} item{day.qty === 1 ? '' : 's'} sold</span>
+                    </div>
+                    <dl className="mt-2 grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1 text-xs">
+                      <div><dt className="text-[#6e6e73]">Sales</dt><dd className="font-semibold tabular-nums text-[#1d1d1f] dark:text-[#f5f5f7]">{rs(day.revenue)}</dd></div>
+                      <div><dt className="text-[#6e6e73]">Purchase cost</dt><dd className="font-semibold tabular-nums text-[#1d1d1f] dark:text-[#f5f5f7]">{rs(day.purchaseCost)}</dd></div>
+                      <div><dt className="text-[#6e6e73]">Extra cost</dt><dd className="font-semibold tabular-nums text-[#1d1d1f] dark:text-[#f5f5f7]">{day.extraCost > 0 ? rs(day.extraCost) : '—'}</dd></div>
+                      <div><dt className="text-[#6e6e73]">Discount</dt><dd className="font-semibold tabular-nums text-[#1d1d1f] dark:text-[#f5f5f7]">{day.discount > 0 ? rs(day.discount) : '—'}</dd></div>
+                      <div><dt className="text-[#6e6e73]">Profit</dt><dd className={`font-bold tabular-nums ${day.profit < 0 ? 'text-[#d70015]' : 'text-[#248a3d]'}`}>{rs(day.profit)} <span className="font-medium text-[#6e6e73]">({marginOf(day.profit, day.revenue)})</span></dd></div>
+                    </dl>
+                  </div>
+
+                  {/* Desktop: table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="text-[#6e6e73] font-semibold border-b border-black/[0.05] dark:border-white/[0.06]">
+                        <tr>
+                          <th scope="col" className="px-4 py-2.5">Time</th>
+                          <th scope="col" className="px-4 py-2.5">Item</th>
+                          <th scope="col" className="px-3 py-2.5 text-right">Qty</th>
+                          <th scope="col" className="px-3 py-2.5 text-right">Sale price</th>
+                          <th scope="col" className="px-3 py-2.5 text-right">Discount</th>
+                          <th scope="col" className="px-3 py-2.5 text-right">Purchase cost</th>
+                          <th scope="col" className="px-3 py-2.5 text-right">Extra cost</th>
+                          <th scope="col" className="px-3 py-2.5 text-right">Profit</th>
+                          <th scope="col" className="px-4 py-2.5 text-right">Margin</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+                        {day.lines.map(l => (
+                          <tr key={l.key} className="align-top">
+                            <td className="px-4 py-2.5 tabular-nums text-[#6e6e73] whitespace-nowrap">{lineTime(l)}</td>
+                            <td className="px-4 py-2.5">
+                              <p className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">{l.name}</p>
+                              {l.imei && <p className="text-[#6e6e73] tabular-nums">IMEI {l.imei}</p>}
+                              <p className="text-[#6e6e73]">{l.customer} · {l.invoice} · {l.category}</p>
+                            </td>
+                            <td className="px-3 py-2.5 text-right tabular-nums">{l.qty}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] whitespace-nowrap">{rs(l.unitPrice)}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{l.discount > 0 ? rs(l.discount) : '—'}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{rs(l.purchaseCost)}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{l.extraCost > 0 ? rs(l.extraCost) : '—'}</td>
+                            <td className={`px-3 py-2.5 text-right tabular-nums font-bold whitespace-nowrap ${l.profit < 0 ? 'text-[#d70015]' : 'text-[#248a3d]'}`}>{rs(l.profit)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-[#6e6e73]">{marginOf(l.profit, l.revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Phones: one card per item */}
+                  <ul className="md:hidden divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+                    {day.lines.map(l => (
+                      <li key={l.key} className="px-4 py-3 text-xs">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-sm text-[#1d1d1f] dark:text-[#f5f5f7] break-words">{l.name}</p>
+                            {l.imei && <p className="text-[#6e6e73] tabular-nums break-all">IMEI {l.imei}</p>}
+                            <p className="text-[#6e6e73]">{lineTime(l)} · {l.customer} · {l.invoice}</p>
+                          </div>
+                          <p className={`font-bold text-sm tabular-nums shrink-0 ${l.profit < 0 ? 'text-[#d70015]' : 'text-[#248a3d]'}`}>{rs(l.profit)}</p>
+                        </div>
+                        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+                          <div className="flex justify-between gap-2"><dt className="text-[#6e6e73]">Sale price</dt><dd className="tabular-nums font-semibold">{l.qty > 1 ? `${l.qty} × ` : ''}{rs(l.unitPrice)}</dd></div>
+                          <div className="flex justify-between gap-2"><dt className="text-[#6e6e73]">Purchase cost</dt><dd className="tabular-nums">{rs(l.purchaseCost)}</dd></div>
+                          <div className="flex justify-between gap-2"><dt className="text-[#6e6e73]">Discount</dt><dd className="tabular-nums">{l.discount > 0 ? rs(l.discount) : '—'}</dd></div>
+                          <div className="flex justify-between gap-2"><dt className="text-[#6e6e73]">Extra cost</dt><dd className="tabular-nums">{l.extraCost > 0 ? rs(l.extraCost) : '—'}</dd></div>
+                          <div className="flex justify-between gap-2"><dt className="text-[#6e6e73]">Margin</dt><dd className="tabular-nums">{marginOf(l.profit, l.revenue)}</dd></div>
+                        </dl>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          )}
 
           {/* TAB: TRANSACTION LEDGER (each sale / expense / purchase) */}
           {activeTab === 'transactions' && (
@@ -1768,7 +1955,6 @@ function Reports() {
                         <th className="px-3 py-3 text-center">Inward (In)</th>
                         <th className="px-4 py-3 text-center">Sold (Out)</th>
                         <th className="px-3 py-3 text-center">Net Flow</th>
-                        <th className="px-4 py-3 text-right">Avg Price</th>
                         <th className="px-5 py-3 text-right">Total Revenue</th>
                         <th className="px-4 py-3 text-right">Cost (COGS)</th>
                         <th className="px-5 py-3 text-right">Gross Profit</th>
@@ -1843,17 +2029,6 @@ function Reports() {
                             </span>
                           </td>
 
-                          {/* Avg Price */}
-                          <td className="px-4 py-3 text-right text-[#6e6e73] font-medium tabular-nums">
-                            {p.qty > 0 ? (
-                              `Rs. ${Math.round(p.avgPrice).toLocaleString()}`
-                            ) : p.catalogPrice > 0 ? (
-                              <span title="Catalog / Target Price">Rs. {Math.round(p.catalogPrice).toLocaleString()}</span>
-                            ) : (
-                              <span className="text-slate-500 text-xs italic" title="Not sold in this period; price set at POS">—</span>
-                            )}
-                          </td>
-
                           {/* Total Revenue */}
                           <td className="px-5 py-3 text-right font-bold text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                             {p.qty > 0 ? `Rs. ${Math.round(p.revenue).toLocaleString()}` : <span className="text-slate-500 font-normal">—</span>}
@@ -1865,8 +2040,9 @@ function Reports() {
                               <div>
                                 <div>Rs. {Math.round(p.cost).toLocaleString()}</div>
                                 {p.directCost > 0 && (
-                                  <div className="text-xs text-amber-600 font-semibold" title="Direct costs (courier/repair/tax) included in total cost">
-                                    +Rs. {Math.round(p.directCost).toLocaleString()} Direct Cost
+                                  <div className="text-xs text-[#6e6e73] font-normal whitespace-nowrap" title="Total cost = purchase cost + extra cost">
+                                    <div>Purchase Rs. {Math.round(p.baseCost).toLocaleString()}</div>
+                                    <div>+ extra Rs. {Math.round(p.directCost).toLocaleString()}</div>
                                   </div>
                                 )}
                               </div>
@@ -1939,7 +2115,6 @@ function Reports() {
                             {filteredProducts.reduce((s, p) => s + p.qty, 0)} Pcs
                           </td>
                           <td className="px-3 py-3 text-center text-[#6e6e73]">—</td>
-                          <td className="px-4 py-3 text-right text-[#6e6e73]">—</td>
                           <td className="px-5 py-3 text-right text-[#1d1d1f] dark:text-[#f5f5f7] tabular-nums">
                             Rs. {Math.round(filteredProducts.reduce((s, p) => s + p.revenue, 0)).toLocaleString()}
                           </td>
