@@ -1,62 +1,11 @@
 // Report figures, worked out from the rows read for one period. Pure: no React, no
 // database. Reports.jsx reads the rows (online or from this device) and renders the result.
 
+import { localDay, lineCostParts, lineUnitCost, soldLineRevenue } from '../../utils/profit.js'
+
 // A sale counts in reports unless it is a quotation (or other non-sale type) or voided.
 // Sales saved by database functions may have no sale_type; they are sales.
-// Unit cost of a sold line, from what was saved WITH the sale, so later changes to the
-// phone or product (a buy-back resets a phone's cost, a new purchase changes a product's
-// cost) do not change old profit. The current record is used only when the sale saved none.
-//  - POS saves the base cost on the line and the extra costs in imei_snapshot;
-//  - the phone-sale and exchange database functions save cost + extra costs on the line
-//    (their snapshot has no additional_costs), so nothing is added twice.
-// A sold phone's profit is its sale price minus its purchase cost and extra costs, read
-// from the phone's record (so a corrected cost is used). That record describes THIS
-// sale only while the phone is still sold and was not bought back and sold again since;
-// otherwise the cost saved with the sale is used.
-const localDay = (d) => {
-  const x = new Date(d)
-  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
-}
-const phoneRecordFitsSale = (phone, saleDate) => {
-  if (!phone || !saleDate || phone.status !== 'sold') return false
-  if (phone.purchaseDate && String(phone.purchaseDate).slice(0, 10) > localDay(saleDate)) return false
-  if (phone.soldAt && new Date(phone.soldAt) - new Date(saleDate) > 30 * 60 * 1000) return false
-  return true
-}
-const lineCostParts = (line, snap, current = null, productCost = 0, saleDate = null) => {
-  if (phoneRecordFitsSale(current, saleDate)) {
-    return { base: Number(current.baseCost) || 0, extras: Number(current.directCost) || 0 }
-  }
-  const lineCost = Number(line?.cost_price) > 0 ? Number(line.cost_price) : null
-  const snapCost = snap && Number(snap.cost_price) > 0 ? Number(snap.cost_price) : null
-  if (lineCost !== null || snapCost !== null) {
-    const lineExtras = Number(line?.additional_costs) > 0 ? Number(line.additional_costs) : null
-    const snapExtras = snap && snap.additional_costs != null ? (Number(snap.additional_costs) || 0) : 0
-    let extras = lineExtras ?? snapExtras
-    // Some versions of process_phone_sale saved only the phone's base cost and kept
-    // its extra costs (repair, PTA, ...) nowhere, which overstated profit. When the
-    // line's cost equals the phone's base cost and nothing else recorded extras, add them.
-    if (lineExtras === null && !(snap && snap.additional_costs != null) && lineCost !== null &&
-        current && Number(current.directCost) > 0 && Math.abs(lineCost - Number(current.baseCost)) < 0.5) {
-      extras = Number(current.directCost)
-    }
-    return { base: lineCost ?? snapCost, extras }
-  }
-  if (current) return { base: Number(current.baseCost) || 0, extras: Number(current.directCost) || 0 }
-  return { base: Number(productCost) || 0, extras: 0 }
-}
-// Revenue of the part of a sale line still sold: the saved line total covers the
-// whole quantity, so a partly returned line counts only its remaining share.
-const soldLineRevenue = (line, qty, fallbackUnit = 0) => {
-  const fullQty = Number(line.quantity || line.qty || 1) || 1
-  const unit = Number(line.unit_price) > 0 ? Number(line.unit_price)
-    : Number(line.price) > 0 ? Number(line.price) : (Number(fallbackUnit) || 0)
-  const full = Number(line.line_total) > 0 ? Number(line.line_total)
-    : Number(line.subtotal) > 0 ? Number(line.subtotal) : fullQty * unit
-  return full * (qty / fullQty)
-}
-const lineUnitCost = (...args) => { const c = lineCostParts(...args); return c.base + c.extras }
-
+// Item cost and profit follow the shared rule in src/utils/profit.js.
 export const isCountedSale = (sale) =>
   (sale?.sale_type == null || sale.sale_type === '' || sale.sale_type === 'sale') && sale?.status !== 'voided'
 
@@ -268,7 +217,7 @@ export function buildReport({ sales, items, expenses, purchases, liveProducts, c
 
       const isPhone = Boolean(i.phone_id || snap || i.item_type === 'phone' || (i.products?.categories?.name === 'Mobile Phones'))
       const phoneInfo = i.phone_id ? phoneMap[i.phone_id] : null
-      const { base: baseCost, extras: directCost } = lineCostParts(i, snap, phoneInfo,
+      const { base: baseCost, extras: directCost, source: costSource } = lineCostParts(i, snap, phoneInfo,
         (i.product_id ? productCostMap[i.product_id] : null) ?? (productCostMap[name] || 0),
         i.sales?.created_at || saleMap[i.sale_id]?.created_at || i.created_at)
       const totalUnitCost = baseCost + directCost
@@ -348,6 +297,10 @@ export function buildReport({ sales, items, expenses, purchases, liveProducts, c
         unitPrice: qty > 0 ? lineRev / qty : 0,
         discount: itemDiscount,
         revenue: netLineRev,
+        unitCost: totalUnitCost,
+        costSource,
+        phoneId: i.phone_id || null,
+        productId: i.product_id || null,
         purchaseCost: qty * baseCost,
         extraCost: qty * directCost,
         cost: lineCost,
@@ -498,6 +451,13 @@ export function buildReport({ sales, items, expenses, purchases, liveProducts, c
       totalUnitsSold,
       netSales: netSalesValue,
       salesCount: sales.length,
+      // still owed by customers on this period's sales (credit not yet paid); profit counts
+      // a sale when it is made, paid or not
+      creditDue: sales.reduce((sum, x) => {
+        if (x.paid_amount == null) return sum
+        const net = Number(x.net_amount ?? (Number(x.total_amount || 0) - Number(x.discount || 0)))
+        return sum + Math.max(0, net - Number(x.paid_amount || 0))
+      }, 0),
       // cost of goods split into what was paid for the goods and the extra costs on them
       purchaseCostOfSales: costOfSales - totalDirectCosts
     })

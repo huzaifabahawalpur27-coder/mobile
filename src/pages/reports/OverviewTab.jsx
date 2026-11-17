@@ -71,6 +71,11 @@ export default function OverviewTab({ report }) {
             <div className="my-1 rounded-xl bg-[#34c759]/[0.08] px-3">
               <Line label="Profit on sales" value={stats.grossProfit} strong note={`${pct(stats.grossProfit, stats.netSales)} of sales`} />
             </div>
+            {stats.creditDue > 0 && (
+              <p className="py-2 text-xs text-[#5f6368] dark:text-gray-400 border-b border-black/[0.05] dark:border-white/[0.06]">
+                Includes sales on credit: customers still owe {rs(stats.creditDue)} from this period. A sale counts when it is made, paid or not.
+              </p>
+            )}
             <Line label="Shop expenses" value={stats.expenses} minus />
             <div className="flex items-baseline justify-between gap-3 pt-3 mt-1 border-t-2 border-[#1d1d1f] dark:border-gray-300">
               <dt className="text-base font-bold text-[#1d1d1f] dark:text-[#f5f5f7]">Net profit</dt>

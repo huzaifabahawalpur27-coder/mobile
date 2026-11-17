@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { db } from '../services/db'
 import { useAuth } from '../context/AuthContext'
@@ -71,11 +72,14 @@ export default function PhoneInventoryView() {
   const [loading, setLoading] = useState(true)
 
   // View Mode: 'model_summary' (Model & Quantity Breakdown) vs 'device_list' (IMEI level table)
-  const [viewMode, setViewMode] = useState('model_summary')
+  // /inventory?imei=... (from Reports > Check costs) opens that phone, sold or not
+  const [searchParams] = useSearchParams()
+  const linkedImei = searchParams.get('imei') || ''
+  const [viewMode, setViewMode] = useState(linkedImei ? 'device_list' : 'model_summary')
 
   // Filters
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('in_stock')
+  const [search, setSearch] = useState(linkedImei)
+  const [statusFilter, setStatusFilter] = useState(linkedImei ? 'all' : 'in_stock')
   const [ptaFilter, setPtaFilter] = useState('all')
   const [storageFilter, setStorageFilter] = useState('all')
   const [brandFilter, setBrandFilter] = useState('all')

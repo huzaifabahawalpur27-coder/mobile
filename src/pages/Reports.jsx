@@ -3,6 +3,7 @@ import { Download, Printer, CalendarDays } from 'lucide-react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../services/db'
+import { fetchAll } from '../services/fetchAll'
 import { hasFeature } from '../utils/featureGate'
 import UpgradeWall from '../components/UpgradeWall'
 import { Button } from '../components/ui'
@@ -23,22 +24,6 @@ const TABS = [
   { id: 'products', label: 'Products' },
   { id: 'days', label: 'Days' }
 ]
-
-const PAGE = 1000
-// Supabase returns at most 1000 rows per request: read every page, in a fixed order, so a
-// busy period is not silently cut short.
-async function fetchAll(makeQuery, { required = false } = {}) {
-  const rows = []
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await makeQuery().order('id', { ascending: true }).range(from, from + PAGE - 1)
-    if (error) {
-      if (required) throw error
-      return { data: rows.length ? rows : null, error }
-    }
-    rows.push(...(data || []))
-    if (!data || data.length < PAGE) return { data: rows, error: null }
-  }
-}
 
 // Sales, their lines, expenses, purchases and cost corrections for one period, from the server.
 // Quotations and voided sales are left out; a sale with no sale_type counts as a sale.
