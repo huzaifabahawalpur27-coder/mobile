@@ -351,7 +351,7 @@ html[data-style="apple-glass"].dark body {
 
 /* Glass Shell & Card Surfaces */
 html[data-style="apple-glass"]:not(.dark) .bg-white,
-html[data-style="apple-glass"]:not(.dark) header,
+html[data-style="apple-glass"]:not(.dark) header.app-topbar,
 html[data-style="apple-glass"]:not(.dark) .sidebar-panel,
 html[data-style="apple-glass"]:not(.dark) [class*="bg-[#f5f5f7]"],
 html[data-style="apple-glass"]:not(.dark) .card {
@@ -363,7 +363,7 @@ html[data-style="apple-glass"]:not(.dark) .card {
 }
 
 html[data-style="apple-glass"].dark .bg-white,
-html[data-style="apple-glass"].dark header,
+html[data-style="apple-glass"].dark header.app-topbar,
 html[data-style="apple-glass"].dark .sidebar-panel,
 html[data-style="apple-glass"].dark [class*="bg-[#1c1c1e]"],
 html[data-style="apple-glass"].dark [class*="bg-[#1f1f23]"],

@@ -411,7 +411,7 @@ function Layout({ children }) {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
 
         {/* Top Header */}
-        <header className="h-14 sm:h-16 bg-white border-b border-gray-200 px-3 sm:px-4 md:px-6 flex items-center justify-between shrink-0 shadow-sm z-20 transition-all">
+        <header className="app-topbar h-14 sm:h-16 bg-white border-b border-gray-200 px-3 sm:px-4 md:px-6 flex items-center justify-between shrink-0 shadow-sm z-20 transition-all">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               type="button"
@@ -797,7 +797,8 @@ function Layout({ children }) {
           padding: 0.5rem !important;
           max-width: 100% !important;
         }
-        .compact-mode header {
+        /* only the app's top bar; pages have <header> elements of their own */
+        .compact-mode header.app-topbar {
           height: 3rem !important;
         }
         .compact-mode h1 {
