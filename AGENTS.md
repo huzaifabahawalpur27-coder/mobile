@@ -28,6 +28,7 @@ Standalone admin: `cd superadmin`, then the same npm scripts.
 
 ## Money Rules
 
+- Reports (`src/pages/Reports.jsx`) only reads rows and renders. Its figures come from `buildReport` in `src/pages/reports/buildReport.js` (pure, no React or database); each tab, the Excel files and the A4 print have their own file in `src/pages/reports/`. Change a report figure in `buildReport`, not in a tab.
 - Shared money maths lives in `src/utils/moneyMath.js` (returns, tenders, ledger row effects, cash-drawer portions). POS, Sales, both ledgers, the cash session and Trash restore use it; change a rule there, not per screen. `npm test` runs `scripts/test_money_math.mjs`.
 - Cash / bank account balances change only through `creditBankBalance` / `deductBankBalance` in `src/services/bankService.js`, which send a signed amount to `adjust_bank_balance` (`sql/atomic_bank_balance.sql`) and queue the same call when offline. Never write `current_balance` as an absolute number from a screen.
 
