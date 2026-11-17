@@ -7,7 +7,7 @@ import { lineProfits, saleFigures, invoiceLabel, paymentLabel, customerName, isQ
 
 export default function SaleDetail({
   sale, items, loading, returnQtys, setReturnQtys, refundType, setRefundType, returning,
-  onReturn, onPrint, onConvert, onDelete, onClose
+  onReturn, onPrint, onPrintReceipt, onConvert, onDelete, onClose
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const quotation = isQuotation(sale)
@@ -25,6 +25,12 @@ export default function SaleDetail({
         </Button>
         {moreOpen && (
           <div role="menu" className="absolute bottom-full left-0 mb-1 min-w-[200px] rounded-xl border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-[#2c2c2e] shadow-lg p-1 z-10">
+            {!quotation && (
+              <button role="menuitem" type="button" onClick={() => { setMoreOpen(false); onPrintReceipt() }}
+                className="w-full min-h-[40px] px-3 rounded-lg flex items-center gap-2 text-sm font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]">
+                <Printer size={15} aria-hidden="true" /> Print shop receipt (no QR)
+              </button>
+            )}
             <button role="menuitem" type="button" onClick={() => { setMoreOpen(false); onDelete() }}
               className="w-full min-h-[40px] px-3 rounded-lg flex items-center gap-2 text-sm font-semibold text-[#d70015] dark:text-[#ff6b6b] hover:bg-[#ff3b30]/10">
               <Trash2 size={15} aria-hidden="true" /> Delete {quotation ? 'quotation' : 'sale'}…

@@ -16,6 +16,7 @@ import { applyMoneyOp, accountForMode } from '../services/moneyOps'
 import { returnSaleItemBatches } from '../services/batchService'
 import { adjustProductStock, adjustCustomerBalance, releasePhoneFromSale } from '../services/atomicOps'
 import { notify } from '../utils/toast'
+import { normalizeInvoiceToken, fetchServerInvoiceToken } from '../services/whatsappQueueService'
 import { getPeriod, RANGES } from './reports/period'
 import { rs, pct, plural } from './reports/format'
 import { Choice } from './reports/ui'
@@ -402,6 +403,26 @@ function Sales() {
     printHTML(html)
   }
 
+  // The QR-code bill (the same page the customer's link opens), printed from its own tab.
+  // A sale without an online bill code (an old sale, or one not yet synced) prints the
+  // shop receipt instead.
+  const printQrInvoice = async (sale, items) => {
+    if (isQuotation(sale)) { printInvoice(sale, items); return }
+    // open the tab now: a browser blocks a tab opened after waiting for the server
+    const tab = window.open('', '_blank')
+    let token = normalizeInvoiceToken(sale.invoice_token) || normalizeInvoiceToken(sale.invoice_number)
+    if (!token && navigator.onLine) token = await fetchServerInvoiceToken('sales', sale.id)
+    if (!token) {
+      tab?.close()
+      notify('This sale has no online bill yet (it may still be waiting to sync), so the shop receipt is printed instead.', 'warning')
+      printInvoice(sale, items)
+      return
+    }
+    const url = `/invoice/${encodeURIComponent(`INV-${token}`)}?print=1`
+    if (tab) tab.location.href = url
+    else window.location.assign(url)
+  }
+
   // Excel of the sales shown, with profit worked out the same way as Reports
   const exportToExcel = async () => {
     if (!filtered.length) { notify('No sales to export'); return }
@@ -697,7 +718,8 @@ function Sales() {
           setRefundType={setRefundType}
           returning={returning}
           onReturn={handleReturn}
-          onPrint={() => printInvoice(selectedSale, saleItems)}
+          onPrint={() => printQrInvoice(selectedSale, saleItems)}
+          onPrintReceipt={() => printInvoice(selectedSale, saleItems)}
           onConvert={() => navigate('/pos?convertQuote=' + selectedSale.id)}
           onDelete={() => { const id = selectedSale.id; setSelectedSale(null); requestDelete([id]) }}
           onClose={() => setSelectedSale(null)}

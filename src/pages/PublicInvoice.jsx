@@ -94,6 +94,18 @@ export default function PublicInvoice() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  // /invoice/...?print=1 (Print invoice in Sales) opens the print dialog once the bill,
+  // its QR code and the Urdu font have loaded
+  const autoPrinted = useRef(false)
+  useEffect(() => {
+    if (autoPrinted.current || loading || !invoice) return
+    if (!new URLSearchParams(window.location.search).has('print')) return
+    autoPrinted.current = true
+    let timer
+    const ready = document.fonts?.ready || Promise.resolve()
+    ready.then(() => { timer = setTimeout(() => window.print(), 400) })
+    return () => clearTimeout(timer)
+  }, [loading, invoice])
   const warrantyRef = useRef(null)
 
   useEffect(() => {
