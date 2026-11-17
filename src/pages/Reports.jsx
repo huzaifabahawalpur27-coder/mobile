@@ -112,7 +112,8 @@ function Reports() {
   const [customEnd, setCustomEnd] = useState('')
   const [tab, setTab] = useState('overview')
   const [loading, setLoading] = useState(true)
-  // 'live' = figures from the server; 'cached' = server unavailable, figures from this device
+  // 'live' = figures from the server; 'cached' = server unavailable, figures from this device;
+  // 'error' = the figures could not be worked out
   const [dataSource, setDataSource] = useState(null)
   const [report, setReport] = useState(null)
   const [prevStats, setPrevStats] = useState(null)
@@ -121,68 +122,107 @@ function Reports() {
 
   const period = useMemo(() => getPeriod(range, customStart, customEnd), [range, customStart, customEnd])
 
+  // Bumped by "Try again" to load the same period once more
+  const [reloadKey, setReloadKey] = useState(0)
+  // Why the figures came from this device instead of the server
+  const [fallbackReason, setFallbackReason] = useState('')
+
   useEffect(() => {
     if (!shopId) return
     let cancelled = false
     const { start, end, prev } = period
 
-    const load = async () => {
-      setLoading(true)
+    // The period's own figures. Only reading from the server can fall back to this device;
+    // a mistake in working out the figures is reported as such, not as a lost connection.
+    const loadReport = async () => {
+      let rows, catalog
       try {
-        if (!navigator.onLine) throw new Error('Offline')
+        if (!navigator.onLine) throw Object.assign(new Error('offline'), { reason: 'This device is offline.' })
         const work = Promise.all([
           fetchPeriodRows(shopId, start, end),
-          prev ? fetchPeriodRows(shopId, prev.start, prev.end, { withPurchases: false }) : Promise.resolve(null),
           fetchAll(() => supabase.from('products').select('id, name, stock_quantity, cost_price, sale_price, category_id, inventory_mode, categories(name)').eq('shop_id', shopId)),
           fetchAll(() => supabase.from('categories').select('*').eq('shop_id', shopId)),
           // all columns: purchase_date and sold_at exist only on some databases
           fetchAll(() => supabase.from('phones').select('*').eq('shop_id', shopId)),
           fetchAll(() => supabase.from('stock_batches').select('*').eq('shop_id', shopId).eq('status', 'active').gt('qty_remaining', 0))
         ])
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30000))
-        const [rows, prevRows, productsRes, catsRes, phonesRes, batchesRes] = await Promise.race([work, timeout])
-        const catalog = {
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('timeout'), {
+          reason: 'The server took more than a minute to answer.'
+        })), 60000))
+        const [periodRows, productsRes, catsRes, phonesRes, batchesRes] = await Promise.race([work, timeout])
+        rows = periodRows
+        catalog = {
           liveProducts: productsRes.data || [],
           catList: catsRes.data || [],
           phones: phonesRes.data || [],
           activeBatches: batchesRes?.data || []
         }
-        await cacheRows(rows, phonesRes.data)
-        if (cancelled) return
-        setReport(buildReport({ ...rows, ...catalog, startDate: start, endDate: end }))
-        setPrevStats(prevRows ? buildReport({ ...prevRows, ...catalog, startDate: prev.start, endDate: prev.end }).stats : null)
-        setDataSource('live')
+        await cacheRows(rows, phonesRes.data).catch(err => console.warn('Reports: could not save figures on this device', err))
       } catch (e) {
-        console.warn('Reports: calculating from this device...', e)
-        try {
-          const sid = String(shopId)
-          const [rows, prevRows, lProducts, lCats, lPhones] = await Promise.all([
-            readLocalRows(shopId, start, end),
-            prev ? readLocalRows(shopId, prev.start, prev.end) : Promise.resolve(null),
-            db.products.toArray(),
-            db.categories.toArray(),
-            db.phones ? db.phones.toArray().catch(() => []) : Promise.resolve([])
-          ])
-          const catalog = {
+        console.warn('Reports: server read failed, using this device', e)
+        const sid = String(shopId)
+        const [localRows, lProducts, lCats, lPhones] = await Promise.all([
+          readLocalRows(shopId, start, end),
+          db.products.toArray(),
+          db.categories.toArray(),
+          db.phones ? db.phones.toArray().catch(() => []) : Promise.resolve([])
+        ])
+        if (cancelled) return null
+        setFallbackReason(e.reason || `The server answered with an error: ${e.message || e}.`)
+        setDataSource('cached')
+        return {
+          catalog: {
             liveProducts: lProducts.filter(x => String(x.shop_id) === sid),
             catList: lCats.filter(x => String(x.shop_id) === sid),
             phones: (lPhones || []).filter(x => String(x.shop_id) === sid),
             activeBatches: []
-          }
-          if (cancelled) return
-          setReport(buildReport({ ...rows, ...catalog, startDate: start, endDate: end }))
-          setPrevStats(prevRows ? buildReport({ ...prevRows, ...catalog, purchases: [], startDate: prev.start, endDate: prev.end }).stats : null)
-          setDataSource('cached')
-        } catch (err) {
-          console.error('Reports: could not read figures from this device either', err)
+          },
+          rows: localRows,
+          local: true
         }
+      }
+      if (cancelled) return null
+      setFallbackReason('')
+      setDataSource('live')
+      return { rows, catalog, local: false }
+    }
+
+    const load = async () => {
+      setLoading(true)
+      setPrevStats(null)
+      let loaded = null
+      try {
+        loaded = await loadReport()
+        if (!loaded || cancelled) return
+        setReport(buildReport({ ...loaded.rows, ...loaded.catalog, startDate: start, endDate: end }))
+      } catch (err) {
+        console.error('Reports: could not work out the report', err)
+        if (!cancelled) {
+          setReport(null)
+          setDataSource('error')
+          setFallbackReason(err?.message || String(err))
+        }
+        return
       } finally {
         if (!cancelled) setLoading(false)
+      }
+
+      // The previous period, for the "vs previous" figures; loaded afterwards so it never
+      // holds up or breaks the report itself
+      if (!prev || !loaded) return
+      try {
+        const prevRows = loaded.local
+          ? { ...(await readLocalRows(shopId, prev.start, prev.end)), purchases: [] }
+          : await fetchPeriodRows(shopId, prev.start, prev.end, { withPurchases: false })
+        if (cancelled) return
+        setPrevStats(buildReport({ ...prevRows, ...loaded.catalog, startDate: prev.start, endDate: prev.end }).stats)
+      } catch (err) {
+        console.warn('Reports: previous period not loaded; comparison left out', err)
       }
     }
     load()
     return () => { cancelled = true }
-  }, [shopId, period])
+  }, [shopId, period, reloadKey])
 
   const onTabKey = (e, i) => {
     const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key]
@@ -216,9 +256,18 @@ function Reports() {
   return (
     <div className="space-y-5 max-w-7xl mx-auto pb-12">
       {dataSource === 'cached' && !loading && (
-        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 text-sm">
-          <strong>Showing figures saved on this device.</strong> The server could not be reached, so these
-          totals may be incomplete or out of date. Reload when you are online for exact figures.
+        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
+          <p>
+            <strong>Showing figures saved on this device.</strong> {fallbackReason} These totals may be
+            incomplete or out of date.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => setReloadKey(k => k + 1)}>Try again</Button>
+        </div>
+      )}
+      {dataSource === 'error' && !loading && (
+        <div role="alert" className="rounded-xl border border-red-300 bg-red-50 text-red-900 px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
+          <p><strong>The report could not be worked out.</strong> {fallbackReason}</p>
+          <Button variant="secondary" size="sm" onClick={() => setReloadKey(k => k + 1)}>Try again</Button>
         </div>
       )}
 
