@@ -74,7 +74,7 @@ export function buildReport({ sales, items, expenses, purchases, liveProducts, c
         (p.item_type && p.item_type !== 'phone')
       )
       const payType = String(p.payment_type || 'cash').toLowerCase()
-      const pAmount = Number(p.net_amount ?? (Number(p.total_amount || 0) - Number(p.discount || 0)))
+      const pAmount = Number(p.net_amount) > 0 ? Number(p.net_amount) : Math.max(0, Number(p.total_amount || 0) - Number(p.discount || 0))
 
       if (isBulkPurchase) {
         let pUnits = 0
@@ -687,7 +687,7 @@ export function buildReport({ sales, items, expenses, purchases, liveProducts, c
         label: p.supplier_name || p.supplier?.name || p.vendor_name || 'Stock purchase',
         ref: p.invoice_number || p.id,
         method: String(p.payment_type || 'cash'),
-        amount: Number(p.net_amount ?? p.total_amount ?? 0)
+        amount: Number(p.net_amount) > 0 ? Number(p.net_amount) : Number(p.total_amount || 0)
       })
     })
     txns.sort((a, b) => new Date(b.date) - new Date(a.date))

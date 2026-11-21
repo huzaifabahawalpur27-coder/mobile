@@ -10,6 +10,7 @@ export default defineConfig([
     'superadmin/dist',
     'node_modules',
     '.agents',
+    '.claude',
     '**/*.timestamp-*.mjs',
   ]),
   {

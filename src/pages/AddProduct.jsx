@@ -369,6 +369,8 @@ function AddProduct() {
               shop_id: user.shop_id,
               supplier_id: toIntOrNull(form.supplier_id),
               total_amount: initialPurchaseTotal,
+              net_amount: initialPurchaseTotal,
+              paid_amount: isImmediatePaid ? initialPurchaseTotal : 0,
               amount_paid: isImmediatePaid ? initialPurchaseTotal : 0,
               payment_method: effectivePaymentType,
               payment_type: effectivePaymentType,

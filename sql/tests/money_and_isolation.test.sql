@@ -109,6 +109,10 @@ BEGIN
   PERFORM adjust_supplier_balance(9201, -250, NULL);
   ASSERT (SELECT outstanding_balance FROM suppliers WHERE id = 9201) = 750, 'supplier balance reduced';
   ASSERT pg_temp.fails($q$ SELECT adjust_customer_balance(9102, 5, NULL) $q$), 'cannot change another shop''s customer';
+
+  -- 10. Phone purchase populates net_amount on purchases
+  r := record_phone_purchase(9201, NULL, '[{"brand":"Apple","model":"iPhone 15","cost_price":50000,"imei_1":"111222333444555"}]'::jsonb, 50000, 50000, 'cash', 'test note');
+  ASSERT (SELECT net_amount FROM purchases WHERE id = (r->>'purchase_id')::integer) = 50000, 'record_phone_purchase sets net_amount';
 END $$;
 
 -- The other shop saw none of it

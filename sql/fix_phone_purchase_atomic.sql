@@ -101,8 +101,8 @@ BEGIN
     END LOOP;
 
     -- 2. Purchase header
-    INSERT INTO public.purchases (shop_id, branch_id, user_id, supplier_id, total_amount, paid_amount, payment_method, remarks, created_at)
-    VALUES (v_shop_id, v_branch_id, v_user_id, p_supplier_id, p_total_amount, p_paid_amount, p_payment_type, p_notes, now())
+    INSERT INTO public.purchases (shop_id, branch_id, user_id, supplier_id, total_amount, net_amount, paid_amount, payment_method, remarks, created_at)
+    VALUES (v_shop_id, v_branch_id, v_user_id, p_supplier_id, p_total_amount, p_total_amount, p_paid_amount, p_payment_type, p_notes, now())
     RETURNING id INTO v_purchase_id;
 
     -- 3. Phones: re-use the record of a phone sold / returned earlier, else insert

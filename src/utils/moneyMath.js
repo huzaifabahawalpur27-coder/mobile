@@ -21,8 +21,12 @@ export const isCountedSale = (sale) =>
   (sale?.sale_type == null || sale.sale_type === '' || sale.sale_type === 'sale') && sale?.status !== 'voided'
 
 /** Bill amount after discount. */
-export const netAmount = (rec) =>
-  roundMoney(rec?.net_amount ?? (num(rec?.total_amount) - num(rec?.discount)))
+export const netAmount = (rec) => {
+  const explicitNet = rec?.net_amount != null ? num(rec.net_amount) : null
+  const computedNet = Math.max(0, num(rec?.total_amount) - num(rec?.discount))
+  if (explicitNet != null && explicitNet > 0) return roundMoney(explicitNet)
+  return roundMoney(computedNet)
+}
 
 export const paidAmount = (rec) => roundMoney(rec?.paid_amount ?? rec?.amount_paid ?? 0)
 

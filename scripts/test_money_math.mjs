@@ -1,7 +1,7 @@
 // Checks for the shared money rules (src/utils/moneyMath.js). Run: npm test
 import assert from 'node:assert/strict'
 import {
-  roundMoney, isCountedSale, saleBalanceEffect, computeReturn, customerLedgerEffect,
+  roundMoney, isCountedSale, netAmount, saleBalanceEffect, computeReturn, customerLedgerEffect,
   supplierLedgerEffect, cashPortion, buildSaleTenders, applyTenders,
   isCashExpenseInShift, isPurchaseBillPayment, isCashPartyPayment, unusualAmount, buildDayBook, isCashName, isCashAccount
 } from '../src/utils/moneyMath.js'
@@ -22,6 +22,13 @@ test('quotations and voided sales do not count', () => {
   assert.equal(isCountedSale({ sale_type: 'quotation' }), false)
   assert.equal(isCountedSale({ sale_type: 'sale', status: 'voided' }), false)
   assert.equal(saleBalanceEffect({ sale_type: 'quotation', total_amount: 900, paid_amount: 0 }), 0)
+})
+
+test('netAmount: falls back to total minus discount when net_amount is 0 or unpopulated', () => {
+  assert.equal(netAmount({ total_amount: 160000, discount: 0, net_amount: 0 }), 160000)
+  assert.equal(netAmount({ total_amount: 110000, discount: 10000, net_amount: 0 }), 100000)
+  assert.equal(netAmount({ total_amount: 50000, discount: 0, net_amount: 50000 }), 50000)
+  assert.equal(netAmount({ total_amount: 0, discount: 0, net_amount: 0 }), 0)
 })
 
 test('a sale adds bill minus paid to the customer balance', () => {

@@ -512,7 +512,9 @@ function Dashboard() {
     let todayPurchasedBulk = 0
 
     ;(todayPurchasesList || []).forEach(p => {
-      const pCost = Number(p.net_amount ?? (Number(p.total_amount || 0) - Number(p.discount || 0)))
+      const explicitNet = p.net_amount != null ? Number(p.net_amount) : null
+      const computedNet = Math.max(0, Number(p.total_amount || 0) - Number(p.discount || 0))
+      const pCost = (explicitNet != null && explicitNet > 0) ? explicitNet : computedNet
       todayPurchasesCost += pCost
 
       const items = p.purchase_items || []
@@ -807,7 +809,7 @@ function Dashboard() {
             badge="Purchases"
             badgeStyle="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold"
             valueColor="text-emerald-600 dark:text-emerald-400"
-            subValue={stats.todayPurchasesCost > 0 ? `${stats.todayPurchasedUnits} units purchased today` : 'No purchases today'}
+            subValue={stats.todayPurchasesCost > 0 || stats.todayPurchasedUnits > 0 ? `${stats.todayPurchasedUnits} unit${stats.todayPurchasedUnits === 1 ? '' : 's'} purchased today` : 'No purchases today'}
             onClick={() => navigate('/purchases')}
           />
 

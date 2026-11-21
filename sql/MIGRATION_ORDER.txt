@@ -57,3 +57,4 @@ sql/atomic_sale_and_cost.sql
 sql/atomic_bank_balance.sql
 sql/edit_bank_transaction.sql
 sql/atomic_money_ops.sql
+sql/fix_purchase_net_amount.sql
